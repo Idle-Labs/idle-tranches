@@ -34,8 +34,8 @@ contract GuardedLaunch is Ownable, ReentrancyGuard, Pausable {
     }
 
     uint256 userDeposit = userDeposits[msg.sender].add(_amount);
-    require(userDeposit <= userLimit, 'User limit');
-    require(guardedToken.balanceOf(address(this)).add(_amount) <= limit, 'Contract limit');
+    require(userDeposit < userLimit, 'User limit');
+    require(guardedToken.balanceOf(address(this)).add(_amount) < limit, 'Contract limit');
 
     userDeposits[msg.sender] = userDeposit;
   }
