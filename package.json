@@ -1,0 +1,47 @@
+{
+  "name": "idle-utils",
+  "description": "Idle utilities repo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Idle-Labs/idle-utils"
+  },
+  "keywords": [
+    "idle",
+    "idle.finance",
+    "yield",
+    "openzeppelin",
+    "react",
+    "dapp",
+    "infura",
+    "metamask",
+    "web3",
+    "web3js",
+    "ethereum"
+  ],
+  "author": "Idle Labs Inc. <info@idle.finance>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Idle-Labs/idle-utils/issues"
+  },
+  "homepage": "https://idle.finance",
+  "scripts": {
+    "test": "npx hardhat test",
+    "fork-test": "npx hardhat run scripts/integration_test.js --network local"
+  },
+  "devDependencies": {
+    "@ledgerhq/hw-app-eth": "^5.38.0",
+    "@ledgerhq/hw-transport-node-hid": "^5.38.0",
+    "@nomiclabs/hardhat-ethers": "^2.0.1",
+    "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "chai": "^4.2.0",
+    "ethereum-waffle": "^3.2.1",
+    "ethers": "^5.0.25",
+    "hardhat": "^2.0.6"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-etherscan": "^2.1.0",
+    "@openzeppelin/contracts": "^3.3.0",
+    "bignumber.js": "^9.0.1",
+    "hardhat-gas-reporter": "^1.0.4"
+  }
+}
