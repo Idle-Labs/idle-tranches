@@ -5,3 +5,4 @@ cache
 artifacts
 package-lock.json
 yarn-error.log
+.env
