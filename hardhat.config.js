@@ -1,6 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-etherscan");
-
+require('@openzeppelin/hardhat-upgrades');
 require('chai').should();
 const BN = require("bignumber.js");
 
