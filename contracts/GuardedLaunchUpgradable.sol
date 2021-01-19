@@ -3,13 +3,15 @@ pragma solidity 0.7.6;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/Initializable.sol";
 
 // Inherit this contract and add the _guarded method to the child contract
-contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuard {
+abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuard {
+  using Address for address payable;
   using SafeMath for uint256;
   using SafeERC20 for IERC20;
 
@@ -43,14 +45,14 @@ contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, Reentranc
   }
 
   // abstract
-  function getContractValue() external virtual view returns (uint256);
+  function getContractValue() public virtual view returns (uint256);
 
   // 0 means no limit
-  function _setLimit(uint256 _limit) external onlyOwner returns (bool) {
+  function _setLimit(uint256 _limit) external onlyOwner {
     limit = _limit;
   }
   // 0 means no limit
-  function _setUserLimit(uint256 _userLimit) external onlyOwner returns (bool) {
+  function _setUserLimit(uint256 _userLimit) external onlyOwner {
     userLimit = _userLimit;
   }
 
@@ -61,7 +63,7 @@ contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, Reentranc
     return true;
   }
   function transferETH(uint256 value) onlyOwner nonReentrant external {
-    address payable to = governanceRecoveryFund;
+    address payable to = payable(governanceRecoveryFund);
     to.sendValue(value);
   }
 }

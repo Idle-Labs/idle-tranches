@@ -6,9 +6,11 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 
 // Inherit this contract and add the _guarded method to the child contract
 contract GuardedLaunch is Ownable, ReentrancyGuard {
+  using Address for address payable;
   using SafeMath for uint256;
   using SafeERC20 for IERC20;
 
@@ -39,11 +41,11 @@ contract GuardedLaunch is Ownable, ReentrancyGuard {
     userDeposits[msg.sender] = userDeposit;
   }
   // 0 means no limit
-  function _setLimit(uint256 _limit) external onlyOwner returns (bool) {
+  function _setLimit(uint256 _limit) external onlyOwner {
     limit = _limit;
   }
   // 0 means no limit
-  function _setUserLimit(uint256 _userLimit) external onlyOwner returns (bool) {
+  function _setUserLimit(uint256 _userLimit) external onlyOwner {
     userLimit = _userLimit;
   }
 
@@ -54,7 +56,7 @@ contract GuardedLaunch is Ownable, ReentrancyGuard {
     return true;
   }
   function transferETH(uint256 value) onlyOwner nonReentrant external {
-    address payable to = governanceRecoveryFund;
+    address payable to = payable(governanceRecoveryFund);
     to.sendValue(value);
   }
 }

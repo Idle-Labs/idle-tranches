@@ -45,9 +45,9 @@ async function main() {
 
   console.log("starting...");
 
-  const IdleTranchedVault = await ethers.getContractFactory("IdleTranchedVault", signer);
+  const IdleCDO = await ethers.getContractFactory("IdleCDO", signer);
   const args = [tokenAddress];
-  const proxy = await upgrades.deployProxy(IdleTranchedVault, args);
+  const proxy = await upgrades.deployProxy(IdleCDO, args);
   await proxy.deployed();
   console.log(`${token} proxy deployed at`, proxy.address)
 }
