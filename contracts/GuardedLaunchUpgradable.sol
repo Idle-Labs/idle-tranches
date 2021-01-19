@@ -17,6 +17,7 @@ contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, Reentranc
   uint256 public userLimit;
   address public governanceRecoveryFund;
   ERC20 public guardedToken;
+  ERC20 public guardedInterestBearing;
   mapping (address => uint256) private userDeposits;
 
   function __GuardedLaunch_init(uint256 _limit, uint256 _userLimit, address _guardedToken, address _governanceRecoveryFund) internal initializer {
@@ -36,10 +37,14 @@ contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, Reentranc
 
     uint256 userDeposit = userDeposits[msg.sender].add(_amount);
     require(userDeposit < userLimit, 'User limit');
-    require(guardedToken.balanceOf(address(this)).add(_amount) < limit, 'Contract limit');
+    require(getContractValue().add(_amount) < limit, 'Contract limit');
 
     userDeposits[msg.sender] = userDeposit;
   }
+
+  // abstract
+  function getContractValue() external virtual view returns (uint256);
+
   // 0 means no limit
   function _setLimit(uint256 _limit) external onlyOwner returns (bool) {
     limit = _limit;
