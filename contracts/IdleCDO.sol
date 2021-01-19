@@ -179,29 +179,33 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     return _liquidate(_amount, revertIfNeeded);
   }
 
+  function liquidateGov() external {
+    require(msg.sender == rebalancer, "IDLE:!AUTH");
+
+    address[] memory rewards = IIdleCDOStrategy(strategy).getRewardTokens();
+    for (uint256 i = 0; i < rewards.length; i++) {
+      address rewardToken = rewards[i];
+      if (rewardToken == idle) { continue; }
+
+      address[] memory path = new address[](3);
+      path[0] = rewardToken;
+      path[1] = weth;
+      path[2] = token;
+      _swap(path);
+    }
+  }
+
   // Utilities
   // ###################
-  // note path[0] will be added automatically, the entire path for each token should exist
-  // function swap(address[] memory _tokens, address[] memory _path) external onlyOwner {
-  //   for (uint256 i = 0; i < _tokens.length; i++) {
-  //     address _tokenAddress = _tokens[i];
-  //     uint256 _currentBalance = ERC20(_tokenAddress).balanceOf(address(this));
-  //
-  //     address[] memory path = new address[](2);
-  //     path[0] = _tokenAddress;
-  //     for (uint256 j = 0; j < _path.length; j++) {
-  //       path[j+1] = _path[j];
-  //     }
-  //
-  //     uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-  //       _currentBalance,
-  //       1, // receive at least 1 wei of ETH
-  //       path,
-  //       address(this),
-  //       block.timestamp
-  //     );
-  //   }
-  // }
+  function _swap(address[] memory _path) internal {
+    uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+      ERC20(_path[0]).balanceOf(address(this)),
+      1, // receive at least 1 wei back
+      _path,
+      address(this),
+      block.timestamp
+    );
+  }
 
   // TODO add support for each tranche permit and deposit support
   // ###################
