@@ -100,7 +100,7 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
 
   // internal
   // ###############
-  function _deposit(uint256 _amount, address _tranche) internal whenNotPaused returns (uint256 _minted) {
+  function _deposit(uint256 _amount, address _tranche) internal returns (uint256 _minted) {
     _guarded(_amount);
     _updateCallerBlock();
     _checkDefault();
@@ -207,22 +207,37 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     );
   }
 
-  // TODO add support for each tranche permit and deposit support
+  // Permit and Deposit support
   // ###################
-  // function permitAndDeposit(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(underlying).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
-  //   deposit(amount);
-  // }
-  //
-  // function permitEIP2612AndDeposit(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(underlying).permit(msg.sender, address(this), amount, expiry, v, r, s);
-  //   deposit(amount);
-  // }
-  //
-  // function permitEIP2612AndDepositUnlimited(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(underlying).permit(msg.sender, address(this), uint256(-1), expiry, v, r, s);
-  //   deposit(amount);
-  // }
+  function permitAndDepositAA(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitAndDepositBB(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
+    _deposit(amount, BBTranche);
+  }
+
+  function permitEIP2612AndDepositAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitEIP2612AndDepositUnlimitedAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), uint256(-1), expiry, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitEIP2612AndDepositBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
+    _deposit(amount, BBTranche);
+  }
+
+  function permitEIP2612AndDepositUnlimitedBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), uint256(-1), expiry, v, r, s);
+    _deposit(amount, BBTranche);
+  }
 
   // onlyOwner
   // ###################
