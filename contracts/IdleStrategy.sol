@@ -38,8 +38,16 @@ contract IdleStrategy is IIdleCDOStrategy, Ownable, ReentrancyGuard {
     underlyingToken.safeApprove(_idleToken, uint256(-1));
   }
 
-  function price() public override view returns(uint256) {
+  function priceRedeem() public override view returns(uint256) {
     return idleTokenHelper.getRedeemPrice(address(idleToken));
+  }
+
+  function priceMint() public override view returns(uint256) {
+    return idleToken.tokenPrice();
+  }
+
+  function getApr() external override view returns(uint256) {
+    return idleToken.getAvgAPR();
   }
 
   function deposit(uint256 _amount) external override returns(uint256 minted) {
@@ -56,7 +64,7 @@ contract IdleStrategy is IIdleCDOStrategy, Ownable, ReentrancyGuard {
   }
 
   function redeemUnderlying(uint256 _amount) external override returns(uint256) {
-    return redeem(_amount.mul(oneToken).div(price()));
+    return redeem(_amount.mul(oneToken).div(priceRedeem()));
   }
 
   function _withdrawGovToken(address _to) internal {

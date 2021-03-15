@@ -15,9 +15,11 @@ contract IdleCDOTranche is ERC20 {
   }
 
   function mint(address account, uint256 amount) external {
+    require(msg.sender == minter, 'TRANCHE:!AUTH');
     _mint(account, amount);
   }
   function burn(address account, uint256 amount) external {
+    require(msg.sender == minter, 'TRANCHE:!AUTH');
     _burn(account, amount);
   }
 }

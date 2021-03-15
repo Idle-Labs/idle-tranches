@@ -67,7 +67,7 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     revertIfTooLow = true;
 
     ERC20(token).safeIncreaseAllowance(strategy, uint256(-1));
-    lastPrice = IIdleCDOStrategy(strategy).price();
+    lastPrice = IIdleCDOStrategy(strategy).priceMint();
   }
 
   // Public methods
@@ -90,13 +90,46 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     return _withdraw(_amount, BBTranche);
   }
 
-  function tranchePrice(address _tranche) external view returns (uint256) {
-    return _tranchePrice(_tranche);
+  function tranchePrice(address _tranche, bool _redeem) external view returns (uint256) {
+    return _tranchePrice(_tranche, _redeem);
   }
 
   function getContractValue() public override view returns (uint256) {
     return _balanceAATranche().add(_balanceBBTranche());
   }
+
+
+
+
+  function getApr(address _tranche) external view returns (uint256) {
+    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
+    uint256 AATrancheApr = stratApr.mul(trancheSplitRatio).div(FULL_ALLOC);
+    uint256 BBTrancheApr = stratApr.sub(AATrancheApr);
+    uint256 currAARatio = _balanceAATranche().mul(FULL_ALLOC).div(_balanceBBTranche());
+
+
+
+    return _tranche == AATranche ? AATrancheApr : BBTrancheApr;
+  }
+
+  function getAARatio() public view returns (uint256) {
+    return _balanceAATranche().mul(FULL_ALLOC).div(_balanceBBTranche());
+  }
+
+  function getBBRatio() external view returns (uint256) {
+    return FULL_ALLOC.sub(getAARatio());
+  }
+
+  // Apr at ideal trancheSplitRatio balance between AA and BB
+  function getIdealApr(address _tranche) external view returns (uint256) {
+    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
+    uint256 AATrancheApr = stratApr.mul(trancheSplitRatio).div(FULL_ALLOC);
+    uint256 BBTrancheApr = stratApr.sub(AATrancheApr);
+
+    return _tranche == AATranche ? AATrancheApr : BBTrancheApr;
+  }
+
+
 
   // internal
   // ###############
@@ -105,7 +138,7 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     _updateCallerBlock();
     _checkDefault();
 
-    _minted = _amount.mul(oneToken).div(_tranchePrice(_tranche));
+    _minted = _amount.mul(oneToken).div(_tranchePrice(_tranche, false));
     IdleCDOTranche(_tranche).mint(msg.sender, _minted);
     ERC20(token).safeTransferFrom(msg.sender, address(this), _amount);
   }
@@ -115,7 +148,7 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     _checkDefault();
 
     uint256 balanceUnderlying = ERC20(token).balanceOf(address(this));
-    toRedeem = _amount.mul(_tranchePrice(_tranche)).div(oneToken);
+    toRedeem = _amount.mul(_tranchePrice(_tranche, true)).div(oneToken);
     if (toRedeem > balanceUnderlying) {
       _liquidate(toRedeem.sub(balanceUnderlying), revertIfTooLow);
     }
@@ -123,6 +156,24 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
     // send underlying
     ERC20(token).safeTransfer(msg.sender, toRedeem);
+  }
+
+  function _checkDefault() internal {
+    uint256 currPrice = IIdleCDOStrategy(strategy).priceMint();
+    if (!skipDefaultCheck) {
+      require(lastPrice > currPrice, "IDLE:DEFAULT_WAIT_SHUTDOWN");
+    }
+    lastPrice = currPrice;
+  }
+
+  function _swap(address[] memory _path, uint256 _minAmount) internal {
+    uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+      ERC20(_path[0]).balanceOf(address(this)),
+      _minAmount, // receive at least 1 wei back
+      _path,
+      address(this),
+      block.timestamp
+    );
   }
 
   // this should liquidate at least _amount or revert?
@@ -134,34 +185,28 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
     }
   }
 
-  function _tranchePrice(address _tranche) internal view returns (uint256) {
-    return _tranche == AATranche ? _priceAATranche() : _priceBBTranche();
+  function _tranchePrice(address _tranche, bool _redeem) internal view returns (uint256) {
+    return _tranche == AATranche ? _priceAATranche(_redeem) : _priceBBTranche(_redeem);
   }
 
-  function _priceAATranche() internal view returns (uint256) {
+  function _priceAATranche(bool _redeem) internal view returns (uint256) {
     // 1 + ((price - 1) * trancheSplitRatio/FULL_ALLOC)
-    return oneToken.add(IIdleCDOStrategy(strategy).price().sub(oneToken).mul(trancheSplitRatio).div(FULL_ALLOC));
+    uint256 _price = _redeem ? IIdleCDOStrategy(strategy).priceRedeem() : IIdleCDOStrategy(strategy).priceMint();
+    return oneToken.add(_price.sub(oneToken).mul(trancheSplitRatio).div(FULL_ALLOC));
   }
 
-  function _priceBBTranche() internal view returns (uint256) {
+  function _priceBBTranche(bool _redeem) internal view returns (uint256) {
     // 1 + ((price - 1) * (FULL_ALLOC-trancheSplitRatio)/FULL_ALLOC)
-    return oneToken.add(IIdleCDOStrategy(strategy).price().sub(oneToken).mul(FULL_ALLOC.sub(trancheSplitRatio)).div(FULL_ALLOC));
+    uint256 _price = _redeem ? IIdleCDOStrategy(strategy).priceRedeem() : IIdleCDOStrategy(strategy).priceMint();
+    return oneToken.add(_price.sub(oneToken).mul(FULL_ALLOC.sub(trancheSplitRatio)).div(FULL_ALLOC));
   }
 
   function _balanceAATranche() internal view returns (uint256) {
-    return IdleCDOTranche(AATranche).totalSupply().mul(_priceAATranche()).div(oneToken);
+    return IdleCDOTranche(AATranche).totalSupply().mul(_priceAATranche(true)).div(oneToken);
   }
 
   function _balanceBBTranche() internal view returns (uint256) {
-    return IdleCDOTranche(BBTranche).totalSupply().mul(_priceBBTranche()).div(oneToken);
-  }
-
-  function _checkDefault() internal {
-    uint256 currPrice = IIdleCDOStrategy(strategy).price();
-    if (!skipDefaultCheck) {
-      require(lastPrice > currPrice, "IDLE:DEFAULT_WAIT_SHUTDOWN");
-    }
-    lastPrice = currPrice;
+    return IdleCDOTranche(BBTranche).totalSupply().mul(_priceBBTranche(true)).div(oneToken);
   }
 
   // Protected
@@ -191,20 +236,8 @@ contract IdleCDO is Initializable, OwnableUpgradeable, PausableUpgradeable, Guar
       path[0] = rewardToken;
       path[1] = weth;
       path[2] = token;
-      _swap(path);
+      _swap(path, 1);
     }
-  }
-
-  // Utilities
-  // ###################
-  function _swap(address[] memory _path) internal {
-    uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-      ERC20(_path[0]).balanceOf(address(this)),
-      1, // receive at least 1 wei back
-      _path,
-      address(this),
-      block.timestamp
-    );
   }
 
   // Permit and Deposit support

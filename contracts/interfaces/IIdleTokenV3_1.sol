@@ -16,6 +16,7 @@ interface IIdleTokenV3_1 is IERC20Detailed {
   function redeemIdleToken(uint256 _amount) external returns (uint256 redeemedTokens);
   function redeemInterestBearingTokens(uint256 _amount) external;
   function rebalance() external returns (bool);
+  function getAvgAPR() external view returns (uint256);
   function govTokens(uint256 index) external view returns (address);
   function getGovTokensAmounts(address _usr) external view returns (uint256[] memory _amounts);
 }

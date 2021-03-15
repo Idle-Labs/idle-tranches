@@ -2,7 +2,7 @@
 pragma solidity 0.7.6;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/Initializable.sol";
 
 // Inherit this contract and add the _guarded method to the child contract
-abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuard {
+abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using Address for address payable;
   using SafeMath for uint256;
   using SafeERC20 for IERC20;
@@ -25,6 +25,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   function __GuardedLaunch_init(uint256 _limit, uint256 _userLimit, address _guardedToken, address _governanceRecoveryFund) internal initializer {
     require(_governanceRecoveryFund != address(0) && _guardedToken != address(0), 'Address is 0');
     OwnableUpgradeable.__Ownable_init();
+    ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
     limit = _limit;
     userLimit = _userLimit;
     governanceRecoveryFund = _governanceRecoveryFund;
