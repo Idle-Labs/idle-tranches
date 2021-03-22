@@ -19,4 +19,13 @@ interface IIdleTokenV3_1 is IERC20Detailed {
   function getAvgAPR() external view returns (uint256);
   function govTokens(uint256 index) external view returns (address);
   function getGovTokensAmounts(address _usr) external view returns (uint256[] memory _amounts);
+  function getAllocations() external view returns (uint256[] memory);
+  function getGovTokens() external view returns (address[] memory);
+  function getAllAvailableTokens() external view returns (address[] memory);
+  function getProtocolTokenToGov(address _protocolToken) external view returns (address);
+  function oracle() external view returns (address);
+  function owner() external view returns (address);
+  function rebalancer() external view returns (address);
+  function protocolWrappers(address) external view returns (address);
+  function tokenPriceWithFee(address user) external view returns (uint256 priceWFee);
 }
