@@ -1,18 +1,16 @@
 //SPDX-License-Identifier: Apache 2.0
-pragma solidity 0.7.6;
+pragma solidity 0.8.3;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/Initializable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 // Inherit this contract and add the _guarded method to the child contract
 abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using Address for address payable;
-  using SafeMath for uint256;
   using SafeERC20 for IERC20;
 
   uint256 public limit;
@@ -38,9 +36,9 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
       return;
     }
 
-    uint256 userDeposit = userDeposits[msg.sender].add(_amount);
+    uint256 userDeposit = userDeposits[msg.sender] + _amount;
     require(userDeposit < userLimit, 'User limit');
-    require(getContractValue().add(_amount) < limit, 'Contract limit');
+    require(getContractValue() + _amount < limit, 'Contract limit');
 
     userDeposits[msg.sender] = userDeposit;
   }

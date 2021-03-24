@@ -3,7 +3,7 @@
  * @title: Idle Token interface
  * @author: Idle Labs Inc., idle.finance
  */
-pragma solidity 0.7.6;
+pragma solidity 0.8.3;
 
 import "./IERC20Permit.sol";
 

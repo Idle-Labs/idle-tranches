@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Apache 2.0
-pragma solidity 0.7.6;
+pragma solidity 0.8.3;
 
 // Helper contract used to avoid the call of 2 specific methods in the same tx,
 // eg avoid deposit and redeem in the same tx
