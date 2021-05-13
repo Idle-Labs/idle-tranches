@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Apache 2.0
-pragma solidity 0.8.3;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -14,33 +14,26 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   using SafeERC20 for IERC20;
 
   uint256 public limit;
-  uint256 public userLimit;
   address public governanceRecoveryFund;
   ERC20 public guardedToken;
   ERC20 public guardedInterestBearing;
   mapping (address => uint256) private userDeposits;
 
-  function __GuardedLaunch_init(uint256 _limit, uint256 _userLimit, address _guardedToken, address _governanceRecoveryFund) internal initializer {
+  function __GuardedLaunch_init(uint256 _limit, address _guardedToken, address _governanceRecoveryFund) internal initializer {
     require(_governanceRecoveryFund != address(0) && _guardedToken != address(0), 'Address is 0');
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
     limit = _limit;
-    userLimit = _userLimit;
     governanceRecoveryFund = _governanceRecoveryFund;
     guardedToken = ERC20(_guardedToken);
   }
 
   // Call this method inside the child contract
-  function _guarded(uint256 _amount) internal {
-    if (userLimit == 0 && limit == 0) {
+  function _guarded(uint256 _amount) internal view {
+    if (limit == 0) {
       return;
     }
-
-    uint256 userDeposit = userDeposits[msg.sender] + _amount;
-    require(userDeposit < userLimit, 'User limit');
-    require(getContractValue() + _amount < limit, 'Contract limit');
-
-    userDeposits[msg.sender] = userDeposit;
+    require(getContractValue() + _amount <= limit, 'Contract limit');
   }
 
   // abstract
@@ -49,10 +42,6 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   // 0 means no limit
   function _setLimit(uint256 _limit) external onlyOwner {
     limit = _limit;
-  }
-  // 0 means no limit
-  function _setUserLimit(uint256 _userLimit) external onlyOwner {
-    userLimit = _userLimit;
   }
 
   // Emergency methods, funds gets transferred to the governanceRecoveryFund address

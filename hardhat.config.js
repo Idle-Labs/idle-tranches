@@ -2,6 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
 require('chai').should();
+require('dotenv').config();
 const BN = require("bignumber.js");
 
 // You need to export an object to set up your config
@@ -11,14 +12,11 @@ const BN = require("bignumber.js");
  * @type import('hardhat/config').HardhatUserConfig
  */
 
-const mainnetAccounts = process.env.MAINNET_PRIVATE_KEY ? [`0x${process.env.MAINNET_PRIVATE_KEY}`] : [];
-const kovanAccounts = process.env.KOVAN_PRIVATE_KEY ? [`${process.env.KOVAN_PRIVATE_KEY}`] : [];
-
 module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.3",
+        version: "0.8.4",
         settings: {
           optimizer: {
             enabled: true,
@@ -29,18 +27,22 @@ module.exports = {
     ],
   },
   networks: {
-    hardhat: {},
+    defaultNetwork: "hardhat",
+    hardhat: {
+      // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   // blockNumber: 12310055,
+      // }
+    },
     local: {
       url: "http://127.0.0.1:8545/",
       timeout: 120000,
     },
     kovan: {
       url: `https://kovan.infura.io/v3/${process.env.IDLE_INFURA_KEY}`,
-      accounts: kovanAccounts,
     },
     mainnet: {
       url: `https://mainnet.infura.io/v3/${process.env.IDLE_INFURA_KEY}`,
-      accounts: mainnetAccounts,
       gasPrice: 'auto',
       gas: 'auto'
     },
@@ -59,10 +61,3 @@ task("accounts", "Prints the list of accounts", async () => {
     console.log(account.address);
   }
 });
-
-// task("example", "description")
-//   .addParam("address", "the contract address")
-//   .setAction(async ({ address }) => {
-//     const toBN = (v) => new BN(v.toString());
-//
-// });

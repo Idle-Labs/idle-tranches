@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.3;
+pragma solidity 0.8.4;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
@@ -14,37 +13,21 @@ import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "./interfaces/IIdleTokenV3_1.sol";
 import "./interfaces/IERC20Permit.sol";
 import "./GuardedLaunchUpgradable.sol";
-import "./FlashProtection.sol";
+import "./wIdleTokenStorage.sol";
+import "hardhat/console.sol";
 
-contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, PausableUpgradeable, GuardedLaunchUpgradable, FlashProtection {
+contract wIdleToken is Initializable, ERC20Upgradeable, PausableUpgradeable, GuardedLaunchUpgradable, wIdleTokenStorage {
   using SafeERC20 for ERC20;
 
-  uint256 public constant FULL_ALLOC = 100000;
-  uint256 public constant ONE_18 = 10**18;
-
-  bool public revertIfNeeded;
-  bool public skipDefaultCheck;
-  address public rebalancer;
-  address public token;
-  address public weth;
-  address public idle;
-  address public idleToken;
-  uint256 public oneToken;
-  uint256 public lastPrice;
-  uint256 public contractAvgPrice;
-  uint256 public contractDepositedTokens;
-  IUniswapV2Router02 private uniswapRouterV2;
-
   function initialize(
-    uint256 _limit, uint256 _userLimit, address _guardedToken, address _governanceFund, // GuardedLaunch args
+    uint256 _limit, address _guardedToken, address _governanceFund, // GuardedLaunch args
     address _rebalancer,
     address _idleToken,
     string memory name, string memory symbol
   ) public initializer {
     ERC20Upgradeable.__ERC20_init(name, symbol);
-    OwnableUpgradeable.__Ownable_init();
     PausableUpgradeable.__Pausable_init();
-    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _userLimit, _guardedToken, _governanceFund);
+    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _guardedToken, _governanceFund);
 
     rebalancer = _rebalancer;
     idleToken = _idleToken;
@@ -56,25 +39,25 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
     revertIfNeeded = true;
 
     ERC20(token).safeIncreaseAllowance(idleToken, type(uint256).max);
-    lastPrice = IIdleTokenV3_1(idleToken).tokenPriceWithFee(msg.sender);
+    lastPrice = _strategyPrice();
   }
 
   // Public methods
   // User should approve this contract first to spend IdleTokens idleToken
-  function deposit(uint256 _amount) external returns (uint256 minted) {
+  function deposit(uint256 _amount) external returns (uint256) {
     return _deposit(_amount);
   }
 
   function withdraw(uint256 _wIdleTokenAmount) external returns (uint256 toRedeem) {
     _checkSameTx();
-    _burn(msg.sender, _wIdleTokenAmount);
+    _burn(msg.sender, _wIdleTokenAymount);
     // TODO is it correct? should be in order to always have the correct balance
     IIdleTokenV3_1(idleToken).redeemIdleToken(0);
 
     if (_wIdleTokenAmount == 0) {
       _wIdleTokenAmount = balanceOf(msg.sender);
     }
-    uint256 balanceUnderlying = ERC20(token).balanceOf(address(this));
+    uint256 balanceUnderlying = _contractTokenBalance(token);
     toRedeem = _wIdleTokenAmount * price() / ONE_18;
     if (toRedeem > balanceUnderlying) {
       _liquidate(toRedeem - balanceUnderlying, revertIfNeeded);
@@ -94,10 +77,10 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
   }
 
   function contractBalance() public view returns (uint256) {
-    uint256 tokenBal = ERC20(token).balanceOf(address(this));
+    uint256 tokenBal = _contractTokenBalance(token);
     tokenBal = tokenBal + (
       // balance in Idle in underlyings
-      ERC20(idleToken).balanceOf(address(this)) * IIdleTokenV3_1(idleToken).tokenPriceWithFee(msg.sender) / ONE_18
+      _contractTokenBalance(idleToken) * _strategyPrice() / ONE_18
     );
     // add govTokens balance in underlying (flash loan resistant)
     // if we only have IDLE what do we do?
@@ -114,7 +97,7 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
     _updateCallerBlock();
     _checkDefault();
 
-    // TODO is it correct? should be in order to always have the correct balance
+    // get accrued gov tokens to the contract
     IIdleTokenV3_1(idleToken).redeemIdleToken(0);
 
     uint256 wIdlePrice = price();
@@ -124,23 +107,30 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
     uint256 supply = totalSupply();
     // contractAvgPrice = (contractAvgPrice * oldBalance) + (price * newQty)) / totBalance
     contractAvgPrice = (contractAvgPrice * supply) + (wIdlePrice * minted) / (supply + minted);
-    // TODO is needed
+    // TODO is needed ?
     contractDepositedTokens = contractDepositedTokens + _amount;
     _mint(msg.sender, minted);
   }
 
   function _checkDefault() internal {
-    uint256 currPrice = IIdleTokenV3_1(idleToken).tokenPriceWithFee(msg.sender);
+    uint256 currPrice = _strategyPrice();
     if (!skipDefaultCheck) {
       require(lastPrice > currPrice, "IDLE:PRICE_DOWN");
     }
     lastPrice = currPrice;
   }
 
+  function _strategyPrice() internal view returns (uint256) {
+    return IIdleTokenV3_1(idleToken).tokenPriceWithFee(address(this));
+  }
+  function _contractTokenBalance(address _token) internal view returns (uint256) {
+    return ERC20(_token).balanceOf(address(this));
+  }
+
   // this should liquidate at least _amount or revert
   // _amount is in underlying
   function _liquidate(uint256 _amount, bool _revertIfNeeded) internal returns (uint256 _redeemedTokens) {
-    uint256 idleTokens = _amount * oneToken / IIdleTokenV3_1(idleToken).tokenPriceWithFee(msg.sender);
+    uint256 idleTokens = _amount * oneToken / _strategyPrice();
     _redeemedTokens = IIdleTokenV3_1(idleToken).redeemIdleToken(idleTokens);
     if (_revertIfNeeded) {
       require(_redeemedTokens >= _amount - 1, 'IDLE:TOO_LOW');
@@ -161,7 +151,7 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
     address[] memory rewards = IIdleTokenV3_1(idleToken).getGovTokens();
     for (uint256 i = 0; i < rewards.length; i++) {
       address rewardToken = rewards[i];
-      uint256 _currentBalance = ERC20(rewardToken).balanceOf(address(this));
+      uint256 _currentBalance = _contractTokenBalance(rewardToken);
       if (rewardToken == idle || _skipReward[i] || _currentBalance == 0) { continue; }
 
       address[] memory _path = new address[](3);
@@ -179,7 +169,7 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
       );
     }
 
-    IIdleTokenV3_1(idleToken).mintIdleToken(ERC20(token).balanceOf(address(this)), true, address(0));
+    IIdleTokenV3_1(idleToken).mintIdleToken(_contractTokenBalance(token), true, address(0));
 
     // TODO get fees?
   }
@@ -218,5 +208,17 @@ contract wIdleToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, Paus
 
   function pause() external onlyOwner {
     _pause();
+  }
+
+  // helpers
+  // ###################
+  // Set last caller and block.number hash. This should be called at the beginning of the first function
+  function _updateCallerBlock() internal {
+    _lastCallerBlock = keccak256(abi.encodePacked(tx.origin, block.number));
+  }
+
+  // Check that the second function is not called in the same block from the same tx.origin
+  function _checkSameTx() internal view {
+    require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "SAME_BLOCK");
   }
 }
