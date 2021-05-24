@@ -1,8 +1,13 @@
-require("@nomiclabs/hardhat-waffle");
-require("@nomiclabs/hardhat-etherscan");
-require('@openzeppelin/hardhat-upgrades');
 require('chai').should();
 require('dotenv').config();
+require('@openzeppelin/hardhat-upgrades');
+require("@nomiclabs/hardhat-waffle");
+require("@nomiclabs/hardhat-etherscan");
+require("@nomiclabs/hardhat-solhint");
+// require('hardhat-abi-exporter');
+// require('hardhat-contract-sizer');
+require("hardhat-etherscan-abi");
+require("solidity-coverage");
 require("./tasks/hardhat.helpers");
 const BN = require("bignumber.js");
 
@@ -22,10 +27,13 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      // forking: {
-      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-      //   // blockNumber: 12310055,
-      // }
+      // accounts: {
+      //   mnemonic: process.env.MNEMONIC_MAINNET,
+      // },
+      forking: {
+        url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+        blockNumber: 12497564,
+      }
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -47,5 +55,16 @@ module.exports = {
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
+  },
+  abiExporter: {
+    // path: './abis',
+    // clear: true,
+    flat: true,
+    spacing: 2
+  },
+  contractSizer: {
+    // alphaSort: true,
+    // runOnCompile: true,
+    // disambiguatePaths: false,
   }
 };

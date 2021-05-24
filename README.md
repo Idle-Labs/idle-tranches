@@ -7,14 +7,13 @@
 
 `yarn test`
 
-## Integration test with network fork
+## Solidity linter
 
-Start a mainnet fork:
+`npx hardhat check`
 
-```
-export IDLE_INFURA_KEY=YOUR_INFURA_KEY
-./fork.sh mainnet # or ./fork.sh kovan
-```
+## Coverage
+
+`npx hardhat coverage`
 
 ### Deploy
 

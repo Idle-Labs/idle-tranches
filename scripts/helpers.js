@@ -1,7 +1,58 @@
+const hre = require("hardhat");
+const rl = require("readline");
+const { ethers, upgrades } = require("hardhat");
 const { BigNumber } = require("@ethersproject/bignumber");
-const {time} = require("@openzeppelin/test-helpers")
+const { time } = require("@openzeppelin/test-helpers");
+const addresses = require("../lib/index");
 
 module.exports = {
+  deployContract: async (contractName, params, signer) => {
+    console.log(`Deploying ${contractName}`);
+    const contractFactory = await ethers.getContractFactory(contractName, signer);
+    let contract = await contractFactory.deploy(...params);
+    await contract.deployed();
+    let contractReceipt = await contract.deployTransaction.wait()
+    console.log(`${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+    console.log()
+    return contract;
+  },
+  deployUpgradableContract: async (contractName, params, signer) => {
+    console.log(`Deploying ${contractName}`);
+    const contractFactory = await ethers.getContractFactory(contractName, signer);
+    // do not use spread (...) operator here
+    let contract = await upgrades.deployProxy(contractFactory, params);
+    await contract.deployed();
+    let contractReceipt = await contract.deployTransaction.wait()
+    console.log(`${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+    console.log()
+    return contract;
+  },
+  upgradeContract: async (address, contractName, params, signer) => {
+    console.log(`Upgrading ${contractName}`);
+    const contractFactory = await ethers.getContractFactory(contractName, signer);
+    let contract = await upgrades.upgradeProxy(address, contractFactory);
+    // NOTE: Method + params cannot be passed for reinit on upgrades!
+    // do not use spread (...) operator here
+    // let contract = await upgrades.upgradeProxy(address, contractFactory, params);
+    let contractReceipt = await contract.deployTransaction.wait()
+    console.log(`${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+    console.log()
+    return contract;
+  },
+  prompt: question => {
+    const r = rl.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: false
+    });
+
+    return new Promise((resolve, error) => {
+      r.question(question, answer => {
+        r.close();
+        resolve(answer);
+      });
+    });
+  },
   check: (a, b, message) => {
     a = a.toString();
     b = b.toString();
@@ -11,7 +62,7 @@ module.exports = {
   checkAproximate: (a, b, message) => { // check a is withing 5% of b
     a = BigNumber.from(a.toString())
     b = BigNumber.from(b.toString())
-    
+
     let _check
     if (b.eq(BigNumber.from('0'))) {
         _check = a.eq(b)
@@ -38,18 +89,18 @@ module.exports = {
   waitDays: async d => {
     await time.increase(time.duration.days(d));
   },
-  // resetFork: async blockNumber => {
-  //   console.log('resetting fork')
-  //   await hre.network.provider.request({
-  //     method: "hardhat_reset",
-  //     params: [
-  //       {
-  //         forking: {
-  //           jsonRpcUrl: `https://eth-mainnet.alchemyapi.io/v2/`,
-  //           blockNumber,
-  //         }
-  //       }
-  //     ]
-  //   });
-  // }
+  resetFork: async blockNumber => {
+    console.log('resetting fork')
+    await hre.network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+            blockNumber,
+          }
+        }
+      ]
+    });
+  }
 }
