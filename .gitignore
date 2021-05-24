@@ -3,6 +3,6 @@ node_modules/
 #Hardhat files
 cache
 artifacts
-package-lock.json
+*-lock.json
 yarn-error.log
 .env
