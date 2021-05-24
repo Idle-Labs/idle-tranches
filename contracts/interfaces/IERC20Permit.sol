@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.4;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-interface IERC20Detailed is IERC20 {
-  function name() external view returns(string memory);
-  function decimals() external view returns(uint256);
-}
+import "./IERC20Detailed.sol";
 
 interface IERC20Nonces is IERC20Detailed {
   function nonces(address holder) external view returns(uint);
