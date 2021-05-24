@@ -3,6 +3,7 @@ require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
 require('chai').should();
 require('dotenv').config();
+require("./tasks/hardhat.helpers");
 const BN = require("bignumber.js");
 
 module.exports = {
