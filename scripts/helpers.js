@@ -2,8 +2,21 @@ const rl = require("readline");
 const { BigNumber } = require("@ethersproject/bignumber");
 const { time } = require("@openzeppelin/test-helpers");
 const addresses = require("../lib/index");
+const { HardwareSigner } = require("../lib/HardwareSigner");
+const BN = n => BigNumber.from(n);
+const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 
 module.exports = {
+  getSigner: async () => {
+    let [signer] = await ethers.getSigners();
+    if (hre.network.name == 'mainnet') {
+      signer = new HardwareSigner(ethers.provider, null, "m/44'/60'/0'/0/0");
+    }
+    const address = await signer.getAddress();
+    console.log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
+    console.log();
+    return signer;
+  },
   deployContract: async (contractName, params, signer) => {
     console.log(`Deploying ${contractName}`);
     const contractFactory = await ethers.getContractFactory(contractName, signer);
@@ -11,24 +24,24 @@ module.exports = {
     await contract.deployed();
     let contractReceipt = await contract.deployTransaction.wait()
     console.log(`${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash}`);
-    console.log()
+    console.log();
     return contract;
   },
-  deployUpgradableContract: async (hardh, contractName, params, signer) => {
+  deployUpgradableContract: async (contractName, params, signer) => {
     console.log(`Deploying ${contractName}`);
     const contractFactory = await ethers.getContractFactory(contractName, signer);
     // do not use spread (...) operator here
-    let contract = await hardh.upgrades.deployProxy(contractFactory, params);
+    let contract = await hre.upgrades.deployProxy(contractFactory, params);
     await contract.deployed();
     let contractReceipt = await contract.deployTransaction.wait()
     console.log(`${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
-    console.log()
+    console.log();
     return contract;
   },
-  upgradeContract: async (hardh, address, contractName, params, signer) => {
+  upgradeContract: async (address, contractName, params, signer) => {
     console.log(`Upgrading ${contractName}`);
     const contractFactory = await ethers.getContractFactory(contractName, signer);
-    let contract = await hardh.upgrades.upgradeProxy(address, contractFactory);
+    let contract = await hre.upgrades.upgradeProxy(address, contractFactory);
     // NOTE: Method + params cannot be passed for reinit on upgrades!
     // do not use spread (...) operator here
     // let contract = await upgrades.upgradeProxy(address, contractFactory, params);

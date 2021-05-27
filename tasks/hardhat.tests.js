@@ -1,4 +1,4 @@
-const { HardwareSigner } = require("../lib/HardwareSigner");
+require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/index");
@@ -10,25 +10,15 @@ const mainnetContracts = addresses.IdleTokens.mainnet;
 /**
  * @name deploy
  */
-task("deploy")
-  .setAction(async function (args, hardh) {
+task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
+  .setAction(async (args) => {
+    // Run 'compile' task
     await run("compile");
 
-    let [signer] = await ethers.getSigners();
-    if (hardh.network.name == 'mainnet') {
-      signer = new HardwareSigner(ethers.provider, null, "m/44'/60'/0'/0/0");
-    }
-    const address = await signer.getAddress();
-
-    console.log("deploying with account", address);
-    console.log("account balance", BN(await ethers.provider.getBalance(address)).toString(), "\n\n");
-
+    const signer = await helpers.getSigner();
     await helpers.prompt("continue? [y/n]");
-
-    console.log("starting...");
-    const strategy = await helpers.deployUpgradableContract(hardh, 'IdleStrategy', [mainnetContracts.idleDAIBest], signer);
+    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [mainnetContracts.idleDAIBest], signer);
     const idleCDO = await helpers.deployUpgradableContract(
-      hardh,
       'IdleCDO',
       [
         BN('1000000').mul(ONE_TOKEN(18)), // limit
@@ -43,14 +33,12 @@ task("deploy")
     );
   });
 
-// /**
-//  * @name increase-time
-//  * @param time
-//  */
-// task("increase-time-mine")
-//   .addPositionalParam("time")
-//   .setAction(async function ({ time }) {
-//     await ethers.provider.send("evm_increaseTime", [Number(time)]);
-//     await run("mine");
-//     await run("blocknumber");
-//   });
+/**
+ * @name test-price
+ */
+task("test-price")
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("deploy");
+
+  });
