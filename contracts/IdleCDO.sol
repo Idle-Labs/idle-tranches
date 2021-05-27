@@ -21,20 +21,25 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 _limit, address _guardedToken, address _governanceFund, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
-    uint256 _trancheSplitRatio // for AA tranches so eg 10000 means 10% interest to AA and 90% BB
+    uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
+    uint256 _trancheIdealWeightRatio // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _guardedToken, _governanceFund);
     // Set CDO params
-    trancheSplitRatio = _trancheSplitRatio;
+    trancheAPRSplitRatio = _trancheAPRSplitRatio;
+    trancheIdealWeightRatio = _trancheIdealWeightRatio;
     rebalancer = _rebalancer;
     strategy = _strategy;
     oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
     token = _guardedToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    // TODO how to handle IDLE rewards?
     // idle = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
+
     // Deploy Tranches tokens
     AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
     BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
@@ -52,7 +57,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastBBPrice = _priceBBTranche();
   }
 
+  // ###############
   // Public methods
+  // ###############
+
   // User should approve this contract first to spend IdleTokens idleToken
   function depositAA(uint256 _amount) external whenNotPaused returns (uint256) {
     return _deposit(_amount, AATranche);
@@ -72,6 +80,41 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _withdraw(_amount, BBTranche);
   }
 
+  // Permit and Deposit support
+  function permitAndDepositAA(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitAndDepositBB(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
+    _deposit(amount, BBTranche);
+  }
+
+  function permitEIP2612AndDepositAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitEIP2612AndDepositUnlimitedAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
+    _deposit(amount, AATranche);
+  }
+
+  function permitEIP2612AndDepositBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
+    _deposit(amount, BBTranche);
+  }
+
+  function permitEIP2612AndDepositUnlimitedBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
+    IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
+    _deposit(amount, BBTranche);
+  }
+
+  // ###############
+  // Views
+  // ###############
+
   function tranchePrice(address _tranche) external view returns (uint256) {
     return _tranchePrice(_tranche);
   }
@@ -80,53 +123,46 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _lastTranchePrice(_tranche);
   }
 
-  function _lastTranchePrice(address _tranche) internal view returns (uint256) {
-    return _tranche == AATranche ? lastAAPrice : lastBBPrice;
-  }
-
+  // In underlyings
   function getContractValue() public override view returns (uint256) {
     return _balanceAATranche() + _balanceBBTranche();
   }
 
-  function getApr(address _tranche) external view returns (uint256) {
-    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
-    uint256 AATrancheApr = stratApr * trancheSplitRatio / FULL_ALLOC;
-    uint256 BBTrancheApr = stratApr - AATrancheApr;
-    // uint256 currAARatio = _balanceAATranche() * FULL_ALLOC / _balanceBBTranche();
-
-    // TODO
-
-    return _tranche == AATranche ? AATrancheApr : BBTrancheApr;
-  }
-
-  function getAARatio() public view returns (uint256) {
-    return _balanceAATranche() * FULL_ALLOC / _balanceBBTranche();
-  }
-
-  function getBBRatio() external view returns (uint256) {
-    return FULL_ALLOC - getAARatio();
-  }
-
-  // Apr at ideal trancheSplitRatio balance between AA and BB
+  // Apr at ideal trancheAPRSplitRatio balance between AA and BB
   function getIdealApr(address _tranche) external view returns (uint256) {
-    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
-    uint256 AATrancheApr = stratApr * trancheSplitRatio / FULL_ALLOC;
-    uint256 BBTrancheApr = stratApr - AATrancheApr;
-
-    return _tranche == AATranche ? AATrancheApr : BBTrancheApr;
+    return _getApr(_tranche, trancheAPRSplitRatio);
   }
 
-  // internal
+  // Get actual apr given current ratio between AA and BB tranches
+  function getApr(address _tranche) external view returns (uint256) {
+    return _getApr(_tranche, _getCurrentAARatio());
+  }
+
+  function getCurrentAARatio() external view returns (uint256) {
+    return _getCurrentAARatio();
+  }
+
   // ###############
+  // Internal
+  // ###############
+
   function _strategyPrice() internal view returns (uint256) {
     return IIdleCDOStrategy(strategy).price(address(this));
+  }
+
+  function _lastTranchePrice(address _tranche) internal view returns (uint256) {
+    return _tranche == AATranche ? lastAAPrice : lastBBPrice;
   }
 
   function _deposit(uint256 _amount, address _tranche) internal returns (uint256 _minted) {
     _guarded(_amount);
     _updateCallerBlock();
     _checkDefault();
-    _minted = _amount * oneToken / _lastTranchePrice(_tranche);
+
+    // TODO: should we use current tranche price or last tranche price here?
+    // _minted = _amount * oneToken / _lastTranchePrice(_tranche);
+    _minted = _amount * oneToken / _tranchePrice(_tranche);
+
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
     IdleCDOTranche(_tranche).mint(msg.sender, _minted);
   }
@@ -158,12 +194,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastStrategyPrice = currPrice;
   }
 
-  // this should liquidate at least _amount or revert?
+  // this should liquidate at least _amount or revertIfNeeded
   // _amount is in underlying
   function _liquidate(uint256 _amount, bool revertIfNeeded) internal returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (revertIfNeeded) {
-      require(_redeemedTokens >= _amount - 1, 'IDLE:TOO_LOW');
+      require(_redeemedTokens + 1 >= _amount, 'IDLE:TOO_LOW');
     }
   }
 
@@ -172,57 +208,42 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   function _priceAATranche() internal view returns (uint256) {
-    // 1 + ((price - 1) * trancheSplitRatio/FULL_ALLOC)
-    return oneToken + ((_strategyPrice() - oneToken) * trancheSplitRatio / FULL_ALLOC);
+    // 1 + ((price - 1) * trancheAPRSplitRatio/FULL_ALLOC)
+    return oneToken + ((_strategyPrice() - oneToken) * trancheAPRSplitRatio / FULL_ALLOC);
   }
 
   function _priceBBTranche() internal view returns (uint256) {
-    // 1 + ((price - 1) * (FULL_ALLOC-trancheSplitRatio)/FULL_ALLOC)
-    return oneToken + ((_strategyPrice() - oneToken) * (FULL_ALLOC - trancheSplitRatio) / FULL_ALLOC);
+    // 1 + ((price - 1) * (FULL_ALLOC-trancheAPRSplitRatio)/FULL_ALLOC)
+    return oneToken + ((_strategyPrice() - oneToken) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
   }
 
+  // in underlying
   function _balanceAATranche() internal view returns (uint256) {
     return IdleCDOTranche(AATranche).totalSupply() * _priceAATranche() / oneToken;
   }
 
+  // in underlying
   function _balanceBBTranche() internal view returns (uint256) {
     return IdleCDOTranche(BBTranche).totalSupply() * _priceBBTranche() / oneToken;
   }
 
-  // Permit and Deposit support
+  function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
+    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
+    uint256 AATrancheApr = stratApr * _AATrancheSplitRatio / FULL_ALLOC;
+    uint256 BBTrancheApr = stratApr - AATrancheApr;
+    return _tranche == AATranche ? AATrancheApr : BBTrancheApr;
+  }
+
+  function _getCurrentAARatio() internal view returns (uint256) {
+    uint256 AABal = _balanceAATranche();
+    // Current AA tranche split ratio = AABal * FULL_ALLOC / getContractValue()
+    return AABal * FULL_ALLOC / (AABal + _balanceBBTranche());
+  }
+
   // ###################
-  function permitAndDepositAA(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
-    _deposit(amount, AATranche);
-  }
-
-  function permitAndDepositBB(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
-    _deposit(amount, BBTranche);
-  }
-
-  function permitEIP2612AndDepositAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
-    _deposit(amount, AATranche);
-  }
-
-  function permitEIP2612AndDepositUnlimitedAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
-    _deposit(amount, AATranche);
-  }
-
-  function permitEIP2612AndDepositBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
-    _deposit(amount, BBTranche);
-  }
-
-  function permitEIP2612AndDepositUnlimitedBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-    IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
-    _deposit(amount, BBTranche);
-  }
-
   // Protected
   // ###################
+
   function rebalance() external {
     require(msg.sender == rebalancer, "IDLE:!AUTH");
 
@@ -230,11 +251,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     IIdleCDOStrategy(strategy).deposit(balanceUnderlying);
 
     // TODO get fees?
-  }
-
-  function liquidate(uint256 _amount, bool revertIfNeeded) external returns (uint256) {
-    require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
-    return _liquidate(_amount, revertIfNeeded);
   }
 
   function harvest(bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
@@ -266,8 +282,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // TODO get fees?
   }
 
+  function liquidate(uint256 _amount, bool revertIfNeeded) external returns (uint256) {
+    require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
+    return _liquidate(_amount, revertIfNeeded);
+  }
+
+  // ###################
   // onlyOwner
   // ###################
+
   function setAllowAAWithdraw(bool _allowed) external onlyOwner {
     allowAAWithdraw = _allowed;
   }
@@ -309,8 +332,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _pause();
   }
 
-  // helpers
+  function unpause() external onlyOwner {
+    _unpause();
+  }
+
   // ###################
+  // Helpers
+  // ###################
+
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
   }

@@ -25,7 +25,8 @@ contract IdleCDOStorage {
   address public strategy;
   address public AATranche;
   address public BBTranche;
-  uint256 public trancheSplitRatio; // 100% => 100000 => 100% to tranche AA
+  uint256 public trancheAPRSplitRatio; // 100% => 100000 => 100% apr to tranche AA
+  uint256 public trancheIdealWeightRatio; // 100% => 100000 => 100% of tranches are AA
   uint256 public lastStrategyPrice;
   uint256 public lastAAPrice;
   uint256 public lastBBPrice;
