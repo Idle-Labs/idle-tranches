@@ -1,5 +1,5 @@
-require('chai').should();
 require('dotenv').config();
+require('chai').should();
 require('@openzeppelin/hardhat-upgrades');
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-etherscan");
@@ -8,7 +8,11 @@ require("@nomiclabs/hardhat-solhint");
 // require('hardhat-contract-sizer');
 require("hardhat-etherscan-abi");
 require("solidity-coverage");
+
+// Tasks
 require("./tasks/hardhat.helpers");
+require("./tasks/hardhat.tests");
+
 const BN = require("bignumber.js");
 
 module.exports = {
