@@ -2,7 +2,7 @@ const hre = require("hardhat");
 const { HardwareSigner } = require("../lib/HardwareSigner");
 const { ethers, upgrades } = require("hardhat");
 const { BigNumber } = require("@ethersproject/bignumber");
-const addresses = require("../lib/index");
+const addresses = require("../lib/addresses");
 const helpers = require("./helpers");
 
 const BN = n => BigNumber.from(n);
