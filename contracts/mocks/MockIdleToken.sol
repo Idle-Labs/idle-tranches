@@ -14,7 +14,7 @@ contract MockIdleToken is ERC20, MockERC20 {
   bool public transferGovTokens;
 
   constructor(address _underlying)
-    MockERC20('IDLEDAI', 'IDLEDAI') public {
+    MockERC20('IDLEDAI', 'IDLEDAI') {
       underlying = _underlying;
       _tokenPriceWithFee = 10**18;
   }
@@ -38,14 +38,14 @@ contract MockIdleToken is ERC20, MockERC20 {
   function getAvgAPR() external view returns (uint256) {
     return apr;
   }
-  function tokenPriceWithFee(address who) external view returns (uint256) {
+  function tokenPriceWithFee(address) external view returns (uint256) {
     return _tokenPriceWithFee;
   }
   function token() public view returns(address) {
     return underlying;
   }
 
-  function mintIdleToken(uint256 _amount, bool _skipRebalance, address _referral) external returns(uint256) {
+  function mintIdleToken(uint256 _amount, bool, address) external returns(uint256) {
     IERC20(underlying).transferFrom(msg.sender, address(this), _amount * 10**18 / _tokenPriceWithFee);
     _mint(msg.sender, _amount);
     return _amount;

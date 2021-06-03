@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.4;
 
+import "hardhat/console.sol";
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IIdleToken.sol";
 import "./interfaces/IIdleTokenHelper.sol";
@@ -10,6 +11,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 
+// NOTE: This contract should not have funds at the end of each tx
 contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy {
   using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
@@ -22,7 +24,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   IERC20Detailed public underlyingToken;
   IIdleToken public idleToken;
 
-  function initialize(address _idleToken) public initializer {
+  function initialize(address _idleToken, address _guardian) public initializer {
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
 
@@ -33,43 +35,63 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     idleToken = IIdleToken(_idleToken);
     underlyingToken = IERC20Detailed(token);
     underlyingToken.safeApprove(_idleToken, type(uint256).max);
+    transferOwnership(_guardian);
   }
 
-  function deposit(uint256 _amount) external override returns(uint256 minted) {
-    require(msg.sender == address(idleToken), '!AUTH');
-    IIdleToken _idleToken = idleToken;
-    underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
-    minted = _idleToken.mintIdleToken(_amount, true, address(0));
-    _idleToken.transfer(msg.sender, minted);
+  function deposit(uint256 _amount) external override returns (uint256 minted) {
+    if (_amount > 0) {
+      IIdleToken _idleToken = idleToken;
+      underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
+      minted = _idleToken.mintIdleToken(_amount, true, address(0));
+      _idleToken.transfer(msg.sender, minted);
+    }
   }
 
-  function redeem(uint256 _amount) public override returns(uint256) {
-    require(msg.sender == address(idleToken), '!AUTH');
+  function redeem(uint256 _amount) external override returns(uint256) {
     return _redeem(_amount);
   }
 
+  // Anyone can call this because this contract holds no idleTokens and so no 'old' rewards
+  function redeemRewards() external override {
+    IIdleToken _idleToken = idleToken;
+    // Get all idleTokens from msg.sender
+    uint256 bal = _idleToken.balanceOf(msg.sender);
+    if (bal > 0) {
+      _idleToken.transferFrom(msg.sender, address(this), bal);
+      // Do a 0 redeem to get gov tokens
+      _idleToken.redeemIdleToken(0);
+      // Give all idleTokens back to msg.sender
+      _idleToken.transfer(msg.sender, bal);
+      // Send all gov tokens to msg.sender
+      _withdrawGovToken(msg.sender);
+    }
+  }
+
   function redeemUnderlying(uint256 _amount) external override returns(uint256) {
-    require(msg.sender == address(idleToken), '!AUTH');
     // we are getting price before transferring so price of msg.sender
-    return redeem(_amount * oneToken / price(msg.sender));
+    return _redeem(_amount * oneToken / price(msg.sender));
   }
 
   // internals
   function _withdrawGovToken(address _to) internal {
     address[] memory _govTokens = idleToken.getGovTokens();
-
     for (uint256 i = 0; i < _govTokens.length; i++) {
       IERC20Detailed govToken = IERC20Detailed(_govTokens[i]);
-      govToken.safeTransfer(_to, govToken.balanceOf(address(this)));
+      uint256 bal = govToken.balanceOf(address(this));
+      if (bal > 0) {
+        govToken.safeTransfer(_to, bal);
+      }
     }
   }
 
   function _redeem(uint256 _amount) internal returns(uint256 redeemed) {
-    IIdleToken _idleToken = idleToken;
-    _idleToken.transferFrom(msg.sender, address(this), _amount);
-    redeemed = _idleToken.redeemIdleToken(_amount);
-    underlyingToken.safeTransfer(msg.sender, redeemed);
-    _withdrawGovToken(msg.sender);
+    if (_amount > 0) {
+      IIdleToken _idleToken = idleToken;
+      _idleToken.transferFrom(msg.sender, address(this), _amount);
+      redeemed = _idleToken.redeemIdleToken(_amount);
+      underlyingToken.safeTransfer(msg.sender, redeemed);
+      _withdrawGovToken(msg.sender);
+    }
   }
 
   // views
@@ -90,7 +112,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   }
 
   // onlyOwner
-  // This contract should not have funds at the end of each tx
+  // NOTE: This contract should not have funds at the end of each tx
   // Emergency methods
   function transferToken(address _token, uint256 value, address _to) external onlyOwner nonReentrant returns (bool) {
     require(_token != address(0), 'Address is 0');
