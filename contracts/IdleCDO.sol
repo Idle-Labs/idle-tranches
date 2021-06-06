@@ -81,20 +81,22 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _withdraw(_amount, BBTranche);
   }
 
-  function updateIncentives() external {
-    // uint256 currAARatio = getCurrentAARatio();
-    // bool isAAHigh = currAARatio > (trancheIdealWeightRatio + idealRange);
-    // bool isAALow = currAARatio < (trancheIdealWeightRatio - idealRange);
-    // uint256 idleBal = _contractTokenBalance(incentiveToken);
-    //
-    // if (isAAHigh) {
-    //   // TODO give more rewards to BB holders
-    // }
-    //
-    // if (isAALow) {
-    //   // TODO give more rewards to AA holders
-    // }
-  }
+  // TODO this should probably go in another separate contract and users would need to stake
+  // tranches tokens to earn eg IDLE rewards. This will allow more easy integrations
+  // function updateIncentives() external {
+  //   // uint256 currAARatio = getCurrentAARatio();
+  //   // bool isAAHigh = currAARatio > (trancheIdealWeightRatio + idealRange);
+  //   // bool isAALow = currAARatio < (trancheIdealWeightRatio - idealRange);
+  //   // uint256 idleBal = _contractTokenBalance(incentiveToken);
+  //   //
+  //   // if (isAAHigh) {
+  //   //   // TODO give more rewards to BB holders
+  //   // }
+  //   //
+  //   // if (isAALow) {
+  //   //   // TODO give more rewards to AA holders
+  //   // }
+  // }
 
   // Permit and Deposit support
   // function permitAndDepositAA(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {

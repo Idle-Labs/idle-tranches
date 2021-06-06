@@ -25,9 +25,6 @@
   },
   "homepage": "https://idle.finance",
   "scripts": {
-    "test": "npx hardhat test",
-    "compile": "npx hardhat compile",
-    "fork-test": "npx hardhat run scripts/integration_test.js --network local"
   },
   "devDependencies": {
     "@ledgerhq/hw-app-eth": "^5.38.0",
