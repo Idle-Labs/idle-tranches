@@ -16,6 +16,16 @@ const getSigner = async () => {
   console.log();
   return signer;
 };
+const callContract = async (address, method, params, from = null) => {
+  // console.log(`Call contract ${address}, method: ${method} with params ${params}`);
+  let contract = await ethers.getVerifiedContractAt(address);
+  if (from) {
+    [contract] = await sudo(from, contract);
+  }
+
+  const res =  await contract[method](...params);
+  return res;
+};
 const deployContract = async (contractName, params, signer) => {
   console.log(`Deploying ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
@@ -118,17 +128,22 @@ const sudo = async (acc, contract = null) => {
   }
   return [contract, signer];
 };
+const sudoCall = async (acc, contract, method, params) => {
+  const [contractImpersonated, signer] = await sudo(acc, contract);
+  const res = await contractImpersonated[method](...params);
+  // const res2 = await res.wait();
+  return [contractImpersonated, signer]
+};
 const waitDays = async d => {
   await time.increase(time.duration.days(d));
 };
-const resetFork = async (blockNumber, hardh) => {
-  console.log('resetting fork')
-  await hardh.network.provider.request({
+const resetFork = async (blockNumber) => {
+  await hre.network.provider.request({
     method: "hardhat_reset",
     params: [
       {
         forking: {
-          jsonRpcUrl: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+          jsonRpcUrl: `https://eth-mainnet.alchemyapi.io/v2/${hre.env('ALCHEMY_API_KEY')}`,
           blockNumber,
         }
       }
@@ -138,6 +153,7 @@ const resetFork = async (blockNumber, hardh) => {
 
 module.exports = {
   getSigner,
+  callContract,
   deployContract,
   deployUpgradableContract,
   upgradeContract,
@@ -148,6 +164,7 @@ module.exports = {
   checkIncreased,
   toETH,
   sudo,
+  sudoCall,
   waitDays,
   resetFork,
   oneToken,

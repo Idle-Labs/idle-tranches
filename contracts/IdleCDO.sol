@@ -139,9 +139,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _lastTranchePrice(_tranche);
   }
 
-  // In underlyings
+  // In underlyings, rewards are not counted
   function getContractValue() public override view returns (uint256) {
-    return _balanceAATranche() + _balanceBBTranche();
+    // return _balanceAATranche() + _balanceBBTranche();
+    return
+      ((_contractTokenBalance(strategyToken) * strategyPrice()) +
+      _contractTokenBalance(token));
   }
 
   // Apr at ideal trancheIdealWeightRatio balance between AA and BB
@@ -249,15 +252,32 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _tranche == AATranche ? _priceAATranche() : _priceBBTranche();
   }
 
+
+
+  // #### WARNING
+  // TODO price methods still need to be figured out
   function _priceAATranche() internal view returns (uint256) {
     // 1 + ((price - 1) * trancheAPRSplitRatio/FULL_ALLOC)
-    return oneToken + ((strategyPrice() - oneToken) * trancheAPRSplitRatio / FULL_ALLOC);
+    return oneToken + ((_price() - oneToken) * trancheAPRSplitRatio / FULL_ALLOC);
   }
 
   function _priceBBTranche() internal view returns (uint256) {
     // 1 + ((price - 1) * (FULL_ALLOC-trancheAPRSplitRatio)/FULL_ALLOC)
-    return oneToken + ((strategyPrice() - oneToken) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
+    return oneToken + ((_price() - oneToken) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
   }
+
+  function _price() internal view returns (uint256) {
+    uint256 nav = getContractValue();
+    // TODO how to split.
+    // we need to know how much interest we gained and split that
+
+  }
+  // #### END WARNING
+
+
+
+
+
 
   // in underlying
   function _balanceAATranche() internal view returns (uint256) {
@@ -312,13 +332,16 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
       uint256 finalBalance = _contractTokenBalance(token);
       if (finalBalance > initialBalance) {
+        // TODO do we need to get these fees here?
         // Get fee on governance token sell
         _depositFees((finalBalance - initialBalance) * fee / FULL_ALLOC);
       }
     }
 
     IIdleCDOStrategy(strategy).deposit(_contractTokenBalance(token));
-    // TODO fees
+    // TODO get fees on principal too?
+    // or get fixed fee on redeem?
+    // or fixed fee on deposit ?
 
     // TODO update last prices ?
     _updateLastTranchePrices();
