@@ -123,8 +123,8 @@ task("print-info")
     console.log('📄 Info 📄');
     // console.log('#### Prices ####');
     console.log(`strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})`);
-    // console.log(`tranchePriceAA ${BN(tranchePriceAA)}, (Last: ${BN(lastTranchePriceAA)})`);
-    // console.log(`tranchePriceBB ${BN(tranchePriceBB)}, (Last: ${BN(lastTranchePriceBB)})`);
+    console.log(`tranchePriceAA ${BN(tranchePriceAA)}, (Last: ${BN(lastTranchePriceAA)})`);
+    console.log(`tranchePriceBB ${BN(tranchePriceBB)}, (Last: ${BN(lastTranchePriceBB)})`);
     // console.log('#### Aprs ####');
     // console.log('strategyAPR', BN(strategyAPR).toString());
     // console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
@@ -197,35 +197,28 @@ task("buy")
     await deposit('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
     // Do an harvest to do a real deposit in Idle
     // no gov tokens collected now because it's the first deposit
-    await rebalanceFull(idleCDO, idleToken, creatorAddr, true);
+    await rebalanceFull(idleCDO, creatorAddr, true);
     // Buy AA tranche with `amount` underlying from another user
     const aa2TrancheBal = await deposit('AA', idleCDO, AABuyer2Addr, amount);
-    // amount bought should be less than the one of AABuyerAddr because price increased
-    await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
+    // // amount bought should be less than the one of AABuyerAddr because price increased
+    // await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
     // some gov token (IDLE but not COMP because it has been sold) should be present in the contract after the rebalance
     await rebalanceFull(idleCDO, creatorAddr);
 
+    // Check withdraw and fees
+    const AABal = await AAContract.balanceOf(AABuyerAddr);
+    await helpers.sudoCall(AABuyerAddr, idleCDO, 'withdrawAA', [AABal]);
+    console.log(`🚩 AA underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyerAddr)).toString());
 
+    const BBBal = await BBContract.balanceOf(BBBuyerAddr);
+    await helpers.sudoCall(BBBuyerAddr, idleCDO, 'withdrawBB', [BBBal]);
+    console.log(`🏴 BB underlying Balance: `, BN(await underlyingContract.balanceOf(BBBuyerAddr)).toString());
 
-    // await run("print-info", {cdo: idleCDO.address});
-    // await run("print-balance", {address: idleCDO.address});
-    // idleDAIBal = await idleToken.balanceOf(idleCDO.address);
-    // console.log('idleDAIBal', idleDAIBal.toString());
-    //
-    // // Check withdraw and fees
-    // const AABal = await AAContract.balanceOf(AABuyerAddr);
-    // await helpers.sudoCall(AABuyerAddr, idleCDO, 'withdrawAA', [AABal]);
-    // console.log(`🚩 AA underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyerAddr)).toString());
-    //
-    // const BBBal = await BBContract.balanceOf(BBBuyerAddr);
-    // await helpers.sudoCall(BBBuyerAddr, idleCDO, 'withdrawBB', [BBBal]);
-    // console.log(`🏴 BB underlying Balance: `, BN(await underlyingContract.balanceOf(BBBuyerAddr)).toString());
-    //
-    // const AA2Bal = await AAContract.balanceOf(AABuyer2Addr);
-    // await helpers.sudoCall(AABuyer2Addr, idleCDO, 'withdrawAA', [AA2Bal]);
-    // console.log(`🚩 AA underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyer2Addr)).toString());
-    //
-    // await run("print-info", {cdo: idleCDO.address});
+    const AA2Bal = await AAContract.balanceOf(AABuyer2Addr);
+    await helpers.sudoCall(AABuyer2Addr, idleCDO, 'withdrawAA', [AA2Bal]);
+    console.log(`🚩 AA2 underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyer2Addr)).toString());
+
+    await run("print-info", {cdo: idleCDO.address});
 
     return {idleCDO};
   });

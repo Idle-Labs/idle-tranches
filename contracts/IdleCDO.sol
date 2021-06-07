@@ -42,6 +42,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     incentiveToken = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
+    priceAA = oneToken;
+    priceBB = oneToken;
+    lastAAPrice = oneToken;
+    lastBBPrice = oneToken;
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -62,7 +66,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // Public methods
   // ###############
 
-  // User should approve this contract first to spend IdleTokens idleToken
+  // User should approve this contract first to spend IdleTokens
   function depositAA(uint256 _amount) external whenNotPaused returns (uint256) {
     return _deposit(_amount, AATranche);
   }
@@ -141,12 +145,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _lastTranchePrice(_tranche);
   }
 
-  // In underlyings, rewards are not counted
+  // In underlyings, rewards (gov tokens) are not counted
   function getContractValue() public override view returns (uint256) {
-    // return _balanceAATranche() + _balanceBBTranche();
-    return
-      ((_contractTokenBalance(strategyToken) * strategyPrice()) +
-      _contractTokenBalance(token));
+    return ((_contractTokenBalance(strategyToken) * strategyPrice() / oneToken) + _contractTokenBalance(token));
   }
 
   // Apr at ideal trancheIdealWeightRatio balance between AA and BB
@@ -172,34 +173,83 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   function getCurrentAARatio() public view returns (uint256) {
-    uint256 BBBal = _balanceBBTranche();
     uint256 AABal = _balanceAATranche();
-    if (BBBal == 0 && AABal == 0) {
+    uint256 contractVal = AABal + _balanceBBTranche();
+    if (contractVal == 0) {
       return 0;
     }
     // Current AA tranche split ratio = AABal * FULL_ALLOC / getContractValue()
-    return AABal * FULL_ALLOC / (AABal + BBBal);
+    return AABal * FULL_ALLOC / contractVal;
+  }
+
+  // Prices with current nav
+  function virtualPriceAA() external view returns (uint256) {
+    uint256 nav = getContractValue();
+    uint256 lastNAV = _lastNAV();
+    if (lastNAV == 0 || (nav <= lastNAV)) {
+      return oneToken;
+    }
+    // AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
+    // priceAA = (lastNAVAA + AAGain) * oneToken / AATotSupply
+    return (lastNAVAA + ((nav - lastNAV) * trancheAPRSplitRatio / FULL_ALLOC)) * oneToken / IdleCDOTranche(AATranche).totalSupply();
+  }
+
+  function virtualPriceBB() external view returns (uint256) {
+    uint256 nav = getContractValue();
+    uint256 lastNAV = _lastNAV();
+    if (lastNAV == 0 || (nav <= lastNAV)) {
+      return oneToken;
+    }
+
+    uint256 BBGain = (nav - lastNAV) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
+    return (lastNAVBB + BBGain) * oneToken / IdleCDOTranche(BBTranche).totalSupply();
   }
 
   // ###############
   // Internal
   // ###############
-  function _lastTranchePrice(address _tranche) internal view returns (uint256) {
-    return _tranche == AATranche ? lastAAPrice : lastBBPrice;
-  }
-
   function _deposit(uint256 _amount, address _tranche) internal returns (uint256 _minted) {
     _guarded(_amount);
     _updateCallerBlock();
     _checkDefault();
+
+    _updatePrices();
+
     // mint of shares should be done before transferring funds
     _minted = _mintShares(_amount, msg.sender, _tranche);
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
+
+    // update NAV with the _amount of underlyings added
+    if (_tranche == AATranche) {
+      lastNAVAA += _amount;
+    } else {
+      lastNAVBB += _amount;
+    }
   }
 
   function _depositFees(uint256 _amount) internal returns (uint256) {
     // Choose the right tranche to mint based on getCurrentAARatio
     return _mintShares(_amount, feeReceiver, getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche);
+  }
+
+  function _updatePrices() internal {
+    uint256 lastNAV = _lastNAV();
+    if (lastNAV == 0) {
+      return;
+    }
+
+    uint256 nav = getContractValue();
+    if (nav <= lastNAV) {
+      return;
+    }
+
+    uint256 gain = nav - lastNAV;
+    uint256 AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
+    uint256 BBGain = gain - AAGain;
+    lastNAVAA += AAGain;
+    lastNAVBB += BBGain;
+    priceAA = lastNAVAA * oneToken / IdleCDOTranche(AATranche).totalSupply();
+    priceBB = lastNAVBB * oneToken / IdleCDOTranche(BBTranche).totalSupply();
   }
 
   function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
@@ -208,14 +258,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   function _updateLastTranchePrices() internal {
-    lastAAPrice = _priceAATranche();
-    lastBBPrice = _priceBBTranche();
+    lastAAPrice = priceAA;
+    lastBBPrice = priceBB;
+  }
+
+  function _lastNAV() internal view returns (uint256) {
+    return lastNAVAA + lastNAVBB;
   }
 
   // amount in trancheXXAmount
   function _withdraw(uint256 _amount, address _tranche) internal returns (uint256 toRedeem) {
     _checkSameTx();
     _checkDefault();
+    _updatePrices();
+
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
@@ -223,6 +279,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
     uint256 balanceUnderlying = _contractTokenBalance(token);
     // Use checkpoint price from last harvest
+    // TODO can we directly use the _tranchePrice ?
     toRedeem = _amount * _lastTranchePrice(_tranche) / oneToken;
     if (toRedeem > balanceUnderlying) {
       _liquidate(toRedeem - balanceUnderlying, revertIfTooLow);
@@ -231,6 +288,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
     // send underlying
     IERC20Detailed(token).safeTransfer(msg.sender, toRedeem);
+
+    // update NAV with the _amount of underlyings removed
+    if (_tranche == AATranche) {
+      lastNAVAA -= toRedeem;
+    } else {
+      lastNAVBB -= toRedeem;
+    }
   }
 
   function _checkDefault() internal {
@@ -251,44 +315,24 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   function _tranchePrice(address _tranche) internal view returns (uint256) {
-    return _tranche == AATranche ? _priceAATranche() : _priceBBTranche();
+    if (IdleCDOTranche(_tranche).totalSupply() == 0) {
+      return oneToken;
+    }
+    return _tranche == AATranche ? priceAA : priceBB;
   }
 
-
-
-  // #### WARNING
-  // TODO price methods still need to be figured out
-  function _priceAATranche() internal view returns (uint256) {
-    // 1 + ((price - 1) * trancheAPRSplitRatio/FULL_ALLOC)
-    return oneToken + ((_price() - oneToken) * trancheAPRSplitRatio / FULL_ALLOC);
+  function _lastTranchePrice(address _tranche) internal view returns (uint256) {
+    return _tranche == AATranche ? lastAAPrice : lastBBPrice;
   }
-
-  function _priceBBTranche() internal view returns (uint256) {
-    // 1 + ((price - 1) * (FULL_ALLOC-trancheAPRSplitRatio)/FULL_ALLOC)
-    return oneToken + ((_price() - oneToken) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
-  }
-
-  function _price() internal view returns (uint256) {
-    uint256 nav = getContractValue();
-    // TODO how to split.
-    // we need to know how much interest we gained and split that
-
-  }
-  // #### END WARNING
-
-
-
-
-
 
   // in underlying
   function _balanceAATranche() internal view returns (uint256) {
-    return IdleCDOTranche(AATranche).totalSupply() * _priceAATranche() / oneToken;
+    return IdleCDOTranche(AATranche).totalSupply() * priceAA / oneToken;
   }
 
   // in underlying
   function _balanceBBTranche() internal view returns (uint256) {
-    return IdleCDOTranche(BBTranche).totalSupply() * _priceBBTranche() / oneToken;
+    return IdleCDOTranche(BBTranche).totalSupply() * priceBB / oneToken;
   }
 
   function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
@@ -345,6 +389,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // or get fixed fee on redeem?
     // or fixed fee on deposit ?
 
+    _updatePrices();
     // TODO update last prices ?
     _updateLastTranchePrices();
   }

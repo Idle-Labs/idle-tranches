@@ -31,6 +31,10 @@ contract IdleCDOStorage {
   uint256 public trancheAPRSplitRatio; // 100% => 100000 => 100% apr to tranche AA
   uint256 public trancheIdealWeightRatio; // 100% => 100000 => 100% of tranches are AA
   uint256 public idealRange; // trancheIdealWeightRatio ± idealRanges, used in updateIncentives
+  uint256 public priceAA;
+  uint256 public priceBB;
+  uint256 public lastNAVAA;
+  uint256 public lastNAVBB;
   uint256 public lastStrategyPrice;
   uint256 public lastAAPrice;
   uint256 public lastBBPrice;

@@ -23,7 +23,7 @@ IdleCDO and IdleStrategy are upgradable contracts.
 There are no 'loose' scripts but only hardhat tasks which are used both for interacting with contracts and tests in fork
 
 ## TODO
-- [HIGH] Define how to price the two tranches  
+- Tests for tranches price
 - Define how to redistribute part of the rewards to reach the `trancheIdealWeightRatio` (separate contract)
 - Define how to take fees
 - Define reimbursement hack plan
