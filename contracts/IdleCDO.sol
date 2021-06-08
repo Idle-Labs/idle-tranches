@@ -14,6 +14,8 @@ import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
 import "./IdleCDOStorage.sol";
 
+/// @author Idle Labs Inc.
+/// @title Tranches
 contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
@@ -218,18 +220,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // mint of shares should be done before transferring funds
     _minted = _mintShares(_amount, msg.sender, _tranche);
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
-
-    // update NAV with the _amount of underlyings added
-    if (_tranche == AATranche) {
-      lastNAVAA += _amount;
-    } else {
-      lastNAVBB += _amount;
-    }
-  }
-
-  function _depositFees(uint256 _amount) internal returns (uint256) {
-    // Choose the right tranche to mint based on getCurrentAARatio
-    return _mintShares(_amount, feeReceiver, getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche);
   }
 
   function _updatePrices() internal {
@@ -255,6 +245,19 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
     _minted = _amount * oneToken / _tranchePrice(_tranche);
     IdleCDOTranche(_tranche).mint(_to, _minted);
+    // update NAV with the _amount of underlyings added
+    if (_tranche == AATranche) {
+      lastNAVAA += _amount;
+    } else {
+      lastNAVBB += _amount;
+    }
+  }
+
+  function _depositFees(uint256 _amount) internal returns (uint256 _minted) {
+    // Choose the right tranche to mint based on getCurrentAARatio
+    address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
+    _minted = _mintShares(_amount, feeReceiver, _tranche);
+    // TODO we should also stake those in the reward contract
   }
 
   function _updateLastTranchePrices() internal {
@@ -279,10 +282,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
     uint256 balanceUnderlying = _contractTokenBalance(token);
     // Use checkpoint price from last harvest
-    // TODO can we directly use the _tranchePrice ?
-    toRedeem = _amount * _lastTranchePrice(_tranche) / oneToken;
+
+    // TODO can we directly use the _tranchePrice or should we use _lastTranchePrice to avoid
+    // theft of interest ? (eg when reinvesting gov tokens?)
+    toRedeem = _amount * _tranchePrice(_tranche) / oneToken;
+    // toRedeem = _amount * _lastTranchePrice(_tranche) / oneToken;
+
     if (toRedeem > balanceUnderlying) {
-      _liquidate(toRedeem - balanceUnderlying, revertIfTooLow);
+      // there could be a difference of up to 100 wei due to rounding
+      toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow);
     }
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
@@ -310,7 +318,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function _liquidate(uint256 _amount, bool revertIfNeeded) internal returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (revertIfNeeded) {
-      require(_redeemedTokens + 1 >= _amount, 'IDLE:TOO_LOW');
+      // keep 100 wei as margin for rounding errors
+      require(_redeemedTokens + 100 >= _amount, 'IDLE:TOO_LOW');
     }
   }
 
@@ -341,8 +350,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     if (_AATrancheSplitRatio == 0) {
       return isAATranche ? 0 : stratApr;
     }
-    uint256 AATrancheApr = stratApr * trancheAPRSplitRatio / _AATrancheSplitRatio;
-    return isAATranche ? AATrancheApr : (stratApr - AATrancheApr);
+    return isAATranche ?
+      stratApr * trancheAPRSplitRatio / _AATrancheSplitRatio :
+      stratApr * (FULL_ALLOC - trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
   }
 
   // ###################
@@ -380,6 +390,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       if (finalBalance > initialBalance) {
         // TODO do we need to get these fees here?
         // Get fee on governance token sell
+        // TODO do we need to update prices before our deposit?
         _depositFees((finalBalance - initialBalance) * fee / FULL_ALLOC);
       }
     }
@@ -390,7 +401,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // or fixed fee on deposit ?
 
     _updatePrices();
-    // TODO update last prices ?
+    // update last saved prices for redeems
     _updateLastTranchePrices();
   }
 

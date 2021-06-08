@@ -80,8 +80,6 @@ task("print-info")
       getAprBB,
       getIdealAprAA,
       getIdealAprBB,
-      owner,
-      guardian,
       contractVal,
       getCurrentAARatio,
     ] = await Promise.all([
@@ -99,19 +97,17 @@ task("print-info")
       idleCDO.getIdealApr(AAaddr),
       idleCDO.getIdealApr(BBaddr),
       // Values
-      idleCDO.owner(),
-      idleCDO.guardian(),
       idleCDO.getContractValue(),
       idleCDO.getCurrentAARatio()
     ]);
 
-    const rewards = await Promise.all(rewardTokens.map(async r => {
-      const underlyingContract = await ethers.getContractAt("IERC20Detailed", r);
-      return {
-        rewardToken: r,
-        balance: await underlyingContract.balanceOf(idleCDO.address)
-      }
-    }));
+    // const rewards = await Promise.all(rewardTokens.map(async r => {
+    //   const underlyingContract = await ethers.getContractAt("IERC20Detailed", r);
+    //   return {
+    //     rewardToken: r,
+    //     balance: await underlyingContract.balanceOf(idleCDO.address)
+    //   }
+    // }));
     // const rewardsStrategy = await Promise.all(rewardTokens.map(async r => {
     //   const underlyingContract = await ethers.getContractAt("IERC20Detailed", r);
     //   return {
@@ -121,23 +117,19 @@ task("print-info")
     // }));
 
     console.log('📄 Info 📄');
-    // console.log('#### Prices ####');
-    console.log(`strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})`);
+    console.log(`#### Prices (strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})) ####`);
     console.log(`tranchePriceAA ${BN(tranchePriceAA)}, (Last: ${BN(lastTranchePriceAA)})`);
     console.log(`tranchePriceBB ${BN(tranchePriceBB)}, (Last: ${BN(lastTranchePriceBB)})`);
-    // console.log('#### Aprs ####');
-    // console.log('strategyAPR', BN(strategyAPR).toString());
-    // console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
-    // console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
+    console.log(`#### Aprs (strategyAPR ${BN(strategyAPR)}) ####`);
+    console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
+    console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
     console.log('#### Other values ####');
-    // console.log('owner', owner);
-    // console.log('guardian', guardian);
     console.log('Underlying val', BN(contractVal).toString());
     console.log('getCurrentAARatio', BN(getCurrentAARatio).toString());
-    for (var i = 0; i < rewards.length; i++) {
-      const r = rewards[i];
-      console.log(`Balance of ${r.rewardToken}: ${r.balance}`);
-    }
+    // for (var i = 0; i < rewards.length; i++) {
+    //   const r = rewards[i];
+    //   console.log(`Balance of ${r.rewardToken}: ${r.balance}`);
+    // }
     // for (var i = 0; i < rewardsStrategy.length; i++) {
     //   const r = rewardsStrategy[i];
     //   console.log(`Strategy Balance of ${r.rewardToken}: ${r.balance}`);
@@ -198,38 +190,65 @@ task("buy")
     // Do an harvest to do a real deposit in Idle
     // no gov tokens collected now because it's the first deposit
     await rebalanceFull(idleCDO, creatorAddr, true);
+    // strategy price should be increased after a rebalance and some time
     // Buy AA tranche with `amount` underlying from another user
     const aa2TrancheBal = await deposit('AA', idleCDO, AABuyer2Addr, amount);
-    // // amount bought should be less than the one of AABuyerAddr because price increased
-    // await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
+    // amount bought should be less than the one of AABuyerAddr because price increased
+    await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
+
+    let feeReceiverBBBal = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
+    // tranchePriceAA and tranchePriceBB have been updated right before the deposit
     // some gov token (IDLE but not COMP because it has been sold) should be present in the contract after the rebalance
     await rebalanceFull(idleCDO, creatorAddr);
+    // feeReceiver should have received some BB tranches as fees
+    let feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
+    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
-    // Check withdraw and fees
-    const AABal = await AAContract.balanceOf(AABuyerAddr);
-    await helpers.sudoCall(AABuyerAddr, idleCDO, 'withdrawAA', [AABal]);
-    console.log(`🚩 AA underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyerAddr)).toString());
 
-    const BBBal = await BBContract.balanceOf(BBBuyerAddr);
-    await helpers.sudoCall(BBBuyerAddr, idleCDO, 'withdrawBB', [BBBal]);
-    console.log(`🏴 BB underlying Balance: `, BN(await underlyingContract.balanceOf(BBBuyerAddr)).toString());
+    // First user withdraw
+    await withdraw('AA', idleCDO, AABuyerAddr, amount);
+    feeReceiverBBBal = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
+    await rebalanceFull(idleCDO, creatorAddr);
+    // Check fees (BB tranche)
+    feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
+    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
-    const AA2Bal = await AAContract.balanceOf(AABuyer2Addr);
-    await helpers.sudoCall(AABuyer2Addr, idleCDO, 'withdrawAA', [AA2Bal]);
-    console.log(`🚩 AA2 underlying Balance: `, BN(await underlyingContract.balanceOf(AABuyer2Addr)).toString());
+    await withdraw('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
+    await rebalanceFull(idleCDO, creatorAddr);
 
-    await run("print-info", {cdo: idleCDO.address});
+    await withdraw('AA', idleCDO, AABuyer2Addr, amount);
+    let feeReceiverAABal = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
+    await rebalanceFull(idleCDO, creatorAddr);
+    let feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
+    await helpers.checkIncreased(feeReceiverAABal, feeReceiverAABalAfter, 'Fee receiver got some AA tranches');
+
+    await run("print-balance", {address: idleCDO.address});
+    idleDAIBal = await idleToken.balanceOf(idleCDO.address);
+    console.log('idleDAIBal', idleDAIBal.toString());
+
+    feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
+    console.log('feeReceiverBBBalAfter', feeReceiverBBBalAfter.toString());
+    feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
+    console.log('feeReceiverAABalAfter', feeReceiverAABalAfter.toString());
 
     return {idleCDO};
   });
 
 const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
-  console.log('🚧 Waiting some time...');
+  await run("print-info", {cdo: idleCDO.address});
+  console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
-  console.log('🚜 Harvesting');
   const rewardTokens = await idleCDO.getRewards();
   await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
-  await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
+  // await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
+
+
+  await run("mine-multiple", {blocks: '500'});
+  // Poking cDAI contract to accrue interest and let strategyPrice increase.
+  // (be sure to have a pinned block with allocation in compound)
+  await helpers.callContract(mainnetContracts.cDAI, 'accrueInterest', [], address);
+  console.log('🚧 After some time...');
+  await run("print-info", {cdo: idleCDO.address});
 }
 
 const deposit = async (type, idleCDO, addr, amount) => {
@@ -239,4 +258,15 @@ const deposit = async (type, idleCDO, addr, amount) => {
   const aaTrancheBal = BN(await (type == 'AA' ? idleCDO.AAContract : idleCDO.BBContract).balanceOf(addr));
   console.log(`🚩 ${type}Balance: `, aaTrancheBal.toString());
   return aaTrancheBal;
+}
+
+const withdraw = async (type, idleCDO, addr, initialAmount) => {
+  const isAA = type == 'AA';
+  const trancheBal = await (isAA ? idleCDO.AAContract : idleCDO.BBContract).balanceOf(addr);
+  const balBefore = BN(await idleCDO.underlyingContract.balanceOf(addr));
+  await helpers.sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [trancheBal]);
+  const balAfter = BN(await idleCDO.underlyingContract.balanceOf(addr));
+  const gain = balAfter.sub(balBefore).sub(initialAmount);
+  console.log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
+  return balAfter;
 }
