@@ -5,7 +5,7 @@
  */
 pragma solidity 0.8.4;
 
-import "./IERC20Permit.sol";
+import "./IERC20Detailed.sol";
 
 interface IIdleToken is IERC20Detailed {
   function tokenPrice() external view returns (uint256 price);

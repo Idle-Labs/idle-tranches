@@ -8,7 +8,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 import "./interfaces/IIdleCDOStrategy.sol";
-import "./interfaces/IERC20Permit.sol";
+import "./interfaces/IERC20Detailed.sol";
 
 import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
@@ -26,7 +26,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _governanceFund address where funds will be sent in case of emergency
   /// @param _guardian guardian address
   /// @param _rebalancer rebalancer address
-  /// @param _strategy
+  /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
   /// @param _trancheIdealWeightRatio trancheIdealWeightRatio value
   function initialize(
@@ -128,37 +128,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   //   // }
   // }
 
-  // Permit and Deposit support
-  // function permitAndDepositAA(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
-  //   _deposit(amount, AATranche);
-  // }
-  //
-  // function permitAndDepositBB(uint256 amount, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
-  //   _deposit(amount, BBTranche);
-  // }
-  //
-  // function permitEIP2612AndDepositAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
-  //   _deposit(amount, AATranche);
-  // }
-  //
-  // function permitEIP2612AndDepositUnlimitedAA(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
-  //   _deposit(amount, AATranche);
-  // }
-  //
-  // function permitEIP2612AndDepositBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), amount, expiry, v, r, s);
-  //   _deposit(amount, BBTranche);
-  // }
-  //
-  // function permitEIP2612AndDepositUnlimitedBB(uint256 amount, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external {
-  //   IERC20Permit(token).permit(msg.sender, address(this), type(uint256).max, expiry, v, r, s);
-  //   _deposit(amount, BBTranche);
-  // }
-
   // ###############
   // Views
   // ###############
@@ -252,7 +221,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
   /// @param _amount amount of underlyings (`token`) to deposit
   /// @param _tranche tranche address
-  /// @return number of tranche tokens minted
+  /// @return _minted number of tranche tokens minted
   function _deposit(uint256 _amount, address _tranche) internal returns (uint256 _minted) {
     // check that we are not depositing more than the contract available limit
     _guarded(_amount);
@@ -299,7 +268,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _amount, in underlyings, to convert in tranche tokens
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
-  /// @return number of tranche tokens minted
+  /// @return _minted number of tranche tokens minted
   function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price
     _minted = _amount * oneToken / _tranchePrice(_tranche);
@@ -314,7 +283,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice this will be called only during harvests
   /// @param _amount amount of underlyings to deposit
-  /// @return number of tranche tokens minted
+  /// @return _minted number of tranche tokens minted
   function _depositFees(uint256 _amount) internal returns (uint256 _minted) {
     // Choose the right tranche to mint based on getCurrentAARatio
     address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
@@ -336,7 +305,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @notice automatically reverts on lending provider default (strategyPrice decreased)
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
-  /// @return number of underlyings redeemed
+  /// @return toRedeem number of underlyings redeemed
   function _withdraw(uint256 _amount, address _tranche) internal returns (uint256 toRedeem) {
     // check if a deposit is made in the same block from the same user
     _checkSameTx();
@@ -388,7 +357,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @dev this should liquidate at least _amount or revertIfNeeded
   /// @param _amount in underlying tokens
   /// @param _revertIfNeeded flag whether to revert or not if the redeemed amount is not enough
-  /// @return number of underlyings redeemed
+  /// @return _redeemedTokens number of underlyings redeemed
   function _liquidate(uint256 _amount, bool _revertIfNeeded) internal returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (_revertIfNeeded) {
@@ -535,20 +504,23 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     revertIfTooLow = _allowed;
   }
 
-  /// @dev
-  /// @param _strategy
-  /// @return
+  /// @notice updates the strategy used (potentially changing the lending protocol used)
+  /// @dev it's REQUIRED to liquidate / redeem everything from the lending provider before changing strategy
+  /// if the lending provider is changes
+  /// @param _strategy new strategy address
   function setStrategy(address _strategy) external onlyOwner {
     require(_strategy != address(0), 'IDLE:IS_0');
     IERC20Detailed _token = IERC20Detailed(token);
+    // revoke allowance for the current strategy
     _token.safeApprove(strategy, 0);
+    // Updated strategy variables
     strategy = _strategy;
     strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
     // Approve underlyingToken
     _token.safeIncreaseAllowance(_strategy, type(uint256).max);
     // Approve strategyToken
     IERC20Detailed(strategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
-
+    // Update last strategy price
     lastStrategyPrice = strategyPrice();
   }
 
