@@ -104,8 +104,11 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     return idleToken.tokenPriceWithFee(_user);
   }
 
-  function getApr() external override view returns(uint256) {
-    return idleToken.getAvgAPR();
+  /// net apr
+  function getApr() external override view returns(uint256 apr) {
+    apr = idleToken.getAvgAPR();
+    // 100000 => 100%
+    apr -= apr * idleToken.fee() / 100000;
   }
 
   function getRewardTokens() external override view returns(address[] memory tokens) {

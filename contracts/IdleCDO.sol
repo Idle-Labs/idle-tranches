@@ -165,7 +165,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _getApr(_tranche, getCurrentAARatio());
   }
 
-  /// @return strategy apr
+  /// @return strategy net apr
   function strategyAPR() public view returns (uint256) {
     return IIdleCDOStrategy(strategy).getApr();
   }
@@ -220,6 +220,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // ###############
 
   /// @notice automatically reverts on lending provider default (strategyPrice decreased)
+  /// Ideally users should deposit right after an `harvest` call to maximize profit
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
   /// @param _amount amount of underlyings (`token`) to deposit
   /// @param _tranche tranche address
@@ -300,6 +301,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   /// @notice automatically reverts on lending provider default (strategyPrice decreased)
+  /// a user should wait at least one harvest before rededeming otherwise the redeemed amount
+  /// would be less than the deposited one due to the use of a checkpointed price at last harvest
+  /// Ideally users should redeem right after an `harvest` call
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
   /// @return toRedeem number of underlyings redeemed
@@ -318,11 +322,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // get current unlent balance
     uint256 balanceUnderlying = _contractTokenBalance(token);
     // Calculate the amount to redeem using the checkpointed price from last harvest
-
-    // TODO can we directly use the _tranchePrice or should we use _lastTranchePrice to avoid
-    // theft of interest ? (eg when reinvesting gov tokens?)
-    // toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
-    toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
+    // to steal interest generated from rewards
+    toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
 
     if (toRedeem > balanceUnderlying) {
       // if the unlent balance is not enough we try to redeem directly from the strategy

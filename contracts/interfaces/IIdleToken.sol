@@ -28,4 +28,5 @@ interface IIdleToken is IERC20Detailed {
   function rebalancer() external view returns (address);
   function protocolWrappers(address) external view returns (address);
   function tokenPriceWithFee(address user) external view returns (uint256 priceWFee);
+  function fee() external view returns (uint256);
 }
