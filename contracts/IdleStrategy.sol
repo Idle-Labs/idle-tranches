@@ -16,6 +16,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  uint256 public constant ONE_IDLE_TOKEN = 10**18;
   address public override strategyToken;
   address public override token;
   uint256 public override oneToken;
@@ -69,7 +70,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
 
   function redeemUnderlying(uint256 _amount) external override returns(uint256) {
     // we are getting price before transferring so price of msg.sender
-    return _redeem(_amount * oneToken / price(msg.sender));
+    return _redeem(_amount * ONE_IDLE_TOKEN / price(msg.sender));
   }
 
   // internals

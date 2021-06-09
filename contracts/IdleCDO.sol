@@ -51,14 +51,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     trancheIdealWeightRatio = _trancheIdealWeightRatio;
     idealRange = 10000; // trancheIdealWeightRatio ± 10%
     // TODO do we need this or we can always use ONE_TOKEN ?
-    oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
+    uint256 _oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
+    oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     incentiveToken = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
-    priceAA = oneToken;
-    priceBB = oneToken;
-    lastAAPrice = oneToken;
-    lastBBPrice = oneToken;
+    priceAA = _oneToken;
+    priceBB = _oneToken;
+    lastAAPrice = _oneToken;
+    lastBBPrice = _oneToken;
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -148,7 +149,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @return contract value in underlyings
   function getContractValue() public override view returns (uint256) {
     // strategyTokens value in underlying + unlent balance
-    return ((_contractTokenBalance(strategyToken) * strategyPrice() / oneToken) + _contractTokenBalance(token));
+    uint256 strategyTokenDecimals = IERC20Detailed(strategyToken).decimals();
+    return ((_contractTokenBalance(strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractTokenBalance(token));
   }
 
   /// @param _tranche tranche address
@@ -168,7 +170,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return IIdleCDOStrategy(strategy).getApr();
   }
 
-  /// @return strategy price
+  /// @return strategy price, in underlyings
   function strategyPrice() public view returns (uint256) {
     return IIdleCDOStrategy(strategy).price();
   }
@@ -198,8 +200,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     // gain = nav - lastNAV
     // AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
-    // priceAA = (lastNAVAA + AAGain) * oneToken / AATotSupply
-    return (lastNAVAA + ((nav - lastNAV) * trancheAPRSplitRatio / FULL_ALLOC)) * oneToken / IdleCDOTranche(AATranche).totalSupply();
+    // priceAA = (lastNAVAA + AAGain) * ONE_TRANCHE_TOKEN / AATotSupply
+    return (lastNAVAA + ((nav - lastNAV) * trancheAPRSplitRatio / FULL_ALLOC)) * ONE_TRANCHE_TOKEN / IdleCDOTranche(AATranche).totalSupply();
   }
 
   /// @return BB price with current nav
@@ -210,7 +212,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       return oneToken;
     }
     uint256 BBGain = (nav - lastNAV) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
-    return (lastNAVBB + BBGain) * oneToken / IdleCDOTranche(BBTranche).totalSupply();
+    return (lastNAVBB + BBGain) * ONE_TRANCHE_TOKEN / IdleCDOTranche(BBTranche).totalSupply();
   }
 
   // ###############
@@ -260,9 +262,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Update NAVs
     lastNAVAA += AAGain;
     lastNAVBB += BBGain;
-    // Update tranche prices
-    priceAA = lastNAVAA * oneToken / IdleCDOTranche(AATranche).totalSupply();
-    priceBB = lastNAVBB * oneToken / IdleCDOTranche(BBTranche).totalSupply();
+    // Update tra'nche prices
+    priceAA = lastNAVAA * ONE_TRANCHE_TOKEN / IdleCDOTranche(AATranche).totalSupply();
+    priceBB = lastNAVBB * ONE_TRANCHE_TOKEN / IdleCDOTranche(BBTranche).totalSupply();
   }
 
   /// @param _amount, in underlyings, to convert in tranche tokens
@@ -271,7 +273,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @return _minted number of tranche tokens minted
   function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price
-    _minted = _amount * oneToken / _tranchePrice(_tranche);
+    _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
     IdleCDOTranche(_tranche).mint(_to, _minted);
     // update NAV with the _amount of underlyings added
     if (_tranche == AATranche) {
@@ -297,11 +299,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastBBPrice = priceBB;
   }
 
-  /// @return the total saved net asset value for all tranches
-  function _lastNAV() internal view returns (uint256) {
-    return lastNAVAA + lastNAVBB;
-  }
-
   /// @notice automatically reverts on lending provider default (strategyPrice decreased)
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
@@ -324,8 +321,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
     // TODO can we directly use the _tranchePrice or should we use _lastTranchePrice to avoid
     // theft of interest ? (eg when reinvesting gov tokens?)
-    // toRedeem = _amount * _lastTranchePrice(_tranche) / oneToken;
-    toRedeem = _amount * _tranchePrice(_tranche) / oneToken;
+    // toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
 
     if (toRedeem > balanceUnderlying) {
       // if the unlent balance is not enough we try to redeem directly from the strategy
@@ -366,8 +363,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
+  /// @return the total saved net asset value for all tranches
+  function _lastNAV() internal view returns (uint256) {
+    return lastNAVAA + lastNAVBB;
+  }
+
   /// @param _tranche tranche address
-  /// @return last saved price for minting tranche tokens
+  /// @return last saved price for minting tranche tokens, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
     if (IdleCDOTranche(_tranche).totalSupply() == 0) {
       return oneToken;
@@ -376,19 +378,19 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   /// @param _tranche tranche address
-  /// @return last saved price for redeeming tranche tokens (updated on harvests)
+  /// @return last saved price for redeeming tranche tokens (updated on harvests), in underlyings
   function _lastTranchePrice(address _tranche) internal view returns (uint256) {
     return _tranche == AATranche ? lastAAPrice : lastBBPrice;
   }
 
   /// @return net asset value, in underlying tokens, for AA tranche based on AA token price at mint
   function _balanceAATranche() internal view returns (uint256) {
-    return IdleCDOTranche(AATranche).totalSupply() * priceAA / oneToken;
+    return IdleCDOTranche(AATranche).totalSupply() * priceAA / ONE_TRANCHE_TOKEN;
   }
 
   /// @return net asset value, in underlying tokens, for BB tranche based on AA token price at mint
   function _balanceBBTranche() internal view returns (uint256) {
-    return IdleCDOTranche(BBTranche).totalSupply() * priceBB / oneToken;
+    return IdleCDOTranche(BBTranche).totalSupply() * priceBB / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice the apr can be higher than the strategy apr

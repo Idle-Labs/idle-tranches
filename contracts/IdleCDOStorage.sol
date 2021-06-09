@@ -9,7 +9,7 @@ contract IdleCDOStorage {
   // max fee, relative to FULL_ALLOC
   uint256 public constant MAX_FEE = 20000;
   // one token
-  uint256 public constant ONE_TOKEN = 10**18;
+  uint256 public constant ONE_TRANCHE_TOKEN = 10**18;
   // variable used to save the last tx.origin and block.number
   bytes32 internal _lastCallerBlock;
   // WETH address
@@ -52,9 +52,9 @@ contract IdleCDOStorage {
   // Ideal tranche split ratio in `token` value
   // (relative to FULL_ALLOC so 50% => 50000 means 50% of tranches (in value) should be AA)
   uint256 public trancheIdealWeightRatio;
-  // Price for minting AA tranche
+  // Price for minting AA tranche, in underlyings
   uint256 public priceAA;
-  // Price for minting BB tranche
+  // Price for minting BB tranche, in underlyings
   uint256 public priceBB;
   // last saved net asset value (in `token`) for AA tranches
   uint256 public lastNAVAA;

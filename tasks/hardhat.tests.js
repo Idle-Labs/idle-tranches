@@ -7,6 +7,21 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 
+const DAI = {
+  decimals: 18,
+  underlying: mainnetContracts.DAI,
+  idleToken: mainnetContracts.idleDAIBest,
+  cToken: mainnetContracts.cDAI
+};
+const USDC = {
+  decimals: 6,
+  underlying: mainnetContracts.USDC,
+  idleToken: mainnetContracts.idleUSDCBest,
+  cToken: mainnetContracts.cUSDC
+};
+
+const testToken = USDC;
+
 /**
  * @name deploy
  */
@@ -18,12 +33,12 @@ task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
     await helpers.prompt("continue? [y/n]", true);
-    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [mainnetContracts.idleDAIBest, creator], signer);
+    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [testToken.idleToken, creator], signer);
     const idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
-        BN('5000000').mul(ONE_TOKEN(18)), // limit
-        mainnetContracts.DAI,
+        BN('5000000').mul(ONE_TOKEN(testToken.decimals)), // limit
+        testToken.underlying,
         mainnetContracts.devLeagueMultisig,
         creator, // guardian
         mainnetContracts.rebalancer,
@@ -144,10 +159,11 @@ task("print-balance")
   .setAction(async (args) => {
     let COMPBal = await helpers.callContract(mainnetContracts.COMP, 'balanceOf', [args.address]);
     let IDLEBal = await helpers.callContract(mainnetContracts.IDLE, 'balanceOf', [args.address]);
-    let DAIBal = await helpers.callContract(mainnetContracts.DAI, 'balanceOf', [args.address]);
+    let underlyingContract = await ethers.getContractAt("IERC20Detailed", testToken.underlying);
+    let underlyingBalance = await underlyingContract.balanceOf(args.address);
     console.log('COMPBal', COMPBal.toString());
     console.log('IDLEBal', IDLEBal.toString());
-    console.log('DAIBal', DAIBal.toString());
+    console.log('underlyingBalance', underlyingBalance.toString());
 });
 
 /**
@@ -162,6 +178,7 @@ task("buy")
     let [creator, AAbuyer, BBbuyer, AAbuyer2] = await ethers.getSigners();
     // Get contracts
     const underlying = await idleCDO.token();
+    let cTokenContract = await ethers.getContractAt("IERC20Detailed", testToken.cToken);
     let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
     let AAContract = await ethers.getContractAt("IdleCDOTranche", AAaddr);
     let BBContract = await ethers.getContractAt("IdleCDOTranche", BBaddr);
@@ -204,12 +221,11 @@ task("buy")
     let feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
-
     // First user withdraw
     await withdraw('AA', idleCDO, AABuyerAddr, amount);
     feeReceiverBBBal = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
-    // Check fees (BB tranche)
+    // Check that fee receiver got fees (in BB tranche tokens)
     feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
@@ -219,12 +235,13 @@ task("buy")
     await withdraw('AA', idleCDO, AABuyer2Addr, amount);
     let feeReceiverAABal = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
+    // Check that fee receiver got fees (in AA tranche tokens)
     let feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
     await helpers.checkIncreased(feeReceiverAABal, feeReceiverAABalAfter, 'Fee receiver got some AA tranches');
 
     await run("print-balance", {address: idleCDO.address});
-    idleDAIBal = await idleToken.balanceOf(idleCDO.address);
-    console.log('idleDAIBal', idleDAIBal.toString());
+    idleTokenBal = await idleToken.balanceOf(idleCDO.address);
+    console.log('idleTokenBal', idleTokenBal.toString());
 
     feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     console.log('feeReceiverBBBalAfter', feeReceiverBBBalAfter.toString());
@@ -240,13 +257,13 @@ const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
   await run("mine-multiple", {blocks: '500'});
   const rewardTokens = await idleCDO.getRewards();
   await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
-  // await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
+  await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
 
   await run("mine-multiple", {blocks: '500'});
-  // Poking cDAI contract to accrue interest and let strategyPrice increase.
+  // Poking cToken contract to accrue interest and let strategyPrice increase.
   // (be sure to have a pinned block with allocation in compound)
-  await helpers.callContract(mainnetContracts.cDAI, 'accrueInterest', [], address);
+  await helpers.callContract(testToken.cToken, 'accrueInterest', [], address);
   console.log('🚧 After some time...');
   await run("print-info", {cdo: idleCDO.address});
 }
