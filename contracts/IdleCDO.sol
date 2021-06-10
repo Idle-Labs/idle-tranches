@@ -20,7 +20,12 @@ import "./IdleCDOStorage.sol";
 contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  /// @dev Initialize the contract
+  // ###################
+  // Initializer
+  // ###################
+  
+  /// @notice can only be called once
+  /// @dev Initialize the upgradable contract
   /// @param _limit contract value limit
   /// @param _guardedToken underlying token
   /// @param _governanceFund address where funds will be sent in case of emergency
