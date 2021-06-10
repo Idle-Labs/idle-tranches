@@ -259,13 +259,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 gain = nav - lastNAV;
     // split the gain between AA and BB holders according to trancheAPRSplitRatio
     uint256 AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
-    uint256 BBGain = gain - AAGain;
     // Update NAVs
     lastNAVAA += AAGain;
-    lastNAVBB += BBGain;
-    // Update tra'nche prices
-    priceAA = lastNAVAA * ONE_TRANCHE_TOKEN / IdleCDOTranche(AATranche).totalSupply();
-    priceBB = lastNAVBB * ONE_TRANCHE_TOKEN / IdleCDOTranche(BBTranche).totalSupply();
+    // BBGain
+    lastNAVBB += gain - AAGain;
+    // Update tranche prices
+    uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
+    uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
+    priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : oneToken;
+    priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : oneToken;
   }
 
   /// @param _amount, in underlyings, to convert in tranche tokens
@@ -425,7 +427,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function harvest(bool _skipRedeem, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
     if (!_skipRedeem) {
-      // get current unlent balance
       uint256 initialBalance = _contractTokenBalance(token);
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(strategy).redeemRewards();
@@ -456,21 +457,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // get unlent balance after selling rewards
       uint256 finalBalance = _contractTokenBalance(token);
       if (finalBalance > initialBalance) {
-        // TODO do we need to get these fees here?
-        // TODO do we need to update prices before our deposit?
+        // split converted rewards and updated tranche prices for mint
+        _updatePrices();
         // Get fees on governance token sell
         _depositFees((finalBalance - initialBalance) * fee / FULL_ALLOC);
       }
     }
+    // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
     // Put unlent balance at work in the lending provider
     IIdleCDOStrategy(strategy).deposit(_contractTokenBalance(token));
+
     // TODO get fees on principal too?
     // or get fixed fee on redeem?
     // or fixed fee on deposit ?
 
-
-    // TODO: is it correct here to split interest and updatesd tranche prices for mint?
-    _updatePrices();
     // update last saved prices for redeems
     _updateLastTranchePrices();
   }
@@ -558,7 +558,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _pause();
     allowAAWithdraw = false;
     allowBBWithdraw = false;
-    skipDefaultCheck = false;
+    skipDefaultCheck = true;
     revertIfTooLow = true;
   }
 
