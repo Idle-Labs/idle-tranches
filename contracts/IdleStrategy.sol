@@ -67,7 +67,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
 
   /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
   /// @param _amount amount of `token` to deposit
-  /// @return strategyTokens minted
+  /// @return minted strategyTokens minted
   function deposit(uint256 _amount) external override returns (uint256 minted) {
     if (_amount > 0) {
       IIdleToken _idleToken = idleToken;
@@ -135,7 +135,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
 
   /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
   /// @param _amount amount of strategyTokens to redeem
-  /// @return amount of underlyings redeemed
+  /// @return redeemed amount of underlyings redeemed
   function _redeem(uint256 _amount) internal returns(uint256 redeemed) {
     if (_amount > 0) {
       IIdleToken _idleToken = idleToken;
@@ -160,13 +160,13 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     return idleToken.tokenPriceWithFee(msg.sender);
   }
 
-  /// @param _user
+  /// @param _user address of the user for the requeste price
   /// @return price in underlyings of 1 strategyToken for a specific user if any
   function price(address _user) public override view returns(uint256) {
     return idleToken.tokenPriceWithFee(_user);
   }
 
-  /// @return net apr (fees should already be excluded)
+  /// @return apr net apr (fees should already be excluded)
   function getApr() external override view returns(uint256 apr) {
     apr = idleToken.getAvgAPR();
     // remove fee
@@ -174,7 +174,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     apr -= apr * idleToken.fee() / 100000;
   }
 
-  /// @return array of reward token addresses
+  /// @return tokens array of reward token addresses
   function getRewardTokens() external override view returns(address[] memory tokens) {
     return idleToken.getGovTokens();
   }
