@@ -23,7 +23,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // ###################
   // Initializer
   // ###################
-  
+
   /// @notice can only be called once
   /// @dev Initialize the upgradable contract
   /// @param _limit contract value limit
@@ -76,7 +76,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Save current strategy price
     lastStrategyPrice = strategyPrice();
     // Fee params
-    fee = 15000; // 15% performance fee
+    fee = 10000; // 10% performance fee
     feeReceiver = address(0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4); // feeCollector
     guardian = _guardian;
   }
@@ -155,7 +155,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function getContractValue() public override view returns (uint256) {
     // strategyTokens value in underlying + unlent balance
     uint256 strategyTokenDecimals = IERC20Detailed(strategyToken).decimals();
-    return ((_contractTokenBalance(strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractTokenBalance(token));
+    return ((_contractTokenBalance(strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance());
   }
 
   /// @param _tranche tranche address
@@ -262,6 +262,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     // Calculate gain since last update
     uint256 gain = nav - lastNAV;
+    // get performance fee amount
+    uint256 performanceFee = gain * fee / FULL_ALLOC;
+    gain -= performanceFee;
+    // and add the value to unclaimedFees
+    unclaimedFees += performanceFee;
     // split the gain between AA and BB holders according to trancheAPRSplitRatio
     uint256 AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
     // Update NAVs
@@ -298,6 +303,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Choose the right tranche to mint based on getCurrentAARatio
     address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
     _minted = _mintShares(_amount, feeReceiver, _tranche);
+    // reset unclaimedFees counter
+    unclaimedFees = 0;
     // TODO we should also stake those in the reward contract
   }
 
@@ -327,7 +334,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     require(_amount > 0, 'IDLE:IS_0');
     // get current unlent balance
-    uint256 balanceUnderlying = _contractTokenBalance(token);
+    uint256 balanceUnderlying = _contractNetUnderlyingBalance();
     // Calculate the amount to redeem using the checkpointed price from last harvest
     // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
     // to steal interest generated from rewards
@@ -432,7 +439,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function harvest(bool _skipRedeem, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
     if (!_skipRedeem) {
-      uint256 initialBalance = _contractTokenBalance(token);
+      uint256 initialBalance = _contractNetUnderlyingBalance();
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(strategy).redeemRewards();
       // get all rewards addresses
@@ -460,24 +467,25 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         );
       }
       // get unlent balance after selling rewards
-      uint256 finalBalance = _contractTokenBalance(token);
+      uint256 finalBalance = _contractNetUnderlyingBalance();
       if (finalBalance > initialBalance) {
         // split converted rewards and updated tranche prices for mint
+        // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
         _updatePrices();
-        // Get fees on governance token sell
-        _depositFees((finalBalance - initialBalance) * fee / FULL_ALLOC);
+        // Get fees in the form of totalSupply diluition
+        _depositFees(unclaimedFees);
       }
+      // update last saved prices for redeems at this point
+      // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
+      // others could have been skipped (with flags set off chain) but it just means that
+      // were not worth a lot so should be safe to assume that those wont' be siphoned from a theft of interest attacks
+      // NOTE: This method call should not be inside the `if finalBalance > initialBalance` just in case
+      // no rewards are distributed from the underlying strategy
+      _updateLastTranchePrices();
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
     // Put unlent balance at work in the lending provider
     IIdleCDOStrategy(strategy).deposit(_contractTokenBalance(token));
-
-    // TODO get fees on principal too?
-    // or get fixed fee on redeem?
-    // or fixed fee on deposit ?
-
-    // update last saved prices for redeems
-    _updateLastTranchePrices();
   }
 
   /// @notice can be called only by the rebalancer or the owner
@@ -589,6 +597,16 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
+  }
+
+  /// @return bal balance of underlying for this contract
+  function _contractNetUnderlyingBalance() internal view returns (uint256 bal) {
+    // For gas efficiency, read only once
+    uint256 _unclaimedFees = unclaimedFees;
+    // Get current balance
+    bal = _contractTokenBalance(token);
+    // remove unclaimedFees if any
+    return bal >= _unclaimedFees ? bal - _unclaimedFees : bal;
   }
 
   /// @dev Set last caller and block.number hash. This should be called at the beginning of the first function to protect

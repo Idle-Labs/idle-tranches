@@ -66,6 +66,8 @@ contract IdleCDOStorage {
   uint256 public lastAAPrice;
   // Price for redeeming BB tranche, updated on each `harvest` call
   uint256 public lastBBPrice;
+  // Keeps track of unclaimed fees for feeReceiver
+  uint256 public unclaimedFees;
 
   // Fee amount (relative to FULL_ALLOC)
   uint256 public fee;
