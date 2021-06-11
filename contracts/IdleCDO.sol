@@ -55,7 +55,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
     trancheIdealWeightRatio = _trancheIdealWeightRatio;
     idealRange = 10000; // trancheIdealWeightRatio ± 10%
-    // TODO do we need this or we can always use ONE_TOKEN ?
     uint256 _oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
     oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -120,18 +119,18 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // TODO this should probably go in another separate contract and users would need to stake
   // tranches tokens to earn eg IDLE rewards. This will allow more easy integrations
   // function updateIncentives() external {
-  //   // uint256 currAARatio = getCurrentAARatio();
-  //   // bool isAAHigh = currAARatio > (trancheIdealWeightRatio + idealRange);
-  //   // bool isAALow = currAARatio < (trancheIdealWeightRatio - idealRange);
-  //   // uint256 idleBal = _contractTokenBalance(incentiveToken);
-  //   //
-  //   // if (isAAHigh) {
-  //   //   // TODO give more rewards to BB holders
-  //   // }
-  //   //
-  //   // if (isAALow) {
-  //   //   // TODO give more rewards to AA holders
-  //   // }
+  //   uint256 currAARatio = getCurrentAARatio();
+  //   bool isAAHigh = currAARatio > (trancheIdealWeightRatio + idealRange);
+  //   bool isAALow = currAARatio < (trancheIdealWeightRatio - idealRange);
+  //   uint256 idleBal = _contractTokenBalance(incentiveToken);
+  //
+  //   if (isAAHigh) {
+  //     // TODO give more rewards to BB holders
+  //   }
+  //
+  //   if (isAALow) {
+  //     // TODO give more rewards to AA holders
+  //   }
   // }
 
   // ###############
@@ -196,28 +195,33 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return AABal * FULL_ALLOC / contractVal;
   }
 
-  /// @return AA price with current nav
-  function virtualPriceAA() external view returns (uint256) {
+  /// @notice this should always be >= of _tranchePrice(_tranche)
+  /// @dev useful for showing updated gains on frontends
+  /// @return tranche price with current nav
+  function virtualPrice(address _tranche) external view returns (uint256) {
     uint256 nav = getContractValue();
     uint256 lastNAV = _lastNAV();
-    if (lastNAV == 0 || (nav <= lastNAV)) {
-      return oneToken;
-    }
-    // gain = nav - lastNAV
-    // AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
-    // priceAA = (lastNAVAA + AAGain) * ONE_TRANCHE_TOKEN / AATotSupply
-    return (lastNAVAA + ((nav - lastNAV) * trancheAPRSplitRatio / FULL_ALLOC)) * ONE_TRANCHE_TOKEN / IdleCDOTranche(AATranche).totalSupply();
-  }
+    uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
 
-  /// @return BB price with current nav
-  function virtualPriceBB() external view returns (uint256) {
-    uint256 nav = getContractValue();
-    uint256 lastNAV = _lastNAV();
-    if (lastNAV == 0 || (nav <= lastNAV)) {
+    if (lastNAV == 0 || trancheSupply == 0) {
       return oneToken;
     }
-    uint256 BBGain = (nav - lastNAV) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
-    return (lastNAVBB + BBGain) * ONE_TRANCHE_TOKEN / IdleCDOTranche(BBTranche).totalSupply();
+    if (nav <= lastNAV) {
+      return _tranchePrice(_tranche);
+    }
+
+    // gain is: nav - lastNAV
+    // current trancheNAV is: lastNAV + trancheGain
+    uint256 trancheNAV;
+    if (_tranche == AATranche) {
+      // AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
+      trancheNAV = lastNAVAA + ((nav - lastNAV) * trancheAPRSplitRatio / FULL_ALLOC);
+    } else {
+      // BBGain = gain * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
+      trancheNAV = lastNAVBB + ((nav - lastNAV) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
+    }
+    // price => trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply
+    return trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
   // ###############
@@ -304,6 +308,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
     _minted = _mintShares(_amount, feeReceiver, _tranche);
     // reset unclaimedFees counter
+    // TODO we could set it to 1 to save some gas
     unclaimedFees = 0;
     // TODO we should also stake those in the reward contract
   }

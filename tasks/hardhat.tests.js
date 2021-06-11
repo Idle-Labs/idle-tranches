@@ -20,7 +20,7 @@ const USDC = {
   cToken: mainnetContracts.cUSDC
 };
 
-const testToken = USDC;
+const testToken = DAI;
 
 /**
  * @name deploy
@@ -88,6 +88,8 @@ task("print-info")
       strategyPrice,
       tranchePriceAA,
       tranchePriceBB,
+      virtualPriceAA,
+      virtualPriceBB,
       lastTranchePriceAA,
       lastTranchePriceBB,
       strategyAPR,
@@ -103,6 +105,8 @@ task("print-info")
       idleCDO.strategyPrice(),
       idleCDO.tranchePrice(AAaddr),
       idleCDO.tranchePrice(BBaddr),
+      idleCDO.virtualPrice(AAaddr),
+      idleCDO.virtualPrice(BBaddr),
       idleCDO.lastTranchePrice(AAaddr),
       idleCDO.lastTranchePrice(BBaddr),
       // Aprs
@@ -133,8 +137,8 @@ task("print-info")
 
     console.log('📄 Info 📄');
     console.log(`#### Prices (strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})) ####`);
-    console.log(`tranchePriceAA ${BN(tranchePriceAA)}, (Last: ${BN(lastTranchePriceAA)})`);
-    console.log(`tranchePriceBB ${BN(tranchePriceBB)}, (Last: ${BN(lastTranchePriceBB)})`);
+    console.log(`tranchePriceAA ${BN(tranchePriceAA)}, virtualPriceAA ${BN(virtualPriceAA)} (Last: ${BN(lastTranchePriceAA)})`);
+    console.log(`tranchePriceBB ${BN(tranchePriceBB)}, virtualPriceBB ${BN(virtualPriceBB)} (Last: ${BN(lastTranchePriceBB)})`);
     console.log(`#### Aprs (strategyAPR ${BN(strategyAPR)}) ####`);
     console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
     console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
