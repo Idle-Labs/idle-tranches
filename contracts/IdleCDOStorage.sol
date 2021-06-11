@@ -43,8 +43,12 @@ contract IdleCDOStorage {
   address public strategyToken;
   // address of AA Tranche token contract
   address public AATranche;
-  // address of BBA Tranche token contract
+  // address of BB Tranche token contract
   address public BBTranche;
+  // address of AA Staking reward token contract
+  address public AAStaking;
+  // address of BB Staking reward token contract
+  address public BBStaking;
 
   // Apr split ratio for AA tranches
   // (relative to FULL_ALLOC so 50% => 50000 => 50% of the interest to tranche AA)
