@@ -98,6 +98,8 @@ task("print-info")
       getIdealAprAA,
       getIdealAprBB,
       contractVal,
+      virtualBalanceAA,
+      virtualBalanceBB,
       getCurrentAARatio,
     ] = await Promise.all([
       // Check prices
@@ -117,6 +119,8 @@ task("print-info")
       idleCDO.getIdealApr(BBaddr),
       // Values
       idleCDO.getContractValue(),
+      idleCDO.virtualBalance(AAaddr),
+      idleCDO.virtualBalance(BBaddr),
       idleCDO.getCurrentAARatio()
     ]);
 
@@ -144,6 +148,8 @@ task("print-info")
     console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
     console.log('#### Other values ####');
     console.log('Underlying val', BN(contractVal).toString());
+    console.log('Virtual balance AA', BN(virtualBalanceAA).toString());
+    console.log('Virtual balance BB', BN(virtualBalanceBB).toString());
     console.log('getCurrentAARatio', BN(getCurrentAARatio).toString());
     // for (var i = 0; i < rewards.length; i++) {
     //   const r = rewards[i];
@@ -260,9 +266,8 @@ const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
   const rewardTokens = await idleCDO.getRewards();
-  await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
+  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
-
 
   await run("mine-multiple", {blocks: '500'});
   // Poking cToken contract to accrue interest and let strategyPrice increase.
