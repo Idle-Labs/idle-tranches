@@ -140,9 +140,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @notice rewards (gov tokens) are not counted
   /// @return contract value in underlyings
   function getContractValue() public override view returns (uint256) {
+    address _strategyToken = strategyToken;
     // strategyTokens value in underlying + unlent balance
-    uint256 strategyTokenDecimals = IERC20Detailed(strategyToken).decimals();
-    return ((_contractTokenBalance(strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance());
+    uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
+    return ((_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance());
   }
 
   /// @param _tranche tranche address
@@ -191,10 +192,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 nav = getContractValue();
     uint256 lastNAV = _lastNAV();
     uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
+    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
 
     if (lastNAV == 0 || trancheSupply == 0) {
       return oneToken;
     }
+    // If there is no gain return the current saved price
     if (nav <= lastNAV) {
       return _tranchePrice(_tranche);
     }
@@ -206,10 +209,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 trancheNAV;
     if (_tranche == AATranche) {
       // trancheGain (AAGain) = gain * trancheAPRSplitRatio / FULL_ALLOC;
-      trancheNAV = lastNAVAA + (gain * trancheAPRSplitRatio / FULL_ALLOC);
+      trancheNAV = lastNAVAA + (gain * _trancheAPRSplitRatio / FULL_ALLOC);
     } else {
       // trancheGain (BBGain) = gain * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
-      trancheNAV = lastNAVBB + (gain * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
+      trancheNAV = lastNAVBB + (gain * (FULL_ALLOC - _trancheAPRSplitRatio) / FULL_ALLOC);
     }
     // price => trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply
     return trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply;
@@ -251,6 +254,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @dev accrues interest to the tranches (update NAVs variables) and updates tranche prices
   function _updatePrices() internal {
+    uint256 _oneToken = oneToken;
     // get last saved total net asset value
     uint256 lastNAV = _lastNAV();
     if (lastNAV == 0) {
@@ -277,8 +281,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Update tranche prices
     uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
     uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
-    priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : oneToken;
-    priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : oneToken;
+    priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : _oneToken;
+    priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : _oneToken;
   }
 
   /// @param _amount, in underlyings, to convert in tranche tokens
@@ -437,13 +441,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @return apr for the specific tranche
   function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
     uint256 stratApr = strategyAPR();
+    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     bool isAATranche = _tranche == AATranche;
     if (_AATrancheSplitRatio == 0) {
       return isAATranche ? 0 : stratApr;
     }
     return isAATranche ?
-      stratApr * trancheAPRSplitRatio / _AATrancheSplitRatio :
-      stratApr * (FULL_ALLOC - trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
+      stratApr * _trancheAPRSplitRatio / _AATrancheSplitRatio :
+      stratApr * (FULL_ALLOC - _trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
   }
 
   // ###################
@@ -460,10 +465,16 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _minAmount array of min amounts for uniswap trades. Lenght should be equal to the _skipReward array
   function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
+    address _token = token;
+    address _strategy = strategy;
     if (!_skipRedeem) {
       uint256 initialBalance = _contractNetUnderlyingBalance();
+      // Fetch state variables once to save gas
+      address _incentiveToken = incentiveToken;
+      address _weth = weth;
+      address _uniswapRouterV2 = address(uniswapRouterV2);
       // Redeem all rewards associated with the strategy
-      IIdleCDOStrategy(strategy).redeemRewards();
+      IIdleCDOStrategy(_strategy).redeemRewards();
       // get all rewards addresses
       address[] memory rewards = getRewards();
       for (uint256 i = 0; i < rewards.length; i++) {
@@ -471,14 +482,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         // get the balance of a specific reward
         uint256 _currentBalance = _contractTokenBalance(rewardToken);
         // check if it should be sold or not
-        if (rewardToken == incentiveToken || _skipReward[i] || _currentBalance == 0) { continue; }
+        if (rewardToken == _incentiveToken || _skipReward[i] || _currentBalance == 0) { continue; }
         // Prepare path for uniswap trade
         address[] memory _path = new address[](3);
         _path[0] = rewardToken;
-        _path[1] = weth;
-        _path[2] = token;
+        _path[1] = _weth;
+        _path[2] = _token;
         // approve the uniswap router to spend our reward
-        IERC20Detailed(rewardToken).safeIncreaseAllowance(address(uniswapRouterV2), _currentBalance);
+        IERC20Detailed(rewardToken).safeIncreaseAllowance(_uniswapRouterV2, _currentBalance);
         // do the uniswap trade
         uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
           _currentBalance,
@@ -511,7 +522,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
     // Put unlent balance at work in the lending provider
-    IIdleCDOStrategy(strategy).deposit(_contractTokenBalance(token));
+    IIdleCDOStrategy(_strategy).deposit(_contractTokenBalance(_token));
   }
 
   /// @notice can be called only by the rebalancer or the owner
