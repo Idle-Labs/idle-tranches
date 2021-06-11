@@ -23,7 +23,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1000
+            runs: 800
           }
         }
       }
@@ -35,6 +35,7 @@ module.exports = {
       //   mnemonic: process.env.MNEMONIC_MAINNET,
       // },
       chainId: 1,
+      allowUnlimitedContractSize: true,
       forking: {
         url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
         blockNumber: 12554260, // DAI all in compound

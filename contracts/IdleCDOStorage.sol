@@ -14,8 +14,8 @@ contract IdleCDOStorage {
   bytes32 internal _lastCallerBlock;
   // WETH address
   address public weth;
-  // token used to incentivize the idle tranche ratio
-  address public incentiveToken;
+  // tokens used to incentivize the idle tranche ideal ratio
+  address[] public incentiveTokens;
   // underlying token (eg DAI)
   address public token;
   // address that can only pause/unpause the contract in case of emergency

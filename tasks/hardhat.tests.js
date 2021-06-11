@@ -33,25 +33,43 @@ task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
     await helpers.prompt("continue? [y/n]", true);
+
+    const incentiveTokens = [mainnetContracts.IDLE, mainnetContracts.stkAAVE];
     const strategy = await helpers.deployUpgradableContract('IdleStrategy', [testToken.idleToken, creator], signer);
     const idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
         BN('5000000').mul(ONE_TOKEN(testToken.decimals)), // limit
         testToken.underlying,
-        mainnetContracts.devLeagueMultisig,
+        mainnetContracts.devLeagueMultisig, // recovery address
         creator, // guardian
         mainnetContracts.rebalancer,
         strategy.address,
         BN('20000'), // apr split: 20% interest to AA and 80% BB
-        BN('50000') // ideal value: 50% AA and 50% BB tranches
+        BN('50000'), // ideal value: 50% AA and 50% BB tranches
+        incentiveTokens
       ],
       signer
     );
-
     const AAaddr = await idleCDO.AATranche();
     const BBaddr = await idleCDO.BBTranche();
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
+
+    const stakingRewardsParams = [
+      incentiveTokens,
+      creator, // owner / guardian
+      idleCDO.address,
+      mainnetContracts.devLeagueMultisig // recovery address
+    ];
+    const stakingRewardsAA = await helpers.deployUpgradableContract(
+      'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
+    );
+    const stakingRewardsBB = await helpers.deployUpgradableContract(
+      'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
+    );
+    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
+    console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
+    console.log(`staking reward contract set`);
     console.log();
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
@@ -192,6 +210,8 @@ task("buy")
     let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
     let AAContract = await ethers.getContractAt("IdleCDOTranche", AAaddr);
     let BBContract = await ethers.getContractAt("IdleCDOTranche", BBaddr);
+    let stakingRewardsAA = await ethers.getContractAt("IdleCDOTrancheRewards", await idleCDO.AAStaking());
+    let stakingRewardsBB = await ethers.getContractAt("IdleCDOTrancheRewards", await idleCDO.BBStaking());
     // Get utils
     const oneToken = await helpers.oneToken(underlying);
     const creatorAddr = await creator.getAddress();
@@ -203,6 +223,8 @@ task("buy")
     idleCDO.idleToken = idleToken;
     idleCDO.AAContract = AAContract;
     idleCDO.BBContract = BBContract;
+    idleCDO.AAStaking = stakingRewardsAA;
+    idleCDO.BBStaking = stakingRewardsBB;
     idleCDO.underlyingContract = underlyingContract;
     // Params
     const amount = BN('100000').mul(oneToken);
@@ -257,6 +279,11 @@ task("buy")
     console.log('feeReceiverBBBalAfter', feeReceiverBBBalAfter.toString());
     feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
     console.log('feeReceiverAABalAfter', feeReceiverAABalAfter.toString());
+
+    console.log('AA staking IDLE balance');
+    await run("print-balance", {address: stakingRewardsAA.address});
+    console.log('BB staking IDLE balance');
+    await run("print-balance", {address: stakingRewardsBB.address});
 
     return {idleCDO};
   });

@@ -9,10 +9,10 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IERC20Detailed.sol";
+import "./interfaces/IIdleCDOTrancheRewards.sol";
 
 import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
-import "./IdleCDOTrancheRewards.sol";
 import "./IdleCDOStorage.sol";
 
 /// @title A continous tranche implementation
@@ -35,12 +35,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
   /// @param _trancheIdealWeightRatio trancheIdealWeightRatio value
+  /// @param _incentiveTokens array of addresses for incentive tokens
   function initialize(
     uint256 _limit, address _guardedToken, address _governanceFund, address _guardian, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
     uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
-    uint256 _trancheIdealWeightRatio // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
+    uint256 _trancheIdealWeightRatio, // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
+    address[] memory _incentiveTokens
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
@@ -48,10 +50,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Deploy Tranches tokens
     AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
     BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
-    // Deploy Tranches Rewards contract (for tranches incentivization)
-    // TODO set rewards. conditionally deploy those using flags
-    AAStaking = address(new IdleCDOTrancheRewards(AATranche));
-    BBStaking = address(new IdleCDOTrancheRewards(BBTranche));
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
@@ -64,7 +62,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    incentiveToken = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
+    incentiveTokens = _incentiveTokens;
     priceAA = _oneToken;
     priceBB = _oneToken;
     lastAAPrice = _oneToken;
@@ -73,7 +71,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     allowAAWithdraw = true;
     allowBBWithdraw = true;
     revertIfTooLow = true;
-    skipDefaultCheck = false;
+    // skipDefaultCheck = false is the default value
+    // TODO should we approve the IdleCDOTrancheRewards contracts to spend tranche tokens of this contract?
     // Set allowance for strategy
     IERC20Detailed(_guardedToken).safeIncreaseAllowance(_strategy, type(uint256).max);
     IERC20Detailed(strategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
@@ -224,6 +223,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return IdleCDOTranche(_tranche).totalSupply() * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
+  /// @return array with addresses of incentiveTokens
+  function getIncentiveTokens() public view returns (address[] memory) {
+    return incentiveTokens;
+  }
+
   // ###############
   // Internal
   // ###############
@@ -309,9 +313,16 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
     _minted = _mintShares(_amount, feeReceiver, _tranche);
     // reset unclaimedFees counter
-    // TODO we could set it to 1 to save some gas
     unclaimedFees = 0;
-    // TODO we should also stake those in the reward contract
+
+    // TODO Check first if staking is tokenized or not otherwise it's a problem to give
+    // tokens to a contract directly and it's REQUIRED that the fee receiver is able to call `unstake` from the staking contract
+    // if (_tranche == AATranche) {
+    //   IdleCDOTrancheRewards(AAStaking).stake(_minted);
+    //   return _minted;
+    // }
+    //
+    // IdleCDOTrancheRewards(BBStaking).stake(_minted);
   }
 
   /// @dev updates last tranche prices with the current ones
@@ -389,28 +400,41 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   function _updateIncentives() internal {
     // Read state variables only once to save gas
     uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
+    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     uint256 _idealRange = idealRange;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
     // Get current AA ratio (using virtual prices with full NAV)
     uint256 currAARatio = getCurrentAARatio();
-    // Get balance of all rewardTokens
-
-    // TODO set incentiveToken as array and do this in a for loop
-    uint256 idleBal = _contractTokenBalance(incentiveToken);
-
-    if (_BBStaking != address(0)) {
-      bool isAAHigh = currAARatio > (_trancheIdealWeightRatio + _idealRange);
-      if (isAAHigh) {
-        // TODO give more rewards to BB holders, ie send some rewards to _BBStaking contract
-      }
+    // Check if BB tranches should be rewarded (is AA ratio high)
+    if (_BBStaking != address(0) && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
+      // give more rewards to BB holders, ie send some rewards to BB Staking contract
+      return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
+    }
+    // Check if AA tranches should be rewarded (is AA ratio low)
+    if (_AAStaking != address(0) && (currAARatio < (_trancheIdealWeightRatio - _idealRange))) {
+      // give more rewards to AA holders, ie send some rewards to AA Staking contract
+      return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
     }
 
-    if (_AAStaking != address(0)) {
-      bool isAALow = currAARatio < (_trancheIdealWeightRatio - _idealRange);
-      if (isAALow) {
-        // TODO give more rewards to BB holders, ie send some rewards to _AAStaking contract
-      }
+    // Split rewards according to trancheAPRSplitRatio in case the ratio between
+    // AA and BB is already ideal
+    _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
+    _depositIncentiveToken(_BBStaking, FULL_ALLOC - _trancheAPRSplitRatio);
+  }
+
+  /// @notice sends requested ratio of incentive tokens reward to a specific IdleCDOTrancheRewards contract
+  /// @param _stakingContract address which will receive incentive Rewards
+  /// @param _ratio ratio of the incentive token balance to send
+  function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
+    address[] memory _incentiveTokens = incentiveTokens;
+    for (uint256 i = 0; i < _incentiveTokens.length; i++) {
+      address _incentiveToken = _incentiveTokens[i];
+      // deposit the requested ratio of the current contract balance of _incentiveToken to `_to`
+      IIdleCDOTrancheRewards(_stakingContract).depositReward(
+        _incentiveToken,
+        _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC
+      );
     }
   }
 
@@ -465,12 +489,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _minAmount array of min amounts for uniswap trades. Lenght should be equal to the _skipReward array
   function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
+    // Fetch state variable once to save gas
     address _token = token;
     address _strategy = strategy;
+    // Check whether to redeem rewards from strategy or not
     if (!_skipRedeem) {
       uint256 initialBalance = _contractNetUnderlyingBalance();
       // Fetch state variables once to save gas
-      address _incentiveToken = incentiveToken;
+      address[] memory _incentiveTokens = incentiveTokens;
       address _weth = weth;
       address _uniswapRouterV2 = address(uniswapRouterV2);
       // Redeem all rewards associated with the strategy
@@ -482,7 +508,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         // get the balance of a specific reward
         uint256 _currentBalance = _contractTokenBalance(rewardToken);
         // check if it should be sold or not
-        if (rewardToken == _incentiveToken || _skipReward[i] || _currentBalance == 0) { continue; }
+        if (_skipReward[i] || _currentBalance == 0 || _includesAddress(_incentiveTokens, rewardToken)) { continue; }
         // Prepare path for uniswap trade
         address[] memory _path = new address[](3);
         _path[0] = rewardToken;
@@ -560,15 +586,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice updates the strategy used (potentially changing the lending protocol used)
   /// @dev it's REQUIRED to liquidate / redeem everything from the lending provider before changing strategy
+  /// it's also REQUIRED to transfer out any incentive tokens accrued if those are changed from the current ones
   /// if the lending provider is changes
   /// @param _strategy new strategy address
-  function setStrategy(address _strategy) external onlyOwner {
+  /// @param _incentiveTokens array of incentive tokens addresses
+  function setStrategy(address _strategy, address[] memory _incentiveTokens) external onlyOwner {
     require(_strategy != address(0), 'IDLE:IS_0');
     IERC20Detailed _token = IERC20Detailed(token);
     // revoke allowance for the current strategy
     _token.safeApprove(strategy, 0);
     // Updated strategy variables
     strategy = _strategy;
+    // Update incentive tokens
+    incentiveTokens = _incentiveTokens;
+    // Update strategyToken
     strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
     // Approve underlyingToken
     _token.safeIncreaseAllowance(_strategy, type(uint256).max);
@@ -601,6 +632,41 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _idealRange new ideal range
   function setIdealRange(uint256 _idealRange) external onlyOwner {
     require((idealRange = _idealRange) <= FULL_ALLOC, 'IDLE:TOO_HIGH');
+  }
+
+  /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
+  /// @param _incentiveTokens array with new incentive tokens
+  function setIncentiveTokens(address[] memory _incentiveTokens) external onlyOwner {
+    incentiveTokens = _incentiveTokens;
+  }
+
+  /// @notice Set tranche Rewards contract addresses (for tranches incentivization)
+  /// @param _AAStaking IdleCDOTrancheRewards contract address for AA tranches
+  /// @param _BBStaking IdleCDOTrancheRewards contract address for BB tranches
+  function setStakingRewards(address _AAStaking, address _BBStaking) external onlyOwner {
+    // Read state variable once
+    address[] memory _incentiveTokens = incentiveTokens;
+    address _currAAStaking = AAStaking;
+    address _currBBStaking = BBStaking;
+
+    // Remove allowance for current contracts
+    for (uint256 i = 0; i < _incentiveTokens.length; i++) {
+      IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
+      _incentiveToken.safeApprove(_currAAStaking, 0);
+      _incentiveToken.safeApprove(_currBBStaking, 0);
+    }
+
+    // Update staking contract addresses
+    AAStaking = _AAStaking;
+    BBStaking = _BBStaking;
+
+    // Increase allowance for new contracts
+    for (uint256 i = 0; i < _incentiveTokens.length; i++) {
+      IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
+      // Approve each staking contract to spend each incentiveToken on beahlf of this contract
+      _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
+      _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
+    }
   }
 
   /// @dev pause deposits and redeems for all classes of tranches
@@ -654,5 +720,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @dev Check that the second function is not called in the same block from the same tx.origin
   function _checkSameTx() internal view {
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "SAME_BLOCK");
+  }
+
+  /// @dev this method is only used to check whether a token is an incentive tokens or not
+  /// in the harvest call. The maximum number of element in the array will be a small number (eg at most 3-5)
+  /// @param _array array of addresses to search for an element
+  /// @param _val address of an element to find
+  /// @return flag if the _token is an incentive token or not
+  function _includesAddress(address[] memory _array, address _val) internal pure returns (bool) {
+    for (uint256 i = 0; i < _array.length; i++) {
+      if (_array[i] == _val) {
+        return true;
+      }
+    }
+    // explicit return to fix linter
+    return false;
   }
 }
