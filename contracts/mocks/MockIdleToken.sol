@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "./MockERC20.sol";
 
@@ -9,6 +10,7 @@ contract MockIdleToken is ERC20, MockERC20 {
   address public underlying;
   uint256 public apr;
   uint256 public _tokenPriceWithFee;
+  uint256 public _redeemTokenPriceWithFee;
   uint256 public govAmount;
   bool public transferGovTokens;
 
@@ -23,6 +25,9 @@ contract MockIdleToken is ERC20, MockERC20 {
   }
   function setTokenPriceWithFee(uint256 _amount) external {
     _tokenPriceWithFee = _amount;
+  }
+  function setRedeemTokenPrice(uint256 _amount) external {
+    _redeemTokenPriceWithFee = _amount;
   }
   function setApr(uint256 _apr) external {
     apr = _apr;
@@ -46,14 +51,16 @@ contract MockIdleToken is ERC20, MockERC20 {
 
   function mintIdleToken(uint256 _amount, bool, address) external returns(uint256) {
     IERC20(underlying).transferFrom(msg.sender, address(this), _amount * 10**18 / _tokenPriceWithFee);
-    _mint(msg.sender, _amount);
-    return _amount;
+    _mint(msg.sender, _amount * 10**18 / _tokenPriceWithFee);
+    return _amount * 10**18 / _tokenPriceWithFee;
   }
 
   function redeemIdleToken(uint256 _amount) external returns(uint256) {
     IERC20(underlying).transfer(msg.sender, _amount * _tokenPriceWithFee / 10**18);
-    IERC20(govTokens[0]).transfer(msg.sender, govAmount);
+    if (govTokens.length > 0) {
+      IERC20(govTokens[0]).transfer(msg.sender, govAmount);
+    }
     _burn(msg.sender, _amount);
-    return _amount;
+    return _amount * _tokenPriceWithFee / 10**18;
   }
 }

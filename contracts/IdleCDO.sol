@@ -320,12 +320,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _amount amount of underlyings to deposit
   /// @return _minted number of tranche tokens minted
   function _depositFees(uint256 _amount) internal returns (uint256 _minted) {
-    _minted = _mintShares(_amount, feeReceiver,
-      // Choose the right tranche to mint based on getCurrentAARatio
-      getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche
-    );
-    // reset unclaimedFees counter
-    unclaimedFees = 0;
+    if (_amount > 0) {
+      _minted = _mintShares(_amount, feeReceiver,
+        // Choose the right tranche to mint based on getCurrentAARatio
+        getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche
+      );
+      // reset unclaimedFees counter
+      unclaimedFees = 0;
+    }
   }
 
   /// @dev updates last tranche prices with the current ones
@@ -497,7 +499,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address _strategy = strategy;
     // Check whether to redeem rewards from strategy or not
     if (!_skipRedeem) {
-      uint256 initialBalance = _contractNetUnderlyingBalance();
       // Fetch state variables once to save gas
       address[] memory _incentiveTokens = incentiveTokens;
       address _weth = weth;
@@ -528,15 +529,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
           block.timestamp + 1
         );
       }
-      // get unlent balance after selling rewards
-      uint256 finalBalance = _contractNetUnderlyingBalance();
-      if (finalBalance > initialBalance) {
-        // split converted rewards and updated tranche prices for mint
-        // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
-        _updatePrices();
-        // Get fees in the form of totalSupply diluition
-        _depositFees(unclaimedFees);
-      }
+      // split converted rewards and update tranche prices for mint
+      // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
+      _updatePrices();
       // update last saved prices for redeems at this point
       // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
       // others could have been skipped (with flags set off chain) but it just means that
@@ -544,6 +539,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // NOTE: This method call should not be inside the `if finalBalance > initialBalance` just in case
       // no rewards are distributed from the underlying strategy
       _updateLastTranchePrices();
+
+      // Get fees in the form of totalSupply diluition
+      _depositFees(unclaimedFees);
+
       if (!_skipIncentivesUpdate) {
         // Update tranche incentives distribution and send rewards to staking contracts
         _updateIncentives();
@@ -676,8 +675,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
+  /// @notice can be called by both the owner and the guardian
   /// @dev pause deposits and redeems for all classes of tranches
-  function emergencyShutdown() external onlyOwner {
+  function emergencyShutdown() external {
+    require(msg.sender == guardian || msg.sender == owner(), "IDLE:!AUTH");
     _pause();
     allowAAWithdraw = false;
     allowBBWithdraw = false;

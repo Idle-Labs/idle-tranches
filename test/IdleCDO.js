@@ -77,7 +77,7 @@ describe("IdleCDO", function () {
     // Params
     initialAmount = BN('100000').mul(ONE_TOKEN(18));
     // Fund wallets
-    await helpers.fundWallets(underlying.address, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr], owner.address, initialAmount);
+    await helpers.fundWallets(underlying.address, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr, idleToken.address], owner.address, initialAmount);
 
     // set IdleToken mocked params
     await idleToken.setTokenPriceWithFee(BN(10**18));
@@ -276,6 +276,53 @@ describe("IdleCDO", function () {
     // 1000 + 900 = 1900 + 1000 just deposited = 2900
     expect(await idleCDO.lastNAVBB()).to.be.equal(BN('2900').mul(ONE_TOKEN(18)));
     expect(await idleCDO.lastNAVAA()).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
+  });
+  // ###############
+  // AA withdraw
+  // ###############
+  it("should revert when calling withdrawAA and contract is has been shutdown", async () => {
+    await idleCDO.emergencyShutdown();
+
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await expect(
+      idleCDO.connect(AABuyer).withdrawAA(_amount)
+    ).to.be.revertedWith("IDLE:AA_!ALLOWED");
+  });
+
+  it("should revert when calling withdrawAA and strategyPrice decreased", async () => {
+    await idleToken.setTokenPriceWithFee(BN(9**18));
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await expect(
+      idleCDO.connect(AABuyer).depositAA(_amount)
+    ).to.be.revertedWith("IDLE:DEFAULT_WAIT_SHUTDOWN");
+  });
+
+  it("should withdrawAA all AA balance if _amount supplied is 0", async () => {
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await firstDepositAA(_amount);
+    // update lending protocol price which is now 2
+    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
+
+    const _amountW = BN('0').mul(ONE_TOKEN(18));
+    await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
+    expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
+    // redeem price is still 1, no harvests since the price increase
+    expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount);
+  });
+
+  it("should withdrawAA all AA balance if _amount supplied is 0", async () => {
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await firstDepositAA(_amount);
+    // update lending protocol price which is now 2
+    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
+    // to update lastTranchePriceAA which will be 1.9
+    await idleCDO.harvest(false, true, [true], [BN('0')]);
+
+    const _amountW = BN('0').mul(ONE_TOKEN(18));
+    await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
+    expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
+    // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900
+    expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(BN('900').mul(ONE_TOKEN(18)).add(initialAmount));
   });
 
   const firstDepositAA = async (_amount) => {
