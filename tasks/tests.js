@@ -7,72 +7,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 
-const DAI = {
-  decimals: 18,
-  underlying: mainnetContracts.DAI,
-  idleToken: mainnetContracts.idleDAIBest,
-  cToken: mainnetContracts.cDAI
-};
-const USDC = {
-  decimals: 6,
-  underlying: mainnetContracts.USDC,
-  idleToken: mainnetContracts.idleUSDCBest,
-  cToken: mainnetContracts.cUSDC
-};
-
-const testToken = DAI;
-
-/**
- * @name deploy
- */
-task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
-  .setAction(async (args) => {
-    // Run 'compile' task
-    await run("compile");
-
-    const signer = await helpers.getSigner();
-    const creator = await signer.getAddress();
-    await helpers.prompt("continue? [y/n]", true);
-
-    const incentiveTokens = [mainnetContracts.IDLE, mainnetContracts.stkAAVE];
-    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [testToken.idleToken, creator], signer);
-    const idleCDO = await helpers.deployUpgradableContract(
-      'IdleCDO',
-      [
-        BN('5000000').mul(ONE_TOKEN(testToken.decimals)), // limit
-        testToken.underlying,
-        mainnetContracts.devLeagueMultisig, // recovery address
-        creator, // guardian
-        mainnetContracts.rebalancer,
-        strategy.address,
-        BN('20000'), // apr split: 20% interest to AA and 80% BB
-        BN('50000'), // ideal value: 50% AA and 50% BB tranches
-        incentiveTokens
-      ],
-      signer
-    );
-    const AAaddr = await idleCDO.AATranche();
-    const BBaddr = await idleCDO.BBTranche();
-    console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
-
-    const stakingRewardsParams = [
-      incentiveTokens,
-      creator, // owner / guardian
-      idleCDO.address,
-      mainnetContracts.devLeagueMultisig // recovery address
-    ];
-    const stakingRewardsAA = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
-    );
-    const stakingRewardsBB = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
-    );
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
-    console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
-    console.log(`staking reward contract set`);
-    console.log();
-    return {idleCDO, strategy, AAaddr, BBaddr};
-  });
+const testToken = addresses.deployTokens.DAI;
 
 /**
  * @name print-info
@@ -233,15 +168,15 @@ task("buy")
 
     console.log('### Buying tranches');
     // Buy AA tranche with `amount` underlying
-    const aaTrancheBal = await deposit('AA', idleCDO, AABuyerAddr, amount);
+    const aaTrancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, amount);
     // Buy BB tranche with `amount` underlying
-    await deposit('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
+    await helpers.deposit('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
     // Do an harvest to do a real deposit in Idle
     // no gov tokens collected now because it's the first deposit
     await rebalanceFull(idleCDO, creatorAddr, true);
     // strategy price should be increased after a rebalance and some time
     // Buy AA tranche with `amount` underlying from another user
-    const aa2TrancheBal = await deposit('AA', idleCDO, AABuyer2Addr, amount);
+    const aa2TrancheBal = await helpers.deposit('AA', idleCDO, AABuyer2Addr, amount);
     // amount bought should be less than the one of AABuyerAddr because price increased
     await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
 
@@ -254,17 +189,17 @@ task("buy")
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
     // First user withdraw
-    await withdraw('AA', idleCDO, AABuyerAddr, amount);
+    await helpers.withdraw('AA', idleCDO, AABuyerAddr, amount);
     feeReceiverBBBal = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
     // Check that fee receiver got fees (in BB tranche tokens)
     feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
-    await withdraw('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
+    await helpers.withdraw('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
     await rebalanceFull(idleCDO, creatorAddr);
 
-    await withdraw('AA', idleCDO, AABuyer2Addr, amount);
+    await helpers.withdraw('AA', idleCDO, AABuyer2Addr, amount);
     let feeReceiverAABal = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
     // Check that fee receiver got fees (in AA tranche tokens)
@@ -302,24 +237,4 @@ const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
   await helpers.callContract(testToken.cToken, 'accrueInterest', [], address);
   console.log('🚧 After some time...');
   await run("print-info", {cdo: idleCDO.address});
-}
-
-const deposit = async (type, idleCDO, addr, amount) => {
-  console.log(`🟩 Deposit ${type}, addr: ${addr}, amount: ${amount}`);
-  await helpers.sudoCall(addr, idleCDO.underlyingContract, 'approve', [idleCDO.address, amount]);
-  await helpers.sudoCall(addr, idleCDO, type == 'AA' ? 'depositAA' : 'depositBB', [amount]);
-  const aaTrancheBal = BN(await (type == 'AA' ? idleCDO.AAContract : idleCDO.BBContract).balanceOf(addr));
-  console.log(`🚩 ${type}Balance: `, aaTrancheBal.toString());
-  return aaTrancheBal;
-}
-
-const withdraw = async (type, idleCDO, addr, initialAmount) => {
-  const isAA = type == 'AA';
-  const trancheBal = await (isAA ? idleCDO.AAContract : idleCDO.BBContract).balanceOf(addr);
-  const balBefore = BN(await idleCDO.underlyingContract.balanceOf(addr));
-  await helpers.sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [trancheBal]);
-  const balAfter = BN(await idleCDO.underlyingContract.balanceOf(addr));
-  const gain = balAfter.sub(balBefore).sub(initialAmount);
-  console.log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
-  return balAfter;
 }

@@ -10,8 +10,9 @@ require("hardhat-etherscan-abi");
 require("solidity-coverage");
 
 // Tasks
-require("./tasks/hardhat.helpers");
-require("./tasks/hardhat.tests");
+require("./tasks/helpers");
+require("./tasks/tests");
+require("./tasks/deploy");
 
 const BN = require("bignumber.js");
 
@@ -34,8 +35,8 @@ module.exports = {
       // accounts: {
       //   mnemonic: process.env.MNEMONIC_MAINNET,
       // },
-      chainId: 1,
       allowUnlimitedContractSize: true,
+      chainId: 1,
       forking: {
         url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
         blockNumber: 12554260, // DAI all in compound

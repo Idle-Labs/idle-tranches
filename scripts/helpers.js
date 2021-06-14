@@ -6,18 +6,25 @@ const { HardwareSigner } = require("../lib/HardwareSigner");
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 
+const log = (...arguments) => {
+  if (hre.network.name == 'test') {
+    return;
+  }
+  console.log(...arguments);
+}
+
 const getSigner = async () => {
   let [signer] = await ethers.getSigners();
   if (hre.network.name == 'mainnet') {
     signer = new HardwareSigner(ethers.provider, null, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();
-  console.log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
-  console.log();
+  log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
+  log();
   return signer;
 };
 const callContract = async (address, method, params, from = null) => {
-  // console.log(`Call contract ${address}, method: ${method} with params ${params}`);
+  // log(`Call contract ${address}, method: ${method} with params ${params}`);
   let contract = await ethers.getVerifiedContractAt(address);
   if (from) {
     [contract] = await sudo(from, contract);
@@ -27,34 +34,34 @@ const callContract = async (address, method, params, from = null) => {
   return res;
 };
 const deployContract = async (contractName, params, signer) => {
-  console.log(`Deploying ${contractName}`);
+  log(`Deploying ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
   let contract = await contractFactory.deploy(...params);
   await contract.deployed();
   let contractReceipt = await contract.deployTransaction.wait()
-  console.log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash}`);
-  console.log();
+  log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log();
   return contract;
 };
 const deployUpgradableContract = async (contractName, params, signer) => {
-  console.log(`Deploying ${contractName}`);
+  log(`Deploying ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
   // do not use spread (...) operator here
   let contract = await hre.upgrades.deployProxy(contractFactory, params);
   await contract.deployed();
   let contractReceipt = await contract.deployTransaction.wait()
-  console.log(`📤 ${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log(`📤 ${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
   return contract;
 };
 const upgradeContract = async (address, contractName, params, signer) => {
-  console.log(`Upgrading ${contractName}`);
+  log(`Upgrading ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
   let contract = await hre.upgrades.upgradeProxy(address, contractFactory);
   // NOTE: Method + params cannot be passed for reinit on upgrades!
   // do not use spread (...) operator here
   // let contract = await upgrades.upgradeProxy(address, contractFactory, params);
   let contractReceipt = await contract.deployTransaction.wait()
-  console.log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
   return contract;
 };
 const fundWallets = async (underlying, to, from, amount) => {
@@ -64,7 +71,7 @@ const fundWallets = async (underlying, to, from, amount) => {
   for (var i = 0; i < to.length; i++) {
     await underlyingContract.transfer(to[i], amount);
     const newBal = await underlyingContract.balanceOf(to[i]);
-    console.log(`💵 [FUND] (+ ${amount.div(ONE_TOKEN(decimals))}) to: ${to[i]}, New Balance: ${BN(newBal).div(ONE_TOKEN(decimals))}`);
+    log(`💵 [FUND] (+ ${amount.div(ONE_TOKEN(decimals))}) to: ${to[i]}, New Balance: ${BN(newBal).div(ONE_TOKEN(decimals))}`);
   }
 };
 const oneToken = async addr => {
@@ -91,7 +98,7 @@ const prompt = async (question, onlyMainnet = true) => {
   });
 
   if (answer !== "y" && answer !== "yes") {
-    console.log("exiting...");
+    log("exiting...");
     process.exit(1);
   }
 };
@@ -99,7 +106,7 @@ const check = (a, b, message) => {
   a = a.toString();
   b = b.toString();
   let [icon, symbol] = a.toString() === b ? ["✔️", "==="] : ["🚨🚨🚨", "!=="];
-  console.log(`${icon}  `, a, symbol, b, message ? message : "");
+  log(`${icon}  `, a, symbol, b, message ? message : "");
 };
 const checkAproximate = (a, b, message) => { // check a is withing 5% of b
   a = BigNumber.from(a.toString())
@@ -113,11 +120,11 @@ const checkAproximate = (a, b, message) => { // check a is withing 5% of b
   }
 
   let [icon, symbol] = _check ? ["✔️", "~="] : ["🚨🚨🚨", "!~="];
-  console.log(`${icon}  `, a.toString(), symbol, b.toString(), message ? message : "");
+  log(`${icon}  `, a.toString(), symbol, b.toString(), message ? message : "");
 };
 const checkIncreased = (a, b, message) => {
   let [icon, symbol] = b.gt(a) ? ["✔️", "<"] : ["🚨🚨🚨", ">="];
-  console.log(`${icon}  `, a.toString(), symbol, b.toString(), message ? message : "");
+  log(`${icon}  `, a.toString(), symbol, b.toString(), message ? message : "");
 };
 const toETH = n => ethers.utils.parseEther(n.toString());
 const sudo = async (acc, contract = null) => {
@@ -151,6 +158,33 @@ const resetFork = async (blockNumber) => {
   });
 };
 
+const deposit = async (type, idleCDO, addr, amount) => {
+  log(`🟩 Deposit ${type}, addr: ${addr}, amount: ${amount}`);
+  let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
+  let AAContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
+  let BBContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
+
+  await sudoCall(addr, underlyingContract, 'approve', [idleCDO.address, amount]);
+  await sudoCall(addr, idleCDO, type == 'AA' ? 'depositAA' : 'depositBB', [amount]);
+  const aaTrancheBal = BN(await (type == 'AA' ? AAContract : BBContract).balanceOf(addr));
+  log(`🚩 ${type}Balance: `, aaTrancheBal.toString());
+  return aaTrancheBal;
+}
+
+const withdraw = async (type, idleCDO, addr, initialAmount) => {
+  let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
+  let AAContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
+  let BBContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
+  const isAA = type == 'AA';
+  const trancheBal = await (isAA ? AAContract : BBContract).balanceOf(addr);
+  const balBefore = BN(await underlyingContract.balanceOf(addr));
+  await sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [trancheBal]);
+  const balAfter = BN(await underlyingContract.balanceOf(addr));
+  const gain = balAfter.sub(balBefore).sub(initialAmount);
+  log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
+  return balAfter;
+}
+
 module.exports = {
   getSigner,
   callContract,
@@ -168,4 +202,6 @@ module.exports = {
   waitDays,
   resetFork,
   oneToken,
+  deposit,
+  withdraw
 }
