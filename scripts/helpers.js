@@ -7,7 +7,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 
 const log = (...arguments) => {
-  if (hre.network.name == 'test') {
+  if (hre.network.name == 'test' || hre.network.config.chainId == '31337') {
     return;
   }
   console.log(...arguments);
