@@ -46,7 +46,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
-    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _guardedToken, _governanceFund, _guardian);
+    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _governanceFund, _guardian);
     // Deploy Tranches tokens
     AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
     BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
@@ -72,7 +72,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     allowBBWithdraw = true;
     revertIfTooLow = true;
     // skipDefaultCheck = false is the default value
-    // TODO should we approve the IdleCDOTrancheRewards contracts to spend tranche tokens of this contract?
     // Set allowance for strategy
     IERC20Detailed(_guardedToken).safeIncreaseAllowance(_strategy, type(uint256).max);
     IERC20Detailed(strategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
@@ -142,7 +141,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address _strategyToken = strategyToken;
     // strategyTokens value in underlying + unlent balance
     uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
-    return ((_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance());
+    return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance();
   }
 
   /// @param _tranche tranche address
@@ -309,20 +308,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _amount amount of underlyings to deposit
   /// @return _minted number of tranche tokens minted
   function _depositFees(uint256 _amount) internal returns (uint256 _minted) {
-    // Choose the right tranche to mint based on getCurrentAARatio
-    address _tranche = getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche;
-    _minted = _mintShares(_amount, feeReceiver, _tranche);
+    _minted = _mintShares(_amount, feeReceiver,
+      // Choose the right tranche to mint based on getCurrentAARatio
+      getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche
+    );
     // reset unclaimedFees counter
     unclaimedFees = 0;
-
-    // TODO Check first if staking is tokenized or not otherwise it's a problem to give
-    // tokens to a contract directly and it's REQUIRED that the fee receiver is able to call `unstake` from the staking contract
-    // if (_tranche == AATranche) {
-    //   IdleCDOTrancheRewards(AAStaking).stake(_minted);
-    //   return _minted;
-    // }
-    //
-    // IdleCDOTrancheRewards(BBStaking).stake(_minted);
   }
 
   /// @dev updates last tranche prices with the current ones
@@ -537,7 +528,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // update last saved prices for redeems at this point
       // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
       // others could have been skipped (with flags set off chain) but it just means that
-      // were not worth a lot so should be safe to assume that those wont' be siphoned from a theft of interest attacks
+      // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
       // NOTE: This method call should not be inside the `if finalBalance > initialBalance` just in case
       // no rewards are distributed from the underlying strategy
       _updateLastTranchePrices();
@@ -652,8 +643,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Remove allowance for current contracts
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
       IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
-      _incentiveToken.safeApprove(_currAAStaking, 0);
-      _incentiveToken.safeApprove(_currBBStaking, 0);
+      if (_currAAStaking != address(0)) {
+        _incentiveToken.safeApprove(_currAAStaking, 0);
+      }
+      if (_currAAStaking != address(0)) {
+        _incentiveToken.safeApprove(_currBBStaking, 0);
+      }
     }
 
     // Update staking contract addresses

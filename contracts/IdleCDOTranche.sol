@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract IdleCDOTranche is ERC20 {
   address public minter;
-
   constructor(
     string memory _name, // eg. IdleDAI
     string memory _symbol // eg. IDLEDAI
