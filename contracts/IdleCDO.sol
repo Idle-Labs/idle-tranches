@@ -275,15 +275,27 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     gain -= performanceFee;
     // and add the value to unclaimedFees
     unclaimedFees += performanceFee;
-    // split the gain between AA and BB holders according to trancheAPRSplitRatio
-    uint256 AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
+    // Get the current tranche supply
+    uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
+    uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
+    uint256 AAGain;
+    uint256 BBGain;
+    if (BBTotSupply == 0) {
+      // all gain to AA
+      AAGain = gain;
+    } else if (AATotSupply == 0) {
+      // all gain to BB
+      BBGain = gain;
+    } else {
+      // split the gain between AA and BB holders according to trancheAPRSplitRatio
+      AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
+      BBGain = gain - AAGain;
+    }
     // Update NAVs
     lastNAVAA += AAGain;
     // BBGain
-    lastNAVBB += gain - AAGain;
+    lastNAVBB += BBGain;
     // Update tranche prices
-    uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
-    uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
     priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : _oneToken;
     priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : _oneToken;
   }

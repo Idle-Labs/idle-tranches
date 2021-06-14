@@ -11,7 +11,7 @@ contract MockERC20 is ERC20 {
     string memory _symbol // eg. IDLEDAI
   ) ERC20(_name, _symbol) {
     minter = msg.sender;
-    _mint(msg.sender, 10000 * 10**18);
+    _mint(msg.sender, 10000000 * 10**18); // 10M to creator
   }
 
   function mint(address account, uint256 amount) external {
