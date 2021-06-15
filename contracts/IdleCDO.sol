@@ -597,17 +597,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     require(_strategy != address(0), 'IDLE:IS_0');
     IERC20Detailed _token = IERC20Detailed(token);
     // revoke allowance for the current strategy
-    _token.safeApprove(strategy, 0);
+    address _currStrategy = strategy;
+    _token.safeApprove(_currStrategy, 0);
+    IERC20Detailed(strategyToken).safeApprove(_currStrategy, 0);
     // Updated strategy variables
     strategy = _strategy;
     // Update incentive tokens
     incentiveTokens = _incentiveTokens;
     // Update strategyToken
-    strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    address _newStrategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    strategyToken = _newStrategyToken;
     // Approve underlyingToken
     _token.safeIncreaseAllowance(_strategy, type(uint256).max);
     // Approve strategyToken
-    IERC20Detailed(strategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
+    IERC20Detailed(_newStrategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
     // Update last strategy price
     lastStrategyPrice = strategyPrice();
   }

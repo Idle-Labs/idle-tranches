@@ -21,6 +21,11 @@ describe("IdleCDO", function () {
     AABuyer2Addr = AABuyer2.address;
     BBBuyer2 = signers[4];
     BBBuyer2Addr = BBBuyer2.address;
+    Random = signers[5];
+    RandomAddr = Random.address;
+    Random2 = signers[6];
+    Random2Addr = Random2.address;
+
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -39,8 +44,11 @@ describe("IdleCDO", function () {
 
     idleToken = await MockIdleToken.deploy(underlying.address);
     await idleToken.deployed();
+    idleToken2 = await MockIdleToken.deploy(underlying.address);
+    await idleToken2.deployed();
 
     strategy = await helpers.deployUpgradableContract('IdleStrategy', [idleToken.address, owner.address], owner);
+    strategy2 = await helpers.deployUpgradableContract('IdleStrategy', [idleToken2.address, owner.address], owner);
     idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
@@ -81,6 +89,8 @@ describe("IdleCDO", function () {
 
     // set IdleToken mocked params
     await idleToken.setTokenPriceWithFee(BN(10**18));
+    // set IdleToken2 mocked params
+    await idleToken2.setTokenPriceWithFee(BN(2 * 10**18));
   });
 
   it("should not reinitialize the contract", async () => {
@@ -750,6 +760,223 @@ describe("IdleCDO", function () {
   });
 
   // ###############
+  // Protected
+  // ###############
+
+  it("liquidate should liquidate the requested amount", async () => {
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true);
+
+    expect(await underlying.balanceOf(idleCDO.address)).to.be.equal(BN('0').mul(one));
+    balAA = await idleCDO.liquidate(BN('1000').mul(one), true);
+    expect(await underlying.balanceOf(idleCDO.address)).to.be.equal(BN('1000').mul(one));
+  });
+
+  it("liquidate should be called only by rebalancer or owner", async () => {
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).liquidate(BN('1000'), true)
+    ).to.be.revertedWith("IDLE:!AUTH");
+
+    await idleCDO.setRebalancer(BBBuyer.address);
+
+    await idleCDO.connect(BBBuyer).liquidate(BN('1000'), true);
+    expect(await underlying.balanceOf(idleCDO.address)).to.be.equal(BN('1000'));
+  });
+  it("setAllowAAWithdraw should set the relative flag and be called only by the owner", async () => {
+    await idleCDO.setAllowAAWithdraw(true);
+    expect(await idleCDO.allowAAWithdraw()).to.be.equal(true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setAllowAAWithdraw(false)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setAllowBBWithdraw should set the relative flag and be called only by the owner", async () => {
+    await idleCDO.setAllowBBWithdraw(true);
+    expect(await idleCDO.allowBBWithdraw()).to.be.equal(true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setAllowBBWithdraw(false)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setSkipDefaultCheck should set the relative flag and be called only by the owner", async () => {
+    await idleCDO.setSkipDefaultCheck(true);
+    expect(await idleCDO.skipDefaultCheck()).to.be.equal(true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setSkipDefaultCheck(false)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setRevertIfTooLow should set the relative flag and be called only by the owner", async () => {
+    await idleCDO.setRevertIfTooLow(true);
+    expect(await idleCDO.revertIfTooLow()).to.be.equal(true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setRevertIfTooLow(false)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setRebalancer should set the relative address and be called only by the owner", async () => {
+    const val = RandomAddr;
+    await idleCDO.setRebalancer(val);
+    expect(await idleCDO.rebalancer()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setRebalancer(addresses.addr0)
+    ).to.be.revertedWith("IDLE:IS_0");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setRebalancer(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setFeeReceiver should set the relative address and be called only by the owner", async () => {
+    const val = RandomAddr;
+    await idleCDO.setFeeReceiver(val);
+    expect(await idleCDO.feeReceiver()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setFeeReceiver(addresses.addr0)
+    ).to.be.revertedWith("IDLE:IS_0");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setFeeReceiver(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setGuardian should set the relative address and be called only by the owner", async () => {
+    const val = RandomAddr;
+    await idleCDO.setGuardian(val);
+    expect(await idleCDO.guardian()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setGuardian(addresses.addr0)
+    ).to.be.revertedWith("IDLE:IS_0");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setGuardian(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setFee should set the relative address and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setFee(val);
+    expect(await idleCDO.fee()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setFee(BN('20001'))
+    ).to.be.revertedWith("IDLE:TOO_HIGH");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setFee(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("setIdealRange should set the relative address and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setIdealRange(val);
+    expect(await idleCDO.idealRange()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setIdealRange(BN('100001'))
+    ).to.be.revertedWith("IDLE:TOO_HIGH");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setIdealRange(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("setStakingRewards should set the relative addresses for incentiveTokens", async () => {
+    await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
+    expect(await idleCDO.AAStaking()).to.be.equal(RandomAddr);
+    expect(await idleCDO.BBStaking()).to.be.equal(Random2Addr);
+
+    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
+    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
+
+    await idleCDO.setStakingRewards(AABuyerAddr, AABuyer2Addr);
+
+    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(0);
+    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(0);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setStakingRewards(RandomAddr, Random2Addr)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("emergencyShutdown should pause everything", async () => {
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true);
+
+    await idleCDO.emergencyShutdown();
+    expect(await idleCDO.allowAAWithdraw()).to.be.equal(false);
+    expect(await idleCDO.allowBBWithdraw()).to.be.equal(false);
+    expect(await idleCDO.paused()).to.be.equal(true);
+    expect(await idleCDO.skipDefaultCheck()).to.be.equal(true);
+    expect(await idleCDO.revertIfTooLow()).to.be.equal(true);
+  });
+  it("emergencyShutdown should be called only by guardian or owner", async () => {
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true);
+
+    await expect(
+      idleCDO.connect(BBBuyer).emergencyShutdown()
+    ).to.be.revertedWith("IDLE:!AUTH");
+
+    await idleCDO.setGuardian(BBBuyer.address);
+
+    await idleCDO.connect(BBBuyer).emergencyShutdown();
+    expect(await idleCDO.allowAAWithdraw()).to.be.equal(false);
+    expect(await idleCDO.allowBBWithdraw()).to.be.equal(false);
+    expect(await idleCDO.paused()).to.be.equal(true);
+    expect(await idleCDO.skipDefaultCheck()).to.be.equal(true);
+    expect(await idleCDO.revertIfTooLow()).to.be.equal(true);
+  });
+
+  it("pause/unpause should be called only by guardian or owner", async () => {
+    // owner
+    await idleCDO.pause();
+    expect(await idleCDO.paused()).to.be.equal(true);
+    await idleCDO.unpause();
+    expect(await idleCDO.paused()).to.be.equal(false);
+
+    // only allowed people
+    await expect(
+      idleCDO.connect(BBBuyer).emergencyShutdown()
+    ).to.be.revertedWith("IDLE:!AUTH");
+
+    await idleCDO.setGuardian(BBBuyer.address);
+
+    // guardian allowed
+    await idleCDO.connect(BBBuyer).pause();
+    expect(await idleCDO.paused()).to.be.equal(true);
+    await idleCDO.connect(BBBuyer).unpause();
+    expect(await idleCDO.paused()).to.be.equal(false);
+  });
+
+  it("setStrategy should set the relative addresses for incentiveTokens", async () => {
+    await expect(
+      idleCDO.setStrategy(addresses.addr0, [Random2Addr])
+    ).to.be.revertedWith("IDLE:IS_0");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    await idleCDO.setStrategy(strategy2.address, [Random2Addr]);
+    expect(await idleCDO.strategy()).to.be.equal(strategy2.address);
+    expect(await idleCDO.getIncentiveTokens()).to.have.all.members([Random2Addr]);
+    expect(await idleCDO.strategyToken()).to.be.equal(idleToken2.address);
+    expect(await idleCDO.lastStrategyPrice()).to.be.equal(one.mul(BN('2')));
+
+    expect(await idleToken.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
+    expect(await underlying.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
+
+    expect(await underlying.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
+    expect(await idleToken2.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
+  });
+
+  // ###############
   // Helpers
   // ###############
   const setupBasicDeposits = async (_amountAA, _amountBB, skipLastHarvest = false) => {
@@ -765,7 +992,6 @@ describe("IdleCDO", function () {
       await idleCDO.harvest(false, true, [true], [BN('0')]);
     }
   }
-
   const firstDepositAA = async (_amount) => {
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
     // deposit in the lending protocol
