@@ -135,13 +135,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _lastTranchePrice(_tranche);
   }
 
-  /// @notice rewards (gov tokens) are not counted
+  /// @notice rewards (gov tokens) are not counted. It may include non accrued fees (in unclaimedFees)
   /// @return contract value in underlyings
   function getContractValue() public override view returns (uint256) {
     address _strategyToken = strategyToken;
     // strategyTokens value in underlying + unlent balance
     uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
-    return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractNetUnderlyingBalance();
+    return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractTokenBalance(token);
   }
 
   /// @param _tranche tranche address
@@ -355,8 +355,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
     require(_amount > 0, 'IDLE:IS_0');
-    // get current unlent balance
-    uint256 balanceUnderlying = _contractNetUnderlyingBalance();
+    address _token = token;
+    // get current net unlent balance
+    uint256 balanceUnderlying = _contractTokenBalance(_token);
     // Calculate the amount to redeem using the checkpointed price from last harvest
     // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
     // to steal interest generated from rewards
@@ -370,7 +371,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
     // send underlying to msg.sender
-    IERC20Detailed(token).safeTransfer(msg.sender, toRedeem);
+    IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
 
     // update NAV with the _amount of underlyings removed
     if (_tranche == AATranche) {
@@ -708,16 +709,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
-  }
-
-  /// @return bal balance of underlying for this contract
-  function _contractNetUnderlyingBalance() internal view returns (uint256 bal) {
-    // For gas efficiency, read only once
-    uint256 _unclaimedFees = unclaimedFees;
-    // Get current balance
-    bal = _contractTokenBalance(token);
-    // remove unclaimedFees if any
-    return bal >= _unclaimedFees ? (bal - _unclaimedFees) : bal;
   }
 
   /// @dev Set last caller and block.number hash. This should be called at the beginning of the first function to protect

@@ -13,6 +13,7 @@ contract MockIdleToken is ERC20, MockERC20 {
   uint256 public _tokenPriceWithFee;
   uint256 public _redeemTokenPriceWithFee;
   uint256 public govAmount;
+  uint256 public fee;
   bool public transferGovTokens;
 
   constructor(address _underlying)
@@ -32,6 +33,9 @@ contract MockIdleToken is ERC20, MockERC20 {
   }
   function setApr(uint256 _apr) external {
     apr = _apr;
+  }
+  function setFee(uint256 _fee) external {
+    fee = _fee;
   }
   function setGovAmount(uint256 _govAmount) external {
     govAmount = _govAmount;
