@@ -87,8 +87,8 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     return _redeem(_amount);
   }
 
-  // Anyone can call this because this contract holds no idleTokens and so no 'old' rewards
-
+  /// @notice Anyone can call this because this contract holds no idleTokens and so no 'old' rewards
+  /// @dev redeem rewards and transfer them to msg.sender
   function redeemRewards() external override {
     IIdleToken _idleToken = idleToken;
     // Get all idleTokens from msg.sender

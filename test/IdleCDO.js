@@ -975,6 +975,22 @@ describe("IdleCDO", function () {
     expect(await underlying.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
     expect(await idleToken2.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
   });
+  it("transferToken should be callable only from owner", async () => {
+    const _amountAA = BN('1000').mul(one);
+    await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
+
+    const initialBal = await underlying.balanceOf(owner.address);
+
+    await expect(
+      idleCDO.connect(BBBuyer).transferToken(underlying.address, BN('1000').mul(one))
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    await idleCDO.setGuardian(BBBuyer.address);
+
+    await idleCDO.transferToken(underlying.address, BN('1000').mul(one));
+    const finalBal = await underlying.balanceOf(owner.address);
+    expect(finalBal.sub(initialBal)).to.be.equal(BN('1000').mul(one));
+  });
 
   // ###############
   // Helpers
