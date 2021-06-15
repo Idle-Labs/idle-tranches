@@ -189,17 +189,17 @@ task("buy")
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
     // First user withdraw
-    await helpers.withdraw('AA', idleCDO, AABuyerAddr, amount);
+    await helpers.withdrawWithGain('AA', idleCDO, AABuyerAddr, amount);
     feeReceiverBBBal = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
     // Check that fee receiver got fees (in BB tranche tokens)
     feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(mainnetContracts.feeReceiver);
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
 
-    await helpers.withdraw('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
+    await helpers.withdrawWithGain('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
     await rebalanceFull(idleCDO, creatorAddr);
 
-    await helpers.withdraw('AA', idleCDO, AABuyer2Addr, amount);
+    await helpers.withdrawWithGain('AA', idleCDO, AABuyer2Addr, amount);
     let feeReceiverAABal = await idleCDO.AAContract.balanceOf(mainnetContracts.feeReceiver);
     await rebalanceFull(idleCDO, creatorAddr);
     // Check that fee receiver got fees (in AA tranche tokens)

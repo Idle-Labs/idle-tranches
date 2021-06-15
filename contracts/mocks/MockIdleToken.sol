@@ -9,6 +9,7 @@ contract MockIdleToken is ERC20, MockERC20 {
   address[] public govTokens;
   address public underlying;
   uint256 public apr;
+  uint256 public lossOnRedeem;
   uint256 public _tokenPriceWithFee;
   uint256 public _redeemTokenPriceWithFee;
   uint256 public govAmount;
@@ -35,6 +36,9 @@ contract MockIdleToken is ERC20, MockERC20 {
   function setGovAmount(uint256 _govAmount) external {
     govAmount = _govAmount;
   }
+  function setLossOnRedeem(uint256 _lossOnRedeem) external {
+    lossOnRedeem = _lossOnRedeem;
+  }
 
   function getGovTokens() external view returns (address[] memory) {
     return govTokens;
@@ -56,11 +60,13 @@ contract MockIdleToken is ERC20, MockERC20 {
   }
 
   function redeemIdleToken(uint256 _amount) external returns(uint256) {
-    IERC20(underlying).transfer(msg.sender, _amount * _tokenPriceWithFee / 10**18);
+    uint256 toRedeem = _amount * _tokenPriceWithFee / 10**18;
+    toRedeem = toRedeem > lossOnRedeem ? toRedeem - lossOnRedeem : toRedeem;
+    IERC20(underlying).transfer(msg.sender, toRedeem);
     if (govTokens.length > 0) {
       IERC20(govTokens[0]).transfer(msg.sender, govAmount);
     }
     _burn(msg.sender, _amount);
-    return _amount * _tokenPriceWithFee / 10**18;
+    return toRedeem;
   }
 }

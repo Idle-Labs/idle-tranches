@@ -171,7 +171,7 @@ const deposit = async (type, idleCDO, addr, amount) => {
   return aaTrancheBal;
 }
 
-const withdraw = async (type, idleCDO, addr, initialAmount) => {
+const withdrawWithGain = async (type, idleCDO, addr, initialAmount) => {
   let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
   let AAContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
   let BBContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
@@ -181,6 +181,19 @@ const withdraw = async (type, idleCDO, addr, initialAmount) => {
   await sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [trancheBal]);
   const balAfter = BN(await underlyingContract.balanceOf(addr));
   const gain = balAfter.sub(balBefore).sub(initialAmount);
+  log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
+  return balAfter;
+}
+
+const withdraw = async (type, idleCDO, addr, amount) => {
+  let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
+  let AAContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
+  let BBContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
+  const isAA = type == 'AA';
+  const balBefore = BN(await underlyingContract.balanceOf(addr));
+  await sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [amount]);
+  const balAfter = BN(await underlyingContract.balanceOf(addr));
+  const gain = balAfter.sub(balBefore);
   log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
   return balAfter;
 }
