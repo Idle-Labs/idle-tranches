@@ -7,7 +7,6 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IERC20Detailed.sol";
@@ -20,13 +19,6 @@ import "hardhat/console.sol";
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
-
-  uint256 private constant ONE_18 = 10**18;
-
-  mapping(address => uint256) public usersStakes;
-  mapping(address => uint256) public rewardsIndexes;
-  mapping(address => mapping(address => uint256)) public usersIndexes;
-  mapping(address => uint256) public rewardsLastBalance;
 
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
@@ -42,54 +34,71 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   }
 
   function stake(uint256 _amount) external override returns (uint256) {
-    require(_amount > 0, "AMOUNT 0");
-
-    uint256 prevTotalStake = IERC20Detailed(tranche).balanceOf(address(this));
-    IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
-
-    uint256 stakedBefore = usersStakes[msg.sender];
+    _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
-
-    for (uint256 i = 0; i < rewards.length; i++) {
-      address reward = rewards[i];
-      if (stakedBefore == 0) {
-        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
-      } else {
-        uint256 userIndex = usersIndexes[msg.sender][reward];
-        usersIndexes[msg.sender][reward] = userIndex + (
-          _amount * (rewardsIndexes[reward] - userIndex) / usersStakes[msg.sender]
-        );
-      }
-    }
-
-    return _amount;
+    IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
   }
-
-  function unstake(uint256 _amount) external override  returns (uint256) {
-    return _amount;
+  function unstake(uint256 _amount) external override returns (uint256) {
+    _updateUserIdx(msg.sender, 0);
+    // _claim();
+    usersStakes[msg.sender] -= _amount;
+    IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
   }
 
   function userExpectedReward(address user, address reward) public view returns(uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
-    return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_18;
+
+    return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
   function totalStaked() public view returns(uint256) {
-    return IERC20Upgradeable(tranche).balanceOf(address(this));
+    return IERC20Detailed(tranche).balanceOf(address(this));
   }
 
   function totalRewards(address _reward) public view returns(uint256) {
-    return IERC20Upgradeable(_reward).balanceOf(address(this));
+    return IERC20Detailed(_reward).balanceOf(address(this));
   }
 
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_amount > 0, "!AMOUNT0");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
-
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
+    // rewardsIndexes[_reward] = rewardsIndexes[_reward] + (rewardIn / totalStaked());
+    rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked();
+  }
 
-    rewardsIndexes[_reward] += _amount * ONE_18 / totalStaked();
+  function _updateUserIdx(address _user, uint256 _amountToStake) internal {
+    address[] memory _rewards = rewards;
+    uint256 currIdx;
+    address reward;
+    uint256 _currStake = usersStakes[msg.sender];
+
+    // for (uint256 i = 0; i < rewards.length; i++) {
+    //   address reward = rewards[i];
+    //   if (_currStake == 0) {
+    //     usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+    //   } else {
+    //     uint256 globIdx = rewardsIndexes[reward];
+    //     uint256 userIndex = usersIndexes[msg.sender][reward];
+    //     uint256 currReward = _amountToStake * (globIdx - userIndex);
+    //
+    //     // uixd = currReward / (staked + _amountToStake) - globIdx
+    //     usersIndexes[msg.sender][reward] = (currReward * ONE_TRANCHE_TOKEN / (_currStake + _amountToStake)) - globIdx;
+    //   }
+    // }
+
+    for (uint256 i = 0; i < rewards.length; i++) {
+      address reward = rewards[i];
+      if (_currStake == 0) {
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      } else {
+        uint256 userIndex = usersIndexes[msg.sender][reward];
+        usersIndexes[msg.sender][reward] = userIndex + (
+          _amountToStake * (rewardsIndexes[reward] - userIndex) / usersStakes[msg.sender]
+        );
+      }
+    }
   }
 
   // TODO add stake, unstake, funds recover, get rewards etc
