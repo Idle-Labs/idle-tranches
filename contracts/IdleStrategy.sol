@@ -30,7 +30,6 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   uint256 public override oneToken;
   /// @notice decimals of the underlying asset
   uint256 public override tokenDecimals;
-
   /// @notice underlying ERC20 token contract
   IERC20Detailed public underlyingToken;
   /// @notice idleToken contract
@@ -88,7 +87,8 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   }
 
   /// @notice Anyone can call this because this contract holds no idleTokens and so no 'old' rewards
-  /// @dev redeem rewards and transfer them to msg.sender
+  /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`.
+  /// redeem rewards and transfer them to msg.sender
   function redeemRewards() external override {
     IIdleToken _idleToken = idleToken;
     // Get all idleTokens from msg.sender
@@ -105,12 +105,12 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   }
 
   /// @dev msg.sender should approve this contract first
-  /// to spend `_amount * ONE_IDLE_TOKEN / price(msg.sender)` of `strategyToken`
+  /// to spend `_amount * ONE_IDLE_TOKEN / price()` of `strategyToken`
   /// @param _amount amount of underlying tokens to redeem
   /// @return amount of underlyings redeemed
   function redeemUnderlying(uint256 _amount) external override returns(uint256) {
     // we are getting price before transferring so price of msg.sender
-    return _redeem(_amount * ONE_IDLE_TOKEN / price(msg.sender));
+    return _redeem(_amount * ONE_IDLE_TOKEN / price());
   }
 
   // ###################
@@ -154,24 +154,19 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   // Views
   // ###################
 
-  /// @return price in underlyings of 1 strategyToken
+  /// @return net price in underlyings of 1 strategyToken
   function price() public override view returns(uint256) {
     // idleToken price is specific to each user
     return idleToken.tokenPriceWithFee(msg.sender);
   }
 
-  /// @param _user address of the user for the requeste price
-  /// @return price in underlyings of 1 strategyToken for a specific user if any
-  function price(address _user) public override view returns(uint256) {
-    return idleToken.tokenPriceWithFee(_user);
-  }
-
   /// @return apr net apr (fees should already be excluded)
   function getApr() external override view returns(uint256 apr) {
-    apr = idleToken.getAvgAPR();
+    IIdleToken _idleToken = idleToken;
+    apr = _idleToken.getAvgAPR();
     // remove fee
     // 100000 => 100% in IdleToken contracts
-    apr -= apr * idleToken.fee() / 100000;
+    apr -= apr * _idleToken.fee() / 100000;
   }
 
   /// @return tokens array of reward token addresses
