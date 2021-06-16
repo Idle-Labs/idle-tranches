@@ -106,18 +106,21 @@ describe('IdleCDOTrancheRewards', function() {
     await check();
 
     log("user1 stakes 30");
-    await stake(user1, this.tokenUtils.fromUnits("30"))
-    // await stake(user1, this.tokenUtils.fromUnits("20"))
-    // await stake(user1, this.tokenUtils.fromUnits("10"))
+    await stake(user1, this.tokenUtils.fromUnits("10"))
+    await stake(user1, this.tokenUtils.fromUnits("10"))
+    await stake(user1, this.tokenUtils.fromUnits("10"))
     await check();
 
     log("deposit 100 reward1");
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
     await check();
 
-    // await stake(user1, this.tokenUtils.fromUnits("50"))
-    // await stake(user2, this.tokenUtils.fromUnits("50"))
-    // await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("200"));
+    log("user2 stakes 10");
+    await stake(user2, this.tokenUtils.fromUnits("10"))
+    await check();
+
+    log("deposit 100 reward1");
+    await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
     await check();
   });
 });

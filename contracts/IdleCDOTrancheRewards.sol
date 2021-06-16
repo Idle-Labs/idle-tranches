@@ -52,7 +52,14 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
     for (uint256 i = 0; i < rewards.length; i++) {
       address reward = rewards[i];
-      usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      if (stakedBefore == 0) {
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      } else {
+        uint256 userIndex = usersIndexes[msg.sender][reward];
+        usersIndexes[msg.sender][reward] = userIndex + (
+          _amount * (rewardsIndexes[reward] - userIndex) / usersStakes[msg.sender]
+        );
+      }
     }
 
     return _amount;
@@ -64,7 +71,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   function userExpectedReward(address user, address reward) public view returns(uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
-
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_18;
   }
 
@@ -78,19 +84,12 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
+    require(_amount > 0, "!AMOUNT0");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
 
-
-    uint256 balanceBefore = IERC20Upgradeable(_reward).balanceOf(address(this));
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
-    uint256 rewardIn = IERC20Upgradeable(_reward).balanceOf(address(this)) - balanceBefore;
 
-    if (rewardIn == 0){
-      return;
-    }
-
-    // rewardsIndexes[_reward] = rewardsIndexes[_reward] + (rewardIn / totalStaked());
-    rewardsIndexes[_reward] = rewardsIndexes[_reward] + ((rewardIn * ONE_18 / totalStaked() * ONE_18) / ONE_18);
+    rewardsIndexes[_reward] += _amount * ONE_18 / totalStaked();
   }
 
   // TODO add stake, unstake, funds recover, get rewards etc
