@@ -16,4 +16,6 @@ contract IdleCDOTrancheRewardsStorage {
   mapping(address => mapping(address => uint256)) public usersIndexes;
 
   mapping(address => uint256) public rewardsLastBalance;
+
+  uint256 public totalStaked;
 }
