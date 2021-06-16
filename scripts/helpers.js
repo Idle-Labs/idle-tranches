@@ -216,5 +216,6 @@ module.exports = {
   resetFork,
   oneToken,
   deposit,
-  withdraw
+  withdraw,
+  withdrawWithGain
 }
