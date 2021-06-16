@@ -111,19 +111,15 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     address reward;
     uint256 _currStake = usersStakes[msg.sender];
 
-    for (uint256 i = 0; i < rewards.length; i++) {
-      address reward = rewards[i];
-      if (_currStake == 0) {
-        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
-      } else {
-        uint256 userIndex = usersIndexes[msg.sender][reward];
-        usersIndexes[msg.sender][reward] = usersStakes[msg.sender] * (rewardsIndexes[reward] - userIndex) / (usersStakes[msg.sender] + _amountToStake);
-      }
+    for (uint256 i = 0; i < _rewards.length; i++) {
+      reward = _rewards[i];
+      usersIndexes[msg.sender][reward] = _currStake == 0 ?
+        // current global idx
+        rewardsIndexes[reward] :
+        // currReward / totStaked
+        _currStake * (rewardsIndexes[reward] - usersIndexes[msg.sender][reward]) / (_currStake + _amountToStake);
     }
   }
-
-  // TODO add stake, unstake, funds recover, get rewards etc
-
 
   /// @dev this method is only used to check whether a token is an incentive tokens or not
   /// in the harvest call. The maximum number of element in the array will be a small number (eg at most 3-5)
