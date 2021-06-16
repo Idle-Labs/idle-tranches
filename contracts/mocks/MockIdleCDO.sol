@@ -3,6 +3,7 @@ pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../interfaces/IIdleCDOTrancheRewards.sol";
 
 contract MockIdleCDO {
   using SafeERC20 for IERC20;
@@ -18,10 +19,8 @@ contract MockIdleCDO {
     trancheRewardsContract = a;
   }
 
-  function redeemRewards() external {
-    for (uint256 i = 0; i < rewards.length; i++) {
-      address reward = rewards[i];
-      IERC20(reward).safeTransfer(trancheRewardsContract, IERC20(reward).balanceOf(address(this)));
-    }
+  function depositReward(address _reward, uint256 _amount) external {
+    IERC20(_reward).safeApprove(trancheRewardsContract, _amount);
+    IIdleCDOTrancheRewards(trancheRewardsContract).depositReward(_reward, _amount);
   }
 }
