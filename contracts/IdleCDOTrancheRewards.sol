@@ -37,22 +37,21 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
+    totalStaked += _amount;
   }
+
   function unstake(uint256 _amount) external override returns (uint256) {
     _updateUserIdx(msg.sender, 0);
     // _claim();
     usersStakes[msg.sender] -= _amount;
     IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
+    totalStaked -= _amount;
   }
 
   function userExpectedReward(address user, address reward) public view returns(uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
 
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
-  }
-
-  function totalStaked() public view returns(uint256) {
-    return IERC20Detailed(tranche).balanceOf(address(this));
   }
 
   function totalRewards(address _reward) public view returns(uint256) {
@@ -64,8 +63,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     require(_amount > 0, "!AMOUNT0");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
-    // rewardsIndexes[_reward] = rewardsIndexes[_reward] + (rewardIn / totalStaked());
-    rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked();
+    rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
   }
 
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
