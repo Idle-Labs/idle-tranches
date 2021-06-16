@@ -205,9 +205,9 @@ describe("IdleStrategy", function () {
       strategy.connect(BBBuyer).transferToken(incentiveToken.address, _amount, BBBuyerAddr)
     ).to.be.revertedWith("Ownable: caller is not the owner");
 
-    const initialBal = await underlying.balanceOf(BBBuyerAddr);
-    await strategy.transferToken(underlying.address, _amount, BBBuyerAddr);
-    const finalBal = await underlying.balanceOf(BBBuyerAddr);
+    const initialBal = await incentiveToken.balanceOf(BBBuyerAddr);
+    await strategy.transferToken(incentiveToken.address, _amount, BBBuyerAddr);
+    const finalBal = await incentiveToken.balanceOf(BBBuyerAddr);
     expect(finalBal.sub(initialBal)).to.be.equal(_amount);
   });
 
