@@ -17,7 +17,7 @@ import "./IdleCDOTrancheRewardsStorage.sol";
 
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using AddressUpgradeable for address payable;
-  using SafeERC20Upgradeable for IERC20Upgradeable;
+  using SafeERC20Upgradeable for IERC20Detailed;
 
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
@@ -41,8 +41,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
-    // TODO
-    _amount;
+    IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
   }
   // TODO add stake, unstake, funds recover, get rewards etc
 
@@ -65,7 +64,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   // Emergency method, funds gets transferred to the governanceRecoveryFund address
   function transferToken(address token, uint256 value) external onlyOwner nonReentrant returns (bool) {
     require(token != address(0), 'Address is 0');
-    IERC20Upgradeable(token).safeTransfer(governanceRecoveryFund, value);
+    IERC20Detailed(token).safeTransfer(governanceRecoveryFund, value);
     return true;
   }
   /// @notice can be called by both the owner and the guardian

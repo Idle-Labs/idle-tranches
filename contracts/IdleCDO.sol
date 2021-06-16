@@ -425,8 +425,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
     // Split rewards according to trancheAPRSplitRatio in case the ratio between
     // AA and BB is already ideal
+    // NOTE: the order is important here, first there must be the deposit for AA rewards
     _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
-    _depositIncentiveToken(_BBStaking, FULL_ALLOC - _trancheAPRSplitRatio);
+    // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
+    // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
+    // and the balance for AA already transferred
+    _depositIncentiveToken(_BBStaking, FULL_ALLOC);
   }
 
   /// @notice sends requested ratio of incentive tokens reward to a specific IdleCDOTrancheRewards contract
@@ -503,7 +507,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // Fetch state variables once to save gas
       address[] memory _incentiveTokens = incentiveTokens;
       address _weth = weth;
-      address _uniswapRouterV2 = address(uniswapRouterV2);
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(_strategy).redeemRewards();
       // get all rewards addresses
@@ -519,10 +522,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         _path[0] = rewardToken;
         _path[1] = _weth;
         _path[2] = _token;
+        // Get uniswap router reference
+        IUniswapV2Router02 _uniRouter = uniswapRouterV2;
         // approve the uniswap router to spend our reward
-        IERC20Detailed(rewardToken).safeIncreaseAllowance(_uniswapRouterV2, _currentBalance);
+        IERC20Detailed(rewardToken).safeIncreaseAllowance(address(_uniRouter), _currentBalance);
         // do the uniswap trade
-        uniswapRouterV2.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        _uniRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
           _currentBalance,
           _minAmount[i],
           _path,
