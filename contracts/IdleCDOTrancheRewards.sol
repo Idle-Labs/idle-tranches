@@ -80,7 +80,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
 
     uint256 balanceBefore = IERC20Upgradeable(_reward).balanceOf(address(this));
-    IERC20Upgradeable(_reward).safeTransferFrom(idleCDO, address(this), _amount);
+    IERC20Upgradeable(_reward).safeTransferFrom(msg.sender, address(this), _amount);
     uint256 rewardIn = IERC20Upgradeable(_reward).balanceOf(address(this)) - balanceBefore;
 
     if (rewardIn == 0){
