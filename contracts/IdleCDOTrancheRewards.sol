@@ -44,8 +44,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   function stake(uint256 _amount) external override returns (uint256) {
     require(_amount > 0, "AMOUNT 0");
 
-    uint256 prevTotalStake = IERC20Upgradeable(tranche).balanceOf(address(this));
-    IERC20Upgradeable(tranche).safeTransferFrom(msg.sender, address(this), _amount);
+    uint256 prevTotalStake = IERC20Detailed(tranche).balanceOf(address(this));
+    IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
+
+    uint256 stakedBefore = usersStakes[msg.sender];
     usersStakes[msg.sender] += _amount;
 
     for (uint256 i = 0; i < rewards.length; i++) {
@@ -80,7 +82,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
 
     uint256 balanceBefore = IERC20Upgradeable(_reward).balanceOf(address(this));
-    IERC20Upgradeable(_reward).safeTransferFrom(msg.sender, address(this), _amount);
+    IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
     uint256 rewardIn = IERC20Upgradeable(_reward).balanceOf(address(this)) - balanceBefore;
 
     if (rewardIn == 0){
