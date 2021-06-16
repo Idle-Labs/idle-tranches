@@ -74,29 +74,13 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     address reward;
     uint256 _currStake = usersStakes[msg.sender];
 
-    // for (uint256 i = 0; i < rewards.length; i++) {
-    //   address reward = rewards[i];
-    //   if (_currStake == 0) {
-    //     usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
-    //   } else {
-    //     uint256 globIdx = rewardsIndexes[reward];
-    //     uint256 userIndex = usersIndexes[msg.sender][reward];
-    //     uint256 currReward = _amountToStake * (globIdx - userIndex);
-    //
-    //     // uixd = currReward / (staked + _amountToStake) - globIdx
-    //     usersIndexes[msg.sender][reward] = (currReward * ONE_TRANCHE_TOKEN / (_currStake + _amountToStake)) - globIdx;
-    //   }
-    // }
-
     for (uint256 i = 0; i < rewards.length; i++) {
       address reward = rewards[i];
       if (_currStake == 0) {
         usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       } else {
         uint256 userIndex = usersIndexes[msg.sender][reward];
-        usersIndexes[msg.sender][reward] = userIndex + (
-          _amountToStake * (rewardsIndexes[reward] - userIndex) / usersStakes[msg.sender]
-        );
+        usersIndexes[msg.sender][reward] = usersStakes[msg.sender] * (rewardsIndexes[reward] - userIndex) / (usersStakes[msg.sender] + _amountToStake);
       }
     }
   }
