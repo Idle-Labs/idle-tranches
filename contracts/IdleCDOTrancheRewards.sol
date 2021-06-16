@@ -16,10 +16,21 @@ import "./interfaces/IIdleCDO.sol";
 import "./IdleCDOTrancheRewardsStorage.sol";
 import "hardhat/console.sol";
 
+/// @title IdleCDOTrancheRewards
+/// @notice
+/// @dev
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  /// @notice
+  /// @dev
+  /// @param _trancheToken
+  /// @param _rewards
+  /// @param _guardian
+  /// @param _idleCDO
+  /// @param _governanceRecoveryFund
+  /// @return
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
   ) public initializer {
@@ -33,6 +44,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     governanceRecoveryFund = _governanceRecoveryFund;
   }
 
+  /// @notice
+  /// @dev
+  /// @param _amount
+  /// @return
   function stake(uint256 _amount) external override returns (uint256) {
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
@@ -40,6 +55,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     totalStaked += _amount;
   }
 
+  /// @notice
+  /// @dev
+  /// @param _amount
+  /// @return
   function unstake(uint256 _amount) external override returns (uint256) {
     _updateUserIdx(msg.sender, 0);
     // _claim();
@@ -48,16 +67,30 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     totalStaked -= _amount;
   }
 
+  /// @notice
+  /// @dev
+  /// @param user
+  /// @param reward
+  /// @return
   function userExpectedReward(address user, address reward) public view returns(uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
 
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
+  /// @notice
+  /// @dev
+  /// @param _reward
+  /// @return
   function totalRewards(address _reward) public view returns(uint256) {
     return IERC20Detailed(_reward).balanceOf(address(this));
   }
 
+  /// @notice
+  /// @dev
+  /// @param _array
+  /// @param _val
+  /// @return
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_amount > 0, "!AMOUNT0");
@@ -66,6 +99,12 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
   }
 
+  /// @notice
+  /// @dev
+  /// @param token
+  /// @param value
+  /// @param _amountToStake
+  /// @return
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
     address[] memory _rewards = rewards;
     uint256 currIdx;
