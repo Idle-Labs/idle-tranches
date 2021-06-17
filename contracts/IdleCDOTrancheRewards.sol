@@ -98,7 +98,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @param _amount TODO
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
-    require(_amount > 0, "!AMOUNT0");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
     rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
