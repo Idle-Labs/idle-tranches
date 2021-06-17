@@ -318,12 +318,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice this will be called only during harvests
   /// @param _amount amount of underlyings to deposit
-  /// @return _minted number of tranche tokens minted
-  function _depositFees(uint256 _amount) internal returns (uint256 _minted) {
+  /// @return _currAARatio current AA ratio
+  function _depositFees(uint256 _amount) internal returns (uint256 _currAARatio) {
     if (_amount > 0) {
-      _minted = _mintShares(_amount, feeReceiver,
+      _currAARatio = getCurrentAARatio();
+      _mintShares(_amount, feeReceiver,
         // Choose the right tranche to mint based on getCurrentAARatio
-        getCurrentAARatio() >= trancheIdealWeightRatio ? BBTranche : AATranche
+        _currAARatio >= trancheIdealWeightRatio ? BBTranche : AATranche
       );
       // reset unclaimedFees counter
       unclaimedFees = 0;
@@ -403,15 +404,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   }
 
   /// @notice sends specific rewards to the tranche rewards staking contracts
-  function _updateIncentives() internal {
+  function _updateIncentives(uint256 currAARatio) internal {
     // Read state variables only once to save gas
     uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     uint256 _idealRange = idealRange;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
-    // Get current AA ratio (using virtual prices with full NAV)
-    uint256 currAARatio = getCurrentAARatio();
+
     // Check if BB tranches should be rewarded (is AA ratio high)
     if (_BBStaking != address(0) && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
       // give more rewards to BB holders, ie send some rewards to BB Staking contract
@@ -441,10 +441,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
       address _incentiveToken = _incentiveTokens[i];
       // deposit the requested ratio of the current contract balance of _incentiveToken to `_to`
-      IIdleCDOTrancheRewards(_stakingContract).depositReward(
-        _incentiveToken,
-        _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC
-      );
+      uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
+      if (_reward > 0) {
+        IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
+      }
     }
   }
 
@@ -507,6 +507,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // Fetch state variables once to save gas
       address[] memory _incentiveTokens = incentiveTokens;
       address _weth = weth;
+      IUniswapV2Router02 _uniRouter = uniswapRouterV2;
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(_strategy).redeemRewards();
       // get all rewards addresses
@@ -522,8 +523,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         _path[0] = rewardToken;
         _path[1] = _weth;
         _path[2] = _token;
-        // Get uniswap router reference
-        IUniswapV2Router02 _uniRouter = uniswapRouterV2;
         // approve the uniswap router to spend our reward
         IERC20Detailed(rewardToken).safeIncreaseAllowance(address(_uniRouter), _currentBalance);
         // do the uniswap trade
@@ -547,11 +546,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       _updateLastTranchePrices();
 
       // Get fees in the form of totalSupply diluition
-      _depositFees(unclaimedFees);
+      // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
+      uint256 currAARatio = _depositFees(unclaimedFees);
 
       if (!_skipIncentivesUpdate) {
         // Update tranche incentives distribution and send rewards to staking contracts
-        _updateIncentives();
+        _updateIncentives(currAARatio);
       }
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated

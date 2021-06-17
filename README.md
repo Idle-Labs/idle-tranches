@@ -43,13 +43,19 @@ Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal
 ```
 export ALCHEMY_API_KEY=XXXX && export ETHERSCAN_API_KEY=XXXXX
 ```
-
 then
 
 ```
-npx hardhat buy
+npx hardhat integration
 ```
 or any other tasks in `tasks/*`
+
+NOTE: given thant `chainId: 1` is used, it's required to
+
+```
+rm .openzeppelin/mainnet.json
+```
+before running the `integration` or `deploy` task
 
 ## Unit Tests
 

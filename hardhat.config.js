@@ -35,7 +35,7 @@ module.exports = {
       // accounts: {
       //   mnemonic: process.env.MNEMONIC_MAINNET,
       // },
-      allowUnlimitedContractSize: true,
+      // allowUnlimitedContractSize: true,
       chainId: 1,
       forking: {
         url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,

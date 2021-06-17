@@ -198,6 +198,14 @@ const withdraw = async (type, idleCDO, addr, amount) => {
   return balAfter;
 }
 
+const getBalance = async (tokenContract, address) => {
+  return BN(await tokenContract.balanceOf(address));
+}
+const checkBalance = async (tokenContract, address, balance) => {
+  const bal = await getBalance(tokenContract, address);
+  check(bal, balance, `Requested bal ${bal} is equal to the provided one ${balance}`);
+}
+
 module.exports = {
   getSigner,
   callContract,
@@ -217,5 +225,7 @@ module.exports = {
   oneToken,
   deposit,
   withdraw,
-  withdrawWithGain
+  withdrawWithGain,
+  getBalance,
+  checkBalance
 }
