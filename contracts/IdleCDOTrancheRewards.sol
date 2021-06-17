@@ -23,14 +23,13 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  /// @notice
+  /// @notice Initialize the contract
   /// @dev
   /// @param _trancheToken
-  /// @param _rewards
-  /// @param _guardian
-  /// @param _idleCDO
-  /// @param _governanceRecoveryFund
-  /// @return
+  /// @param _rewards The rewards tokens
+  /// @param _guardian TODO
+  /// @param _idleCDO The CDO where the reward tokens come from
+  /// @param _governanceRecoveryFund TODO
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
   ) public initializer {
@@ -44,53 +43,59 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     governanceRecoveryFund = _governanceRecoveryFund;
   }
 
-  /// @notice
-  /// @dev
-  /// @param _amount
-  /// @return
-  function stake(uint256 _amount) external override returns (uint256) {
+  /// @notice Stake _amount of tranche token
+  /// @param _amount The amount of tranche tokens to stake
+  function stake(uint256 _amount) external override {
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
     totalStaked += _amount;
   }
 
-  /// @notice
-  /// @dev
-  /// @param _amount
-  /// @return
-  function unstake(uint256 _amount) external override returns (uint256) {
-    _updateUserIdx(msg.sender, 0);
-    // _claim();
+  /// @notice Unstake _amount of tranche tokens
+  /// @param _amount The amount to unstake
+  function unstake(uint256 _amount) external override {
+    require(usersStakes[msg.sender] >= _amount, "Amount greater than stakes");
+    _claim();
     usersStakes[msg.sender] -= _amount;
     IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
     totalStaked -= _amount;
   }
 
-  /// @notice
-  /// @dev
-  /// @param user
-  /// @param reward
-  /// @return
-  function userExpectedReward(address user, address reward) public view returns(uint256) {
-    require(_includesAddress(rewards, reward), "!SUPPORTED");
+  /// @notice Sends all the expected rewards to the msg.sender
+  /// @dev User index is reset
+  function claim() external {
+    _claim();
+  }
 
+  /// @notice Claim all rewards, used by claim and unstake
+  function _claim() internal {
+    for (uint256 i; i < rewards.length; i++) {
+      address reward = rewards[i];
+      uint256 amount = expectedUserReward(msg.sender, reward);
+      uint256 balance = IERC20Detailed(reward).balanceOf(address(this));
+      if (amount > balance) {
+        amount = balance;
+      }
+      usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      IERC20Detailed(reward).safeTransfer(msg.sender, amount);
+    }
+  }
+
+  /// @notice Calculates the expected rewards for a user
+  /// @dev
+  /// @param user The user address
+  /// @param reward The reward token address
+  /// @return The expected reward amount
+  function expectedUserReward(address user, address reward) public view returns(uint256) {
+    require(_includesAddress(rewards, reward), "!SUPPORTED");
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
-  /// @notice
+  /// @notice TODO
   /// @dev
-  /// @param _reward
-  /// @return
-  function totalRewards(address _reward) public view returns(uint256) {
-    return IERC20Detailed(_reward).balanceOf(address(this));
-  }
-
-  /// @notice
-  /// @dev
-  /// @param _array
-  /// @param _val
-  /// @return
+  /// @param _reward TODO
+  /// @param _amount TODO
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_amount > 0, "!AMOUNT0");
@@ -99,25 +104,27 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
   }
 
-  /// @notice
+  /// @notice TODO
   /// @dev
-  /// @param token
-  /// @param value
-  /// @param _amountToStake
-  /// @return
+  /// @param _user TODO
+  /// @param _amountToStake TODO
+  /// @param _amountToStake TODO
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
     address[] memory _rewards = rewards;
     uint256 currIdx;
     address reward;
     uint256 _currStake = usersStakes[msg.sender];
 
-    for (uint256 i = 0; i < _rewards.length; i++) {
-      reward = _rewards[i];
-      usersIndexes[msg.sender][reward] = _currStake == 0 ?
-        // current global idx
-        rewardsIndexes[reward] :
-        // currReward / totStaked
-        _currStake * (rewardsIndexes[reward] - usersIndexes[msg.sender][reward]) / (_currStake + _amountToStake);
+    for (uint256 i = 0; i < rewards.length; i++) {
+      address reward = rewards[i];
+      if (_currStake == 0) {
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      } else {
+        uint256 userIndex = usersIndexes[msg.sender][reward];
+        usersIndexes[msg.sender][reward] = userIndex + (
+          _amountToStake * (rewardsIndexes[reward] - userIndex) / (usersStakes[msg.sender] + _amountToStake)
+        );
+      }
     }
   }
 

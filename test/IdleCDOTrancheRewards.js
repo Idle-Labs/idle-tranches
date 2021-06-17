@@ -1,8 +1,10 @@
+const { expect } = require("chai");
 const { BigNumber } = require("@ethersproject/bignumber");
 const addresses = require('../lib/addresses');
 
 const BN = v => BigNumber.from(v.toString());
 
+// pretty number
 const pn = (_n) => {
   const n = _n.toString();
   let s = "";
@@ -66,10 +68,9 @@ describe('IdleCDOTrancheRewards', function() {
   it('test', async () => {
     const [user1, user2, user3] = this.accounts;
 
-    const check = async () => {
+    const dump = async () => {
       log("\n-----------------------------");
-      // log("CDO available rewards   ", this.tokenUtils.toUnitsS(await this.rewardToken1.balanceOf(this.cdo.address)));
-      log("total rewards           ", pn(await this.contract.totalRewards(this.rewardToken1.address)));
+      log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
       log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
       log("total staked            ", pn(await this.contract.totalStaked()));
 
@@ -77,50 +78,111 @@ describe('IdleCDOTrancheRewards', function() {
       log("user1 stakes            ", pn(await this.contract.usersStakes(user1.address)));
       log("user1 reward balance    ", pn(await this.rewardToken1.balanceOf(user1.address)));
       log("user1 index             ", pn(await this.contract.usersIndexes(user1.address, this.rewardToken1.address)));
-      log("user1 expected          ", pn(await this.contract.userExpectedReward(user1.address, this.rewardToken1.address)));
+      log("user1 expected          ", pn(await this.contract.expectedUserReward(user1.address, this.rewardToken1.address)));
 
       log("");
       log("user2 stakes            ", pn(await this.contract.usersStakes(user2.address)));
       log("user2 reward balance    ", pn(await this.rewardToken1.balanceOf(user2.address)));
       log("user2 index             ", pn(await this.contract.usersIndexes(user2.address, this.rewardToken1.address)));
-      log("user2 expected          ", pn(await this.contract.userExpectedReward(user2.address, this.rewardToken1.address)));
+      log("user2 expected          ", pn(await this.contract.expectedUserReward(user2.address, this.rewardToken1.address)));
       log("-----------------------------\n");
     }
 
-    const stake = async(user, amount) => {
+    const stake = async (user, amount) => {
       await this.tranche.transfer(user.address, amount);
       await this.tranche.connect(user).approve(this.contract.address, amount);
       await this.contract.connect(user).stake(amount);
     }
 
+    const checkUserStakes = async (user, expected) => {
+      expect(await this.contract.usersStakes(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    }
+
+    const checkExpectedUserRewards = async (user, expected) => {
+      expect(await this.contract.expectedUserReward(user.address, this.rewardToken1.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    }
+
+    const checkRewardBalance = async (user, expected) => {
+      expect(await this.rewardToken1.balanceOf(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    }
+
     log("user1 stakes 10");
     await stake(user1, this.tokenUtils.fromUnits("10"))
-    await check();
+    await dump();
+    await checkUserStakes(user1, "10");
+    await checkUserStakes(user2, "0");
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
 
     log("deposit 100 reward1");
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
-    await check();
+    await dump();
+    await checkExpectedUserRewards(user1, "100");
+    await checkExpectedUserRewards(user2, "0");
 
     log("user2 stakes 10");
     await stake(user2, this.tokenUtils.fromUnits("10"))
-    await check();
+    await dump();
+    await checkUserStakes(user1, "10");
+    await checkUserStakes(user2, "10");
+    await checkExpectedUserRewards(user1, "100");
+    await checkExpectedUserRewards(user2, "0");
 
     log("user1 stakes 30");
+    await stake(user1, this.tokenUtils.fromUnits("20"))
     await stake(user1, this.tokenUtils.fromUnits("10"))
-    await stake(user1, this.tokenUtils.fromUnits("10"))
-    await stake(user1, this.tokenUtils.fromUnits("10"))
-    await check();
+    await dump();
+    await checkUserStakes(user1, "40");
+    await checkUserStakes(user2, "10");
 
     log("deposit 100 reward1");
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
-    await check();
+    await dump();
+    await checkExpectedUserRewards(user1, "180");
+    await checkExpectedUserRewards(user2, "20");
 
-    log("user2 stakes 10");
-    await stake(user2, this.tokenUtils.fromUnits("10"))
-    await check();
+    await checkRewardBalance(user1, "0");
+    await checkRewardBalance(user2, "0");
+
+    log("user1 unstakes 40");
+    await this.contract.connect(user1).unstake(this.tokenUtils.fromUnits("40"));
+    await dump();
+    await checkUserStakes(user1, "0");
+    await checkUserStakes(user2, "10");
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "20");
+    await checkRewardBalance(user1, "180");
+    await checkRewardBalance(user2, "0");
+
+    log("user2 unstakes 20");
+    await this.contract.connect(user2).unstake(this.tokenUtils.fromUnits("10"));
+    await dump();
+    await checkUserStakes(user1, "0");
+    await checkUserStakes(user2, "0");
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
+    await checkRewardBalance(user1, "180");
+    await checkRewardBalance(user2, "20");
+
+    log("user1 stakes 10");
+    await stake(user1, this.tokenUtils.fromUnits("10"))
+    await dump();
+    await checkUserStakes(user1, "10");
+    await checkUserStakes(user2, "0");
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
 
     log("deposit 100 reward1");
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
-    await check();
+    await dump();
+    await checkExpectedUserRewards(user1, "100");
+    await checkExpectedUserRewards(user2, "0");
+
+    log("user1 calls claim");
+    await this.contract.connect(user1).claim();
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+    await checkRewardBalance(user1, "280");
+    await dump();
   });
 });
