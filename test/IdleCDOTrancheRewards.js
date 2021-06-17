@@ -134,6 +134,8 @@ describe('IdleCDOTrancheRewards', function() {
     await dump();
     await checkUserStakes(user1, "40");
     await checkUserStakes(user2, "10");
+    await checkExpectedUserRewards(user1, "100");
+    await checkExpectedUserRewards(user2, "0");
 
     log("deposit 100 reward1");
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));

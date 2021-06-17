@@ -45,7 +45,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Stake _amount of tranche token
   /// @param _amount The amount of tranche tokens to stake
-  function stake(uint256 _amount) external override {
+  function stake(uint256 _amount) external whenNotPaused override {
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
@@ -64,7 +64,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Sends all the expected rewards to the msg.sender
   /// @dev User index is reset
-  function claim() external {
+  function claim() whenNotPaused external {
     _claim();
   }
 
