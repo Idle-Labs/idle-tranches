@@ -110,18 +110,18 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @param _amountToStake TODO
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
     address[] memory _rewards = rewards;
-    uint256 currIdx;
+    uint256 userIndex;
     address reward;
-    uint256 _currStake = usersStakes[msg.sender];
+    uint256 _currStake = usersStakes[_user];
 
-    for (uint256 i = 0; i < rewards.length; i++) {
-      address reward = rewards[i];
+    for (uint256 i = 0; i < _rewards.length; i++) {
+      reward = _rewards[i];
       if (_currStake == 0) {
-        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+        usersIndexes[_user][reward] = rewardsIndexes[reward];
       } else {
-        uint256 userIndex = usersIndexes[msg.sender][reward];
-        usersIndexes[msg.sender][reward] = userIndex + (
-          _amountToStake * (rewardsIndexes[reward] - userIndex) / (usersStakes[msg.sender] + _amountToStake)
+        userIndex = usersIndexes[_user][reward];
+        usersIndexes[_user][reward] = userIndex + (
+          _amountToStake * (rewardsIndexes[reward] - userIndex) / (_currStake + _amountToStake)
         );
       }
     }
