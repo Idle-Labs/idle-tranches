@@ -32,7 +32,15 @@ const erc20Utils = (decimals) => {
   }
 }
 
-const log = console.log;
+const debug = process.env.DEBUG != undefined && process.env.DEBUG != "";
+
+const log = function() {
+  if (!debug) {
+    return;
+  }
+
+  console.log(...arguments);
+}
 
 describe('IdleCDOTrancheRewards', function() {
   beforeEach(async () => {
@@ -65,10 +73,14 @@ describe('IdleCDOTrancheRewards', function() {
     await this.rewardToken1.connect(owner).approve(this.contract.address, this.tokenUtils.fromUnits("10000").toString());
   });
 
-  it('test', async () => {
+  it('full test', async () => {
     const [user1, user2, user3] = this.accounts;
 
     const dump = async () => {
+      if (!debug) {
+        return;
+      }
+
       log("\n-----------------------------");
       log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
       log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
