@@ -107,6 +107,31 @@ describe('IdleCDOTrancheRewards', function() {
     expect(await this.rewardToken1.balanceOf(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
   }
 
+  const dump = async () => {
+    if (!debug) {
+      return;
+    }
+
+    const [user1, user2] = this.accounts;
+
+    log("\n-----------------------------");
+    log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
+    log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
+    log("total staked            ", pn(await this.contract.totalStaked()));
+
+    log("");
+    log("user1 stakes            ", pn(await this.contract.usersStakes(user1.address)));
+    log("user1 reward balance    ", pn(await this.rewardToken1.balanceOf(user1.address)));
+    log("user1 index             ", pn(await this.contract.usersIndexes(user1.address, this.rewardToken1.address)));
+    log("user1 expected          ", pn(await this.contract.expectedUserReward(user1.address, this.rewardToken1.address)));
+
+    log("");
+    log("user2 stakes            ", pn(await this.contract.usersStakes(user2.address)));
+    log("user2 reward balance    ", pn(await this.rewardToken1.balanceOf(user2.address)));
+    log("user2 index             ", pn(await this.contract.usersIndexes(user2.address, this.rewardToken1.address)));
+    log("user2 expected          ", pn(await this.contract.expectedUserReward(user2.address, this.rewardToken1.address)));
+    log("-----------------------------\n");
+  }
 
   it ('stake', async () => {
     const [user1] = this.accounts;
@@ -167,30 +192,6 @@ describe('IdleCDOTrancheRewards', function() {
 
   it('full test', async () => {
     const [user1, user2, user3] = this.accounts;
-
-    const dump = async () => {
-      if (!debug) {
-        return;
-      }
-
-      log("\n-----------------------------");
-      log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
-      log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
-      log("total staked            ", pn(await this.contract.totalStaked()));
-
-      log("");
-      log("user1 stakes            ", pn(await this.contract.usersStakes(user1.address)));
-      log("user1 reward balance    ", pn(await this.rewardToken1.balanceOf(user1.address)));
-      log("user1 index             ", pn(await this.contract.usersIndexes(user1.address, this.rewardToken1.address)));
-      log("user1 expected          ", pn(await this.contract.expectedUserReward(user1.address, this.rewardToken1.address)));
-
-      log("");
-      log("user2 stakes            ", pn(await this.contract.usersStakes(user2.address)));
-      log("user2 reward balance    ", pn(await this.rewardToken1.balanceOf(user2.address)));
-      log("user2 index             ", pn(await this.contract.usersIndexes(user2.address, this.rewardToken1.address)));
-      log("user2 expected          ", pn(await this.contract.expectedUserReward(user2.address, this.rewardToken1.address)));
-      log("-----------------------------\n");
-    }
 
     log("user1 stakes 10");
     await stake(user1, "10")
@@ -272,5 +273,49 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
     await checkRewardBalance(user1, "280");
     await dump();
+  });
+
+  it("claims the maximum available if expectedUserReward is more", async () => {
+    const user = this.accounts[0];
+    await stake(user, "10")
+    await depositReward("100");
+    await stake(user, "20")
+    await stake(user, "30")
+    await checkExpectedUserRewards(user, "100");
+
+    // for rounding problems, the user expected Reward is
+    // 100_000_000_000_000_000_020 instead of
+    // 100_000_000_000_000_000_000
+    const expected = BN(await this.contract.expectedUserReward(user.address, this.rewardToken1.address));
+    const balance = BN(await this.rewardToken1.balanceOf(this.contract.address));
+    expect(expected.gt(balance)).to.be.true;
+
+    await dump();
+    await unstake(user, "60");
+    await dump();
+
+    const balanceAfter = BN(await this.rewardToken1.balanceOf(this.contract.address));
+    expect(BN(await this.rewardToken1.balanceOf(this.contract.address))).to.be.bignumber.equal(BN("0"));
+  });
+
+  it("should revert when calling stake and contract is paused", async () => {
+    await this.contract.connect(this.owner).pause();
+    await expect(
+      stake(this.accounts[0], "10")
+    ).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("should revert when calling unstake and contract is paused", async () => {
+    await this.contract.connect(this.owner).pause();
+    await expect(
+      unstake(this.accounts[0], "10")
+    ).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("should revert when calling claim and contract is paused", async () => {
+    await this.contract.connect(this.owner).pause();
+    await expect(
+      claim(this.accounts[0])
+    ).to.be.revertedWith("Pausable: paused");
   });
 });

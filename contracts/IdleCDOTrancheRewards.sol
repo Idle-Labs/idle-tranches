@@ -54,6 +54,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     totalStaked += _amount;
   }
 
+  //TODO: add skipClaim flag
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
   function unstake(uint256 _amount) external whenNotPaused override {
