@@ -35,6 +35,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   ) public initializer {
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
+    PausableUpgradeable.__Pausable_init();
+
     transferOwnership(_guardian);
 
     idleCDO = _idleCDO;
