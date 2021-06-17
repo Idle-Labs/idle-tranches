@@ -55,8 +55,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
   function unstake(uint256 _amount) external override {
-    require(usersStakes[msg.sender] >= _amount, "Amount greater than stakes");
     _claim();
+    // if _amount is greater than usersStakes[msg.sender], the next line fails
     usersStakes[msg.sender] -= _amount;
     IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
     totalStaked -= _amount;
