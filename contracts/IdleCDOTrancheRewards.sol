@@ -22,17 +22,17 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Initialize the contract
   /// @param _trancheToken
   /// @param _rewards The rewards tokens
-  /// @param _guardian The owner of the contract
+  /// @param _owner The owner of the contract
   /// @param _idleCDO The CDO where the reward tokens come from
   /// @param _governanceRecoveryFund An address allowed to call transferToken to recover funds
   function initialize(
-    address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
+    address _trancheToken, address[] memory _rewards, address _owner, address _idleCDO, address _governanceRecoveryFund
   ) public initializer {
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
     PausableUpgradeable.__Pausable_init();
 
-    transferOwnership(_guardian);
+    transferOwnership(_owner);
 
     idleCDO = _idleCDO;
     tranche = _trancheToken;
