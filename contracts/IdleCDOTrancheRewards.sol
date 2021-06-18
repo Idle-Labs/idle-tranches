@@ -57,8 +57,19 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   //TODO: add skipClaim flag
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
-  function unstake(uint256 _amount) external whenNotPaused override {
-    _claim();
+  function unstake(uint256 _amount) external override {
+    if (paused()) {
+      // If the contract is paused, "unstake" will skip the claim of the rewards,
+      // and those rewards won't be claimable in the future.
+      address reward;
+      for (uint256 i = 0; i < rewards.length; i++) {
+        reward = rewards[i];
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      }
+    } else {
+      _claim();
+    }
+
     // if _amount is greater than usersStakes[msg.sender], the next line fails
     usersStakes[msg.sender] -= _amount;
     IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);

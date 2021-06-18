@@ -161,6 +161,24 @@ describe('IdleCDOTrancheRewards', function() {
     await checkRewardBalance(user1, "100");
   });
 
+  it ('unstake when paused should not claim rewards', async () => {
+    const [user1] = this.accounts;
+    await stake(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "100");
+
+    await this.contract.connect(this.owner).pause();
+    await unstake(user1, "10")
+
+    await checkUserStakes(user1, "0");
+    await checkExpectedUserRewards(user1, "0");
+    // rewards are not sent to the user
+    await checkRewardBalance(user1, "0");
+  });
+
   it ('claim', async () => {
     const [user1] = this.accounts;
     await stake(user1, "10")
@@ -331,13 +349,6 @@ describe('IdleCDOTrancheRewards', function() {
     await this.contract.connect(this.owner).pause();
     await expect(
       stake(this.accounts[0], "10")
-    ).to.be.revertedWith("Pausable: paused");
-  });
-
-  it("should revert when calling unstake and contract is paused", async () => {
-    await this.contract.connect(this.owner).pause();
-    await expect(
-      unstake(this.accounts[0], "10")
     ).to.be.revertedWith("Pausable: paused");
   });
 
