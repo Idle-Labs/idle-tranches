@@ -724,7 +724,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _lastCallerBlock = keccak256(abi.encodePacked(tx.origin, block.number));
   }
 
-  /// @dev Check that the second function is not called in the same block from the same tx.origin
+  /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkSameTx() internal view {
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "SAME_BLOCK");
   }
