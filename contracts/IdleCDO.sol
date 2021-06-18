@@ -106,7 +106,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @notice pausable
   /// @param _amount amount of AA tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawAA(uint256 _amount) external returns (uint256) {
+  function withdrawAA(uint256 _amount) external nonReentrant returns (uint256) {
     require(!paused() || allowAAWithdraw, 'IDLE:AA_!ALLOWED');
     return _withdraw(_amount, AATranche);
   }
@@ -114,7 +114,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @notice pausable
   /// @param _amount amount of BB tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawBB(uint256 _amount) external returns (uint256) {
+  function withdrawBB(uint256 _amount) external nonReentrant returns (uint256) {
     require(!paused() || allowBBWithdraw, 'IDLE:BB_!ALLOWED');
     return _withdraw(_amount, BBTranche);
   }
