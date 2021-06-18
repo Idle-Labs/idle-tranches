@@ -12,7 +12,7 @@ const deployToken = addresses.deployTokens.DAI;
 /**
  * @name deploy
  */
-task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
+task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards with default parameters")
   .setAction(async (args) => {
     // Run 'compile' task
     await run("compile");
@@ -28,7 +28,7 @@ task("deploy", "Deploy IdleCDO and IdleStrategy with default parameters")
       [
         BN('5000000').mul(ONE_TOKEN(deployToken.decimals)), // limit
         deployToken.underlying,
-        mainnetContracts.devLeagueMultisig, // recovery address
+        mainnetContracts.treasuryMultisig, // recovery address
         creator, // guardian
         mainnetContracts.rebalancer,
         strategy.address,
