@@ -49,10 +49,10 @@ module.exports = {
       timeout: 120000,
     },
     kovan: {
-      url: `https://kovan.infura.io/v3/${process.env.IDLE_INFURA_KEY}`,
+      url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
     },
     mainnet: {
-      url: `https://mainnet.infura.io/v3/${process.env.IDLE_INFURA_KEY}`,
+      url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto'
     },

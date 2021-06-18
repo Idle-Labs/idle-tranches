@@ -9,14 +9,12 @@ import "./interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 
 /// @title IdleStrategy
 /// @notice IIdleCDOStrategy to deploy funds in Idle Finance
 /// @dev This contract should not have any funds at the end of each tx.
 /// The contract is upgradable, to add storage slots, add them after the last `###### End of storage VXX`
 contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy {
-  using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// ###### Storage V1

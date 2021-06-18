@@ -39,11 +39,9 @@ npx hardhat test
 Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal:
 
 ```
-export ALCHEMY_API_KEY=XXXX && export ETHERSCAN_API_KEY=XXXXX
+export ALCHEMY_API_KEY=XXXX
 ```
-then
-
-Uncomment the
+then uncomment the
 ```
 forking: {
   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
@@ -57,7 +55,7 @@ npx hardhat integration
 ```
 or any other tasks in `tasks/*`
 
-### Deploy
+## Deploy
 
 ```
 npx hardhat deploy --network YOUR_CONFIGURED_NETWORK
