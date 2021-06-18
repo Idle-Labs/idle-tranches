@@ -12,15 +12,15 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Upgradeable;
 
-  // TVL limit in underlying valye
+  // TVL limit in underlying value
   uint256 public limit;
   // recovery address
   address public governanceRecoveryFund;
 
   /// @param _limit TVL limit
   /// @param _governanceRecoveryFund recovery address
-  /// @param _guardian owner address
-  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _guardian) internal initializer {
+  /// @param _owner owner address
+  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal initializer {
     require(_governanceRecoveryFund != address(0), 'Address is 0');
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
@@ -29,7 +29,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     limit = _limit;
     governanceRecoveryFund = _governanceRecoveryFund;
     // Transfer ownership
-    transferOwnership(_guardian);
+    transferOwnership(_owner);
   }
 
   /// @notice this check should be called inside the child contract on deposits to check that the

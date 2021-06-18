@@ -37,7 +37,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _trancheIdealWeightRatio trancheIdealWeightRatio value
   /// @param _incentiveTokens array of addresses for incentive tokens
   function initialize(
-    uint256 _limit, address _guardedToken, address _governanceFund, address _guardian, // GuardedLaunch args
+    uint256 _limit, address _guardedToken, address _governanceFund, address _owner, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
     uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
@@ -46,7 +46,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
-    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _governanceFund, _guardian);
+    GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _governanceFund, _owner);
     // Deploy Tranches tokens
     AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
     BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
@@ -80,7 +80,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // Fee params
     fee = 10000; // 10% performance fee
     feeReceiver = address(0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4); // feeCollector
-    guardian = _guardian;
+    guardian = _owner;
   }
 
   // ###############
