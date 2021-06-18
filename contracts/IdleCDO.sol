@@ -30,7 +30,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _limit contract value limit
   /// @param _guardedToken underlying token
   /// @param _governanceFund address where funds will be sent in case of emergency
-  /// @param _guardian guardian address
+  /// @param _owner guardian address
   /// @param _rebalancer rebalancer address
   /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
