@@ -49,6 +49,7 @@ describe('IdleCDOTrancheRewards', function() {
     this.recoveryFund = recoveryFund;
     this.accounts = accounts;
     this.tokenUtils = erc20Utils("18");
+    this.coolingPeriod = 2;
 
     const MockERC20 = await hre.ethers.getContractFactory("MockERC20");
     this.accounts = accounts;
@@ -66,6 +67,7 @@ describe('IdleCDOTrancheRewards', function() {
       owner.address,
       this.cdo.address,
       this.recoveryFund.address,
+      this.coolingPeriod,
     ]);
 
     await this.cdo.setTrancheRewardsContract(this.contract.address);
@@ -87,7 +89,16 @@ describe('IdleCDOTrancheRewards', function() {
     await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, amount);
   }
 
-  const unstake = async (user, amount) => {
+  const unstake = async (user, amount, blocksToMine) => {
+    if (blocksToMine == undefined) {
+      blocksToMine = this.coolingPeriod;
+    }
+
+    log(`mining ${blocksToMine} blocks...`);
+    for (var i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine");
+    };
+
     amount = this.tokenUtils.fromUnits(amount);
     await this.contract.connect(user).unstake(amount);
   }
@@ -159,6 +170,32 @@ describe('IdleCDOTrancheRewards', function() {
     await checkUserStakes(user1, "0");
     await checkExpectedUserRewards(user1, "0");
     await checkRewardBalance(user1, "100");
+  });
+
+  it ('fails if unstake is called before cooling period', async () => {
+    const [user1] = this.accounts;
+    await stake(user1, "10")
+    for (var i = 0; i < this.coolingPeriod; i++) {
+      await expect(
+        unstake(user1, "10", 0)
+      ).to.be.revertedWith("COOLING_PERIOD");
+    };
+
+    // after cooling period it's possible to unstake
+    unstake(user1, "10", 0);
+  });
+
+  it ('owner can set the cooling period', async () => {
+    expect(await this.contract.coolingPeriod()).to.be.equal(this.coolingPeriod);
+
+    await expect(
+      this.contract.connect(this.accounts[0]).setCoolingPeriod("0")
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    await this.contract.connect(this.owner).setCoolingPeriod("100");
+    const newCoolingPeriod = await this.contract.coolingPeriod();
+    expect(newCoolingPeriod).to.not.be.equal(this.coolingPeriod);
+    expect(newCoolingPeriod).to.be.equal("100");
   });
 
   it ('unstake when paused should not claim rewards', async () => {

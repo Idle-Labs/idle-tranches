@@ -19,6 +19,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
 
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
+    const stakingCoolingPeriod = BN(10);
     await helpers.prompt("continue? [y/n]", true);
 
     const incentiveTokens = [mainnetContracts.IDLE, mainnetContracts.stkAAVE];
@@ -47,6 +48,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
       creator, // owner / guardian
       idleCDO.address,
       mainnetContracts.devLeagueMultisig // recovery address
+      stakingCoolingPeriod,
     ];
     const stakingRewardsAA = await helpers.deployUpgradableContract(
       'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
