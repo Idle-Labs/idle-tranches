@@ -28,9 +28,6 @@ contract MockIdleToken is ERC20, MockERC20 {
   function setTokenPriceWithFee(uint256 _amount) external {
     _tokenPriceWithFee = _amount;
   }
-  function setRedeemTokenPrice(uint256 _amount) external {
-    _redeemTokenPriceWithFee = _amount;
-  }
   function setApr(uint256 _apr) external {
     apr = _apr;
   }
