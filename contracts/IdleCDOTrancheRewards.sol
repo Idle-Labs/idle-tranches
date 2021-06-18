@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IERC20Detailed.sol";
@@ -20,7 +19,6 @@ import "hardhat/console.sol";
 /// @notice
 /// @dev
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
-  using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice Initialize the contract
