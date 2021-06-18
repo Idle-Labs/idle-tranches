@@ -73,8 +73,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Claim all rewards, used by claim and unstake
   function _claim() internal {
-    for (uint256 i; i < rewards.length; i++) {
-      address reward = rewards[i];
+    address[] memory _rewards = rewards;
+    for (uint256 i; i < _rewards.length; i++) {
+      address reward = _rewards[i];
       uint256 amount = expectedUserReward(msg.sender, reward);
       uint256 balance = IERC20Detailed(reward).balanceOf(address(this));
       if (amount > balance) {

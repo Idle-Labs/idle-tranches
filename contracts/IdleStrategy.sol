@@ -189,12 +189,4 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     IERC20Detailed(_token).safeTransfer(_to, value);
     return true;
   }
-
-  /// @notice This contract should not have funds at the end of each tx, this method is just for leftovers
-  /// @dev Emergency method
-  /// @param value amount of ETH to transfer
-  /// @param _to receiver address
-  function transferETH(uint256 value, address payable _to) onlyOwner nonReentrant external {
-    _to.sendValue(value);
-  }
 }

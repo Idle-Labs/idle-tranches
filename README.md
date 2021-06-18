@@ -28,6 +28,12 @@ There are no 'loose' scripts but only hardhat tasks which are used both for inte
 yarn install
 ```
 
+## Unit Tests
+
+```
+npx hardhat test
+```
+
 ## Integration tests
 
 Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal:
@@ -37,21 +43,7 @@ export ALCHEMY_API_KEY=XXXX && export ETHERSCAN_API_KEY=XXXXX
 ```
 then
 
-```
-npx hardhat integration
-```
-or any other tasks in `tasks/*`
-
-NOTE: given thant `chainId: 1` is used, it's required to
-
-```
-rm .openzeppelin/mainnet.json
-```
-before running the `integration` or `deploy` task
-
-## Unit Tests
-
-Comment the
+Uncomment the
 ```
 forking: {
   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
@@ -61,8 +53,9 @@ forking: {
 block in `hardhat.config.js` and then run
 
 ```
-npx hardhat test
+npx hardhat integration
 ```
+or any other tasks in `tasks/*`
 
 ### Deploy
 

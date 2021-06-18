@@ -60,11 +60,4 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     require(_token != address(0), 'Address is 0');
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
   }
-
-  /// @notice Emergency method, ETH gets transferred to the governanceRecoveryFund address
-  /// @param _value amount to transfer
-  function transferETH(uint256 _value) onlyOwner nonReentrant external {
-    address payable to = payable(governanceRecoveryFund);
-    to.sendValue(_value);
-  }
 }

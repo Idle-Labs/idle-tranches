@@ -179,6 +179,13 @@ describe("IdleCDO", function () {
       idleCDO.connect(AABuyer).depositAA(_amount)
     ).to.be.revertedWith("Contract limit");
   });
+  it("should not revert when calling depositAA and limit is 0", async () => {
+    await idleCDO._setLimit(BN('0')); // no limit
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    const trancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
+    expect(trancheBal).to.be.equal(_amount);
+    expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.sub(_amount));
+  });
 
   it("should revert when calling depositAA and strategyPrice decreased", async () => {
     await idleToken.setTokenPriceWithFee(BN(9**18));
@@ -257,6 +264,14 @@ describe("IdleCDO", function () {
     await expect(
       idleCDO.connect(BBBuyer).depositBB(_amount)
     ).to.be.revertedWith("Contract limit");
+  });
+
+  it("should not revert when calling depositAA and limit is 0", async () => {
+    await idleCDO._setLimit(BN('0')); // no limit
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    const trancheBal = await helpers.deposit('BB', idleCDO, BBBuyerAddr, _amount);
+    expect(trancheBal).to.be.equal(_amount);
+    expect(await underlying.balanceOf(BBBuyerAddr)).to.be.equal(initialAmount.sub(_amount));
   });
 
   it("should revert when calling depositBB and strategyPrice decreased", async () => {
