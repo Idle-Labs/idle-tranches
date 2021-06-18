@@ -72,7 +72,8 @@ describe("IdleCDO", function () {
       incentiveTokens,
       owner.address, // owner / guardian
       idleCDO.address,
-      owner.address // recovery address
+      owner.address, // recovery address
+      10, // cooling period
     ];
     stakingRewardsAA = await helpers.deployUpgradableContract(
       'IdleCDOTrancheRewards', [AA.address, ...stakingRewardsParams], owner

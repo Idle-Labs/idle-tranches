@@ -14,8 +14,9 @@ contract IdleCDOTrancheRewardsStorage {
   mapping(address => uint256) public rewardsIndexes;
   // per-user index for each reward token
   mapping(address => mapping(address => uint256)) public usersIndexes;
-
-  mapping(address => uint256) public rewardsLastBalance;
+  // user => block number when user staked last time
+  mapping(address => uint256) public usersStakeBlock;
 
   uint256 public totalStaked;
+  uint256 public coolingPeriod;
 }

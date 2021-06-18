@@ -27,7 +27,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @param _idleCDO The CDO where the reward tokens come from
   /// @param _governanceRecoveryFund address where rewards will be sent in case of transferToken call
   function initialize(
-    address _trancheToken, address[] memory _rewards, address _owner, address _idleCDO, address _governanceRecoveryFund
+    address _trancheToken, address[] memory _rewards, address _owner,
+    address _idleCDO, address _governanceRecoveryFund, uint256 _coolingPeriod
   ) public initializer {
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -39,11 +40,13 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     tranche = _trancheToken;
     rewards = _rewards;
     governanceRecoveryFund = _governanceRecoveryFund;
+    coolingPeriod = _coolingPeriod;
   }
 
   /// @notice Stake _amount of tranche token
   /// @param _amount The amount of tranche tokens to stake
   function stake(uint256 _amount) external whenNotPaused override {
+    usersStakeBlock[msg.sender] = block.number;
     // update user index for each reward
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
@@ -54,6 +57,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
   function unstake(uint256 _amount) external nonReentrant override {
+    require(usersStakeBlock[msg.sender] + coolingPeriod < block.number, "COOLING_PERIOD");
+
     if (paused()) {
       // If the contract is paused, "unstake" will skip the claim of the rewards,
       // and those rewards won't be claimable in the future.
@@ -116,6 +121,11 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       // rewards are splitted among all stakers
       rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
     }
+  }
+  /// @notice It sets the coolingPeriod value
+  /// @param _newCoolingPeriod The new cooling period
+  function setCoolingPeriod(uint256 _newCoolingPeriod) external onlyOwner {
+    coolingPeriod = _newCoolingPeriod;
   }
 
   /// @notice Update user indexes based on the amount being staked
