@@ -16,15 +16,16 @@ import "./IdleCDOTrancheRewardsStorage.sol";
 import "hardhat/console.sol";
 
 /// @title IdleCDOTrancheRewards
+/// @dev Contract used for staking specific tranche tokens and getting incentive rewards
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice Initialize the contract
-  /// @param _trancheToken
+  /// @param _trancheToken tranche address
   /// @param _rewards The rewards tokens
   /// @param _guardian The owner of the contract
   /// @param _idleCDO The CDO where the reward tokens come from
-  /// @param _governanceRecoveryFund An address allowed to call transferToken to recover funds
+  /// @param _governanceRecoveryFund address where rewards will be sent in case of transferToken call
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
   ) public initializer {
@@ -43,6 +44,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Stake _amount of tranche token
   /// @param _amount The amount of tranche tokens to stake
   function stake(uint256 _amount) external whenNotPaused override {
+    // update user index for each reward
     _updateUserIdx(msg.sender, _amount);
     usersStakes[msg.sender] += _amount;
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
@@ -61,6 +63,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
         usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       }
     } else {
+      // Claim all rewards accrued
       _claim();
     }
 
@@ -86,6 +89,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       if (amount > balance) {
         amount = balance;
       }
+      // Set the user address equal to the global one
       usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
@@ -106,8 +110,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
+    // Get rewards from CDO
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
     if (totalStaked > 0) {
+      // rewards are splitted among all stakers
       rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
     }
   }
@@ -124,9 +130,11 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     for (uint256 i = 0; i < _rewards.length; i++) {
       reward = _rewards[i];
       if (_currStake == 0) {
+        // Set the user address equal to the global one
         usersIndexes[_user][reward] = rewardsIndexes[reward];
       } else {
         userIndex = usersIndexes[_user][reward];
+        // Calculate the new user idx
         usersIndexes[_user][reward] = userIndex + (
           _amountToStake * (rewardsIndexes[reward] - userIndex) / (_currStake + _amountToStake)
         );
