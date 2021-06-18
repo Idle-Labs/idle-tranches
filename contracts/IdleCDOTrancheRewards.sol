@@ -53,7 +53,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
-  function unstake(uint256 _amount) external override {
+  function unstake(uint256 _amount) external nonReentrant override {
     if (paused()) {
       // If the contract is paused, "unstake" will skip the claim of the rewards,
       // and those rewards won't be claimable in the future.
@@ -82,7 +82,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Claim all rewards, used by claim and unstake
   function _claim() internal {
     address[] memory _rewards = rewards;
-    for (uint256 i; i < _rewards.length; i++) {
+    for (uint256 i = 0; i < _rewards.length; i++) {
       address reward = _rewards[i];
       uint256 amount = expectedUserReward(msg.sender, reward);
       uint256 balance = IERC20Detailed(reward).balanceOf(address(this));
