@@ -75,7 +75,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Sends all the expected rewards to the msg.sender
   /// @dev User index is reset
-  function claim() whenNotPaused external {
+  function claim() whenNotPaused nonReentrant external {
     _claim();
   }
 
