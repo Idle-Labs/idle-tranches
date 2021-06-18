@@ -22,18 +22,16 @@ Notes:
 IdleCDO and IdleStrategy are upgradable contracts.
 There are no 'loose' scripts but only hardhat tasks which are used both for interacting with contracts and tests in fork
 
-## TODO
-- Tests for tranches price
-- Define how to redistribute part of the rewards to reach the `trancheIdealWeightRatio` (separate contract)
-- Define how to take fees
-- Define reimbursement hack plan
-
-- Support multiple concurrent strategies
-
 ## Setup
 
 ```
 yarn install
+```
+
+## Unit Tests
+
+```
+npx hardhat test
 ```
 
 ## Integration tests
@@ -45,21 +43,7 @@ export ALCHEMY_API_KEY=XXXX && export ETHERSCAN_API_KEY=XXXXX
 ```
 then
 
-```
-npx hardhat integration
-```
-or any other tasks in `tasks/*`
-
-NOTE: given thant `chainId: 1` is used, it's required to
-
-```
-rm .openzeppelin/mainnet.json
-```
-before running the `integration` or `deploy` task
-
-## Unit Tests
-
-Comment the
+Uncomment the
 ```
 forking: {
   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
@@ -69,19 +53,14 @@ forking: {
 block in `hardhat.config.js` and then run
 
 ```
-npx hardhat test
+npx hardhat integration
 ```
+or any other tasks in `tasks/*`
 
 ### Deploy
 
 ```
 npx hardhat deploy --network YOUR_CONFIGURED_NETWORK
-```
-
-## Solidity linter
-
-```
-npx hardhat check
 ```
 
 ## Coverage

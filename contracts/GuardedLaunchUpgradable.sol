@@ -4,25 +4,23 @@ pragma solidity 0.8.4;
 import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 /// @dev Inherit this contract and add the _guarded method to the child contract
 abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-  using AddressUpgradeable for address payable;
   using SafeERC20Upgradeable for IERC20Upgradeable;
 
-  // TVL limit in underlying valye
+  // TVL limit in underlying value
   uint256 public limit;
   // recovery address
   address public governanceRecoveryFund;
 
   /// @param _limit TVL limit
   /// @param _governanceRecoveryFund recovery address
-  /// @param _guardian owner address
-  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _guardian) internal initializer {
+  /// @param _owner owner address
+  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal initializer {
     require(_governanceRecoveryFund != address(0), 'Address is 0');
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
@@ -31,7 +29,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     limit = _limit;
     governanceRecoveryFund = _governanceRecoveryFund;
     // Transfer ownership
-    transferOwnership(_guardian);
+    transferOwnership(_owner);
   }
 
   /// @notice this check should be called inside the child contract on deposits to check that the
@@ -59,12 +57,5 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   function transferToken(address _token, uint256 _value) external onlyOwner nonReentrant {
     require(_token != address(0), 'Address is 0');
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
-  }
-
-  /// @notice Emergency method, ETH gets transferred to the governanceRecoveryFund address
-  /// @param _value amount to transfer
-  function transferETH(uint256 _value) onlyOwner nonReentrant external {
-    address payable to = payable(governanceRecoveryFund);
-    to.sendValue(_value);
   }
 }

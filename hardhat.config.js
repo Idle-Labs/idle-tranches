@@ -32,20 +32,12 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      // accounts: {
-      //   mnemonic: process.env.MNEMONIC_MAINNET,
-      // },
+      // chainId: 1,
       // allowUnlimitedContractSize: true,
-      chainId: 1,
-      forking: {
-        url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-        blockNumber: 12554260, // DAI all in compound
-      }
-    },
-    coverage: {
-      url: "http://127.0.0.1:8545/",
-      blockGasLimit: 15000000,
-      allowUnlimitedContractSize: true,
+      // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   blockNumber: 12554260, // DAI all in compound
+      // }
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -65,9 +57,9 @@ module.exports = {
       gas: 'auto'
     },
   },
-  etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
-  },
+  // etherscan: {
+  //   apiKey: process.env.ETHERSCAN_API_KEY,
+  // },
   abiExporter: {
     // path: './abis',
     // clear: true,
