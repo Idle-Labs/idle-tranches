@@ -16,18 +16,15 @@ import "./IdleCDOTrancheRewardsStorage.sol";
 import "hardhat/console.sol";
 
 /// @title IdleCDOTrancheRewards
-/// @notice
-/// @dev
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice Initialize the contract
-  /// @dev
   /// @param _trancheToken
   /// @param _rewards The rewards tokens
-  /// @param _guardian TODO
+  /// @param _guardian The owner of the contract
   /// @param _idleCDO The CDO where the reward tokens come from
-  /// @param _governanceRecoveryFund TODO
+  /// @param _governanceRecoveryFund An address allowed to call transferToken to recover funds
   function initialize(
     address _trancheToken, address[] memory _rewards, address _guardian, address _idleCDO, address _governanceRecoveryFund
   ) public initializer {
@@ -52,7 +49,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     totalStaked += _amount;
   }
 
-  //TODO: add skipClaim flag
   /// @notice Unstake _amount of tranche tokens
   /// @param _amount The amount to unstake
   function unstake(uint256 _amount) external override {
@@ -96,7 +92,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   }
 
   /// @notice Calculates the expected rewards for a user
-  /// @dev
   /// @param user The user address
   /// @param reward The reward token address
   /// @return The expected reward amount
@@ -105,10 +100,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
-  /// @notice TODO
-  /// @dev
-  /// @param _reward TODO
-  /// @param _amount TODO
+  /// @notice Called by the CDO to deposit rewards
+  /// @param _reward The rewards token address
+  /// @param _amount The amount to deposit
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
@@ -118,11 +112,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     }
   }
 
-  /// @notice TODO
-  /// @dev
-  /// @param _user TODO
-  /// @param _amountToStake TODO
-  /// @param _amountToStake TODO
+  /// @notice Update user indexes based on the amount being staked
+  /// @param _user The user who is staking
+  /// @param _amountToStake The amound staked
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
     address[] memory _rewards = rewards;
     uint256 userIndex;
