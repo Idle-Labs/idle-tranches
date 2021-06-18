@@ -6,3 +6,4 @@ artifacts
 *-lock.json
 yarn-error.log
 .env
+coverage

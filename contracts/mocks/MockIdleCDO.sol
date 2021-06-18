@@ -23,4 +23,8 @@ contract MockIdleCDO {
     IERC20(_reward).safeApprove(trancheRewardsContract, _amount);
     IIdleCDOTrancheRewards(trancheRewardsContract).depositReward(_reward, _amount);
   }
+
+  function depositRewardWithoutApprove(address _reward, uint256 _amount) external {
+    IIdleCDOTrancheRewards(trancheRewardsContract).depositReward(_reward, _amount);
+  }
 }

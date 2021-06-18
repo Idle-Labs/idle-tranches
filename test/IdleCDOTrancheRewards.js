@@ -44,8 +44,9 @@ const log = function() {
 
 describe('IdleCDOTrancheRewards', function() {
   beforeEach(async () => {
-    const [owner, ...accounts] = await ethers.getSigners();
+    const [owner, recoveryFund, ...accounts] = await ethers.getSigners();
     this.owner = owner;
+    this.recoveryFund = recoveryFund;
     this.accounts = accounts;
     this.tokenUtils = erc20Utils("18");
 
@@ -64,7 +65,7 @@ describe('IdleCDOTrancheRewards', function() {
       [this.rewardToken1.address],
       owner.address,
       this.cdo.address,
-      addresses.addr0,
+      this.recoveryFund.address,
     ]);
 
     await this.cdo.setTrancheRewardsContract(this.contract.address);
@@ -188,6 +189,11 @@ describe('IdleCDOTrancheRewards', function() {
     await claim(user1);
 
     await checkExpectedUserRewards(user1, "0");
+
+    const unsupportedTokenAddress = this.accounts[0].address;
+    await expect(
+      this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
+    ).to.be.revertedWith("!SUPPORTED");
   });
 
   it('full test', async () => {
@@ -298,6 +304,29 @@ describe('IdleCDOTrancheRewards', function() {
     expect(BN(await this.rewardToken1.balanceOf(this.contract.address))).to.be.bignumber.equal(BN("0"));
   });
 
+  it("can be paused/unpaused by owner", async () => {
+    expect(await this.contract.paused()).to.be.false;
+    await this.contract.connect(this.owner).pause();
+    expect(await this.contract.paused()).to.be.true;
+    await this.contract.connect(this.owner).unpause();
+    expect(await this.contract.paused()).to.be.false;
+  });
+
+  it("cannot be paused by non-owner", async () => {
+    expect(await this.contract.paused()).to.be.false;
+    await expect(
+      this.contract.connect(this.accounts[0]).pause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("cannot be unpaused by non-owner", async () => {
+    await this.contract.connect(this.owner).pause();
+    expect(await this.contract.paused()).to.be.true;
+    await expect(
+      this.contract.connect(this.accounts[0]).unpause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
   it("should revert when calling stake and contract is paused", async () => {
     await this.contract.connect(this.owner).pause();
     await expect(
@@ -318,4 +347,53 @@ describe('IdleCDOTrancheRewards', function() {
       claim(this.accounts[0])
     ).to.be.revertedWith("Pausable: paused");
   });
+
+  it("transferToken can be called by owner", async () => {
+    await this.rewardToken1.connect(this.owner).transfer(this.contract.address, this.tokenUtils.fromUnits("100"));
+
+    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+    expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+
+    await this.contract.connect(this.owner).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
+
+    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+    expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  });
+
+  it("transferToken failes if ", async () => {
+    await expect(
+      this.contract.connect(this.owner).transferToken(addresses.addr0, this.tokenUtils.fromUnits("100"))
+    ).to.be.revertedWith("Address is 0");
+  });
+
+  it("transferToken cannot be called by non-owner", async () => {
+    await expect(
+      this.contract.connect(this.accounts[0]).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("depositReward can be called by the CDO", async () => {
+    await this.rewardToken1.connect(this.owner).transfer(this.cdo.address, this.tokenUtils.fromUnits("100"));
+
+    expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+
+    await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
+
+    expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  });
+
+  it("depositReward fails if called by an address different from the CDO", async () => {
+    await expect(
+      this.contract.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
+    ).to.be.revertedWith("!AUTH");
+  })
+
+  it("depositReward fails if called with an unsupported token", async () => {
+    const unsupportedTokenAddress = this.accounts[0].address;
+    await expect(
+      this.cdo.connect(this.owner).depositRewardWithoutApprove(unsupportedTokenAddress, this.tokenUtils.fromUnits("100"))
+    ).to.be.revertedWith("!SUPPORTED");
+  })
 });
