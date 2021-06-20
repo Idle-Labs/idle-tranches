@@ -115,6 +115,35 @@ describe("IdleStrategy", function () {
     expect(await underlying.balanceOf(strategy.address)).to.equal(0);
     expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
   });
+  it("should skip redeem if amount is 0", async () => {
+    const addr = AABuyerAddr;
+    const _amount = BN('1000').mul(one);
+
+    await deposit(addr, _amount);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amount);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amount);
+
+    const initialBalIncentive = await incentiveToken.balanceOf(addr);
+    const initialBal = await underlying.balanceOf(addr);
+    const initialIdleTokenBal = await idleToken.balanceOf(addr);
+
+    await redeem(addr, BN('0'));
+
+    const finalIdleTokenBal = await idleToken.balanceOf(addr);
+    const finalBal = await underlying.balanceOf(addr);
+    const finalBalIncentive = await incentiveToken.balanceOf(addr);
+
+    expect(finalIdleTokenBal).to.equal(initialIdleTokenBal);
+    expect(finalBal).to.equal(initialBal);
+    expect(finalBalIncentive).to.equal(initialBalIncentive);
+
+    // No token left in the contract
+    expect(await incentiveToken.balanceOf(strategy.address)).to.equal(0);
+    expect(await underlying.balanceOf(strategy.address)).to.equal(0);
+    expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
+  });
   it("should redeemUnderlying", async () => {
     const addr = AABuyerAddr;
     const _amount = BN('1000').mul(one);
@@ -146,6 +175,21 @@ describe("IdleStrategy", function () {
     expect(await underlying.balanceOf(strategy.address)).to.equal(0);
     expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
   });
+  it("should skip redeemRewards if bal is 0", async () => {
+    const addr = RandomAddr;
+    const initialBalIncentive = await incentiveToken.balanceOf(addr);
+    await strategy.connect(Random).redeemRewards();
+    const finalBalIncentive = await incentiveToken.balanceOf(addr);
+    // incentive token balance is NOT increased
+    expect(finalBalIncentive).to.equal(initialBalIncentive);
+
+    // No token left in the contract
+    expect(await incentiveToken.balanceOf(strategy.address)).to.equal(0);
+    expect(await underlying.balanceOf(strategy.address)).to.equal(0);
+    expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
+  });
+
+  // Mock the return of gov tokens
   it("should redeemRewards", async () => {
     const addr = AABuyerAddr;
     const _amount = BN('1000').mul(one);
