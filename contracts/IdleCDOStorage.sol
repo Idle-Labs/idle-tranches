@@ -72,6 +72,8 @@ contract IdleCDOStorage {
   uint256 public lastBBPrice;
   // Keeps track of unclaimed fees for feeReceiver
   uint256 public unclaimedFees;
+  // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
+  uint256 public unlentPerc;
 
   // Fee amount (relative to FULL_ALLOC)
   uint256 public fee;

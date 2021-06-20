@@ -67,6 +67,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     priceBB = _oneToken;
     lastAAPrice = _oneToken;
     lastBBPrice = _oneToken;
+    unlentPerc = 2000; // 2%
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -555,8 +556,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       }
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
+    uint256 underlyingBal = _contractTokenBalance(_token);
     // Put unlent balance at work in the lending provider
-    IIdleCDOStrategy(_strategy).deposit(_contractTokenBalance(_token));
+    IIdleCDOStrategy(_strategy).deposit(
+      // Keep some unlent balance for cheap redeems and as reserve of last resort
+      underlyingBal - (underlyingBal * unlentPerc / FULL_ALLOC)
+    );
   }
 
   /// @notice can be called only by the rebalancer or the owner
@@ -638,6 +643,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _fee new fee
   function setFee(uint256 _fee) external onlyOwner {
     require((fee = _fee) <= MAX_FEE, 'IDLE:TOO_HIGH');
+  }
+
+  /// @param _unlentPerc new unlent percentage
+  function setUnlentPerc(uint256 _unlentPerc) external onlyOwner {
+    require((unlentPerc = _unlentPerc) <= FULL_ALLOC, 'IDLE:TOO_HIGH');
   }
 
   /// @param _idealRange new ideal range

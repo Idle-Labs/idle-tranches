@@ -47,8 +47,8 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
       incentiveTokens,
       creator, // owner / guardian
       idleCDO.address,
-      mainnetContracts.devLeagueMultisig // recovery address
-      stakingCoolingPeriod,
+      mainnetContracts.devLeagueMultisig, // recovery address
+      stakingCoolingPeriod
     ];
     const stakingRewardsAA = await helpers.deployUpgradableContract(
       'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
