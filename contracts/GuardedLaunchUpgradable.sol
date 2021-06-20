@@ -55,7 +55,6 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @param _token address of the token to transfer
   /// @param _value amount to transfer
   function transferToken(address _token, uint256 _value) external onlyOwner nonReentrant {
-    require(_token != address(0), 'Address is 0');
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
   }
 }

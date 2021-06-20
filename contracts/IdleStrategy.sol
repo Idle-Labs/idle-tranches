@@ -181,10 +181,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   /// @param _token address of the token to transfer
   /// @param value amount of `_token` to transfer
   /// @param _to receiver address
-  /// @return true
-  function transferToken(address _token, uint256 value, address _to) external onlyOwner nonReentrant returns (bool) {
-    require(_token != address(0), 'Address is 0');
+  function transferToken(address _token, uint256 value, address _to) external onlyOwner nonReentrant {
     IERC20Detailed(_token).safeTransfer(_to, value);
-    return true;
   }
 }
