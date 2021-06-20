@@ -1,7 +1,7 @@
-# Idle Tranches
-The aim of Idle Tranches is to pool capital of users (eg DAI), deposit it into a lending provider (eg Idle Finance) and split the interest received between 2 classes of users with different risk profiles.
+# Idle Dynamic Tranches
+The aim of Idle Dynamic Tranches is to pool capital of users (eg DAI), deposit it into a lending provider (eg Idle Finance) and split the interest received between 2 classes of users with different risk profiles.
 
- One will gain more interest and will be more risky (BB or junior tranche) and the other will have a lower APR but more safety (AA or senior tranche). In the case of an hack or a loss of funds of the lending provider integrated (or any other protocol integrated by this provider), all funds still available will be used to refund senior tranche holders first with the aim of making them whole, and with remaining funds, if any, junior holders after.
+One will gain more interest and will be more risky (BB or junior tranche) and the other will have a lower APR but more safety (AA or senior tranche). In the case of an hack or a loss of funds of the lending provider integrated (or any other protocol integrated by this provider), all funds still available will be used to refund senior tranche holders first with the aim of making them whole, and with remaining funds, if any, junior holders after.
 
 There are no locking period or epochs and users are free to enter and exit at any time, the interest earned (and governance tokens, after being partially sold in the market) will be split according to a predefined ratio called `trancheAPRSplitRatio` (eg 80% interest to BB and 20% to AA holders) so the rate is variable for both classes of tranches.
 
@@ -12,9 +12,11 @@ To calculate the actual APR for each class of tranches we need to know the ratio
 Given that AA have intrinsically less risk (given the liquidation priority over BB holders) they should also have a lower apr than BB, so ideally the ratio of AA should be
 greater than the `trancheAPRSplitRatio` (eg if the interest for AA is 20% of the total interest earned then more than 20% of the total tranches value should be of AA tranches), this behaviour should be market driven given the different rights the users have in case of hack.
 
-The ratio between tranches heavily influences the apr of both classes of users and the aim should be to have skewed results with regard to the basic lending provider but not too much skewed otherwise one of the 2 classes won't have enough holders due to the low apr.
+The ratio between tranches heavily influences the apr of both classes of users and the aim should be to have different results with regard to the basic lending provider but not too much skewed otherwise one of the two classes won't have enough holders due to the low apr. For this reason there  a `trancheIdealWeightRatio` is set during initialization (and can be updated) which represent the ideal ratio, in value, that AA and BB should have to have an APR suitable for both classes of users.
 
-So there is a `trancheIdealWeightRatio` which is set during initialization (and can be updated) which represent the ideal ratio, in value, between AA and BB. For example in the image above an ideal AA ratio could be 50% (paired with an AA interest ratio of 20%) because it would mean that 50% of AA users are retaining only the 20% of the total interest, so the apy of BB holders will be high (12.8% vs the 8% of the 'normal' lending in the example). To incentivize the reach of `trancheIdealWeightRatio` part of farmed governance tokens (eg stkAAVE or IDLE) are redistributed to users who stakes their tranche tokens in specific tranche contracts.
+For example in the image above, where we are splitting the interest 20% to AA and 80% to BB, an ideal AA ratio could be 50% because it would mean that holders of 50% of the pool (which are generating 50% of the interest) are retaining only the 20% of the total interest, so the apy of BB holders will be higher than the normal lending provider (12.8% vs the 8% in the example).
+
+To incentivize the reach of `trancheIdealWeightRatio` part of farmed governance tokens (eg stkAAVE or IDLE) are redistributed to users who stakes their tranche tokens in specific tranche rewards contracts.
 
 In case of hack, an emergency shutdown can be triggered (by both the `guardian`, which would be a multi-sig wallet, and the `owner` which will be the Idle governance) in order to pause both deposits and redeems, the redistribution of remaining funds can happens selectively, by allowing only AA holders to withdraw first directly in the main contract, or through a separate contract for more complex cases and resolutions (managed by the Idle governance).
 
