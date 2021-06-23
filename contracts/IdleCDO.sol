@@ -364,11 +364,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
     // to steal interest generated from rewards
     toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
-
     if (toRedeem > balanceUnderlying) {
-      // if the unlent balance is not enough we try to redeem directly from the strategy
+      // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
+      // and then add the current balanceUnderlying
       // NOTE: there could be a difference of up to 100 wei due to rounding
-      toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow);
+      toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
     }
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);

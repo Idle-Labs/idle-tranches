@@ -7,7 +7,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 
 const log = (...arguments) => {
-  if (hre.network.name == 'test' || hre.network.config.chainId == '31337') {
+  if (hre.network.config.chainId == '31337' && !hre.network.config.forking) {
     return;
   }
   console.log(...arguments);
@@ -181,7 +181,7 @@ const withdrawWithGain = async (type, idleCDO, addr, initialAmount) => {
   await sudoCall(addr, idleCDO, isAA ? 'withdrawAA' : 'withdrawBB', [trancheBal]);
   const balAfter = BN(await underlyingContract.balanceOf(addr));
   const gain = balAfter.sub(balBefore).sub(initialAmount);
-  log(`🚩 Withdraw ${type}, addr: ${addr}, Underlying bal after: ${balAfter}, gain: ${gain}`);
+  checkIncreased(BN('0'), gain, 'Gain should always be > 0 if redeeming after waiting at least 1 harvest');
   return balAfter;
 }
 
