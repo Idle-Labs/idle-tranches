@@ -556,12 +556,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       }
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
+
+    // Keep some unlent balance for cheap redeems and as reserve of last resort
     uint256 underlyingBal = _contractTokenBalance(_token);
-    // Put unlent balance at work in the lending provider
-    IIdleCDOStrategy(_strategy).deposit(
-      // Keep some unlent balance for cheap redeems and as reserve of last resort
-      underlyingBal - (underlyingBal * unlentPerc / FULL_ALLOC)
-    );
+    uint256 idealUnlent = getContractValue() * unlentPerc / FULL_ALLOC;
+    if (underlyingBal > idealUnlent) {
+      // Put unlent balance at work in the lending provider
+      IIdleCDOStrategy(_strategy).deposit(underlyingBal - idealUnlent);
+    }
   }
 
   /// @notice can be called only by the rebalancer or the owner

@@ -1103,18 +1103,44 @@ describe("IdleCDO", function () {
     expect(finalBal.sub(initialBal)).to.be.equal(_amountAA);
   });
 
-  it("harvest should keep an unlent reserve", async () => {
+  it("harvest should keep an unlent reserve equal to unlentPerc if possible", async () => {
     await idleCDO.setUnlentPerc(BN('2000'));
 
     const _amountAA = BN('1000').mul(one);
     const _amountBB = BN('1000').mul(one);
+    // 2000 deposited -> 1960 put in lending + 40 unlent
     await setupBasicDeposits(_amountAA, _amountBB);
-
-    const initialBal = await underlying.balanceOf(idleCDO.address);
-    await idleCDO.harvest(true, true, [true], [BN('0')]);
-    const finalBal = await underlying.balanceOf(idleCDO.address);
-    expect(finalBal).to.be.equal(initialBal.mul(await idleCDO.unlentPerc()).div(BN('100000')));
+    const bal = await underlying.balanceOf(idleCDO.address);
+    expect(bal).to.be.equal(BN('40').mul(one));
   });
+
+  it("harvest should not deposit in lending provider if current balance is < than unlent balance needed", async () => {
+    await idleCDO.setUnlentPerc(BN('2000'));
+
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    // 2000 deposited -> 1960 put in lending + 40 unlent
+    await setupBasicDeposits(_amountAA, _amountBB);
+    // price is now 2 so tot contract value is
+    // 1960 * 2 + 40 = 3960
+    const contractVal = await idleCDO.getContractValue();
+    expect(contractVal).to.be.equal(BN('3960').mul(one));
+    await idleCDO.harvest(true, true, [true], [BN('0')]);
+    const bal = await underlying.balanceOf(idleCDO.address);
+    // unlent value should be 3960 * 2% = 79.2
+    // but we only have 40 as underlyingBal so we do nothing
+    expect(bal).to.be.equal(BN('40').mul(one));
+
+    // deposit 140
+    await helpers.deposit('AA', idleCDO, AABuyerAddr, BN('140').mul(one));
+
+    await idleCDO.harvest(true, true, [true], [BN('0')]);
+    const balFinal = await underlying.balanceOf(idleCDO.address);
+    // unlent value should be 4100 * 2% = 82
+    // but we only have 40 as underlyingBal so we do nothing
+    expect(balFinal).to.be.equal(BN('82').mul(one));
+  });
+
 
   it("harvest should call _updatePrices and _updateLastTranchePrices if we are not skipping redeem of rewards", async () => {
     // Initialize deposits
