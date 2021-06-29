@@ -364,11 +364,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
     // to steal interest generated from rewards
     toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
-
     if (toRedeem > balanceUnderlying) {
-      // if the unlent balance is not enough we try to redeem directly from the strategy
+      // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
+      // and then add the current balanceUnderlying
       // NOTE: there could be a difference of up to 100 wei due to rounding
-      toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow);
+      toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
     }
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
@@ -556,12 +556,14 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       }
     }
     // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
+
+    // Keep some unlent balance for cheap redeems and as reserve of last resort
     uint256 underlyingBal = _contractTokenBalance(_token);
-    // Put unlent balance at work in the lending provider
-    IIdleCDOStrategy(_strategy).deposit(
-      // Keep some unlent balance for cheap redeems and as reserve of last resort
-      underlyingBal - (underlyingBal * unlentPerc / FULL_ALLOC)
-    );
+    uint256 idealUnlent = getContractValue() * unlentPerc / FULL_ALLOC;
+    if (underlyingBal > idealUnlent) {
+      // Put unlent balance at work in the lending provider
+      IIdleCDOStrategy(_strategy).deposit(underlyingBal - idealUnlent);
+    }
   }
 
   /// @notice can be called only by the rebalancer or the owner

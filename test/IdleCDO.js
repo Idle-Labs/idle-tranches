@@ -387,6 +387,23 @@ describe("IdleCDO", function () {
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.sub(BN('50').mul(ONE_TOKEN(18))));
   });
 
+  it("withdrawAA should redeem the _amount of AA tranche tokens requested when there is unlent balance", async () => {
+    await idleCDO.setUnlentPerc(BN('2000'));
+
+    const initBal = await underlying.balanceOf(AABuyerAddr);
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await firstDepositAA(_amount);
+    // update lending protocol price which is now 2
+    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
+    // to update lastTranchePriceAA which will be 1.9
+    await idleCDO.harvest(false, true, [true], [BN('0')]);
+    await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amount);
+    expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
+    const finalBal = await underlying.balanceOf(AABuyerAddr);
+    // 2000 - 10% of fees on 1000 of gain -> final bal = 1900 -> gain 900 - 2% of unlent -> 882
+    expect(finalBal.sub(initBal)).to.be.equal(BN('882').mul(ONE_TOKEN(18)));
+  });
+
   it("withdrawAA should _updatePrices", async () => {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await firstDepositAA(_amount);
@@ -484,6 +501,23 @@ describe("IdleCDO", function () {
     expect(BN(await BB.balanceOf(BBBuyerAddr))).to.be.equal(BN('500').mul(ONE_TOKEN(18)));
     // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900 -> requested half => tot 950
     expect(await underlying.balanceOf(BBBuyerAddr)).to.be.equal(initialAmount.sub(BN('50').mul(ONE_TOKEN(18))));
+  });
+
+  it("withdrawBB should redeem the _amount of BB tranche tokens requested when there is unlent balance", async () => {
+    await idleCDO.setUnlentPerc(BN('2000'));
+
+    const initBal = await underlying.balanceOf(BBBuyerAddr);
+    const _amount = BN('1000').mul(ONE_TOKEN(18));
+    await firstDepositBB(_amount);
+    // update lending protocol price which is now 2
+    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
+    // to update lastTranchePriceBB which will be 1.9
+    await idleCDO.harvest(false, true, [true], [BN('0')]);
+    await helpers.withdraw('BB', idleCDO, BBBuyerAddr, _amount);
+    expect(BN(await BB.balanceOf(BBBuyerAddr))).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
+    const finalBal = await underlying.balanceOf(BBBuyerAddr);
+    // 2000 - 10% of fees on 1000 of gain -> final bal = 1900 -> gain 900 - 2% of unlent -> 882
+    expect(finalBal.sub(initBal)).to.be.equal(BN('882').mul(ONE_TOKEN(18)));
   });
 
   it("withdrawBB should _updatePrices", async () => {
@@ -1069,18 +1103,44 @@ describe("IdleCDO", function () {
     expect(finalBal.sub(initialBal)).to.be.equal(_amountAA);
   });
 
-  it("harvest should keep an unlent reserve", async () => {
+  it("harvest should keep an unlent reserve equal to unlentPerc if possible", async () => {
     await idleCDO.setUnlentPerc(BN('2000'));
 
     const _amountAA = BN('1000').mul(one);
     const _amountBB = BN('1000').mul(one);
+    // 2000 deposited -> 1960 put in lending + 40 unlent
     await setupBasicDeposits(_amountAA, _amountBB);
-
-    const initialBal = await underlying.balanceOf(idleCDO.address);
-    await idleCDO.harvest(true, true, [true], [BN('0')]);
-    const finalBal = await underlying.balanceOf(idleCDO.address);
-    expect(finalBal).to.be.equal(initialBal.mul(await idleCDO.unlentPerc()).div(BN('100000')));
+    const bal = await underlying.balanceOf(idleCDO.address);
+    expect(bal).to.be.equal(BN('40').mul(one));
   });
+
+  it("harvest should not deposit in lending provider if current balance is < than unlent balance needed", async () => {
+    await idleCDO.setUnlentPerc(BN('2000'));
+
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    // 2000 deposited -> 1960 put in lending + 40 unlent
+    await setupBasicDeposits(_amountAA, _amountBB);
+    // price is now 2 so tot contract value is
+    // 1960 * 2 + 40 = 3960
+    const contractVal = await idleCDO.getContractValue();
+    expect(contractVal).to.be.equal(BN('3960').mul(one));
+    await idleCDO.harvest(true, true, [true], [BN('0')]);
+    const bal = await underlying.balanceOf(idleCDO.address);
+    // unlent value should be 3960 * 2% = 79.2
+    // but we only have 40 as underlyingBal so we do nothing
+    expect(bal).to.be.equal(BN('40').mul(one));
+
+    // deposit 140
+    await helpers.deposit('AA', idleCDO, AABuyerAddr, BN('140').mul(one));
+
+    await idleCDO.harvest(true, true, [true], [BN('0')]);
+    const balFinal = await underlying.balanceOf(idleCDO.address);
+    // unlent value should be 4100 * 2% = 82
+    // but we only have 40 as underlyingBal so we do nothing
+    expect(balFinal).to.be.equal(BN('82').mul(one));
+  });
+
 
   it("harvest should call _updatePrices and _updateLastTranchePrices if we are not skipping redeem of rewards", async () => {
     // Initialize deposits
