@@ -33,6 +33,12 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   IIdleToken public idleToken;
   /// ###### End of storage V1
 
+  // Used to prevent initialization of the implementation contract
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    token = address(1);
+  }
+
   // ###################
   // Initializer
   // ###################
@@ -42,6 +48,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   /// @param _strategyToken address of the strategy token
   /// @param _owner owner address
   function initialize(address _strategyToken, address _owner) public initializer {
+    require(token == address(0), 'Initialized');
     // Initialize contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();

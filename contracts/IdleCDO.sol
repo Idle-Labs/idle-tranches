@@ -21,6 +21,12 @@ import "./IdleCDOStorage.sol";
 contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  // Used to prevent initialization of the implementation contract
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    token = address(1);
+  }
+
   // ###################
   // Initializer
   // ###################
@@ -44,6 +50,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 _trancheIdealWeightRatio, // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
     address[] memory _incentiveTokens
   ) public initializer {
+    require(token == address(0), 'Initialized');
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable

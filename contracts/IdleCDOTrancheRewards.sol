@@ -23,6 +23,12 @@ import "hardhat/console.sol";
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  // Used to prevent initialization of the implementation contract
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    tranche = address(1);
+  }
+
   /// @notice Initialize the contract
   /// @param _trancheToken tranche address
   /// @param _rewards rewards token array
@@ -34,6 +40,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     address _trancheToken, address[] memory _rewards, address _owner,
     address _idleCDO, address _governanceRecoveryFund, uint256 _coolingPeriod
   ) public initializer {
+    require(tranche == address(0), 'Initialized');
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
