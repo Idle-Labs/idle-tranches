@@ -25,7 +25,6 @@ describe("IdleCDO", function () {
     RandomAddr = Random.address;
     Random2 = signers[6];
     Random2Addr = Random2.address;
-
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -115,8 +114,15 @@ describe("IdleCDO", function () {
     // Reset it here (it's set to 0 after initialization in beforeEach)
     await idleCDO.setUnlentPerc(BN('2000'));
 
+    const AAERC20 = await ethers.getContractAt("IERC20Detailed", AA.address);
+    const BBERC20 = await ethers.getContractAt("IERC20Detailed", BB.address);
+
     expect(await idleCDO.AATranche()).to.equal(AA.address);
     expect(await idleCDO.BBTranche()).to.equal(BB.address);
+    expect(await AAERC20.symbol()).to.equal('IDLECDO_AA_IDLEDAI');
+    expect(await AAERC20.name()).to.equal('IdleCDO AA Tranche - IDLEDAI');
+    expect(await BBERC20.symbol()).to.equal('IDLECDO_BB_IDLEDAI');
+    expect(await BBERC20.name()).to.equal('IdleCDO BB Tranche - IDLEDAI');
     expect(await idleCDO.token()).to.equal(underlying.address);
     expect(await idleCDO.strategy()).to.equal(strategy.address);
     expect(await idleCDO.strategyToken()).to.equal(idleToken.address);

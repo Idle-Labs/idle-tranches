@@ -27,7 +27,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice can only be called once
   /// @dev Initialize the upgradable contract
-  /// @param _limit contract value limit
+  /// @param _limit contract value limit, can be 0
   /// @param _guardedToken underlying token
   /// @param _governanceFund address where funds will be sent in case of emergency
   /// @param _owner guardian address
@@ -46,14 +46,19 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
+    // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
     GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _governanceFund, _owner);
     // Deploy Tranches tokens
-    AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
-    BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
+    address _strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    // get strategy token symbol (eg. idleDAI)
+    string memory _symbol = IERC20Detailed(_strategyToken).symbol();
+    // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
+    AATranche = address(new IdleCDOTranche(_concat(string("IdleCDO AA Tranche - "), _symbol), _concat(string("IDLECDO_AA_"), _symbol)));
+    BBTranche = address(new IdleCDOTranche(_concat(string("IdleCDO BB Tranche - "), _symbol), _concat(string("IDLECDO_BB_"), _symbol)));
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
-    strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    strategyToken = _strategyToken;
     rebalancer = _rebalancer;
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
     trancheIdealWeightRatio = _trancheIdealWeightRatio;
@@ -819,5 +824,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     // explicit return to fix linter
     return false;
+  }
+
+  /// @notice concat 2 strings in a single one
+  /// @param a first string
+  /// @param b second string
+  /// @return new string with a and b concatenated
+  function _concat(string memory a, string memory b) internal pure returns (string memory) {
+    return string(abi.encodePacked(a, b));
   }
 }
