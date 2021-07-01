@@ -21,25 +21,27 @@ To incentivize the reach of `trancheIdealWeightRatio` part of farmed governance 
 
 In case of hack, an emergency shutdown can be triggered (by both the `guardian`, which would be a multi-sig wallet, and the `owner` which will be the Idle governance) in order to pause both deposits and redeems, the redistribution of remaining funds can happens selectively, by allowing only AA holders to withdraw first directly in the main contract, or through a separate contract for more complex cases and resolutions (managed by the Idle governance).
 
-A Fee is collected on harvests in the form AA or BB supply diluition (based on the current AA ratio of the value) and it's basically a performance fee, currently set at 10% of the interest generated and it will be redirected to the Idle fee collector address.
+A Fee is collected on harvests in the form AA or BB supply diluition (based on the current AA ratio in value) and it's basically a performance fee, currently set at 10% of the interest generated and it will be redirected to the Idle fee collector address.
 
 ## Architecture
 The main contract which will be used by users is `IdleCDO` which allow to deposits underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
 
-The IdleCDO references an `IIdleCDOStrategy` and the first strategy proposed is `IdleStrategy` which uses Idle finance as a lending provider. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possibile. For other tokens, eg IDLE that won't be sold or stkAAVE that have no liquid markets due to locking, those will get redistributed to people who staked their tranches in a separate `IdleCDOTrancheRewards` contract (one for AA and one for BB).
+The IdleCDO references an `IIdleCDOStrategy` and the first strategy proposed is `IdleStrategy` which uses [Idle finance](http://idle.finance/) as a lending provider. IdleCDO should be able to change its strategy without impact, so it's possibile to change the lending provider (assuming the position have been previously withdrawn). Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possibile. For other tokens, eg IDLE that won't be sold or stkAAVE that have no liquid markets due to locking, those will get redistributed to people who staked their tranches in a separate `IdleCDOTrancheRewards` contract (one for AA and one for BB).
 
 These are the main contracts used:
 
 - **IdleCDO.sol**: contract which holds all the users pooled assets (both underlyings, eg DAI, and interest bearing tokens, eg idleDAI) and entry point for the user to mint tranche tokens and burn them to redeem principal + interest.
-When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their choosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) to increase the value of all tranche holders, and part of the gov tokens will be sent to the IdleCDOTrancheRewards contracts, if present, to incentivize the correct ideal ratio `trancheIdealWeightRatio`. On redeem users will burn their tranche tokens and get underlyings using a checkpointed price (set at last harvest) to avoid potential theft of interest, updated when dumping gov tokens to increase the tranche price.
+When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their choosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) to increase the value of all tranche holders, and part of the gov tokens will be sent to IdleCDOTrancheRewards contracts, if those are presetn, to incentivize the ideal ratio `trancheIdealWeightRatio`. On redeem users will burn their tranche tokens and get underlyings using a checkpointed price (set at last harvest to avoid potential theft of interest, updated when dumping gov tokens to increase the tranche price)
 
 - **IdleCDOTrancheRewards.sol**: contract for staking tranche tokens and getting rewards (for incentivizing the `trancheIdealWeightRatio`)
 - **IdleCDOTranche.sol**: ERC20 representing a specific (either AA or BB) tranche token. Only IdleCDO contract can mint and burn tranche tokens.
-- **IdleStrategy.sol**: CDO strategy for lending assets in Idle Finance. This contract it's just a proxy for interacting with Idle Finance and should have no funds at end of each transaction.
+- **IdleStrategy.sol**: IdleCDO strategy for lending assets in Idle Finance. This contract it's just a proxy for interacting with Idle Finance and should have no funds at end of each transaction. More info on how idleTokens works can be found [here](https://developers.idle.finance). The tldr of the Idle Finance protocol is this (using DAI as an example):
+In Idle Finance you deposit DAI to earn interest, on deposits you get back idleDAI, an interest bearing token that always increase in price and represent your position in Idle + the interest earned by that position (similar to Compound's cTokens). Idle lend those funds to other protocols such as Compound and Aave and continously rebalance the pooled user funds in order to achieve the highest avg yield. On redeems you burn your idleDAI and get back DAI principal + DAI earned as interest + a set of governance tokens rewards (currently IDLE, COMP, stkAAVE)
 
 Notes:
 - IdleCDO, IdleStrategy and IdleCDOTrancheRewards are upgradable contracts.
 - There are no 'loose' scripts but only hardhat tasks which are used both for interacting with contracts and tests in fork (`integration` task)
+- The `integration` task should be useful also to understand the complete workflow
 
 ## Setup
 

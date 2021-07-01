@@ -16,26 +16,31 @@ import "./IdleCDOTrancheRewardsStorage.sol";
 import "hardhat/console.sol";
 
 /// @title IdleCDOTrancheRewards
-/// @dev Contract used for staking specific tranche tokens and getting incentive rewards
+/// @notice Contract used for staking specific tranche tokens and getting incentive rewards
+/// This contract keeps the accounting of how many rewards each user is entitled to using 2 indexs:
+/// a per-user index (`usersIndexes[user][reward]`) and a global index (`rewardsIndexes[reward]`)
+/// The difference of those indexes
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice Initialize the contract
   /// @param _trancheToken tranche address
-  /// @param _rewards The rewards tokens
+  /// @param _rewards rewards token array
   /// @param _owner The owner of the contract
   /// @param _idleCDO The CDO where the reward tokens come from
   /// @param _governanceRecoveryFund address where rewards will be sent in case of transferToken call
+  /// @param _coolingPeriod number of blocks that needs to pass since last staking before unstake is possible
   function initialize(
     address _trancheToken, address[] memory _rewards, address _owner,
     address _idleCDO, address _governanceRecoveryFund, uint256 _coolingPeriod
   ) public initializer {
+    // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
     PausableUpgradeable.__Pausable_init();
-
+    // transfer ownership to owner
     transferOwnership(_owner);
-
+    // set state variables
     idleCDO = _idleCDO;
     tranche = _trancheToken;
     rewards = _rewards;
@@ -43,20 +48,29 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     coolingPeriod = _coolingPeriod;
   }
 
-  /// @notice Stake _amount of tranche token
+  /// @notice Stake _amount of tranche token to receive rewards
   /// @param _amount The amount of tranche tokens to stake
   function stake(uint256 _amount) external whenNotPaused override {
+    // save current block.number
     usersStakeBlock[msg.sender] = block.number;
-    // update user index for each reward
+    // update user index for each reward, used to calculate the correct reward amount
+    // for each user
     _updateUserIdx(msg.sender, _amount);
+    // increase the staked amount associated with the user
     usersStakes[msg.sender] += _amount;
+    // get _amount of `tranche` tokens from the user
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
+    // increase the total staked amount counter
     totalStaked += _amount;
   }
 
-  /// @notice Unstake _amount of tranche tokens
-  /// @param _amount The amount to unstake
+  /// @notice Unstake _amount of tranche tokens and redeem ALL accrued rewards
+  /// @dev if the contract is paused, unstaking any amount will cause the loss of all
+  /// accrued and unclaimed rewards so far
+  /// @param _amount The amount of tranche tokens to unstake
   function unstake(uint256 _amount) external nonReentrant override {
+    // check that the last stake was made at least `coolingPeriod` blocks
+    // to prevent theft of rewards by sandwiching the `depositReward` tx
     require(usersStakeBlock[msg.sender] + coolingPeriod < block.number, "COOLING_PERIOD");
 
     if (paused()) {
@@ -65,16 +79,18 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       address reward;
       for (uint256 i = 0; i < rewards.length; i++) {
         reward = rewards[i];
+        // set the user index equal to the global one, which means 0 rewards
         usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       }
     } else {
       // Claim all rewards accrued
       _claim();
     }
-
     // if _amount is greater than usersStakes[msg.sender], the next line fails
     usersStakes[msg.sender] -= _amount;
+    // send funds to the user
     IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
+    // update the total staked counter
     totalStaked -= _amount;
   }
 
@@ -84,18 +100,21 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     _claim();
   }
 
-  /// @notice Claim all rewards, used by claim and unstake
+  /// @notice Claim all rewards, used by `claim` and `unstake`
   function _claim() internal {
     address[] memory _rewards = rewards;
     for (uint256 i = 0; i < _rewards.length; i++) {
       address reward = _rewards[i];
+      // get how much `reward` we should send to the user
       uint256 amount = expectedUserReward(msg.sender, reward);
       uint256 balance = IERC20Detailed(reward).balanceOf(address(this));
+      // Check that the amount is available in the contract
       if (amount > balance) {
         amount = balance;
       }
-      // Set the user address equal to the global one
+      // Set the user index equal to the global one, which means 0 rewards
       usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      // transfer the reward to the user
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
   }
@@ -106,29 +125,33 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @return The expected reward amount
   function expectedUserReward(address user, address reward) public view returns(uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
+    // The amount of rewards for a specific reward token is given by the difference
+    // between the global index and the user's one multiplied by the user staked balance
     return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
-  /// @notice Called by the CDO to deposit rewards
+  /// @notice Called by IdleCDO to deposit incentive rewards
   /// @param _reward The rewards token address
   /// @param _amount The amount to deposit
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
-    // Get rewards from CDO
+    // Get rewards from IdleCDO
     IERC20Detailed(_reward).safeTransferFrom(msg.sender, address(this), _amount);
     if (totalStaked > 0) {
-      // rewards are splitted among all stakers
+      // rewards are splitted among all stakers by increasing the global index
+      // proportionally for everyone (based on totalStaked)
       rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
     }
   }
-  /// @notice It sets the coolingPeriod value
+  /// @notice It sets the coolingPeriod that a user needs to wait since his last stake
+  /// before the unstake will be possible
   /// @param _newCoolingPeriod The new cooling period
   function setCoolingPeriod(uint256 _newCoolingPeriod) external onlyOwner {
     coolingPeriod = _newCoolingPeriod;
   }
 
-  /// @notice Update user indexes based on the amount being staked
+  /// @notice Update user indexe for each reward, based on the amount being staked
   /// @param _user The user who is staking
   /// @param _amountToStake The amound staked
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
@@ -140,12 +163,20 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     for (uint256 i = 0; i < _rewards.length; i++) {
       reward = _rewards[i];
       if (_currStake == 0) {
-        // Set the user address equal to the global one
+        // Set the user address equal to the global one which means 0 reward for the user
         usersIndexes[_user][reward] = rewardsIndexes[reward];
       } else {
         userIndex = usersIndexes[_user][reward];
         // Calculate the new user idx
+        // The user already staked something so he already have some accrued rewards
+        // which are: r = (rewardsIndexes - userIndex) * _currStake -> (see expectedUserReward method)
+        // Those same rewards should now be splitted between more staked tokens
+        // specifically (_currStake + _amountToStake) so the userIndex should increase.
         usersIndexes[_user][reward] = userIndex + (
+          // Accrued rewards should not change after adding more staked tokens so
+          // we can calculate the increase of the userIndex by solving the following equation
+          // (rewardsIndexes - userIndex) * _currStake = (rewardsIndexes - (userIndex + X)) * (_currStake + _amountToStake)
+          // for X we get the increase for the userIndex:
           _amountToStake * (rewardsIndexes[reward] - userIndex) / (_currStake + _amountToStake)
         );
       }
@@ -153,7 +184,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   }
 
   /// @dev this method is only used to check whether a token is an incentive tokens or not
-  /// in the harvest call. The maximum number of element in the array will be a small number (eg at most 3-5)
+  /// in the depositReward call. The maximum number of element in the array will be a small number (eg at most 3-5)
   /// @param _array array of addresses to search for an element
   /// @param _val address of an element to find
   /// @return flag if the _token is an incentive token or not
@@ -167,12 +198,12 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     return false;
   }
 
-  // Emergency method, funds gets transferred to the governanceRecoveryFund address
-  function transferToken(address token, uint256 value) external onlyOwner nonReentrant returns (bool) {
+  // @notice Emergency method, funds gets transferred to the governanceRecoveryFund address
+  function transferToken(address token, uint256 value) external onlyOwner nonReentrant {
     require(token != address(0), 'Address is 0');
     IERC20Detailed(token).safeTransfer(governanceRecoveryFund, value);
-    return true;
   }
+
   /// @notice can be called by both the owner and the guardian
   /// @dev Pauses deposits and redeems
   function pause() external onlyOwner {

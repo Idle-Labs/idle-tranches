@@ -4,7 +4,6 @@ pragma solidity 0.8.4;
 import "hardhat/console.sol";
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IIdleToken.sol";
-import "./interfaces/IIdleTokenHelper.sol";
 import "./interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";

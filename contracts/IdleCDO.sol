@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.4;
 
-import "hardhat/console.sol";
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -17,6 +16,7 @@ import "./IdleCDOStorage.sol";
 
 /// @title A continous tranche implementation
 /// @author Idle Labs Inc.
+/// @notice More info and high level overview in the README
 /// @dev The contract is upgradable, to add storage slots, create IdleCDOStorageVX and inherit from IdleCDOStorage, then update the definitaion below
 contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
@@ -27,7 +27,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice can only be called once
   /// @dev Initialize the upgradable contract
-  /// @param _limit contract value limit
+  /// @param _limit contract value limit, can be 0
   /// @param _guardedToken underlying token
   /// @param _governanceFund address where funds will be sent in case of emergency
   /// @param _owner guardian address
@@ -46,14 +46,19 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   ) public initializer {
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
+    // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
     GuardedLaunchUpgradable.__GuardedLaunch_init(_limit, _governanceFund, _owner);
     // Deploy Tranches tokens
-    AATranche = address(new IdleCDOTranche("Idle CDO AA Tranche", "IDLE_CDO_AA"));
-    BBTranche = address(new IdleCDOTranche("Idle CDO BB Tranche", "IDLE_CDO_BB"));
+    address _strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    // get strategy token symbol (eg. idleDAI)
+    string memory _symbol = IERC20Detailed(_strategyToken).symbol();
+    // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
+    AATranche = address(new IdleCDOTranche(_concat(string("IdleCDO AA Tranche - "), _symbol), _concat(string("IDLECDO_AA_"), _symbol)));
+    BBTranche = address(new IdleCDOTranche(_concat(string("IdleCDO BB Tranche - "), _symbol), _concat(string("IDLECDO_BB_"), _symbol)));
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
-    strategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+    strategyToken = _strategyToken;
     rebalancer = _rebalancer;
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
     trancheIdealWeightRatio = _trancheIdealWeightRatio;
@@ -136,17 +141,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _lastTranchePrice(_tranche);
   }
 
-  /// @notice rewards (gov tokens) are not counted. It may include non accrued fees (in unclaimedFees)
+  /// @notice calculates the current total value locked (in `token` terms)
+  /// @dev rewards (gov tokens) are not counted. It may include non accrued fees (in unclaimedFees)
   /// @return contract value in underlyings
   function getContractValue() public override view returns (uint256) {
     address _strategyToken = strategyToken;
-    // strategyTokens value in underlying + unlent balance
     uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
+    // TVL is the sum of unlent balance in the contract + the balance in lending
+    // which is the value of the interest bearing assets (strategyTokens) in this contract
+    // TVL = (strategyTokens * strategy token price) + unlent balance
     return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractTokenBalance(token);
   }
 
   /// @param _tranche tranche address
-  /// @return apr at ideal trancheIdealWeightRatio balance between AA and BB
+  /// @return apr at ideal ratio (trancheIdealWeightRatio) between AA and BB
   function getIdealApr(address _tranche) external view returns (uint256) {
     return _getApr(_tranche, trancheIdealWeightRatio);
   }
@@ -167,63 +175,81 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return IIdleCDOStrategy(strategy).price();
   }
 
-  /// @return array of reward token addresses
+  /// @return array of reward token addresses that the strategy gives during lending
   function getRewards() public view returns (address[] memory) {
     return IIdleCDOStrategy(strategy).getRewardTokens();
   }
 
-  /// @return AA tranches ratio (in underlying value) considering all NAV
+  /// @notice calculates the current AA tranches ratio
+  /// @dev virtualBalance is used to have a more accurate/recent value for the AA ratio
+  /// because it calculates the balance after splitting the accrued interest since the
+  /// last depositXX/withdrawXX/harvest
+  /// @return AA tranches ratio (in underlying value) considering all interest
   function getCurrentAARatio() public view returns (uint256) {
     uint256 AABal = virtualBalance(AATranche);
     uint256 contractVal = AABal + virtualBalance(BBTranche);
     if (contractVal == 0) {
       return 0;
     }
-    // Current AA tranche split ratio = AABal * FULL_ALLOC / getContractValue()
+    // Current AA tranche split ratio = AABal * FULL_ALLOC / (AABal + BBBal)
     return AABal * FULL_ALLOC / contractVal;
   }
 
-  /// @notice this should always be >= of _tranchePrice(_tranche)
-  /// @dev useful for showing updated gains on frontends
+  /// @notice calculates the current tranches price considering the interest that is yet to be splitted
+  /// ie the interest generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX/harvest)
+  /// useful for showing updated gains on frontends
+  /// @dev this should always be >= of _tranchePrice(_tranche)
   /// @param _tranche address of the requested tranche
-  /// @return tranche price with current nav
+  /// @return tranche price considering all interest
   function virtualPrice(address _tranche) public view returns (uint256) {
+    // priceAA and priceBB are updated only on depositXX/withdrawXX/harvest
+    // so to have the 'real', up-to-date price of a tranche we should also consider
+    // the interest that we accrued since the last price update.
+    // To do that we need to know the interest we get since the last update so
+    // we get the current NAV and the last one (saved during a depositXX/withdrawXX/harvest)
     uint256 nav = getContractValue();
     uint256 lastNAV = _lastNAV();
     uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
-    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
 
     if (lastNAV == 0 || trancheSupply == 0) {
       return oneToken;
     }
+    // The gain that should be splitted among the 2 tranches is: nav - lastNAV
     // If there is no gain return the current saved price
     if (nav <= lastNAV) {
       return _tranchePrice(_tranche);
     }
-
+    // Calculate the gain
     uint256 gain = nav - lastNAV;
     // remove performance fee
     gain -= gain * fee / FULL_ALLOC;
-    // trancheNAV is: lastNAV + trancheGain
+    // we now have the net gain that should be splitted among the tranches according to trancheAPRSplitRatio
+    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
+    // the NAV of a single tranche is: lastNAV + trancheGain
     uint256 trancheNAV;
     if (_tranche == AATranche) {
+      // calculate gain for AA tranche
       // trancheGain (AAGain) = gain * trancheAPRSplitRatio / FULL_ALLOC;
       trancheNAV = lastNAVAA + (gain * _trancheAPRSplitRatio / FULL_ALLOC);
     } else {
+      // calculate gain for BB tranche
       // trancheGain (BBGain) = gain * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
       trancheNAV = lastNAVBB + (gain * (FULL_ALLOC - _trancheAPRSplitRatio) / FULL_ALLOC);
     }
-    // price => trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply
+    // tranche price is: trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply
     return trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
+  /// @notice calculates the NAV for a tranche considering the interest that is yet to be splitted
   /// @param _tranche address of the requested tranche
   /// @return net asset value, in underlying tokens, for _tranche considering all nav
   function virtualBalance(address _tranche) public view returns (uint256) {
+    // balance is: tranche supply * virtual tranche price
     return IdleCDOTranche(_tranche).totalSupply() * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
-  /// @return array with addresses of incentiveTokens
+  /// @notice returns an array of tokens used to incentive tranches via IIdleCDOTrancheRewards
+  /// @return array with addresses of incentiveTokens (can be empty)
   function getIncentiveTokens() public view returns (address[] memory) {
     return incentiveTokens;
   }
@@ -232,9 +258,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // Internal
   // ###############
 
-  /// @notice automatically reverts on lending provider default (strategyPrice decreased)
+  /// @notice method used to deposit `token` and mint tranche tokens
   /// Ideally users should deposit right after an `harvest` call to maximize profit
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
+  /// automatically reverts on lending provider default (strategyPrice decreased)
   /// @param _amount amount of underlyings (`token`) to deposit
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
@@ -245,47 +272,60 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _updateCallerBlock();
     // check if strategyPrice decreased
     _checkDefault();
-    // interest accrued since last mint/redeem/harvest is splitted between AA and BB
-    // according to trancheAPRSplitRatio. NAVs of AA and BB are so updated and tranche
+    // interest accrued since last depositXX/withdrawXX/harvest is splitted between AA and BB
+    // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
     _updatePrices();
-    // NOTE: mint of shares should be done before transferring funds
-    // mint tranches tokens according to the current prices
+    // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_amount, msg.sender, _tranche);
     // get underlyings from sender
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
   }
 
-  /// @dev accrues interest to the tranches (update NAVs variables) and updates tranche prices
+  /// @notice this method is called on depositXX/withdrawXX/harvest and
+  /// updates the accounting of the contract and effectively splits the yield between the
+  /// AA and BB tranches
+  /// @dev this method:
+  /// - update tranche prices (priceAA and priceBB)
+  /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
+  /// - update fee accounting (unclaimedFees)
   function _updatePrices() internal {
+    // In order to correctly split the interest generated between AA and BB tranche holders
+    // (according to the trancheAPRSplitRatio) we need to know how much interest we gained
+    // since the last price update (during a depositXX/withdrawXX/harvest)
+    // To do that we need to get the current value of the assets in this contract
+    // and the last saved one (always during a depositXX/withdrawXX/harvest)
     uint256 _oneToken = oneToken;
     // get last saved total net asset value
     uint256 lastNAV = _lastNAV();
     if (lastNAV == 0) {
       return;
     }
-    // get the current total net asset value
+    // The gain that should be splitted among the 2 tranches is: nav - lastNAV
     uint256 nav = getContractValue();
+    // If there is no gain do nothing
     if (nav <= lastNAV) {
       return;
     }
     // Calculate gain since last update
     uint256 gain = nav - lastNAV;
-    // get performance fee amount
+    // remove the performance fee
     uint256 performanceFee = gain * fee / FULL_ALLOC;
     gain -= performanceFee;
-    // and add the value to unclaimedFees
+    // and add the performance fee amount to unclaimedFees variable
+    // (those will be then converted in tranche tokens at the next harvest via _depositFees method)
     unclaimedFees += performanceFee;
-    // Get the current tranche supply
+    // we now have the net gain (`gain`) that should be splitted among the tranches according to trancheAPRSplitRatio
+    // Get the current tranche supply for
     uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
     uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
     uint256 AAGain;
     uint256 BBGain;
     if (BBTotSupply == 0) {
-      // all gain to AA
+      // if there are no BB holders, all gain to AA
       AAGain = gain;
     } else if (AATotSupply == 0) {
-      // all gain to BB
+      // if there are no AA holders, all gain to BB
       BBGain = gain;
     } else {
       // split the gain between AA and BB holders according to trancheAPRSplitRatio
@@ -297,16 +337,18 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // BBGain
     lastNAVBB += BBGain;
     // Update tranche prices
+    // tranche price is: trancheNAV / trancheSupply
     priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : _oneToken;
     priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : _oneToken;
   }
 
+  /// @notice mint tranche tokens and updates tranche last NAV
   /// @param _amount, in underlyings, to convert in tranche tokens
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
   function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
-    // calculate # of tranche token to mint based on current tranche price
+    // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
     IdleCDOTranche(_tranche).mint(_to, _minted);
     // update NAV with the _amount of underlyings added
@@ -317,10 +359,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @notice this will be called only during harvests
-  /// @param _amount amount of underlyings to deposit
+  /// @notice convert fees (`unclaimedFees`) in tranche tokens
+  /// the tranche token minted is based on the current AA ratio, so to mint the tranche
+  /// that it's needed most to reach the trancheIdealWeightRatio
+  /// @dev this will be called only during harvests
   /// @return _currAARatio current AA ratio
-  function _depositFees(uint256 _amount) internal returns (uint256 _currAARatio) {
+  function _depositFees() internal returns (uint256 _currAARatio) {
+    uint256 _amount = unclaimedFees;
     if (_amount > 0) {
       _currAARatio = getCurrentAARatio();
       _mintShares(_amount, feeReceiver,
@@ -332,16 +377,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @dev updates last tranche prices with the current ones
+  /// @notice updates last tranche prices with the current ones
+  /// @dev last tranche prices are used on withdrawXX methods, instead of priceXX,
+  /// to avoid theft of interest when calling harvest to market sell reward for `token`
+  /// (which will increase priceAA and priceBB)
   function _updateLastTranchePrices() internal {
     lastAAPrice = priceAA;
     lastBBPrice = priceBB;
   }
 
-  /// @notice automatically reverts on lending provider default (strategyPrice decreased)
-  /// a user should wait at least one harvest before rededeming otherwise the redeemed amount
-  /// would be less than the deposited one due to the use of a checkpointed price at last harvest
-  /// Ideally users should redeem right after an `harvest` call
+  /// @notice It allows users to burn their tranche token and redeem their principal + interest back
+  /// @dev automatically reverts on lending provider default (strategyPrice decreased).
+  /// A user should wait at least one harvest before rededeming otherwise the redeemed amount
+  /// would be less than the deposited one due to the use of a checkpointed price at last harvest (lastAAPrice and lastBBPrice)
+  /// Ideally users should redeem right after an `harvest` call for maximum profits
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
   /// @return toRedeem number of underlyings redeemed
@@ -358,16 +407,16 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     require(_amount > 0, 'IDLE:IS_0');
     address _token = token;
-    // get current net unlent balance
+    // get current unlent balance
     uint256 balanceUnderlying = _contractTokenBalance(_token);
     // Calculate the amount to redeem using the checkpointed price from last harvest
     // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
-    // to steal interest generated from rewards
+    // to steal interest generated when calling harvest and rewards are market sold
     toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     if (toRedeem > balanceUnderlying) {
       // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
-      // and then add the current balanceUnderlying
-      // NOTE: there could be a difference of up to 100 wei due to rounding
+      // and then add it to the current unlent balance
+      // NOTE: A difference of up to 100 wei due to rounding is tolerated
       toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
     }
     // burn tranche token
@@ -392,7 +441,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastStrategyPrice = currPrice;
   }
 
-  /// @dev this should liquidate at least _amount or revertIfNeeded
+  /// @dev this should liquidate at least _amount of `token` from the lending provider or revertIfNeeded
   /// @param _amount in underlying tokens
   /// @param _revertIfNeeded flag whether to revert or not if the redeemed amount is not enough
   /// @return _redeemedTokens number of underlyings redeemed
@@ -404,7 +453,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @notice sends specific rewards to the tranche rewards staking contracts
+  /// @notice sends rewards to the tranche rewards staking contracts
+  /// @dev this method is called only during harvests
+  /// @param currAARatio current AA tranche ratio
   function _updateIncentives(uint256 currAARatio) internal {
     // Read state variables only once to save gas
     uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
@@ -413,12 +464,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
 
-    // Check if BB tranches should be rewarded (is AA ratio high)
+    // Check if BB tranches should be rewarded (if AA ratio is too high)
     if (_BBStaking != address(0) && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
       // give more rewards to BB holders, ie send some rewards to BB Staking contract
       return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
     }
-    // Check if AA tranches should be rewarded (is AA ratio low)
+    // Check if AA tranches should be rewarded (id AA ratio is too low)
     if (_AAStaking != address(0) && (currAARatio < (_trancheIdealWeightRatio - _idealRange))) {
       // give more rewards to AA holders, ie send some rewards to AA Staking contract
       return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
@@ -434,16 +485,18 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _depositIncentiveToken(_BBStaking, FULL_ALLOC);
   }
 
-  /// @notice sends requested ratio of incentive tokens reward to a specific IdleCDOTrancheRewards contract
+  /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
   /// @param _stakingContract address which will receive incentive Rewards
   /// @param _ratio ratio of the incentive token balance to send
   function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
     address[] memory _incentiveTokens = incentiveTokens;
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
       address _incentiveToken = _incentiveTokens[i];
-      // deposit the requested ratio of the current contract balance of _incentiveToken to `_to`
+      // calculates the requested _ratio of the current contract balance of
+      // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
       uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
       if (_reward > 0) {
+        // call depositReward to actually let the IdleCDOTrancheRewards get the reward
         IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
       }
     }
@@ -469,9 +522,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _tranche == AATranche ? lastAAPrice : lastBBPrice;
   }
 
-  /// @notice the apr can be higher than the strategy apr
-  /// @dev returns the current apr for a tranche based on trancheAPRSplitRatio and the provided AA split ratio
-  /// @param _tranche tranche token
+  /// @notice returns the current apr for a tranche based on trancheAPRSplitRatio and the provided AA ratio
+  /// @dev the apr for a tranche can be higher than the strategy apr
+  /// @param _tranche tranche token address
   /// @param _AATrancheSplitRatio AA split ratio used for calculations
   /// @return apr for the specific tranche
   function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
@@ -479,10 +532,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     bool isAATranche = _tranche == AATranche;
     if (_AATrancheSplitRatio == 0) {
+      // if there are no AA tranches, apr for AA is 0 (all apr to BB and it will be equal to stratApr)
       return isAATranche ? 0 : stratApr;
     }
     return isAATranche ?
+      // AA apr is: stratApr * AAaprSplitRatio / AASplitRatio
       stratApr * _trancheAPRSplitRatio / _AATrancheSplitRatio :
+      // BB apr is: stratApr * BBaprSplitRatio / BBSplitRatio -> where
+      // BBaprSplitRatio is: (FULL_ALLOC - _trancheAPRSplitRatio) and
+      // BBSplitRatio is: (FULL_ALLOC - _AATrancheSplitRatio)
       stratApr * (FULL_ALLOC - _trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
   }
 
@@ -490,10 +548,17 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // Protected
   // ###################
 
-  /// @notice can be called only by the rebalancer or the owner
-  /// @dev it redeems rewards if any from the lending provider of the strategy and converts them in underlyings.
-  /// it also deposits eventual unlent balance already present in the contract with the strategy.
-  /// This method will be called by an exteranl keeper bot which will call the method sistematically (eg once a day)
+  /// @notice This method is used to lend user funds in the lending provider through the IIdleCDOStrategy and update tranches incentives.
+  /// The method:
+  /// - redeems rewards (if any) from the lending provider
+  /// - converts the rewards NOT present in the `incentiveTokens` array, in underlyings through uniswap v2
+  /// - calls _updatePrices and _updateLastTranchePrices to update the accounting of the system with the new underlyings received
+  /// - it then convert fees in tranche tokens
+  /// - sends the correct amount of `incentiveTokens` to the each of the IdleCDOTrancheRewards contracts
+  /// - Finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
+  ///   lending provider through the IIdleCDOStrategy `deposit` call
+  /// The method will be called by an external, whitelisted, keeper bot which will call the method sistematically (eg once a day)
+  /// @dev can be called only by the rebalancer or the owner
   /// @param _skipRedeem whether to redeem rewards from strategy or not (for gas savings)
   /// @param _skipIncentivesUpdate whether to update incentives or not
   /// @param _skipReward array of flags for skipping the market sell of specific rewards. Lenght should be equal to the `getRewards()` array
@@ -542,13 +607,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
       // others could have been skipped (with flags set off chain) but it just means that
       // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
-      // NOTE: This method call should not be inside the `if finalBalance > initialBalance` just in case
-      // no rewards are distributed from the underlying strategy
       _updateLastTranchePrices();
 
       // Get fees in the form of totalSupply diluition
       // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
-      uint256 currAARatio = _depositFees(unclaimedFees);
+      uint256 currAARatio = _depositFees();
 
       if (!_skipIncentivesUpdate) {
         // Update tranche incentives distribution and send rewards to staking contracts
@@ -566,7 +629,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @notice can be called only by the rebalancer or the owner
+  /// @notice method used to redeem underlyings from the lending provider
+  /// @dev can be called only by the rebalancer or the owner
   /// @param _amount in underlyings to liquidate from lending provider
   /// @param _revertIfNeeded flag to revert if amount liquidated is too low
   /// @return liquidated amount in underlyings
@@ -601,8 +665,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice updates the strategy used (potentially changing the lending protocol used)
   /// @dev it's REQUIRED to liquidate / redeem everything from the lending provider before changing strategy
+  /// if the leding provider of the new strategy is different from the current one
   /// it's also REQUIRED to transfer out any incentive tokens accrued if those are changed from the current ones
-  /// if the lending provider is changes
+  /// if the lending provider is changed
   /// @param _strategy new strategy address
   /// @param _incentiveTokens array of incentive tokens addresses
   function setStrategy(address _strategy, address[] memory _incentiveTokens) external onlyOwner {
@@ -621,7 +686,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     strategyToken = _newStrategyToken;
     // Approve underlyingToken
     _token.safeIncreaseAllowance(_strategy, type(uint256).max);
-    // Approve strategyToken
+    // Approve the new strategy to transfer strategyToken out from this contract
     IERC20Detailed(_newStrategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
     // Update last strategy price
     lastStrategyPrice = strategyPrice();
@@ -696,26 +761,30 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @notice can be called by both the owner and the guardian
-  /// @dev pause deposits and redeems for all classes of tranches
+  /// @notice pause deposits and redeems for all classes of tranches
+  /// @dev can be called by both the owner and the guardian
   function emergencyShutdown() external {
     require(msg.sender == guardian || msg.sender == owner(), "IDLE:!AUTH");
+    // prevent deposits
     _pause();
+    // prevent withdraws
     allowAAWithdraw = false;
     allowBBWithdraw = false;
+    // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
+    // without checking for lending protocol default
     skipDefaultCheck = true;
     revertIfTooLow = true;
   }
 
-  /// @notice can be called by both the owner and the guardian
-  /// @dev Pauses deposits and redeems
+  /// @notice Pauses deposits and redeems
+  /// @dev can be called by both the owner and the guardian
   function pause() external  {
     require(msg.sender == guardian || msg.sender == owner(), "IDLE:!AUTH");
     _pause();
   }
 
-  /// @notice can be called by both the owner and the guardian
-  /// @dev Unpauses deposits and redeems
+  /// @notice Unpauses deposits and redeems
+  /// @dev can be called by both the owner and the guardian
   function unpause() external {
     require(msg.sender == guardian || msg.sender == owner(), "IDLE:!AUTH");
     _unpause();
@@ -725,6 +794,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   // Helpers
   // ###################
 
+  /// @notice returns the current balance of this contract for a specific token
   /// @param _token token address
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
@@ -754,5 +824,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     // explicit return to fix linter
     return false;
+  }
+
+  /// @notice concat 2 strings in a single one
+  /// @param a first string
+  /// @param b second string
+  /// @return new string with a and b concatenated
+  function _concat(string memory a, string memory b) internal pure returns (string memory) {
+    return string(abi.encodePacked(a, b));
   }
 }

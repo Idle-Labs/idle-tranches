@@ -1,13 +1,15 @@
 //SPDX-License-Identifier: Apache 2.0
 pragma solidity 0.8.4;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+/// @notice This abstract contract is used to add an updatable limit on the total value locked
+/// that the contract can have. It also have an emergency method that allows the owner to pull
+/// funds into predefined recovery address
 /// @dev Inherit this contract and add the _guarded method to the child contract
 abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -17,11 +19,12 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   // recovery address
   address public governanceRecoveryFund;
 
-  /// @param _limit TVL limit
+  /// @param _limit TVL limit. (0 means unlimited)
   /// @param _governanceRecoveryFund recovery address
   /// @param _owner owner address
   function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal initializer {
-    require(_governanceRecoveryFund != address(0), 'Address is 0');
+    require(_governanceRecoveryFund != address(0), 'IS_0');
+    require(_owner != address(0), 'IS_0');
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
