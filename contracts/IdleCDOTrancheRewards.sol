@@ -13,7 +13,6 @@ import "./interfaces/IIdleCDOTrancheRewards.sol";
 import "./interfaces/IIdleCDO.sol";
 
 import "./IdleCDOTrancheRewardsStorage.sol";
-import "hardhat/console.sol";
 
 /// @title IdleCDOTrancheRewards
 /// @notice Contract used for staking specific tranche tokens and getting incentive rewards
