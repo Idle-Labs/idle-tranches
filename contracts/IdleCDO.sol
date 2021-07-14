@@ -202,51 +202,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return AABal * FULL_ALLOC / contractVal;
   }
 
-  /// @notice calculates the current tranches price considering the interest that is yet to be splitted
-  /// ie the interest generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX/harvest)
-  /// useful for showing updated gains on frontends
-  /// @dev this should always be >= of _tranchePrice(_tranche)
-  /// @param _tranche address of the requested tranche
-  /// @return tranche price considering all interest
-  function virtualPrice(address _tranche) public view returns (uint256) {
-    // priceAA and priceBB are updated only on depositXX/withdrawXX/harvest
-    // so to have the 'real', up-to-date price of a tranche we should also consider
-    // the interest that we accrued since the last price update.
-    // To do that we need to know the interest we get since the last update so
-    // we get the current NAV and the last one (saved during a depositXX/withdrawXX/harvest)
-    uint256 nav = getContractValue();
-    uint256 lastNAV = _lastNAV();
-    uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
-
-    if (lastNAV == 0 || trancheSupply == 0) {
-      return oneToken;
-    }
-    // The gain that should be splitted among the 2 tranches is: nav - lastNAV
-    // If there is no gain return the current saved price
-    if (nav <= lastNAV) {
-      return _tranchePrice(_tranche);
-    }
-    // Calculate the gain
-    uint256 gain = nav - lastNAV;
-    // remove performance fee
-    gain -= gain * fee / FULL_ALLOC;
-    // we now have the net gain that should be splitted among the tranches according to trancheAPRSplitRatio
-    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
-    // the NAV of a single tranche is: lastNAV + trancheGain
-    uint256 trancheNAV;
-    if (_tranche == AATranche) {
-      // calculate gain for AA tranche
-      // trancheGain (AAGain) = gain * trancheAPRSplitRatio / FULL_ALLOC;
-      trancheNAV = lastNAVAA + (gain * _trancheAPRSplitRatio / FULL_ALLOC);
-    } else {
-      // calculate gain for BB tranche
-      // trancheGain (BBGain) = gain * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC;
-      trancheNAV = lastNAVBB + (gain * (FULL_ALLOC - _trancheAPRSplitRatio) / FULL_ALLOC);
-    }
-    // tranche price is: trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply
-    return trancheNAV * ONE_TRANCHE_TOKEN / trancheSupply;
-  }
-
   /// @notice calculates the NAV for a tranche considering the interest that is yet to be splitted
   /// @param _tranche address of the requested tranche
   /// @return net asset value, in underlying tokens, for _tranche considering all nav
@@ -282,7 +237,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // interest accrued since last depositXX/withdrawXX/harvest is splitted between AA and BB
     // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
-    _updatePrices();
+    _updateAccounting();
     // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_amount, msg.sender, _tranche);
     // get underlyings from sender
@@ -296,57 +251,98 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// - update tranche prices (priceAA and priceBB)
   /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
   /// - update fee accounting (unclaimedFees)
-  function _updatePrices() internal {
+  function _updateAccounting() internal {
+    uint256 _lastNAVAA = lastNAVAA;
+    uint256 _lastNAVBB = lastNAVBB;
+    uint256 _lastNAV = _lastNAVAA + _lastNAVBB;
+    uint256 nav = getContractValue();
+    uint256 _aprSplitRatio = trancheAPRSplitRatio;
+
+    // If gain is > 0, then collect some fees in `unclaimedFees`
+    if (nav > _lastNAV) {
+      unclaimedFees += (nav - _lastNAV) * fee / FULL_ALLOC;
+    }
+
+    (uint256 _priceAA, uint256 _totalAAGain) = _virtualPricesAux(AATranche, nav, _lastNAV, _lastNAVAA, _aprSplitRatio);
+    (uint256 _priceBB, uint256 _totalBBGain) = _virtualPricesAux(BBTranche, nav, _lastNAV, _lastNAVBB, _aprSplitRatio);
+
+    lastNAVAA += _totalAAGain;
+    lastNAVBB += _totalBBGain;
+    priceAA = _priceAA;
+    priceBB = _priceBB;
+  }
+
+  /// @notice calculates the current tranches price considering the interest that is yet to be splitted
+  /// ie the interest generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX/harvest)
+  /// useful for showing updated gains on frontends
+  /// @dev this should always be >= of _tranchePrice(_tranche)
+  /// @param _tranche address of the requested tranche
+  /// @return _virtualPrice tranche price considering all interest
+  function virtualPrice(address _tranche) public view returns (uint256 _virtualPrice) {
+    // get both NAVs, because we need the total NAV anyway
+    uint256 _lastNAVAA = lastNAVAA;
+    uint256 _lastNAVBB = lastNAVBB;
+
+    (_virtualPrice, ) = _virtualPricesAux(
+      _tranche,
+      getContractValue(), // nav
+      _lastNAVAA + _lastNAVBB, // lastNAV
+      _tranche == AATranche ? _lastNAVAA : _lastNAVBB, // lastTrancheNAV
+      trancheAPRSplitRatio
+    );
+  }
+
+  /// @notice calculates the current tranches price considering the interest that is yet to be splitted and the
+  /// total gain for a specific tranche
+  /// @param _tranche address of the requested tranche
+  /// @param _nav current NAV
+  /// @param _lastNAV last saved NAV
+  /// @param _lastTrancheNAV last saved tranche NAV
+  /// @param _trancheAPRSplitRatio APR split ratio for AA tranche
+  /// @return _virtualPrice tranche price considering all interest
+  /// @return _totalTrancheGain tranche gain since last update
+  function _virtualPricesAux(
+    address _tranche,
+    uint256 _nav,
+    uint256 _lastNAV,
+    uint256 _lastTrancheNAV,
+    uint256 _trancheAPRSplitRatio
+  ) internal view returns (uint256 _virtualPrice, uint256 _totalTrancheGain) {
+    // If there is no gain return the current price
+    if (_nav <= _lastNAV) {
+      return (_tranchePrice(_tranche), 0);
+    }
+
+    // Check if there are tranche holders
+    uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
+    if (_lastNAV == 0 || trancheSupply == 0) {
+      return (oneToken, 0);
+    }
     // In order to correctly split the interest generated between AA and BB tranche holders
     // (according to the trancheAPRSplitRatio) we need to know how much interest we gained
     // since the last price update (during a depositXX/withdrawXX/harvest)
     // To do that we need to get the current value of the assets in this contract
     // and the last saved one (always during a depositXX/withdrawXX/harvest)
-    uint256 _oneToken = oneToken;
-    // get last saved total net asset value
-    uint256 lastNAV = _lastNAV();
-    if (lastNAV == 0) {
-      return;
-    }
-    // The gain that should be splitted among the 2 tranches is: nav - lastNAV
-    uint256 nav = getContractValue();
-    // If there is no gain do nothing
-    if (nav <= lastNAV) {
-      return;
-    }
-    // Calculate gain since last update
-    uint256 gain = nav - lastNAV;
-    // remove the performance fee
-    uint256 performanceFee = gain * fee / FULL_ALLOC;
-    gain -= performanceFee;
-    // and add the performance fee amount to unclaimedFees variable
-    // (those will be then converted in tranche tokens at the next harvest via _depositFees method)
-    unclaimedFees += performanceFee;
-    // we now have the net gain (`gain`) that should be splitted among the tranches according to trancheAPRSplitRatio
-    // Get the current tranche supply for
-    uint256 AATotSupply = IdleCDOTranche(AATranche).totalSupply();
-    uint256 BBTotSupply = IdleCDOTranche(BBTranche).totalSupply();
-    uint256 AAGain;
-    uint256 BBGain;
-    if (BBTotSupply == 0) {
-      // if there are no BB holders, all gain to AA
-      AAGain = gain;
-    } else if (AATotSupply == 0) {
-      // if there are no AA holders, all gain to BB
-      BBGain = gain;
+
+    // Calculate the total gain
+    uint256 totalGain = _nav - _lastNAV;
+    // Remove performance fee
+    totalGain -= totalGain * fee / FULL_ALLOC;
+
+    address _AATranche = AATranche;
+    bool _isAATranche = _tranche == _AATranche;
+    // Get the supply of the other tranche and
+    // if it's 0 then give all gain to the current `_tranche` holders
+    if (IdleCDOTranche(_isAATranche ? BBTranche : _AATranche).totalSupply() == 0) {
+      _totalTrancheGain = totalGain;
     } else {
-      // split the gain between AA and BB holders according to trancheAPRSplitRatio
-      AAGain = gain * trancheAPRSplitRatio / FULL_ALLOC;
-      BBGain = gain - AAGain;
+      // Split the net gain, with precision loss favoring the AA tranche.
+      uint256 totalBBGain = totalGain * (FULL_ALLOC - _trancheAPRSplitRatio) / FULL_ALLOC;
+      // The new NAV for the tranche is old NAV + total gain for the tranche
+      _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
     }
-    // Update NAVs
-    lastNAVAA += AAGain;
-    // BBGain
-    lastNAVBB += BBGain;
-    // Update tranche prices
-    // tranche price is: trancheNAV / trancheSupply
-    priceAA = AATotSupply > 0 ? lastNAVAA * ONE_TRANCHE_TOKEN / AATotSupply : _oneToken;
-    priceBB = BBTotSupply > 0 ? lastNAVBB * ONE_TRANCHE_TOKEN / BBTotSupply : _oneToken;
+    // Split the new NAV (_lastTrancheNAV + _totalTrancheGain) per tranche token
+    _virtualPrice = (_lastTrancheNAV + _totalTrancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
   /// @notice mint tranche tokens and updates tranche last NAV
@@ -407,7 +403,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // check if strategyPrice decreased
     _checkDefault();
     // accrue interest to tranches and updates tranche prices
-    _updatePrices();
+    _updateAccounting();
     // redeem all user balance if 0 is passed as _amount
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
@@ -509,11 +505,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @return the total saved net asset value for all tranches
-  function _lastNAV() internal view returns (uint256) {
-    return lastNAVAA + lastNAVBB;
-  }
-
   /// @param _tranche tranche address
   /// @return last saved price for minting tranche tokens, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
@@ -559,7 +550,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// The method:
   /// - redeems rewards (if any) from the lending provider
   /// - converts the rewards NOT present in the `incentiveTokens` array, in underlyings through uniswap v2
-  /// - calls _updatePrices and _updateLastTranchePrices to update the accounting of the system with the new underlyings received
+  /// - calls _updateAccounting and _updateLastTranchePrices to update the accounting of the system with the new underlyings received
   /// - it then convert fees in tranche tokens
   /// - sends the correct amount of `incentiveTokens` to the each of the IdleCDOTrancheRewards contracts
   /// - Finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
@@ -609,7 +600,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       }
       // split converted rewards and update tranche prices for mint
       // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
-      _updatePrices();
+      _updateAccounting();
       // update last saved prices for redeems at this point
       // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
       // others could have been skipped (with flags set off chain) but it just means that
@@ -625,7 +616,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         _updateIncentives(currAARatio);
       }
     }
-    // If we _skipRedeem we don't need to call _updatePrices because lastNAV is already updated
+    // If we _skipRedeem we don't need to call _updateAccounting because lastNAV is already updated
 
     // Keep some unlent balance for cheap redeems and as reserve of last resort
     uint256 underlyingBal = _contractTokenBalance(_token);

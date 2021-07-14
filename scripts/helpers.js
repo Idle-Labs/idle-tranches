@@ -138,7 +138,8 @@ const sudo = async (acc, contract = null) => {
 const sudoCall = async (acc, contract, method, params) => {
   const [contractImpersonated, signer] = await sudo(acc, contract);
   const res = await contractImpersonated[method](...params);
-  // const res2 = await res.wait();
+  const receipt = await res.wait();
+  // console.log('⛽ used: ', receipt.gasUsed.toString());
   return [contractImpersonated, signer]
 };
 const waitDays = async d => {
