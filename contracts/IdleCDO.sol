@@ -509,6 +509,36 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
+  /// @notice method used to sell `_rewardToken` for `_token` on uniswap
+  /// @param _rewardToken address of the token to sell
+  /// @param _token address of the token to buy
+  /// @param _minAmount min amount of `_token` to buy
+  function _sellAllReward(address _rewardToken, address _token, uint256 _minAmount) internal returns (uint256) {
+    uint256 _amount = _contractTokenBalance(_rewardToken);
+    if (_amount == 0) {
+      return 0;
+    }
+
+    IUniswapV2Router02 _uniRouter = uniswapRouterV2;
+    // Prepare path for uniswap trade
+    address[] memory _path = new address[](3);
+    _path[0] = _rewardToken;
+    _path[1] = weth; // read from storage
+    _path[2] = _token;
+    // approve the uniswap router to spend our reward
+    IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
+    // do the trade with all `_rewardToken` in this contract
+    uint256[] memory _amounts = _uniRouter.swapExactTokensForTokens(
+      _amount,
+      _minAmount,
+      _path,
+      address(this),
+      block.timestamp + 1
+    );
+    // return `_token` amount received
+    return _amounts[_amounts.length - 1];
+  }
+
   /// @param _tranche tranche address
   /// @return last saved price for minting tranche tokens, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
@@ -565,7 +595,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _skipIncentivesUpdate whether to update incentives or not
   /// @param _skipReward array of flags for skipping the market sell of specific rewards. Lenght should be equal to the `getRewards()` array
   /// @param _minAmount array of min amounts for uniswap trades. Lenght should be equal to the _skipReward array
-  function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
+  function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount)
+    external
+    returns (uint256[] memory _swappedAmounts) {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
     // Fetch state variable once to save gas
     address _token = token;
@@ -574,33 +606,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     if (!_skipRedeem) {
       // Fetch state variables once to save gas
       address[] memory _incentiveTokens = incentiveTokens;
-      address _weth = weth;
-      IUniswapV2Router02 _uniRouter = uniswapRouterV2;
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(_strategy).redeemRewards();
       // get all rewards addresses
-      address[] memory rewards = getRewards();
-      for (uint256 i = 0; i < rewards.length; i++) {
-        address rewardToken = rewards[i];
-        // get the balance of a specific reward
-        uint256 _currentBalance = _contractTokenBalance(rewardToken);
+      address[] memory _rewards = getRewards();
+      address _rewardToken;
+      // Initialize the return array, containing the amounts received after swapping reward tokens
+      _swappedAmounts = new uint256[](_rewards.length);
+      // loop through all reward tokens
+      for (uint256 i = 0; i < _rewards.length; i++) {
+        _rewardToken = _rewards[i];
         // check if it should be sold or not
-        if (_skipReward[i] || _currentBalance == 0 || _includesAddress(_incentiveTokens, rewardToken)) { continue; }
-        // Prepare path for uniswap trade
-        address[] memory _path = new address[](3);
-        _path[0] = rewardToken;
-        _path[1] = _weth;
-        _path[2] = _token;
-        // approve the uniswap router to spend our reward
-        IERC20Detailed(rewardToken).safeIncreaseAllowance(address(_uniRouter), _currentBalance);
-        // do the uniswap trade
-        _uniRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-          _currentBalance,
-          _minAmount[i],
-          _path,
-          address(this),
-          block.timestamp + 1
-        );
+        if (_skipReward[i] || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+        // Market sell all _rewardToken in this contract for _token
+        _swappedAmounts[i] = _sellAllReward(_rewardToken, _token, _minAmount[i]);
       }
       // split converted rewards and update tranche prices for mint
       // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
