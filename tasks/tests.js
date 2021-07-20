@@ -261,7 +261,10 @@ const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
   const rewardTokens = await idleCDO.getRewards();
-  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
+  let minAmounts = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
+  // Add some slippage tolerance
+  minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
+  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), minAmounts]);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
   await run("mine-multiple", {blocks: '500'});
