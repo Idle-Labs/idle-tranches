@@ -238,10 +238,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
     _updateAccounting();
-    // mint tranche tokens according to the current tranche price
-    _minted = _mintShares(_amount, msg.sender, _tranche);
     // get underlyings from sender
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
+    // mint tranche tokens according to the current tranche price
+    _minted = _mintShares(_amount, msg.sender, _tranche);
   }
 
   /// @notice this method is called on depositXX/withdrawXX/harvest and
