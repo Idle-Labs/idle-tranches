@@ -12,6 +12,10 @@ contract IdleCDOStorage {
   uint256 public constant ONE_TRANCHE_TOKEN = 10**18;
   // variable used to save the last tx.origin and block.number
   bytes32 internal _lastCallerBlock;
+  // variable used to save the block of the latest harvest
+  uint256 public latestHarvestBlock;
+  // variable used to define the min blocks that need to be passed after an harvest, before withdraw is allowed
+  uint256 public coolingPeriod;
   // WETH address
   address public weth;
   // tokens used to incentivize the idle tranche ideal ratio

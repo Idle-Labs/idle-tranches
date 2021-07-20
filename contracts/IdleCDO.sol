@@ -81,6 +81,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastAAPrice = _oneToken;
     lastBBPrice = _oneToken;
     unlentPerc = 2000; // 2%
+    coolingPeriod = 10; // # blocks, after an harvest, before withdraw is allowed 
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -408,6 +409,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _checkDefault();
     // accrue interest to tranches and updates tranche prices
     _updateAccounting();
+    // check that at least `coolingPeriod` blocks have passed before allowing redeem
+    // to prevent theft of rewards by sandwiching the `harvest` tx
+    require(latestHarvestBlock + coolingPeriod < block.number, "COOLING_PERIOD");
     // redeem all user balance if 0 is passed as _amount
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
@@ -650,6 +654,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // Put unlent balance at work in the lending provider
       IIdleCDOStrategy(_strategy).deposit(underlyingBal - idealUnlent);
     }
+    // update last saved harvest block number
+    latestHarvestBlock = block.number;
   }
 
   /// @notice method used to redeem underlyings from the lending provider
@@ -782,6 +788,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
       _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
     }
+  }
+
+  /// @notice It sets the coolingPeriod that a user needs to wait, after an harvest,
+  /// before the withdraw ill be possible
+  /// @param _newCoolingPeriod The new cooling period
+  function setCoolingPeriod(uint256 _newCoolingPeriod) external onlyOwner {
+    coolingPeriod = _newCoolingPeriod;
   }
 
   /// @notice pause deposits and redeems for all classes of tranches
