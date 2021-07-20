@@ -511,20 +511,15 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice method used to sell `_rewardToken` for `_token` on uniswap
   /// @param _rewardToken address of the token to sell
-  /// @param _token address of the token to buy
+  /// @param _path uniswap path for the trade
   /// @param _minAmount min amount of `_token` to buy
-  function _sellAllReward(address _rewardToken, address _token, uint256 _minAmount) internal returns (uint256) {
+  function _sellAllReward(address _rewardToken, address[] memory _path, uint256 _minAmount) internal returns (uint256) {
     uint256 _amount = _contractTokenBalance(_rewardToken);
     if (_amount == 0) {
       return 0;
     }
 
     IUniswapV2Router02 _uniRouter = uniswapRouterV2;
-    // Prepare path for uniswap trade
-    address[] memory _path = new address[](3);
-    _path[0] = _rewardToken;
-    _path[1] = weth; // read from storage
-    _path[2] = _token;
     // approve the uniswap router to spend our reward
     IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
     // do the trade with all `_rewardToken` in this contract
@@ -535,7 +530,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       address(this),
       block.timestamp + 1
     );
-    // return `_token` amount received
+    // return the amount received
     return _amounts[_amounts.length - 1];
   }
 
@@ -611,6 +606,11 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // get all rewards addresses
       address[] memory _rewards = getRewards();
       address _rewardToken;
+      // Prepare path for uniswap trade
+      address[] memory _path = new address[](3);
+      // _path[0] will be the reward token to sell
+      _path[1] = weth;
+      _path[2] = _token;
       // Initialize the return array, containing the amounts received after swapping reward tokens
       _swappedAmounts = new uint256[](_rewards.length);
       // loop through all reward tokens
@@ -618,8 +618,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         _rewardToken = _rewards[i];
         // check if it should be sold or not
         if (_skipReward[i] || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+        // set token to sell in the uniswap path
+        _path[0] = _rewardToken;
         // Market sell all _rewardToken in this contract for _token
-        _swappedAmounts[i] = _sellAllReward(_rewardToken, _token, _minAmount[i]);
+        _swappedAmounts[i] = _sellAllReward(_rewardToken, _path, _minAmount[i]);
       }
       // split converted rewards and update tranche prices for mint
       // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
