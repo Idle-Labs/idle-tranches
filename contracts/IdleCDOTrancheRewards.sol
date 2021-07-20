@@ -57,6 +57,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Stake _amount of tranche token to receive rewards
   /// @param _amount The amount of tranche tokens to stake
   function stake(uint256 _amount) external whenNotPaused override {
+    if (_amount == 0) {
+      return;
+    }
     // save current block.number
     usersStakeBlock[msg.sender] = block.number;
     // update user index for each reward, used to calculate the correct reward amount
@@ -75,6 +78,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// accrued and unclaimed rewards so far
   /// @param _amount The amount of tranche tokens to unstake
   function unstake(uint256 _amount) external nonReentrant override {
+    if (_amount == 0) {
+      return;
+    }
     // check that the last stake was made at least `coolingPeriod` blocks
     // to prevent theft of rewards by sandwiching the `depositReward` tx
     require(usersStakeBlock[msg.sender] + coolingPeriod < block.number, "COOLING_PERIOD");

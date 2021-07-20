@@ -228,6 +228,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
   function _deposit(uint256 _amount, address _tranche) internal returns (uint256 _minted) {
+    if (_amount == 0) {
+      return _minted;
+    }
     // check that we are not depositing more than the contract available limit
     _guarded(_amount);
     // set _lastCallerBlock hash
