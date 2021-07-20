@@ -40,6 +40,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     address _idleCDO, address _governanceRecoveryFund, uint256 _coolingPeriod
   ) public initializer {
     require(tranche == address(0), 'Initialized');
+    require(_owner != address(0) && _trancheToken != address(0) && _idleCDO != address(0) && _governanceRecoveryFund != address(0), "IS_0");
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();

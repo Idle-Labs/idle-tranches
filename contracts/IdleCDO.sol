@@ -51,6 +51,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     address[] memory _incentiveTokens
   ) public initializer {
     require(token == address(0), 'Initialized');
+    require(_rebalancer != address(0) && _strategy != address(0) && _guardedToken != address(0), "IS_0");
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
