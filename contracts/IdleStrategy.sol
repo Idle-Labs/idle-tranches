@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
 import "./interfaces/IIdleCDOStrategy.sol";
@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
+/// @author Idle Labs Inc.
 /// @title IdleStrategy
 /// @notice IIdleCDOStrategy to deploy funds in Idle Finance
 /// @dev This contract should not have any funds at the end of each tx.

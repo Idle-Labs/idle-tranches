@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
