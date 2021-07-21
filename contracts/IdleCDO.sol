@@ -531,7 +531,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       return (0, 0);
     }
 
-
     IUniswapV2Router02 _uniRouter = uniswapRouterV2;
     // approve the uniswap router to spend our reward
     IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
@@ -663,7 +662,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // others could have been skipped (with flags set off chain) but it just means that
       // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
       _updateLastTranchePrices();
-
+      // update last saved harvest block number
+      latestHarvestBlock = block.number;
       // Get fees in the form of totalSupply diluition
       // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
       uint256 currAARatio = _depositFees();
@@ -682,8 +682,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // Put unlent balance at work in the lending provider
       IIdleCDOStrategy(_strategy).deposit(underlyingBal - idealUnlent);
     }
-    // update last saved harvest block number
-    latestHarvestBlock = block.number;
   }
 
   /// @notice method used to redeem underlyings from the lending provider
