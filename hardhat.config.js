@@ -48,12 +48,13 @@ module.exports = {
       timeout: 120000,
     },
     kovan: {
-      url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: `https://eth-kovan.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
     },
     mainnet: {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
-      gas: 'auto'
+      gas: 'auto',
+      timeout: 120000
     },
   },
   // etherscan: {

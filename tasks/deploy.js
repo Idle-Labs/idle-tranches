@@ -20,6 +20,10 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
     const stakingCoolingPeriod = BN(10);
+    if (deployToken.cdo) {
+      console.log(`CDO Already deployed here ${deployToken.cdo}`);
+      return;
+    }
     await helpers.prompt("continue? [y/n]", true);
 
     const incentiveTokens = [mainnetContracts.IDLE, mainnetContracts.stkAAVE];
@@ -27,7 +31,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
-        BN('5000000').mul(ONE_TOKEN(deployToken.decimals)), // limit
+        BN('1000000').mul(ONE_TOKEN(deployToken.decimals)), // limit
         deployToken.underlying,
         mainnetContracts.treasuryMultisig, // recovery address
         creator, // guardian

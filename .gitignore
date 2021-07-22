@@ -11,3 +11,4 @@ coverage
 .vscode
 bin/**
 soljson-v*
+audit*
