@@ -174,9 +174,11 @@ task("integration")
     // tranchePriceAA and tranchePriceBB have been updated just before the deposit
     // some gov token (IDLE but not COMP because it has been sold) should be present in the contract after the rebalance
     await rebalanceFull(idleCDO, creatorAddr);
-    // so no IDLE and no COMP in IdleCDO
+    // so no IDLE in IdleCDO
     await helpers.checkBalance(idleERC20, idleCDO.address, BN('0'));
-    await helpers.checkBalance(compERC20, idleCDO.address, BN('0'));
+    // some COMP may still be there given that we are not selling exactly the entire balance
+    // await helpers.checkBalance(compERC20, idleCDO.address, BN('0'));
+
     // feeReceiver should have received some BB tranches as fees
     let feeReceiverBBBalAfter = await helpers.getBalance(BBContract, feeCollectorAddr);
     await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
@@ -261,7 +263,12 @@ const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
   const rewardTokens = await idleCDO.getRewards();
-  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0'))]);
+  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
+  let sellAmounts = res._soldAmounts;
+  let minAmounts = res._swappedAmounts;
+  // Add some slippage tolerance
+  minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
+  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), minAmounts, sellAmounts]);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
   await run("mine-multiple", {blocks: '500'});

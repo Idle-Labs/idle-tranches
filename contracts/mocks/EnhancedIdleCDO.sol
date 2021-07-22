@@ -6,7 +6,7 @@ import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "../IdleCDO.sol";
 
 contract EnhancedIdleCDO is IdleCDO {
-  function setUniRouter(address a) external {
+  function setUniRouterForTest(address a) external {
     uniswapRouterV2 = IUniswapV2Router02(a);
   }
   function setWethForTest(address a) external {

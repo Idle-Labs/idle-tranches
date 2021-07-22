@@ -142,6 +142,10 @@ const sudoCall = async (acc, contract, method, params) => {
   // console.log('⛽ used: ', receipt.gasUsed.toString());
   return [contractImpersonated, signer]
 };
+const sudoStaticCall = async (acc, contract, method, params) => {
+  const [contractImpersonated, signer] = await sudo(acc, contract);
+  return await contractImpersonated.callStatic[method](...params);
+};
 const waitDays = async d => {
   await time.increase(time.duration.days(d));
 };
@@ -222,6 +226,7 @@ module.exports = {
   toETH,
   sudo,
   sudoCall,
+  sudoStaticCall,
   waitDays,
   resetFork,
   oneToken,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
@@ -81,6 +81,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     lastAAPrice = _oneToken;
     lastBBPrice = _oneToken;
     unlentPerc = 2000; // 2%
+    coolingPeriod = 1; // # blocks, after an harvest, before withdraw is allowed
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -408,6 +409,9 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     _checkDefault();
     // accrue interest to tranches and updates tranche prices
     _updateAccounting();
+    // check that at least `coolingPeriod` blocks have passed before allowing redeem
+    // to prevent theft of rewards by sandwiching the `harvest` tx
+    require(latestHarvestBlock + coolingPeriod <= block.number, "COOLING_PERIOD");
     // redeem all user balance if 0 is passed as _amount
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
@@ -509,6 +513,74 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
+  /// @notice method used to sell `_rewardToken` for `_token` on uniswap
+  /// @param _rewardToken address of the token to sell
+  /// @param _path uniswap path for the trade
+  /// @param _amount of `_rewardToken` to sell
+  /// @param _minAmount min amount of `_token` to buy
+  /// @return _amount of _rewardToken sold
+  /// @return _amount received for the sell
+  function _sellReward(address _rewardToken, address[] memory _path, uint256 _amount, uint256 _minAmount)
+    internal
+    returns (uint256, uint256) {
+    // If 0 is passed as sell amount, we get the whole contract balance
+    if (_amount == 0) {
+      _amount = _contractTokenBalance(_rewardToken);
+    }
+    if (_amount == 0) {
+      return (0, 0);
+    }
+
+    IUniswapV2Router02 _uniRouter = uniswapRouterV2;
+    // approve the uniswap router to spend our reward
+    IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
+    // do the trade with all `_rewardToken` in this contract
+    uint256[] memory _amounts = _uniRouter.swapExactTokensForTokens(
+      _amount,
+      _minAmount,
+      _path,
+      address(this),
+      block.timestamp + 1
+    );
+    // return the amount swapped and the amount received
+    return (_amounts[0], _amounts[_amounts.length - 1]);
+  }
+
+  /// @notice method used to sell all sellable rewards for `_token` on uniswap
+  /// @param _token to buy with rewards
+  /// @param _sellAmounts array with amounts of rewards to sell
+  /// @param _minAmount array with amounts of _token buy for each reward sold. (should have the same length as _sellAmounts)
+  /// @param _skipReward array of flags for skipping the market sell of specific rewards (should have the same length as _sellAmounts)
+  /// @return _soldAmounts array with amounts of rewards actually sold
+  /// @return _swappedAmounts array with amounts of _token actually bought
+  function _sellAllRewards(address _token, uint256[] memory _sellAmounts, uint256[] memory _minAmount, bool[] memory _skipReward)
+    internal
+    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
+    // Fetch state variables once to save gas
+    address[] memory _incentiveTokens = incentiveTokens;
+    // get all rewards addresses
+    address[] memory _rewards = getRewards();
+    address _rewardToken;
+    // Prepare path for uniswap trade
+    address[] memory _path = new address[](3);
+    // _path[0] will be the reward token to sell
+    _path[1] = weth;
+    _path[2] = _token;
+    // Initialize the return array, containing the amounts received after swapping reward tokens
+    _soldAmounts = new uint256[](_rewards.length);
+    _swappedAmounts = new uint256[](_rewards.length);
+    // loop through all reward tokens
+    for (uint256 i = 0; i < _rewards.length; i++) {
+      _rewardToken = _rewards[i];
+      // check if it should be sold or not
+      if (_skipReward[i] || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+      // set token to sell in the uniswap path
+      _path[0] = _rewardToken;
+      // Market sell _rewardToken in this contract for _token
+      (_soldAmounts[i], _swappedAmounts[i]) = _sellReward(_rewardToken, _path, _sellAmounts[i], _minAmount[i]);
+    }
+  }
+
   /// @param _tranche tranche address
   /// @return last saved price for minting tranche tokens, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
@@ -565,43 +637,23 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _skipIncentivesUpdate whether to update incentives or not
   /// @param _skipReward array of flags for skipping the market sell of specific rewards. Lenght should be equal to the `getRewards()` array
   /// @param _minAmount array of min amounts for uniswap trades. Lenght should be equal to the _skipReward array
-  function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount) external {
+  /// @param _sellAmounts array of amounts (of reward tokens) to sell on uniswap. Lenght should be equal to the _minAmount array
+  /// if a sellAmount is 0 the whole contract balance for that token is swapped
+  /// @return _soldAmounts array with amounts of rewards actually sold
+  /// @return _swappedAmounts array with amounts of _token actually bought
+  function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount, uint256[] calldata _sellAmounts)
+    external
+    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
     // Fetch state variable once to save gas
     address _token = token;
     address _strategy = strategy;
     // Check whether to redeem rewards from strategy or not
     if (!_skipRedeem) {
-      // Fetch state variables once to save gas
-      address[] memory _incentiveTokens = incentiveTokens;
-      address _weth = weth;
-      IUniswapV2Router02 _uniRouter = uniswapRouterV2;
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(_strategy).redeemRewards();
-      // get all rewards addresses
-      address[] memory rewards = getRewards();
-      for (uint256 i = 0; i < rewards.length; i++) {
-        address rewardToken = rewards[i];
-        // get the balance of a specific reward
-        uint256 _currentBalance = _contractTokenBalance(rewardToken);
-        // check if it should be sold or not
-        if (_skipReward[i] || _currentBalance == 0 || _includesAddress(_incentiveTokens, rewardToken)) { continue; }
-        // Prepare path for uniswap trade
-        address[] memory _path = new address[](3);
-        _path[0] = rewardToken;
-        _path[1] = _weth;
-        _path[2] = _token;
-        // approve the uniswap router to spend our reward
-        IERC20Detailed(rewardToken).safeIncreaseAllowance(address(_uniRouter), _currentBalance);
-        // do the uniswap trade
-        _uniRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-          _currentBalance,
-          _minAmount[i],
-          _path,
-          address(this),
-          block.timestamp + 1
-        );
-      }
+      // Sell rewards
+      (_soldAmounts, _swappedAmounts) = _sellAllRewards(_token, _sellAmounts, _minAmount, _skipReward);
       // split converted rewards and update tranche prices for mint
       // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
       _updateAccounting();
@@ -610,7 +662,8 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // others could have been skipped (with flags set off chain) but it just means that
       // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
       _updateLastTranchePrices();
-
+      // update last saved harvest block number
+      latestHarvestBlock = block.number;
       // Get fees in the form of totalSupply diluition
       // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
       uint256 currAARatio = _depositFees();
@@ -761,6 +814,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
       _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
     }
+  }
+
+  /// @notice It sets the coolingPeriod that a user needs to wait, after an harvest,
+  /// before the withdraw ill be possible
+  /// @param _newCoolingPeriod The new cooling period
+  function setCoolingPeriod(uint256 _newCoolingPeriod) external onlyOwner {
+    coolingPeriod = _newCoolingPeriod;
   }
 
   /// @notice pause deposits and redeems for all classes of tranches

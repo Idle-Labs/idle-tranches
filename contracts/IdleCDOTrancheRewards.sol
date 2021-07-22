@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -14,6 +14,7 @@ import "./interfaces/IIdleCDO.sol";
 
 import "./IdleCDOTrancheRewardsStorage.sol";
 
+/// @author Idle Labs Inc.
 /// @title IdleCDOTrancheRewards
 /// @notice Contract used for staking specific tranche tokens and getting incentive rewards
 /// This contract keeps the accounting of how many rewards each user is entitled to using 2 indexs:
