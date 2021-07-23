@@ -110,6 +110,39 @@ task("print-balance")
 });
 
 /**
+ * @name harvest-cdo
+ * @notice this can be called in mainnet only if the owner is still the deployer address
+ */
+task("harvest-cdo")
+  .addParam('cdo')
+  .setAction(async ({ cdo }) => {
+    let signer = await helpers.getSigner(true);
+    if (hre.network.name != 'mainnet') {
+      await signer.sendTransaction({to: addresses.idleDeployer, value: ethers.utils.parseEther("1.0")});
+      [,signer] = await helpers.sudo(addresses.idleDeployer);
+    }
+    const addr = await signer.getAddress();
+    console.log('Address used', addr);
+
+    let idleCDO = await ethers.getContractAt("IdleCDO", cdo);
+    idleCDO = await idleCDO.connect(signer);
+
+    const skipRedeem = false;
+    const skipIncentives = false;
+
+    const rewardTokens = await idleCDO.getRewards();
+    let res = await idleCDO.callStatic.harvest(skipRedeem, skipIncentives, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')));
+    let sellAmounts = res._soldAmounts;
+    let minAmounts = res._swappedAmounts;
+    console.log(`sellAmounts ${sellAmounts}, minAmounts ${minAmounts}`);
+    // Add some slippage tolerance
+    minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
+    let tx = await idleCDO.harvest(skipRedeem, skipIncentives, rewardTokens.map(r => false), minAmounts, sellAmounts);
+    tx = await tx.wait();
+    console.log(`Tx ${tx.transactionHash}, ⛽ ${tx.cumulativeGasUsed}`);
+  });
+
+/**
  * @name integration
  */
 task("integration")

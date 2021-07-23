@@ -13,14 +13,16 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
-const getSigner = async () => {
+const getSigner = async (skipLog) => {
   let [signer] = await ethers.getSigners();
   if (hre.network.name == 'mainnet') {
     signer = new HardwareSigner(ethers.provider, null, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();
-  log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
-  log();
+  if (!skipLog) {
+    log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
+    log();
+  }
   return signer;
 };
 const callContract = async (address, method, params, from = null) => {
