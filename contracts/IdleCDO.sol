@@ -657,11 +657,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // split converted rewards and update tranche prices for mint
       // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
       _updateAccounting();
-      // update last saved prices for redeems at this point
-      // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
-      // others could have been skipped (with flags set off chain) but it just means that
-      // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
-      _updateLastTranchePrices();
       // update last saved harvest block number
       latestHarvestBlock = block.number;
       // Get fees in the form of totalSupply diluition
@@ -673,7 +668,13 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
         _updateIncentives(currAARatio);
       }
     }
+
+    // update last saved prices for redeems at this point
+    // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
+    // others could have been skipped (with flags set off chain) but it just means that
+    // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
     // If we _skipRedeem we don't need to call _updateAccounting because lastNAV is already updated
+    _updateLastTranchePrices();
 
     // Keep some unlent balance for cheap redeems and as reserve of last resort
     uint256 underlyingBal = _contractTokenBalance(_token);
