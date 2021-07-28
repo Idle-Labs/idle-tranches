@@ -13,6 +13,11 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
+const impersonateSigner = async (acc) => {
+  await hre.ethers.provider.send("hardhat_impersonateAccount", [acc]);
+  await hre.ethers.provider.send("hardhat_setBalance", [acc, "0xffffffffffffffff"]);
+  return await hre.ethers.getSigner(acc);
+}
 const getSigner = async (skipLog) => {
   let [signer] = await ethers.getSigners();
   if (hre.network.name == 'mainnet') {
@@ -62,7 +67,8 @@ const upgradeContract = async (address, contractName, params, signer) => {
   // NOTE: Method + params cannot be passed for reinit on upgrades!
   // do not use spread (...) operator here
   // let contract = await upgrades.upgradeProxy(address, contractFactory, params);
-  let contractReceipt = await contract.deployTransaction.wait()
+  let contractReceipt = await contract.deployTransaction.wait();
+  console.log(contractReceipt);
   log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
   return contract;
 };
@@ -215,6 +221,7 @@ const checkBalance = async (tokenContract, address, balance) => {
 }
 
 module.exports = {
+  impersonateSigner,
   getSigner,
   callContract,
   deployContract,

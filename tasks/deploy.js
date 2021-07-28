@@ -66,3 +66,30 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     console.log();
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
+
+/**
+ * @name upgrade
+ */
+task("upgrade", "Upgrade IdleCDO instance")
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+
+    const contractAddress = deployToken.cdo;
+    if (!contractAddress && hre.network == 'mainnet') {
+      console.log(`IdleCDO Must be deployed`);
+      return;
+    }
+    await helpers.prompt("continue? [y/n]", true);
+
+    let signer;
+    if (hre.network != 'mainnet') {
+      signer = await helpers.impersonateSigner(addresses.idleDeployer);
+    } else {
+      signer = await helpers.getSigner();
+    }
+
+    console.log('Usign signer with address: ', await signer.getAddress());
+    await helpers.upgradeContract(contractAddress, 'IdleCDO', [], signer);
+    console.log(`IdleCDO upgraded`);
+  });
