@@ -474,26 +474,34 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     uint256 _idealRange = idealRange;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
+    bool _isBBStakingActive = _BBStaking != address(0);
+    bool _isAAStakingActive = _AAStaking != address(0);
 
     // Check if BB tranches should be rewarded (if AA ratio is too high)
-    if (_BBStaking != address(0) && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
+    if (_isBBStakingActive && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
       // give more rewards to BB holders, ie send some rewards to BB Staking contract
       return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
     }
     // Check if AA tranches should be rewarded (id AA ratio is too low)
-    if (_AAStaking != address(0) && (currAARatio < (_trancheIdealWeightRatio - _idealRange))) {
+    if (_isAAStakingActive && (currAARatio < (_trancheIdealWeightRatio - _idealRange))) {
       // give more rewards to AA holders, ie send some rewards to AA Staking contract
       return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
     }
 
     // Split rewards according to trancheAPRSplitRatio in case the ratio between
     // AA and BB is already ideal
-    // NOTE: the order is important here, first there must be the deposit for AA rewards
-    _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
-    // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
-    // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
-    // and the balance for AA already transferred
-    _depositIncentiveToken(_BBStaking, FULL_ALLOC);
+    if (_isAAStakingActive) {
+      // NOTE: the order is important here, first there must be the deposit for AA rewards,
+      // if staking contract for AA is present
+      _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
+    }
+
+    if (_isBBStakingActive) {
+      // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
+      // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
+      // and the balance for AA is already transferred
+      _depositIncentiveToken(_BBStaking, FULL_ALLOC);
+    }
   }
 
   /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
