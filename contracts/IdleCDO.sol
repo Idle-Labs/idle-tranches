@@ -369,19 +369,29 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
 
   /// @notice convert fees (`unclaimedFees`) in tranche tokens
   /// the tranche token minted is based on the current AA ratio, so to mint the tranche
-  /// that it's needed most to reach the trancheIdealWeightRatio
+  /// that it's needed most to reach the trancheIdealWeightRatio. The tranche tokens
+  /// are then automatically staked in the relative IdleCDOTrancheRewards contact if present
   /// @dev this will be called only during harvests
   /// @return _currAARatio current AA ratio
   function _depositFees() internal returns (uint256 _currAARatio) {
     uint256 _amount = unclaimedFees;
     if (_amount > 0) {
       _currAARatio = getCurrentAARatio();
-      _mintShares(_amount, feeReceiver,
+      bool shouldMintBB = _currAARatio >= trancheIdealWeightRatio;
+
+      // mint tranches tokens to this contract
+      uint256 _minted = _mintShares(_amount, address(this),
         // Choose the right tranche to mint based on getCurrentAARatio
-        _currAARatio >= trancheIdealWeightRatio ? BBTranche : AATranche
+        shouldMintBB ? BBTranche : AATranche
       );
       // reset unclaimedFees counter
       unclaimedFees = 0;
+
+      // auto stake fees in staking contract for feeReceiver
+      address stakingRewards = shouldMintBB ? BBStaking : AAStaking;
+      if (stakingRewards != address(0)) {
+        IIdleCDOTrancheRewards(stakingRewards).stakeFor(feeReceiver, _minted);
+      }
     }
   }
 
@@ -634,9 +644,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// The method:
   /// - redeems rewards (if any) from the lending provider
   /// - converts the rewards NOT present in the `incentiveTokens` array, in underlyings through uniswap v2
-  /// - calls _updateAccounting and _updateLastTranchePrices to update the accounting of the system with the new underlyings received
+  /// - calls _updateAccounting to update the accounting of the system with the new underlyings received
   /// - it then convert fees in tranche tokens
   /// - sends the correct amount of `incentiveTokens` to the each of the IdleCDOTrancheRewards contracts
+  /// - calls _updateLastTranchePrices to save the last tranche prices
   /// - Finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
   ///   lending provider through the IIdleCDOStrategy `deposit` call
   /// The method will be called by an external, whitelisted, keeper bot which will call the method sistematically (eg once a day)
@@ -797,31 +808,57 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _BBStaking IdleCDOTrancheRewards contract address for BB tranches
   function setStakingRewards(address _AAStaking, address _BBStaking) external onlyOwner {
     // Read state variable once
+    address _AATranche = AATranche;
+    address _BBTranche = BBTranche;
     address[] memory _incentiveTokens = incentiveTokens;
     address _currAAStaking = AAStaking;
     address _currBBStaking = BBStaking;
+    bool _isAAStakingActive = _currAAStaking != address(0);
+    bool _isBBStakingActive = _currBBStaking != address(0);
 
-    // Remove allowance for current contracts
+    // Remove allowance for incentive tokens for current staking contracts
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
       IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
-      if (_currAAStaking != address(0)) {
+      if (_isAAStakingActive) {
         _incentiveToken.safeApprove(_currAAStaking, 0);
       }
-      if (_currAAStaking != address(0)) {
+      if (_isBBStakingActive) {
         _incentiveToken.safeApprove(_currBBStaking, 0);
       }
+    }
+    // Remove allowace for tranche tokens (used for staking fees)
+    if (_isAAStakingActive && _AATranche != address(0)) {
+      IERC20Detailed(_AATranche).safeApprove(_currAAStaking, 0);
+    }
+    if (_isBBStakingActive && _BBTranche != address(0)) {
+      IERC20Detailed(_BBTranche).safeApprove(_currBBStaking, 0);
     }
 
     // Update staking contract addresses
     AAStaking = _AAStaking;
     BBStaking = _BBStaking;
 
-    // Increase allowance for new contracts
+    _isAAStakingActive = _AAStaking != address(0);
+    _isBBStakingActive = _BBStaking != address(0);
+
+    // Increase allowance for incentiveTokens
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
       IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
       // Approve each staking contract to spend each incentiveToken on beahlf of this contract
-      _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
-      _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
+      if (_isAAStakingActive) {
+        _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
+      }
+      if (_isBBStakingActive) {
+        _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
+      }
+    }
+
+    // Increase allowance for tranche tokens (used for staking fees)
+    if (_isAAStakingActive && _AATranche != address(0)) {
+      IERC20Detailed(_AATranche).safeIncreaseAllowance(_AAStaking, type(uint256).max);
+    }
+    if (_isBBStakingActive && _BBTranche != address(0)) {
+      IERC20Detailed(_BBTranche).safeIncreaseAllowance(_BBStaking, type(uint256).max);
     }
   }
 
