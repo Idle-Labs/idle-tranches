@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { BigNumber } = require("@ethersproject/bignumber");
 const addresses = require('../lib/addresses');
-
+const helpers = require('../scripts/helpers');
 const BN = v => BigNumber.from(v.toString());
 
 // pretty number
@@ -83,6 +83,16 @@ describe('IdleCDOTrancheRewards', function() {
     await this.contract.connect(user).stake(amount);
   }
 
+  const stakeFor = async (user, amount) => {
+    amount = this.tokenUtils.fromUnits(amount);
+    // owner sends amount to cdo address
+    await this.tranche.connect(this.owner).transfer(this.cdo.address, amount);
+    const signer = await helpers.impersonateSigner(this.cdo.address);
+    await this.tranche.connect(signer).approve(this.contract.address, amount);
+    // cdo stakes amount for the user
+    await this.contract.connect(signer).stakeFor(user.address, amount);
+  }
+
   const depositReward = async (amount) => {
     amount = this.tokenUtils.fromUnits(amount);
     await this.rewardToken1.transfer(this.cdo.address, amount);
@@ -158,9 +168,36 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "100");
   });
 
+  it ('stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+
+    await stakeFor(user1, "10")
+    await checkUserStakes(user1, "20");
+    await checkExpectedUserRewards(user1, "100");
+  });
+
   it ('unstake', async () => {
     const [user1] = this.accounts;
     await stake(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+
+    await unstake(user1, "10")
+    await checkUserStakes(user1, "0");
+    await checkExpectedUserRewards(user1, "0");
+    await checkRewardBalance(user1, "100");
+  });
+
+  it ('unstake after stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
     await checkUserStakes(user1, "10");
     await checkExpectedUserRewards(user1, "0");
 
@@ -230,9 +267,44 @@ describe('IdleCDOTrancheRewards', function() {
     await checkRewardBalance(user1, "100");
   });
 
+  it ('claim after stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+    await claim(user1);
+
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+    await checkRewardBalance(user1, "100");
+  });
+
   it ('expectedUserReward', async () => {
     const [user1] = this.accounts;
     await stake(user1, "10")
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "100");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "200");
+
+    await claim(user1);
+
+    await checkExpectedUserRewards(user1, "0");
+
+    const unsupportedTokenAddress = this.accounts[0].address;
+    await expect(
+      this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
+    ).to.be.revertedWith("!SUPPORTED");
+  });
+
+  it ('expectedUserReward after stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
@@ -408,7 +480,7 @@ describe('IdleCDOTrancheRewards', function() {
     expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
   });
 
-  it("transferToken failes if ", async () => {
+  it("transferToken failes if address is 0", async () => {
     await expect(
       this.contract.connect(this.owner).transferToken(addresses.addr0, this.tokenUtils.fromUnits("100"))
     ).to.be.revertedWith("Address is 0");

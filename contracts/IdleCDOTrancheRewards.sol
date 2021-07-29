@@ -59,18 +59,35 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @notice Stake _amount of tranche token to receive rewards
   /// @param _amount The amount of tranche tokens to stake
   function stake(uint256 _amount) external whenNotPaused override {
+    _stake(msg.sender, msg.sender, _amount);
+  }
+
+  /// @notice Stake _amount of tranche token to receive rewards
+  /// used by IdleCDO to stake tranche tokens received as fees in an handy way
+  /// @param _user address of the user to stake for
+  /// @param _amount The amount of tranche tokens to stake
+  function stakeFor(address _user, uint256 _amount) external whenNotPaused override {
+    require(msg.sender == idleCDO, "!AUTH");
+    _stake(_user, msg.sender, _amount);
+  }
+
+  /// @notice Stake _amount of tranche token to receive rewards
+  /// @param _user address of the user to stake for
+  /// @param _payer address from which tranche tokens gets transferred
+  /// @param _amount The amount of tranche tokens to stake
+  function _stake(address _user, address _payer, uint256 _amount) internal {
     if (_amount == 0) {
       return;
     }
     // save current block.number
-    usersStakeBlock[msg.sender] = block.number;
+    usersStakeBlock[_user] = block.number;
     // update user index for each reward, used to calculate the correct reward amount
     // for each user
-    _updateUserIdx(msg.sender, _amount);
+    _updateUserIdx(_user, _amount);
     // increase the staked amount associated with the user
-    usersStakes[msg.sender] += _amount;
+    usersStakes[_user] += _amount;
     // get _amount of `tranche` tokens from the user
-    IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), _amount);
+    IERC20Detailed(tranche).safeTransferFrom(_payer, address(this), _amount);
     // increase the total staked amount counter
     totalStaked += _amount;
   }
