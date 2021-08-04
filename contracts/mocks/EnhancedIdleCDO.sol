@@ -12,4 +12,7 @@ contract EnhancedIdleCDO is IdleCDO {
   function setWethForTest(address a) external {
     weth = a;
   }
+  function updateAccountingForTest() external {
+    _updateAccounting();
+  }
 }

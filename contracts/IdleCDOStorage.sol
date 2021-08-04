@@ -86,4 +86,8 @@ contract IdleCDOStorage {
 
   // trancheIdealWeightRatio ± idealRanges, used in updateIncentives
   uint256 public idealRange;
+  // period, in blocks, for progressively releasing harvested rewards to users
+  uint256 public releaseBlocksPeriod;
+  // amount of rewards sold in the last harvest (in `token`)
+  uint256 internal harvestedRewards;
 }

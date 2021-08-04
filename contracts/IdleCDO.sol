@@ -78,10 +78,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     incentiveTokens = _incentiveTokens;
     priceAA = _oneToken;
     priceBB = _oneToken;
-    lastAAPrice = _oneToken;
-    lastBBPrice = _oneToken;
     unlentPerc = 2000; // 2%
     coolingPeriod = 1; // # blocks, after an harvest, before withdraw is allowed
+    // # blocks, after an harvest, during which harvested rewards gets progressively unlocked
+    releaseBlocksPeriod = 1500; // about 1/4 of a day
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -144,22 +144,20 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     return _tranchePrice(_tranche);
   }
 
-  /// @param _tranche tranche address
-  /// @return last tranche price
-  function lastTranchePrice(address _tranche) external view returns (uint256) {
-    return _lastTranchePrice(_tranche);
-  }
-
   /// @notice calculates the current total value locked (in `token` terms)
-  /// @dev rewards (gov tokens) are not counted. It may include non accrued fees (in unclaimedFees)
-  /// @return contract value in underlyings
+  /// @dev unclaimed rewards (gov tokens) are not counted.
+  /// NOTE: `unclaimedFees` are not included in the contract value
+  /// NOTE2: fees that *will* be taken (in the next _updateAccounting call) are counted
   function getContractValue() public override view returns (uint256) {
     address _strategyToken = strategyToken;
     uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
-    // TVL is the sum of unlent balance in the contract + the balance in lending
-    // which is the value of the interest bearing assets (strategyTokens) in this contract
-    // TVL = (strategyTokens * strategy token price) + unlent balance
-    return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) + _contractTokenBalance(token);
+    // TVL is the sum of unlent balance in the contract + the balance in lending - the reduction for harvested rewards - unclaimedFees
+    // the balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
+    // TVL = (strategyTokens * strategy token price) + unlent balance - lockedRewards - unclaimedFees
+    return (_contractTokenBalance(_strategyToken) * strategyPrice() / (10**(strategyTokenDecimals))) +
+            _contractTokenBalance(token) -
+            _lockedRewards() -
+            unclaimedFees;
   }
 
   /// @param _tranche tranche address
@@ -395,15 +393,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @notice updates last tranche prices with the current ones
-  /// @dev last tranche prices are used on withdrawXX methods, instead of priceXX,
-  /// to avoid theft of interest when calling harvest to market sell reward for `token`
-  /// (which will increase priceAA and priceBB)
-  function _updateLastTranchePrices() internal {
-    lastAAPrice = priceAA;
-    lastBBPrice = priceBB;
-  }
-
   /// @notice It allows users to burn their tranche token and redeem their principal + interest back
   /// @dev automatically reverts on lending provider default (strategyPrice decreased).
   /// A user should wait at least one harvest before rededeming otherwise the redeemed amount
@@ -428,12 +417,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
     require(_amount > 0, 'IDLE:IS_0');
     address _token = token;
-    // get current unlent balance
-    uint256 balanceUnderlying = _contractTokenBalance(_token);
-    // Calculate the amount to redeem using the checkpointed price from last harvest
-    // NOTE: if use _tranchePrice directly one can deposit a huge amount before an harvest
-    // to steal interest generated when calling harvest and rewards are market sold
-    toRedeem = _amount * _lastTranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    // get current available unlent balance
+    uint256 balanceUnderlying = _availableUnlentBalance();
+    // Calculate the amount to redeem
+    toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     if (toRedeem > balanceUnderlying) {
       // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
       // and then add it to the current unlent balance
@@ -571,9 +558,10 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _skipReward array of flags for skipping the market sell of specific rewards (should have the same length as _sellAmounts)
   /// @return _soldAmounts array with amounts of rewards actually sold
   /// @return _swappedAmounts array with amounts of _token actually bought
+  /// @return _totSold total rewards sold in `_token`
   function _sellAllRewards(address _token, uint256[] memory _sellAmounts, uint256[] memory _minAmount, bool[] memory _skipReward)
     internal
-    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
+    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256 _totSold) {
     // Fetch state variables once to save gas
     address[] memory _incentiveTokens = incentiveTokens;
     // get all rewards addresses
@@ -596,6 +584,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       _path[0] = _rewardToken;
       // Market sell _rewardToken in this contract for _token
       (_soldAmounts[i], _swappedAmounts[i]) = _sellReward(_rewardToken, _path, _sellAmounts[i], _minAmount[i]);
+      _totSold += _swappedAmounts[i];
     }
   }
 
@@ -606,12 +595,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       return oneToken;
     }
     return _tranche == AATranche ? priceAA : priceBB;
-  }
-
-  /// @param _tranche tranche address
-  /// @return last saved price for redeeming tranche tokens (updated on harvests), in underlyings
-  function _lastTranchePrice(address _tranche) internal view returns (uint256) {
-    return _tranche == AATranche ? lastAAPrice : lastBBPrice;
   }
 
   /// @notice returns the current apr for a tranche based on trancheAPRSplitRatio and the provided AA ratio
@@ -636,6 +619,28 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       stratApr * (FULL_ALLOC - _trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
   }
 
+  /// @return _locked amount of harvested rewards that are still not available to be redeemed
+  function _lockedRewards() internal view returns (uint256 _locked) {
+    uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
+    uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
+    uint256 _harvestedRewards = harvestedRewards;
+
+    if (_harvestedRewards > 0 && _blocksSinceLastHarvest < _releaseBlocksPeriod) {
+      // progressively release harvested rewards
+      _locked = _harvestedRewards * (_releaseBlocksPeriod - _blocksSinceLastHarvest) / _releaseBlocksPeriod;
+    }
+  }
+
+  /// @return available unlent balance in underlyings
+  function _availableUnlentBalance() internal view returns (uint256) {
+    uint256 _unlent = _contractTokenBalance(token);
+    uint256 _totalLocked = _lockedRewards() + unclaimedFees;
+    if (_totalLocked >= _unlent) {
+      return 0;
+    }
+    return _unlent - _totalLocked;
+  }
+
   // ###################
   // Protected
   // ###################
@@ -654,14 +659,21 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @dev can be called only by the rebalancer or the owner
   /// @param _skipRedeem whether to redeem rewards from strategy or not (for gas savings)
   /// @param _skipIncentivesUpdate whether to update incentives or not
+  /// @param _skipFeeDeposit whether to convert fees in tranche tokens or not
   /// @param _skipReward array of flags for skipping the market sell of specific rewards. Lenght should be equal to the `getRewards()` array
   /// @param _minAmount array of min amounts for uniswap trades. Lenght should be equal to the _skipReward array
   /// @param _sellAmounts array of amounts (of reward tokens) to sell on uniswap. Lenght should be equal to the _minAmount array
   /// if a sellAmount is 0 the whole contract balance for that token is swapped
   /// @return _soldAmounts array with amounts of rewards actually sold
   /// @return _swappedAmounts array with amounts of _token actually bought
-  function harvest(bool _skipRedeem, bool _skipIncentivesUpdate, bool[] calldata _skipReward, uint256[] calldata _minAmount, uint256[] calldata _sellAmounts)
-    external
+  function harvest(
+    bool _skipRedeem,
+    bool _skipIncentivesUpdate,
+    bool _skipFeeDeposit,
+    bool[] calldata _skipReward,
+    uint256[] calldata _minAmount,
+    uint256[] calldata _sellAmounts
+  ) external
     returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
     require(msg.sender == rebalancer || msg.sender == owner(), "IDLE:!AUTH");
     // Fetch state variable once to save gas
@@ -672,31 +684,33 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // Redeem all rewards associated with the strategy
       IIdleCDOStrategy(_strategy).redeemRewards();
       // Sell rewards
-      (_soldAmounts, _swappedAmounts) = _sellAllRewards(_token, _sellAmounts, _minAmount, _skipReward);
-      // split converted rewards and update tranche prices for mint
-      // NOTE: that fee on gov tokens will be accumulated in unclaimedFees
-      _updateAccounting();
+      uint256 _totSold;
+      (_soldAmounts, _swappedAmounts, _totSold) = _sellAllRewards(_token, _sellAmounts, _minAmount, _skipReward);
       // update last saved harvest block number
       latestHarvestBlock = block.number;
-      // Get fees in the form of totalSupply diluition
-      // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
-      uint256 currAARatio = _depositFees();
+      // update harvested rewards value
+      // NOTE: harvested rewards won't be put in lending until are unlocked
+      // and CDO is harvested again
+      harvestedRewards = _totSold;
+      // split converted rewards and update tranche prices
+      // NOTE: harvested rewards won't be counted directly but released over time
+      _updateAccounting();
+
+      uint256 currAARatio;
+      if (!_skipFeeDeposit) {
+        // Get fees in the form of totalSupply diluition
+        // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
+        currAARatio = _depositFees();
+      }
 
       if (!_skipIncentivesUpdate) {
         // Update tranche incentives distribution and send rewards to staking contracts
-        _updateIncentives(currAARatio);
+        _updateIncentives(currAARatio == 0 ? getCurrentAARatio() : currAARatio);
       }
     }
 
-    // update last saved prices for redeems at this point
-    // if we arrived here we assume all reward tokens with 'big' balance have been sold in the market
-    // others could have been skipped (with flags set off chain) but it just means that
-    // were not worth a lot so should be safe to assume that those wont' be siphoned from theft of interest attacks
-    // If we _skipRedeem we don't need to call _updateAccounting because lastNAV is already updated
-    _updateLastTranchePrices();
-
     // Keep some unlent balance for cheap redeems and as reserve of last resort
-    uint256 underlyingBal = _contractTokenBalance(_token);
+    uint256 underlyingBal = _availableUnlentBalance();
     uint256 idealUnlent = getContractValue() * unlentPerc / FULL_ALLOC;
     if (underlyingBal > idealUnlent) {
       // Put unlent balance at work in the lending provider
@@ -790,6 +804,12 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
   /// @param _unlentPerc new unlent percentage
   function setUnlentPerc(uint256 _unlentPerc) external onlyOwner {
     require((unlentPerc = _unlentPerc) <= FULL_ALLOC, 'IDLE:TOO_HIGH');
+  }
+
+  /// @param _releaseBlocksPeriod new # of blocks after an harvest during which
+  /// harvested rewards gets progressively redistriburted to users
+  function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external onlyOwner {
+    releaseBlocksPeriod = _releaseBlocksPeriod;
   }
 
   /// @param _idealRange new ideal range
