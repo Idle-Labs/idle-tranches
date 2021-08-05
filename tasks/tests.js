@@ -43,8 +43,6 @@ task("print-info")
       tranchePriceBB,
       virtualPriceAA,
       virtualPriceBB,
-      lastTranchePriceAA,
-      lastTranchePriceBB,
       strategyAPR,
       getAprAA,
       getAprBB,
@@ -62,8 +60,6 @@ task("print-info")
       idleCDO.tranchePrice(BBaddr),
       idleCDO.virtualPrice(AAaddr),
       idleCDO.virtualPrice(BBaddr),
-      idleCDO.lastTranchePrice(AAaddr),
-      idleCDO.lastTranchePrice(BBaddr),
       // Aprs
       idleCDO.strategyAPR(),
       idleCDO.getApr(AAaddr),
@@ -79,16 +75,15 @@ task("print-info")
 
     console.log('📄 Info 📄');
     console.log(`#### Prices (strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})) ####`);
-    console.log(`tranchePriceAA ${BN(tranchePriceAA)}, virtualPriceAA ${BN(virtualPriceAA)} (Last: ${BN(lastTranchePriceAA)})`);
-    console.log(`tranchePriceBB ${BN(tranchePriceBB)}, virtualPriceBB ${BN(virtualPriceBB)} (Last: ${BN(lastTranchePriceBB)})`);
+    console.log(`tranchePriceAA ${BN(tranchePriceAA)}, virtualPriceAA ${BN(virtualPriceAA)}`);
+    console.log(`tranchePriceBB ${BN(tranchePriceBB)}, virtualPriceBB ${BN(virtualPriceBB)}`);
     console.log(`#### Aprs (strategyAPR ${BN(strategyAPR)}) ####`);
     console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
     console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
     console.log('#### Other values ####');
-    console.log('Underlying val', BN(contractVal).toString());
+    console.log(`NAV ${contractVal.toString()} (ratio: ${getCurrentAARatio.toString()})`);
     console.log('Virtual balance AA', BN(virtualBalanceAA).toString());
     console.log('Virtual balance BB', BN(virtualBalanceBB).toString());
-    console.log('getCurrentAARatio', BN(getCurrentAARatio).toString());
     console.log();
 
     return {idleCDO, AAaddr, BBaddr, strategy, idleToken};
@@ -129,15 +124,16 @@ task("harvest-cdo")
 
     const skipRedeem = false;
     const skipIncentives = false;
+    const skipFeeDeposit = true;
 
     const rewardTokens = await idleCDO.getRewards();
-    let res = await idleCDO.callStatic.harvest(skipRedeem, skipIncentives, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')));
+    let res = await idleCDO.callStatic.harvest(skipRedeem, skipIncentives, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')));
     let sellAmounts = res._soldAmounts;
     let minAmounts = res._swappedAmounts;
     console.log(`sellAmounts ${sellAmounts}, minAmounts ${minAmounts}`);
     // Add some slippage tolerance
     minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-    let tx = await idleCDO.harvest(skipRedeem, skipIncentives, rewardTokens.map(r => false), minAmounts, sellAmounts);
+    let tx = await idleCDO.harvest(skipRedeem, skipIncentives, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts);
     tx = await tx.wait();
     console.log(`Tx ${tx.transactionHash}, ⛽ ${tx.cumulativeGasUsed}`);
   });
@@ -193,7 +189,7 @@ task("integration")
     await helpers.deposit('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
     // Do an harvest to do a real deposit in Idle
     // no gov tokens collected now because it's the first deposit
-    await rebalanceFull(idleCDO, creatorAddr, true);
+    await rebalanceFull(idleCDO, creatorAddr, true, false);
     // strategy price should be increased after a rebalance and some time
     // Buy AA tranche with `amount` underlying from another user
     const aa2TrancheBal = await helpers.deposit('AA', idleCDO, AABuyer2Addr, amount);
@@ -201,20 +197,20 @@ task("integration")
     await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
 
     console.log('######## First real rebalance (with interest and rewards accrued)');
-    let feeReceiverBBBal = await helpers.getBalance(BBContract, feeCollectorAddr);
+    let feeReceiverBBBal = await stakingRewardsBB.usersStakes(feeCollectorAddr);
     let stakingBBIdleBal = await helpers.getBalance(idleERC20, stakingRewardsBB.address);
     await helpers.checkBalance(compERC20, stakingRewardsBB.address, BN('0'));
     // tranchePriceAA and tranchePriceBB have been updated just before the deposit
     // some gov token (IDLE but not COMP because it has been sold) should be present in the contract after the rebalance
-    await rebalanceFull(idleCDO, creatorAddr);
+    await rebalanceFull(idleCDO, creatorAddr, false, false);
     // so no IDLE in IdleCDO
     await helpers.checkBalance(idleERC20, idleCDO.address, BN('0'));
     // some COMP may still be there given that we are not selling exactly the entire balance
     // await helpers.checkBalance(compERC20, idleCDO.address, BN('0'));
 
-    // feeReceiver should have received some BB tranches as fees
-    let feeReceiverBBBalAfter = await helpers.getBalance(BBContract, feeCollectorAddr);
-    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
+    // feeReceiver should have received some BB tranches as fees and those should be staked
+    let feeReceiverBBBalAfter = await stakingRewardsBB.usersStakes(feeCollectorAddr);
+    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches (staked)');
     // BB Staking contract should have received only IDLE
     let stakingBBIdleBalAfter = await helpers.getBalance(idleERC20, stakingRewardsBB.address);
     await helpers.checkIncreased(stakingBBIdleBal, stakingBBIdleBalAfter, 'BB Staking contract got some IDLE tokens');
@@ -226,27 +222,27 @@ task("integration")
     console.log('######## Withdraws');
     // First user withdraw
     await helpers.withdrawWithGain('AA', idleCDO, AABuyerAddr, amount);
-    feeReceiverBBBal = await idleCDO.BBContract.balanceOf(feeCollectorAddr);
-    await rebalanceFull(idleCDO, creatorAddr);
+    feeReceiverBBBal = await stakingRewardsBB.usersStakes(feeCollectorAddr);
+    await rebalanceFull(idleCDO, creatorAddr, false, false);
     // Check that fee receiver got fees (in BB tranche tokens)
-    feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(feeCollectorAddr);
-    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches');
+    feeReceiverBBBalAfter = await stakingRewardsBB.usersStakes(feeCollectorAddr);
+    await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches (staked)');
 
     await helpers.withdrawWithGain('BB', idleCDO, BBBuyerAddr, amount.div(BN('2')));
-    await rebalanceFull(idleCDO, creatorAddr);
+    await rebalanceFull(idleCDO, creatorAddr, false, false);
 
     await helpers.withdrawWithGain('AA', idleCDO, AABuyer2Addr, amount);
 
     console.log('######## Check fees');
-    let feeReceiverAABal = await idleCDO.AAContract.balanceOf(feeCollectorAddr);
+    let feeReceiverAABal = await stakingRewardsAA.usersStakes(feeCollectorAddr);
     let stakingAAIdleBal = await helpers.getBalance(idleERC20, stakingRewardsAA.address);
     helpers.check(stakingAAIdleBal, BN('0'), `AA staking contract has no IDLE`);
-    await rebalanceFull(idleCDO, creatorAddr);
+    await rebalanceFull(idleCDO, creatorAddr, false, false);
     let stakingAAIdleBalAfter = await helpers.getBalance(idleERC20, stakingRewardsAA.address);
     await helpers.checkIncreased(stakingAAIdleBal, stakingAAIdleBalAfter, 'AA Staking contract got some IDLE tokens');
     // Check that fee receiver got fees (in AA tranche tokens)
-    let feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(feeCollectorAddr);
-    await helpers.checkIncreased(feeReceiverAABal, feeReceiverAABalAfter, 'Fee receiver got some AA tranches');
+    let feeReceiverAABalAfter = await stakingRewardsAA.usersStakes(feeCollectorAddr);;
+    await helpers.checkIncreased(feeReceiverAABal, feeReceiverAABalAfter, 'Fee receiver got some AA tranches (staked)');
     await helpers.checkBalance(compERC20, stakingRewardsAA.address, BN('0'));
     await helpers.checkBalance(compERC20, stakingRewardsBB.address, BN('0'));
 
@@ -254,9 +250,9 @@ task("integration")
     idleTokenBal = await idleToken.balanceOf(idleCDO.address);
     console.log('idleTokenBal', idleTokenBal.toString());
 
-    feeReceiverBBBalAfter = await idleCDO.BBContract.balanceOf(feeCollectorAddr);
+    feeReceiverBBBalAfter = await stakingRewardsBB.usersStakes(feeCollectorAddr);
     console.log('feeReceiverBBBalAfter', feeReceiverBBBalAfter.toString());
-    feeReceiverAABalAfter = await idleCDO.AAContract.balanceOf(feeCollectorAddr);
+    feeReceiverAABalAfter = await stakingRewardsAA.usersStakes(feeCollectorAddr);
     console.log('feeReceiverAABalAfter', feeReceiverAABalAfter.toString());
 
     console.log('AA staking IDLE balance');
@@ -268,40 +264,54 @@ task("integration")
     // stake AA tranche in AA rewards contract
     // Give some ETH to fee receiver
     await creator.sendTransaction({to: feeCollectorAddr, value: ethers.utils.parseEther("1.0")});
-    let _amount = feeReceiverAABalAfter;
-    await helpers.sudoCall(feeCollectorAddr, AAContract, 'approve', [stakingRewardsAA.address, _amount]);
-    await helpers.sudoCall(feeCollectorAddr, stakingRewardsAA, 'stake', [_amount]);
-    await helpers.checkBalance(AAContract, feeCollectorAddr, BN('0'));
-    await helpers.checkBalance(AAContract, stakingRewardsAA.address, _amount);
-    helpers.check(await stakingRewardsAA.expectedUserReward(feeCollectorAddr, mainnetContracts.IDLE), BN('0'));
 
-    // accrue some IDLE in the AA staking reward contract with a rebalance
-    stakingAAIdleBal = await helpers.getBalance(idleERC20, stakingRewardsAA.address);
-    await rebalanceFull(idleCDO, creatorAddr);
-    stakingAAIdleBalAfter = await helpers.getBalance(idleERC20, stakingRewardsAA.address);
-    await helpers.checkIncreased(stakingAAIdleBal, stakingAAIdleBalAfter, 'AA Staking contract got some IDLE tokens');
+    const stakedAA = await stakingRewardsAA.usersStakes(feeCollectorAddr);
+    const stakedBB = await stakingRewardsBB.usersStakes(feeCollectorAddr);
+    console.log('StakedAA', stakedAA.toString());
+    console.log('StakedBB', stakedBB.toString());
+    const IDLEbal = await helpers.getBalance(idleERC20, feeCollectorAddr);
+    console.log('initial feeColl IDLE bal', IDLEbal.toString());
+
+    await helpers.checkBalance(AAContract, feeCollectorAddr, BN('0'));
+    await helpers.checkBalance(AAContract, stakingRewardsAA.address, stakedAA);
+    await helpers.checkBalance(BBContract, feeCollectorAddr, BN('0'));
+    await helpers.checkBalance(BBContract, stakingRewardsBB.address, stakedBB);
+
+    const expAA = await stakingRewardsAA.expectedUserReward(feeCollectorAddr, mainnetContracts.IDLE);
+    const expBB = await stakingRewardsBB.expectedUserReward(feeCollectorAddr, mainnetContracts.IDLE);
+    console.log('expAA', expAA.toString());
+    console.log('expBB', expBB.toString());
 
     // unstake and check to get rewards
-    await helpers.sudoCall(feeCollectorAddr, stakingRewardsAA, 'unstake', [_amount]);
+    await helpers.sudoCall(feeCollectorAddr, stakingRewardsAA, 'unstake', [stakedAA]);
+    const IDLEbalAfterUnstake = await helpers.getBalance(idleERC20, feeCollectorAddr);
+    await helpers.checkIncreased(IDLEbal, IDLEbalAfterUnstake, 'Fee receiver got some IDLE tokens after unstaking AA');
+    await helpers.check(IDLEbalAfterUnstake.sub(IDLEbal), expAA, 'Fee receiver got correct number of IDLE after unstaking AA');
+
+    await helpers.sudoCall(feeCollectorAddr, stakingRewardsBB, 'unstake', [stakedBB]);
+    const IDLEbalFinal = await helpers.getBalance(idleERC20, feeCollectorAddr);
+    await helpers.checkIncreased(IDLEbalAfterUnstake, IDLEbalFinal, 'Fee receiver got some IDLE tokens after unstaking BB');
+    await helpers.check(IDLEbalFinal.sub(IDLEbalAfterUnstake), expBB, 'Fee receiver got correct number of IDLE after unstaking BB');
+
     await helpers.checkBalance(AAContract, stakingRewardsAA.address, BN('0'));
-    await helpers.checkBalance(AAContract, feeCollectorAddr, _amount);
-    // sub 1 for rounding
-    await helpers.checkBalance(idleERC20, feeCollectorAddr, stakingAAIdleBalAfter.sub(stakingAAIdleBal).sub(BN('1')));
+    await helpers.checkBalance(AAContract, feeCollectorAddr, feeReceiverAABalAfter);
+    await helpers.checkBalance(BBContract, stakingRewardsBB.address, BN('0'));
+    await helpers.checkBalance(BBContract, feeCollectorAddr, feeReceiverBBBalAfter);
 
     return {idleCDO};
   });
 
-const rebalanceFull = async (idleCDO, address, skipRedeem = false) => {
+const rebalanceFull = async (idleCDO, address, skipRedeem, skipFeeDeposit) => {
   await run("print-info", {cdo: idleCDO.address});
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
   const rewardTokens = await idleCDO.getRewards();
-  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
+  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
   let sellAmounts = res._soldAmounts;
   let minAmounts = res._swappedAmounts;
   // Add some slippage tolerance
   minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, rewardTokens.map(r => false), minAmounts, sellAmounts]);
+  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts]);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
   await run("mine-multiple", {blocks: '500'});
