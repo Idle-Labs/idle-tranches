@@ -79,8 +79,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (_amount == 0) {
       return;
     }
-    // save current block.number
-    usersStakeBlock[_user] = block.number;
     // update user index for each reward, used to calculate the correct reward amount
     // for each user
     _updateUserIdx(_user, _amount);
@@ -100,10 +98,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (_amount == 0) {
       return;
     }
-    // check that the last stake was made at least `coolingPeriod` blocks
-    // to prevent theft of rewards by sandwiching the `depositReward` tx
-    require(usersStakeBlock[msg.sender] + coolingPeriod < block.number, "COOLING_PERIOD");
-
     if (paused()) {
       // If the contract is paused, "unstake" will skip the claim of the rewards,
       // and those rewards won't be claimable in the future.
@@ -178,8 +172,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (totalStaked > 0) {
       // rewards are splitted among all stakers by increasing the global index
       // proportionally for everyone (based on totalStaked)
-      // rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
-      rewardsIndexes[_reward] += lockedRewards[_reward] * ONE_TRANCHE_TOKEN / totalStaked;
+      rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
+      // rewardsIndexes[_reward] += lockedRewards[_reward] * ONE_TRANCHE_TOKEN / totalStaked;
     }
 
     lockedRewards[_reward] = _amount;
@@ -262,11 +256,11 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
     if (totalStaked > 0 && lockedRewards[_reward] > 0) {
       uint256 distance = block.number - lockedRewardsLastBlock[_reward];
-      if (distance > coolingPeriod) {
-        distance = coolingPeriod;
+      if (distance < coolingPeriod) {
+        uint256 unlockedRewards = lockedRewards[_reward] * distance / coolingPeriod;
+        uint256 lockedRewards = lockedRewards[_reward] - unlockedRewards;
+        index -= lockedRewards * ONE_TRANCHE_TOKEN / totalStaked;
       }
-      uint256 amount = lockedRewards[_reward] * distance / coolingPeriod;
-      index += amount * ONE_TRANCHE_TOKEN / totalStaked;
     }
 
     return index;
