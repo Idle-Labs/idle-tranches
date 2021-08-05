@@ -1424,14 +1424,14 @@ describe("IdleCDO", function () {
     await underlying.transfer(uniRouter.address, _amountAA.mul(BN('2')));
 
     // harvest will now try to sell 1000 incentiveToken for 2000 underlyings
-    const balPre = await underlying.balanceOf(idleCDO.address);
+    const balPre = await idleToken.balanceOf(idleCDO.address);
     await idleCDO.harvest(false, true, false, [false], [_minAmount], [_amountAA]);
     expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
-    const balAfter = await underlying.balanceOf(idleCDO.address);
-    // idleCDO contract should have 2000 DAI more
+    const balAfter = await idleToken.balanceOf(idleCDO.address);
+    // idleCDO contract should have 1000 idleDAI more (bought with 2000 DAI)
     // (fees are not taken because rewards are locked)
 
-    expect(balAfter.sub(balPre)).to.be.equal(BN('2000').mul(one));
+    expect(balAfter.sub(balPre)).to.be.equal(BN('1000').mul(one));
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('0').mul(one));
 
     // mine 2 blocks
@@ -1447,10 +1447,9 @@ describe("IdleCDO", function () {
     await idleCDO.harvest(false, true, true, [false], [_minAmount], [_amountAA]);
     const balIdleTokenAfter = await idleToken.balanceOf(idleCDO.address);
     const balDAIAfter = await underlying.balanceOf(idleCDO.address);
-    // It should have converted 2000 (-10% of fees) DAI in 900 idleTokens
-    expect(balIdleTokenAfter.sub(balIdleTokenPre)).to.be.equal(BN('900').mul(one));
+    // It should have not invested anything new
+    expect(balIdleTokenAfter.sub(balIdleTokenPre)).to.be.equal(BN('0').mul(one));
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('200').mul(one));
-    expect(balDAIPre.sub(balDAIAfter)).to.be.equal(BN('1800').mul(one));
   });
 
   it("harvest should return _soldAmounts and _swappedAmounts", async () => {

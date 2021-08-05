@@ -24,7 +24,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 180
+            runs: 200
           }
         }
       }
@@ -32,7 +32,7 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      // allowUnlimitedContractSize: true,
+      allowUnlimitedContractSize: true,
       forking: {
         url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
         blockNumber: 12554260, // DAI all in compound for `integration` task

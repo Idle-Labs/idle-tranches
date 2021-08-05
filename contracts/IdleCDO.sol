@@ -418,7 +418,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     require(_amount > 0, 'IDLE:IS_0');
     address _token = token;
     // get current available unlent balance
-    uint256 balanceUnderlying = _availableUnlentBalance();
+    uint256 balanceUnderlying = _contractTokenBalance(_token);
     // Calculate the amount to redeem
     toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     if (toRedeem > balanceUnderlying) {
@@ -631,16 +631,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
   }
 
-  /// @return available unlent balance in underlyings
-  function _availableUnlentBalance() internal view returns (uint256) {
-    uint256 _unlent = _contractTokenBalance(token);
-    uint256 _totalLocked = _lockedRewards() + unclaimedFees;
-    if (_totalLocked >= _unlent) {
-      return 0;
-    }
-    return _unlent - _totalLocked;
-  }
-
   // ###################
   // Protected
   // ###################
@@ -689,8 +679,6 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
       // update last saved harvest block number
       latestHarvestBlock = block.number;
       // update harvested rewards value
-      // NOTE: harvested rewards won't be put in lending until are unlocked
-      // and CDO is harvested again
       harvestedRewards = _totSold;
       // split converted rewards and update tranche prices
       // NOTE: harvested rewards won't be counted directly but released over time
@@ -710,7 +698,7 @@ contract IdleCDO is Initializable, PausableUpgradeable, GuardedLaunchUpgradable,
     }
 
     // Keep some unlent balance for cheap redeems and as reserve of last resort
-    uint256 underlyingBal = _availableUnlentBalance();
+    uint256 underlyingBal = _contractTokenBalance(_token);
     uint256 idealUnlent = getContractValue() * unlentPerc / FULL_ALLOC;
     if (underlyingBal > idealUnlent) {
       // Put unlent balance at work in the lending provider
