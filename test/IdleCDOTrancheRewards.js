@@ -4,6 +4,13 @@ const addresses = require('../lib/addresses');
 const helpers = require('../scripts/helpers');
 const BN = v => BigNumber.from(v.toString());
 
+const waitBlocks = async (n) => {
+  log(`mining ${n} blocks...`);
+  for (var i = 0; i < n; i++) {
+    await ethers.provider.send("evm_mine");
+  };
+}
+
 // pretty number
 const pn = (_n) => {
   const n = _n.toString();
@@ -49,7 +56,7 @@ describe('IdleCDOTrancheRewards', function() {
     this.recoveryFund = recoveryFund;
     this.accounts = accounts;
     this.tokenUtils = erc20Utils("18");
-    this.coolingPeriod = 2;
+    this.coolingPeriod = 10;
 
     const MockERC20 = await hre.ethers.getContractFactory("MockERC20");
     this.accounts = accounts;
@@ -104,10 +111,7 @@ describe('IdleCDOTrancheRewards', function() {
       blocksToMine = this.coolingPeriod;
     }
 
-    log(`mining ${blocksToMine} blocks...`);
-    for (var i = 0; i < blocksToMine; i++) {
-      await ethers.provider.send("evm_mine");
-    };
+    await waitBlocks(blocksToMine);
 
     amount = this.tokenUtils.fromUnits(amount);
     await this.contract.connect(user).unstake(amount);
@@ -162,358 +166,365 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "50");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "100");
 
     await stake(user1, "10")
     await checkUserStakes(user1, "20");
     await checkExpectedUserRewards(user1, "100");
   });
 
-  it ('stakeFor', async () => {
-    const [user1] = this.accounts;
-    await stakeFor(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-
-    await stakeFor(user1, "10")
-    await checkUserStakes(user1, "20");
-    await checkExpectedUserRewards(user1, "100");
-  });
-
-  it ('unstake', async () => {
-    const [user1] = this.accounts;
-    await stake(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-
-    await unstake(user1, "10")
-    await checkUserStakes(user1, "0");
-    await checkExpectedUserRewards(user1, "0");
-    await checkRewardBalance(user1, "100");
-  });
-
-  it ('unstake after stakeFor', async () => {
-    const [user1] = this.accounts;
-    await stakeFor(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-
-    await unstake(user1, "10")
-    await checkUserStakes(user1, "0");
-    await checkExpectedUserRewards(user1, "0");
-    await checkRewardBalance(user1, "100");
-  });
-
-  it ('fails if unstake is called before cooling period', async () => {
-    const [user1] = this.accounts;
-    await stake(user1, "10")
-    for (var i = 0; i < this.coolingPeriod; i++) {
-      await expect(
-        unstake(user1, "10", 0)
-      ).to.be.revertedWith("COOLING_PERIOD");
-    };
-
-    // after cooling period it's possible to unstake
-    unstake(user1, "10", 0);
-  });
-
-  it ('owner can set the cooling period', async () => {
-    expect(await this.contract.coolingPeriod()).to.be.equal(this.coolingPeriod);
-
-    await expect(
-      this.contract.connect(this.accounts[0]).setCoolingPeriod("0")
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-
-    await this.contract.connect(this.owner).setCoolingPeriod("100");
-    const newCoolingPeriod = await this.contract.coolingPeriod();
-    expect(newCoolingPeriod).to.not.be.equal(this.coolingPeriod);
-    expect(newCoolingPeriod).to.be.equal("100");
-  });
-
-  it ('unstake when paused should not claim rewards', async () => {
-    const [user1] = this.accounts;
-    await stake(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-    await checkExpectedUserRewards(user1, "100");
-
-    await this.contract.connect(this.owner).pause();
-    await unstake(user1, "10")
-
-    await checkUserStakes(user1, "0");
-    await checkExpectedUserRewards(user1, "0");
-    // rewards are not sent to the user
-    await checkRewardBalance(user1, "0");
-  });
-
-  it ('claim', async () => {
-    const [user1] = this.accounts;
-    await stake(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-    await claim(user1);
-
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-    await checkRewardBalance(user1, "100");
-  });
-
-  it ('claim after stakeFor', async () => {
-    const [user1] = this.accounts;
-    await stakeFor(user1, "10")
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-    await claim(user1);
-
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-    await checkRewardBalance(user1, "100");
-  });
-
-  it ('expectedUserReward', async () => {
-    const [user1] = this.accounts;
-    await stake(user1, "10")
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-    await checkExpectedUserRewards(user1, "100");
-
-    await depositReward("100");
-    await checkExpectedUserRewards(user1, "200");
-
-    await claim(user1);
-
-    await checkExpectedUserRewards(user1, "0");
-
-    const unsupportedTokenAddress = this.accounts[0].address;
-    await expect(
-      this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
-    ).to.be.revertedWith("!SUPPORTED");
-  });
-
-  it ('expectedUserReward after stakeFor', async () => {
-    const [user1] = this.accounts;
-    await stakeFor(user1, "10")
-    await checkExpectedUserRewards(user1, "0");
-
-    await depositReward("100");
-    await checkExpectedUserRewards(user1, "100");
-
-    await depositReward("100");
-    await checkExpectedUserRewards(user1, "200");
-
-    await claim(user1);
-
-    await checkExpectedUserRewards(user1, "0");
-
-    const unsupportedTokenAddress = this.accounts[0].address;
-    await expect(
-      this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
-    ).to.be.revertedWith("!SUPPORTED");
-  });
-
-  it('full test', async () => {
-    const [user1, user2, user3] = this.accounts;
-
-    log("user1 stakes 10");
-    await stake(user1, "10")
-    await dump();
-    await checkUserStakes(user1, "10");
-    await checkUserStakes(user2, "0");
-    await checkExpectedUserRewards(user1, "0");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("deposit 100 reward1");
-    await depositReward("100");
-    await dump();
-    await checkExpectedUserRewards(user1, "100");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("user2 stakes 10");
-    await stake(user2, "10");
-    await dump();
-    await checkUserStakes(user1, "10");
-    await checkUserStakes(user2, "10");
-    await checkExpectedUserRewards(user1, "100");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("user1 stakes 30");
-    await stake(user1, "20")
-    await stake(user1, "10")
-    await dump();
-    await checkUserStakes(user1, "40");
-    await checkUserStakes(user2, "10");
-    await checkExpectedUserRewards(user1, "100");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("deposit 100 reward1");
-    await depositReward("100");
-    await dump();
-    await checkExpectedUserRewards(user1, "180");
-    await checkExpectedUserRewards(user2, "20");
-
-    await checkRewardBalance(user1, "0");
-    await checkRewardBalance(user2, "0");
-
-    log("user1 unstakes 40");
-    await unstake(user1 ,"40");
-    await dump();
-    await checkUserStakes(user1, "0");
-    await checkUserStakes(user2, "10");
-    await checkExpectedUserRewards(user1, "0");
-    await checkExpectedUserRewards(user2, "20");
-    await checkRewardBalance(user1, "180");
-    await checkRewardBalance(user2, "0");
-
-    log("user2 unstakes 20");
-    await unstake(user2, "10");
-    await dump();
-    await checkUserStakes(user1, "0");
-    await checkUserStakes(user2, "0");
-    await checkExpectedUserRewards(user1, "0");
-    await checkExpectedUserRewards(user2, "0");
-    await checkRewardBalance(user1, "180");
-    await checkRewardBalance(user2, "20");
-
-    log("user1 stakes 10");
-    await stake(user1, "10");
-    await dump();
-    await checkUserStakes(user1, "10");
-    await checkUserStakes(user2, "0");
-    await checkExpectedUserRewards(user1, "0");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("deposit 100 reward1");
-    await depositReward("100");
-    await dump();
-    await checkExpectedUserRewards(user1, "100");
-    await checkExpectedUserRewards(user2, "0");
-
-    log("user1 calls claim");
-    await this.contract.connect(user1).claim();
-    await checkUserStakes(user1, "10");
-    await checkExpectedUserRewards(user1, "0");
-    await checkRewardBalance(user1, "280");
-    await dump();
-  });
-
-  it("claims the maximum available if expectedUserReward is more", async () => {
-    const user = this.accounts[0];
-    await stake(user, "10")
-    await depositReward("100");
-    await stake(user, "20")
-    await stake(user, "30")
-    await checkExpectedUserRewards(user, "100");
-
-    // for rounding problems, the user expected Reward is
-    // 100_000_000_000_000_000_020 instead of
-    // 100_000_000_000_000_000_000
-    const expected = BN(await this.contract.expectedUserReward(user.address, this.rewardToken1.address));
-    const balance = BN(await this.rewardToken1.balanceOf(this.contract.address));
-    expect(expected.gt(balance)).to.be.true;
-
-    await dump();
-    await unstake(user, "60");
-    await dump();
-
-    const balanceAfter = BN(await this.rewardToken1.balanceOf(this.contract.address));
-    expect(BN(await this.rewardToken1.balanceOf(this.contract.address))).to.be.bignumber.equal(BN("0"));
-  });
-
-  it("can be paused/unpaused by owner", async () => {
-    expect(await this.contract.paused()).to.be.false;
-    await this.contract.connect(this.owner).pause();
-    expect(await this.contract.paused()).to.be.true;
-    await this.contract.connect(this.owner).unpause();
-    expect(await this.contract.paused()).to.be.false;
-  });
-
-  it("cannot be paused by non-owner", async () => {
-    expect(await this.contract.paused()).to.be.false;
-    await expect(
-      this.contract.connect(this.accounts[0]).pause()
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("cannot be unpaused by non-owner", async () => {
-    await this.contract.connect(this.owner).pause();
-    expect(await this.contract.paused()).to.be.true;
-    await expect(
-      this.contract.connect(this.accounts[0]).unpause()
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("should revert when calling stake and contract is paused", async () => {
-    await this.contract.connect(this.owner).pause();
-    await expect(
-      stake(this.accounts[0], "10")
-    ).to.be.revertedWith("Pausable: paused");
-  });
-
-  it("should revert when calling claim and contract is paused", async () => {
-    await this.contract.connect(this.owner).pause();
-    await expect(
-      claim(this.accounts[0])
-    ).to.be.revertedWith("Pausable: paused");
-  });
-
-  it("transferToken can be called by owner", async () => {
-    await this.rewardToken1.connect(this.owner).transfer(this.contract.address, this.tokenUtils.fromUnits("100"));
-
-    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
-    expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
-
-    await this.contract.connect(this.owner).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
-
-    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
-    expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
-  });
-
-  it("transferToken failes if address is 0", async () => {
-    await expect(
-      this.contract.connect(this.owner).transferToken(addresses.addr0, this.tokenUtils.fromUnits("100"))
-    ).to.be.revertedWith("Address is 0");
-  });
-
-  it("transferToken cannot be called by non-owner", async () => {
-    await expect(
-      this.contract.connect(this.accounts[0]).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("depositReward can be called by the CDO", async () => {
-    await this.rewardToken1.connect(this.owner).transfer(this.cdo.address, this.tokenUtils.fromUnits("100"));
-
-    expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
-    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
-
-    await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
-
-    expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
-    expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
-  });
-
-  it("depositReward fails if called by an address different from the CDO", async () => {
-    await expect(
-      this.contract.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
-    ).to.be.revertedWith("!AUTH");
-  })
-
-  it("depositReward fails if called with an unsupported token", async () => {
-    const unsupportedTokenAddress = this.accounts[0].address;
-    await expect(
-      this.cdo.connect(this.owner).depositRewardWithoutApprove(unsupportedTokenAddress, this.tokenUtils.fromUnits("100"))
-    ).to.be.revertedWith("!SUPPORTED");
-  })
+  // it ('stakeFor', async () => {
+  //   const [user1] = this.accounts;
+  //   await stakeFor(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+
+  //   await stakeFor(user1, "10")
+  //   await checkUserStakes(user1, "20");
+  //   await checkExpectedUserRewards(user1, "100");
+  // });
+
+  // it ('unstake', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+
+  //   await unstake(user1, "10")
+  //   await checkUserStakes(user1, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkRewardBalance(user1, "100");
+  // });
+
+  // it ('unstake after stakeFor', async () => {
+  //   const [user1] = this.accounts;
+  //   await stakeFor(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+
+  //   await unstake(user1, "10")
+  //   await checkUserStakes(user1, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkRewardBalance(user1, "100");
+  // });
+
+  // it ('fails if unstake is called before cooling period', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   for (var i = 0; i < this.coolingPeriod; i++) {
+  //     await expect(
+  //       unstake(user1, "10", 0)
+  //     ).to.be.revertedWith("COOLING_PERIOD");
+  //   };
+
+  //   // after cooling period it's possible to unstake
+  //   unstake(user1, "10", 0);
+  // });
+
+  // it ('owner can set the cooling period', async () => {
+  //   expect(await this.contract.coolingPeriod()).to.be.equal(this.coolingPeriod);
+
+  //   await expect(
+  //     this.contract.connect(this.accounts[0]).setCoolingPeriod("0")
+  //   ).to.be.revertedWith("Ownable: caller is not the owner");
+
+  //   await this.contract.connect(this.owner).setCoolingPeriod("100");
+  //   const newCoolingPeriod = await this.contract.coolingPeriod();
+  //   expect(newCoolingPeriod).to.not.be.equal(this.coolingPeriod);
+  //   expect(newCoolingPeriod).to.be.equal("100");
+  // });
+
+  // it ('unstake when paused should not claim rewards', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "100");
+
+  //   await this.contract.connect(this.owner).pause();
+  //   await unstake(user1, "10")
+
+  //   await checkUserStakes(user1, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   // rewards are not sent to the user
+  //   await checkRewardBalance(user1, "0");
+  // });
+
+  // it ('claim', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await claim(user1);
+
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkRewardBalance(user1, "100");
+  // });
+
+  // it ('claim after stakeFor', async () => {
+  //   const [user1] = this.accounts;
+  //   await stakeFor(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await claim(user1);
+
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkRewardBalance(user1, "100");
+  // });
+
+  // it ('expectedUserReward', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "100");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "200");
+
+  //   await claim(user1);
+
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   const unsupportedTokenAddress = this.accounts[0].address;
+  //   await expect(
+  //     this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
+  //   ).to.be.revertedWith("!SUPPORTED");
+  // });
+
+  // it ('expectedUserReward after stakeFor', async () => {
+  //   const [user1] = this.accounts;
+  //   await stakeFor(user1, "10")
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "100");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "200");
+
+  //   await claim(user1);
+
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   const unsupportedTokenAddress = this.accounts[0].address;
+  //   await expect(
+  //     this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
+  //   ).to.be.revertedWith("!SUPPORTED");
+  // });
+
+  // it('full test', async () => {
+  //   const [user1, user2, user3] = this.accounts;
+
+  //   log("user1 stakes 10");
+  //   await stake(user1, "10")
+  //   await dump();
+  //   await checkUserStakes(user1, "10");
+  //   await checkUserStakes(user2, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("deposit 100 reward1");
+  //   await depositReward("100");
+  //   await dump();
+  //   await checkExpectedUserRewards(user1, "100");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("user2 stakes 10");
+  //   await stake(user2, "10");
+  //   await dump();
+  //   await checkUserStakes(user1, "10");
+  //   await checkUserStakes(user2, "10");
+  //   await checkExpectedUserRewards(user1, "100");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("user1 stakes 30");
+  //   await stake(user1, "20")
+  //   await stake(user1, "10")
+  //   await dump();
+  //   await checkUserStakes(user1, "40");
+  //   await checkUserStakes(user2, "10");
+  //   await checkExpectedUserRewards(user1, "100");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("deposit 100 reward1");
+  //   await depositReward("100");
+  //   await dump();
+  //   await checkExpectedUserRewards(user1, "180");
+  //   await checkExpectedUserRewards(user2, "20");
+
+  //   await checkRewardBalance(user1, "0");
+  //   await checkRewardBalance(user2, "0");
+
+  //   log("user1 unstakes 40");
+  //   await unstake(user1 ,"40");
+  //   await dump();
+  //   await checkUserStakes(user1, "0");
+  //   await checkUserStakes(user2, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkExpectedUserRewards(user2, "20");
+  //   await checkRewardBalance(user1, "180");
+  //   await checkRewardBalance(user2, "0");
+
+  //   log("user2 unstakes 20");
+  //   await unstake(user2, "10");
+  //   await dump();
+  //   await checkUserStakes(user1, "0");
+  //   await checkUserStakes(user2, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkExpectedUserRewards(user2, "0");
+  //   await checkRewardBalance(user1, "180");
+  //   await checkRewardBalance(user2, "20");
+
+  //   log("user1 stakes 10");
+  //   await stake(user1, "10");
+  //   await dump();
+  //   await checkUserStakes(user1, "10");
+  //   await checkUserStakes(user2, "0");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("deposit 100 reward1");
+  //   await depositReward("100");
+  //   await dump();
+  //   await checkExpectedUserRewards(user1, "100");
+  //   await checkExpectedUserRewards(user2, "0");
+
+  //   log("user1 calls claim");
+  //   await this.contract.connect(user1).claim();
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+  //   await checkRewardBalance(user1, "280");
+  //   await dump();
+  // });
+
+  // it("claims the maximum available if expectedUserReward is more", async () => {
+  //   const user = this.accounts[0];
+  //   await stake(user, "10")
+  //   await depositReward("100");
+  //   await stake(user, "20")
+  //   await stake(user, "30")
+  //   await checkExpectedUserRewards(user, "100");
+
+  //   // for rounding problems, the user expected Reward is
+  //   // 100_000_000_000_000_000_020 instead of
+  //   // 100_000_000_000_000_000_000
+  //   const expected = BN(await this.contract.expectedUserReward(user.address, this.rewardToken1.address));
+  //   const balance = BN(await this.rewardToken1.balanceOf(this.contract.address));
+  //   expect(expected.gt(balance)).to.be.true;
+
+  //   await dump();
+  //   await unstake(user, "60");
+  //   await dump();
+
+  //   const balanceAfter = BN(await this.rewardToken1.balanceOf(this.contract.address));
+  //   expect(BN(await this.rewardToken1.balanceOf(this.contract.address))).to.be.bignumber.equal(BN("0"));
+  // });
+
+  // it("can be paused/unpaused by owner", async () => {
+  //   expect(await this.contract.paused()).to.be.false;
+  //   await this.contract.connect(this.owner).pause();
+  //   expect(await this.contract.paused()).to.be.true;
+  //   await this.contract.connect(this.owner).unpause();
+  //   expect(await this.contract.paused()).to.be.false;
+  // });
+
+  // it("cannot be paused by non-owner", async () => {
+  //   expect(await this.contract.paused()).to.be.false;
+  //   await expect(
+  //     this.contract.connect(this.accounts[0]).pause()
+  //   ).to.be.revertedWith("Ownable: caller is not the owner");
+  // });
+
+  // it("cannot be unpaused by non-owner", async () => {
+  //   await this.contract.connect(this.owner).pause();
+  //   expect(await this.contract.paused()).to.be.true;
+  //   await expect(
+  //     this.contract.connect(this.accounts[0]).unpause()
+  //   ).to.be.revertedWith("Ownable: caller is not the owner");
+  // });
+
+  // it("should revert when calling stake and contract is paused", async () => {
+  //   await this.contract.connect(this.owner).pause();
+  //   await expect(
+  //     stake(this.accounts[0], "10")
+  //   ).to.be.revertedWith("Pausable: paused");
+  // });
+
+  // it("should revert when calling claim and contract is paused", async () => {
+  //   await this.contract.connect(this.owner).pause();
+  //   await expect(
+  //     claim(this.accounts[0])
+  //   ).to.be.revertedWith("Pausable: paused");
+  // });
+
+  // it("transferToken can be called by owner", async () => {
+  //   await this.rewardToken1.connect(this.owner).transfer(this.contract.address, this.tokenUtils.fromUnits("100"));
+
+  //   expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  //   expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+
+  //   await this.contract.connect(this.owner).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
+
+  //   expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+  //   expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  // });
+
+  // it("transferToken failes if address is 0", async () => {
+  //   await expect(
+  //     this.contract.connect(this.owner).transferToken(addresses.addr0, this.tokenUtils.fromUnits("100"))
+  //   ).to.be.revertedWith("Address is 0");
+  // });
+
+  // it("transferToken cannot be called by non-owner", async () => {
+  //   await expect(
+  //     this.contract.connect(this.accounts[0]).transferToken(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
+  //   ).to.be.revertedWith("Ownable: caller is not the owner");
+  // });
+
+  // it("depositReward can be called by the CDO", async () => {
+  //   await this.rewardToken1.connect(this.owner).transfer(this.cdo.address, this.tokenUtils.fromUnits("100"));
+
+  //   expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  //   expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+
+  //   await this.cdo.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"));
+
+  //   expect(await this.rewardToken1.balanceOf(this.cdo.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("0"));
+  //   expect(await this.rewardToken1.balanceOf(this.contract.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
+  // });
+
+  // it("depositReward fails if called by an address different from the CDO", async () => {
+  //   await expect(
+  //     this.contract.connect(this.owner).depositReward(this.rewardToken1.address, this.tokenUtils.fromUnits("100"))
+  //   ).to.be.revertedWith("!AUTH");
+  // })
+
+  // it("depositReward fails if called with an unsupported token", async () => {
+  //   const unsupportedTokenAddress = this.accounts[0].address;
+  //   await expect(
+  //     this.cdo.connect(this.owner).depositRewardWithoutApprove(unsupportedTokenAddress, this.tokenUtils.fromUnits("100"))
+  //   ).to.be.revertedWith("!SUPPORTED");
+  // })
 });

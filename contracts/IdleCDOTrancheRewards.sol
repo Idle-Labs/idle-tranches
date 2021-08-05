@@ -111,7 +111,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       for (uint256 i = 0; i < rewards.length; i++) {
         reward = rewards[i];
         // set the user index equal to the global one, which means 0 rewards
-        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+        usersIndexes[msg.sender][reward] = rewardIndex(reward);
       }
     } else {
       // Claim all rewards accrued
@@ -144,7 +144,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
         amount = balance;
       }
       // Set the user index equal to the global one, which means 0 rewards
-      usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      usersIndexes[msg.sender][reward] = rewardIndex(reward);
       // transfer the reward to the user
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
@@ -158,7 +158,13 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     require(_includesAddress(rewards, reward), "!SUPPORTED");
     // The amount of rewards for a specific reward token is given by the difference
     // between the global index and the user's one multiplied by the user staked balance
-    return ((rewardsIndexes[reward] - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
+
+    uint256 _rewardIndex = rewardIndex(reward);
+    if (usersIndexes[user][reward] > _rewardIndex) {
+      return 0;
+    }
+
+    return ((_rewardIndex - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice Called by IdleCDO to deposit incentive rewards
@@ -172,8 +178,12 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (totalStaked > 0) {
       // rewards are splitted among all stakers by increasing the global index
       // proportionally for everyone (based on totalStaked)
-      rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
+      // rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
+      rewardsIndexes[_reward] += lockedRewards[_reward] * ONE_TRANCHE_TOKEN / totalStaked;
     }
+
+    lockedRewards[_reward] = _amount;
+    lockedRewardsLastBlock[_reward] = block.number;
   }
   /// @notice It sets the coolingPeriod that a user needs to wait since his last stake
   /// before the unstake will be possible
@@ -195,7 +205,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       reward = _rewards[i];
       if (_currStake == 0) {
         // Set the user address equal to the global one which means 0 reward for the user
-        usersIndexes[_user][reward] = rewardsIndexes[reward];
+        usersIndexes[_user][reward] = rewardIndex(reward);
       } else {
         userIndex = usersIndexes[_user][reward];
         // Calculate the new user idx
@@ -208,7 +218,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
           // we can calculate the increase of the userIndex by solving the following equation
           // (rewardsIndexes - userIndex) * _currStake = (rewardsIndexes - (userIndex + X)) * (_currStake + _amountToStake)
           // for X we get the increase for the userIndex:
-          _amountToStake * (rewardsIndexes[reward] - userIndex) / (_currStake + _amountToStake)
+          _amountToStake * (rewardIndex(reward) - userIndex) / (_currStake + _amountToStake)
         );
       }
     }
@@ -245,5 +255,20 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @dev Unpauses deposits and redeems
   function unpause() external onlyOwner {
     _unpause();
+  }
+
+  function rewardIndex(address _reward) public view returns(uint256) {
+    uint256 index = rewardsIndexes[_reward];
+
+    if (totalStaked > 0 && lockedRewards[_reward] > 0) {
+      uint256 distance = block.number - lockedRewardsLastBlock[_reward];
+      if (distance > coolingPeriod) {
+        distance = coolingPeriod;
+      }
+      uint256 amount = lockedRewards[_reward] * distance / coolingPeriod;
+      index += amount * ONE_TRANCHE_TOKEN / totalStaked;
+    }
+
+    return index;
   }
 }

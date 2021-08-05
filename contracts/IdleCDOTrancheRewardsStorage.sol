@@ -17,6 +17,9 @@ contract IdleCDOTrancheRewardsStorage {
   // user => block number when user staked last time
   mapping(address => uint256) public usersStakeBlock;
 
+  mapping(address => uint256) public lockedRewards;
+  mapping(address => uint256) public lockedRewardsLastBlock;
+
   uint256 public totalStaked;
   uint256 public coolingPeriod;
 }
