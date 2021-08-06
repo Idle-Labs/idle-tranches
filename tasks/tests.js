@@ -267,10 +267,7 @@ task("integration")
 
     const stakedAA = await stakingRewardsAA.usersStakes(feeCollectorAddr);
     const stakedBB = await stakingRewardsBB.usersStakes(feeCollectorAddr);
-    console.log('StakedAA', stakedAA.toString());
-    console.log('StakedBB', stakedBB.toString());
     const IDLEbal = await helpers.getBalance(idleERC20, feeCollectorAddr);
-    console.log('initial feeColl IDLE bal', IDLEbal.toString());
 
     await helpers.checkBalance(AAContract, feeCollectorAddr, BN('0'));
     await helpers.checkBalance(AAContract, stakingRewardsAA.address, stakedAA);
@@ -279,8 +276,6 @@ task("integration")
 
     const expAA = await stakingRewardsAA.expectedUserReward(feeCollectorAddr, mainnetContracts.IDLE);
     const expBB = await stakingRewardsBB.expectedUserReward(feeCollectorAddr, mainnetContracts.IDLE);
-    console.log('expAA', expAA.toString());
-    console.log('expBB', expBB.toString());
 
     // unstake and check to get rewards
     await helpers.sudoCall(feeCollectorAddr, stakingRewardsAA, 'unstake', [stakedAA]);

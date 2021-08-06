@@ -14,8 +14,6 @@ contract IdleCDOStorage {
   bytes32 internal _lastCallerBlock;
   // variable used to save the block of the latest harvest
   uint256 public latestHarvestBlock;
-  // variable used to define the min blocks that need to be passed after an harvest, before withdraw is allowed
-  uint256 public coolingPeriod;
   // WETH address
   address public weth;
   // tokens used to incentivize the idle tranche ideal ratio

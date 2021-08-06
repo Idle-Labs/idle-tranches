@@ -368,20 +368,6 @@ describe("IdleCDO", function () {
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN('900').mul(one)));
   });
 
-  it("withdrawAA should revert if called before coolingPeriod", async () => {
-    await idleCDO.setCoolingPeriod(BN('10')); // 10 blocks
-
-    const _amount = BN('1000').mul(ONE_TOKEN(18));
-    await firstDepositAA(_amount);
-    // update lending protocol price which is now 2
-    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
-
-    await idleCDO.harvest(false, true, false, [false], [BN('0')], [BN('0')]);
-    await expect(
-      idleCDO.connect(AABuyer).withdrawAA(_amount)
-    ).to.be.revertedWith("COOLING_PERIOD");
-  });
-
   it("should withdrawAA all AA balance if _amount supplied is 0", async () => {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await firstDepositAA(_amount);
@@ -1014,15 +1000,6 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setReleaseBlocksPeriod(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-  it("setCoolingPeriod should set the coolingPeriod and be called only by the owner", async () => {
-    const val = BN('10');
-    await idleCDO.setCoolingPeriod(val);
-    expect(await idleCDO.coolingPeriod()).to.be.equal(val);
-
-    await expect(
-      idleCDO.connect(BBBuyer).setCoolingPeriod(val)
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
   it("setStakingRewards should set the relative addresses for incentiveTokens", async () => {
