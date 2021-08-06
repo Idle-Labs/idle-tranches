@@ -105,7 +105,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       for (uint256 i = 0; i < rewards.length; i++) {
         reward = rewards[i];
         // set the user index equal to the global one, which means 0 rewards
-        usersIndexes[msg.sender][reward] = rewardIndex(reward);
+        usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
       }
     } else {
       // Claim all rewards accrued
@@ -138,7 +138,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
         amount = balance;
       }
       // Set the user index equal to the global one, which means 0 rewards
-      usersIndexes[msg.sender][reward] = rewardIndex(reward);
+      usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
       // transfer the reward to the user
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
@@ -153,7 +153,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     // The amount of rewards for a specific reward token is given by the difference
     // between the global index and the user's one multiplied by the user staked balance
 
-    uint256 _rewardIndex = rewardIndex(reward);
+    uint256 _rewardIndex = adjustedRewardIndex(reward);
     if (usersIndexes[user][reward] > _rewardIndex) {
       return 0;
     }
@@ -199,7 +199,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       reward = _rewards[i];
       if (_currStake == 0) {
         // Set the user address equal to the global one which means 0 reward for the user
-        usersIndexes[_user][reward] = rewardIndex(reward);
+        usersIndexes[_user][reward] = rewardsIndexes[reward];
       } else {
         userIndex = usersIndexes[_user][reward];
         // Calculate the new user idx
@@ -212,7 +212,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
           // we can calculate the increase of the userIndex by solving the following equation
           // (rewardsIndexes - userIndex) * _currStake = (rewardsIndexes - (userIndex + X)) * (_currStake + _amountToStake)
           // for X we get the increase for the userIndex:
-          _amountToStake * (rewardIndex(reward) - userIndex) / (_currStake + _amountToStake)
+          _amountToStake * (rewardsIndexes[reward] - userIndex) / (_currStake + _amountToStake)
         );
       }
     }
@@ -251,7 +251,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     _unpause();
   }
 
-  function rewardIndex(address _reward) public view returns(uint256) {
+  function adjustedRewardIndex(address _reward) public view returns(uint256) {
     uint256 index = rewardsIndexes[_reward];
 
     if (totalStaked > 0 && lockedRewards[_reward] > 0) {
