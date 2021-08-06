@@ -56,7 +56,7 @@ describe('IdleCDOTrancheRewards', function() {
     this.recoveryFund = recoveryFund;
     this.accounts = accounts;
     this.tokenUtils = erc20Utils("18");
-    this.coolingPeriod = 10;
+    this.coolingPeriod = 100;
 
     const MockERC20 = await hre.ethers.getContractFactory("MockERC20");
     this.accounts = accounts;
@@ -108,7 +108,7 @@ describe('IdleCDOTrancheRewards', function() {
 
   const unstake = async (user, amount, blocksToMine) => {
     if (blocksToMine == undefined) {
-      blocksToMine = this.coolingPeriod;
+      blocksToMine = 0;
     }
 
     await waitBlocks(blocksToMine);
@@ -143,6 +143,9 @@ describe('IdleCDOTrancheRewards', function() {
     log("\n-----------------------------");
     log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
     log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
+    log("locked rewards          ", pn(await this.contract.lockedRewards(this.rewardToken1.address)));
+    log("locked block            ", pn(await this.contract.lockedRewardsLastBlock(this.rewardToken1.address)));
+    log("current block           ", pn((await ethers.provider.getBlockNumber())));
     log("total staked            ", pn(await this.contract.totalStaked()));
 
     log("");
@@ -159,38 +162,44 @@ describe('IdleCDOTrancheRewards', function() {
     log("-----------------------------\n");
   }
 
-  it ('stake', async () => {
+  // it ('stake', async () => {
+  //   const [user1] = this.accounts;
+  //   await stake(user1, "10")
+  //   await checkUserStakes(user1, "10");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await depositReward("100");
+  //   await checkExpectedUserRewards(user1, "0");
+
+  //   await waitBlocks(this.coolingPeriod / 2);
+  //   await checkExpectedUserRewards(user1, "50");
+
+  //   await waitBlocks(this.coolingPeriod / 2);
+  //   await checkExpectedUserRewards(user1, "100");
+
+  //   await stake(user1, "10")
+  //   await checkUserStakes(user1, "20");
+  //   await checkExpectedUserRewards(user1, "100");
+  // });
+
+  it ('stakeFor', async () => {
     const [user1] = this.accounts;
-    await stake(user1, "10")
+    await stakeFor(user1, "10")
     await checkUserStakes(user1, "10");
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
     await checkExpectedUserRewards(user1, "0");
 
-    await waitBlocks(this.coolingPeriod / 2);
-    await checkExpectedUserRewards(user1, "50");
-
-    await waitBlocks(this.coolingPeriod / 2);
-    await checkExpectedUserRewards(user1, "100");
-
-    await stake(user1, "10")
+    await dump();
+    await stakeFor(user1, "10")
     await checkUserStakes(user1, "20");
-    await checkExpectedUserRewards(user1, "100");
+    await checkExpectedUserRewards(user1, "0");
+    await dump();
+
+    // await waitBlocks(this.coolingPeriod);
+    // await checkExpectedUserRewards(user1, "100");
   });
-
-  // it ('stakeFor', async () => {
-  //   const [user1] = this.accounts;
-  //   await stakeFor(user1, "10")
-  //   await checkUserStakes(user1, "10");
-  //   await checkExpectedUserRewards(user1, "0");
-
-  //   await depositReward("100");
-
-  //   await stakeFor(user1, "10")
-  //   await checkUserStakes(user1, "20");
-  //   await checkExpectedUserRewards(user1, "100");
-  // });
 
   // it ('unstake', async () => {
   //   const [user1] = this.accounts;
