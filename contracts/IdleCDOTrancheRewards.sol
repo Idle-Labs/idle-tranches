@@ -35,7 +35,8 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @param _owner The owner of the contract
   /// @param _idleCDO The CDO where the reward tokens come from
   /// @param _governanceRecoveryFund address where rewards will be sent in case of transferToken call
-  /// @param _coolingPeriod number of blocks that needs to pass since last staking before unstake is possible
+  /// @param _coolingPeriod number of blocks that needs to pass since last rewards deposit
+  /// before all rewards are unlocked. Rewards are unlocked linearly for `_coolingPeriod` blocks
   function initialize(
     address _trancheToken, address[] memory _rewards, address _owner,
     address _idleCDO, address _governanceRecoveryFund, uint256 _coolingPeriod
@@ -80,11 +81,11 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       return;
     }
     // update user index for each reward, used to calculate the correct reward amount
-    // for each user
+    // of rewards for each user
     _updateUserIdx(_user, _amount);
     // increase the staked amount associated with the user
     usersStakes[_user] += _amount;
-    // get _amount of `tranche` tokens from the user
+    // get _amount of `tranche` tokens from the payer
     IERC20Detailed(tranche).safeTransferFrom(_payer, address(this), _amount);
     // increase the total staked amount counter
     totalStaked += _amount;
@@ -148,17 +149,46 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @param user The user address
   /// @param reward The reward token address
   /// @return The expected reward amount
-  function expectedUserReward(address user, address reward) public view returns(uint256) {
+  function expectedUserReward(address user, address reward) public view returns (uint256) {
     require(_includesAddress(rewards, reward), "!SUPPORTED");
     // The amount of rewards for a specific reward token is given by the difference
     // between the global index and the user's one multiplied by the user staked balance
-
-    uint256 _rewardIndex = adjustedRewardIndex(reward);
-    if (usersIndexes[user][reward] > _rewardIndex) {
+    // The rewards deposited are not unlocked right away, but linearly over `coolingPeriod`
+    // blocks so an adjusted global index is used.
+    // NOTE: stakes made when the coolingPeriod is not concluded won't receive any of those
+    // rewards (ie the index set for the user is the global, non adjusted, index)
+    uint256 _globalIdx = adjustedRewardIndex(reward);
+    uint256 _userIdx = usersIndexes[user][reward];
+    if (_userIdx > _globalIdx) {
       return 0;
     }
 
-    return ((_rewardIndex - usersIndexes[user][reward]) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
+    return ((_globalIdx - _userIdx) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
+  }
+
+  /// @notice Calculates the adjusted global index for calculating rewards,
+  /// considering that rewards will be released over `coolingPeriod` blocks
+  /// @param _reward The reward token address
+  /// @return _index The adjusted global index
+  function adjustedRewardIndex(address _reward) public view returns (uint256 _index) {
+    uint256 _totalStaked = totalStaked;
+    // get number of rewards deposited in the last `depositReward` call
+    uint256 _lockedRewards = lockedRewards[_reward];
+    // get current global index, which considers all rewards
+    _index = rewardsIndexes[_reward];
+
+    if (_totalStaked > 0 && _lockedRewards > 0) {
+      // get blocks since last reward deposit
+      uint256 distance = block.number - lockedRewardsLastBlock[_reward];
+      if (distance < coolingPeriod) {
+        // if the cooling period has not passed, calculate the rewards that should
+        // still be locked
+        uint256 unlockedRewards = _lockedRewards * distance / coolingPeriod;
+        uint256 lockedRewards = _lockedRewards - unlockedRewards;
+        // and reduce the 'real' global index proportionally to the total amount staked
+        _index -= lockedRewards * ONE_TRANCHE_TOKEN / _totalStaked;
+      }
+    }
   }
 
   /// @notice Called by IdleCDO to deposit incentive rewards
@@ -172,13 +202,15 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (totalStaked > 0) {
       // rewards are splitted among all stakers by increasing the global index
       // proportionally for everyone (based on totalStaked)
+      // NOTE: for calculations `adjustedRewardIndex` is used instead, to release
+      // rewards linearly over `coolingPeriod` blocks
       rewardsIndexes[_reward] += _amount * ONE_TRANCHE_TOKEN / totalStaked;
-      // rewardsIndexes[_reward] += lockedRewards[_reward] * ONE_TRANCHE_TOKEN / totalStaked;
     }
-
+    // save _amount of reward amount and block
     lockedRewards[_reward] = _amount;
     lockedRewardsLastBlock[_reward] = block.number;
   }
+
   /// @notice It sets the coolingPeriod that a user needs to wait since his last stake
   /// before the unstake will be possible
   /// @param _newCoolingPeriod The new cooling period
@@ -186,9 +218,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     coolingPeriod = _newCoolingPeriod;
   }
 
-  /// @notice Update user indexe for each reward, based on the amount being staked
-  /// @param _user The user who is staking
-  /// @param _amountToStake The amound staked
+  /// @notice Update user index for each reward, based on the amount being staked
+  /// @param _user user who is staking
+  /// @param _amountToStake amount staked
   function _updateUserIdx(address _user, uint256 _amountToStake) internal {
     address[] memory _rewards = rewards;
     uint256 userIndex;
@@ -249,20 +281,5 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @dev Unpauses deposits and redeems
   function unpause() external onlyOwner {
     _unpause();
-  }
-
-  function adjustedRewardIndex(address _reward) public view returns(uint256) {
-    uint256 index = rewardsIndexes[_reward];
-
-    if (totalStaked > 0 && lockedRewards[_reward] > 0) {
-      uint256 distance = block.number - lockedRewardsLastBlock[_reward];
-      if (distance < coolingPeriod) {
-        uint256 unlockedRewards = lockedRewards[_reward] * distance / coolingPeriod;
-        uint256 lockedRewards = lockedRewards[_reward] - unlockedRewards;
-        index -= lockedRewards * ONE_TRANCHE_TOKEN / totalStaked;
-      }
-    }
-
-    return index;
   }
 }
