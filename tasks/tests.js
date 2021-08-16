@@ -34,56 +34,48 @@ task("print-info")
     }
 
     let idleToken = await ethers.getContractAt("IIdleToken", await strategy.strategyToken());
-    const rewardTokens = await idleCDO.getRewards();
+    const strategyAddr = await idleCDO.strategy();
+    let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
+    const rewardTokens = await idleStrategy.getRewardTokens();
 
     const [
       lastStrategyPrice,
-      strategyPrice,
       tranchePriceAA,
       tranchePriceBB,
       virtualPriceAA,
       virtualPriceBB,
-      strategyAPR,
       getAprAA,
       getAprBB,
       getIdealAprAA,
       getIdealAprBB,
       contractVal,
-      virtualBalanceAA,
-      virtualBalanceBB,
       getCurrentAARatio,
     ] = await Promise.all([
       // Check prices
       idleCDO.lastStrategyPrice(),
-      idleCDO.strategyPrice(),
       idleCDO.tranchePrice(AAaddr),
       idleCDO.tranchePrice(BBaddr),
       idleCDO.virtualPrice(AAaddr),
       idleCDO.virtualPrice(BBaddr),
       // Aprs
-      idleCDO.strategyAPR(),
       idleCDO.getApr(AAaddr),
       idleCDO.getApr(BBaddr),
       idleCDO.getIdealApr(AAaddr),
       idleCDO.getIdealApr(BBaddr),
       // Values
       idleCDO.getContractValue(),
-      idleCDO.virtualBalance(AAaddr),
-      idleCDO.virtualBalance(BBaddr),
       idleCDO.getCurrentAARatio()
     ]);
 
     console.log('📄 Info 📄');
-    console.log(`#### Prices (strategyPrice ${BN(strategyPrice)}, (Last: ${BN(lastStrategyPrice)})) ####`);
+    console.log(`#### Prices (Last strategy price: ${BN(lastStrategyPrice)})) ####`);
     console.log(`tranchePriceAA ${BN(tranchePriceAA)}, virtualPriceAA ${BN(virtualPriceAA)}`);
     console.log(`tranchePriceBB ${BN(tranchePriceBB)}, virtualPriceBB ${BN(virtualPriceBB)}`);
-    console.log(`#### Aprs (strategyAPR ${BN(strategyAPR)}) ####`);
+    console.log(`#### Aprs ####`);
     console.log(`getAprAA ${BN(getAprAA)}, (Ideal: ${BN(getIdealAprAA)})`);
     console.log(`getAprBB ${BN(getAprBB)}, (Ideal: ${BN(getIdealAprBB)})`);
     console.log('#### Other values ####');
     console.log(`NAV ${contractVal.toString()} (ratio: ${getCurrentAARatio.toString()})`);
-    console.log('Virtual balance AA', BN(virtualBalanceAA).toString());
-    console.log('Virtual balance BB', BN(virtualBalanceBB).toString());
     console.log();
 
     return {idleCDO, AAaddr, BBaddr, strategy, idleToken};
@@ -126,7 +118,9 @@ task("harvest-cdo")
     const skipIncentives = false;
     const skipFeeDeposit = true;
 
-    const rewardTokens = await idleCDO.getRewards();
+    const strategyAddr = await idleCDO.strategy();
+    let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
+    const rewardTokens = await idleStrategy.getRewardTokens();
     let res = await idleCDO.callStatic.harvest(skipRedeem, skipIncentives, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')));
     let sellAmounts = res._soldAmounts;
     let minAmounts = res._swappedAmounts;
@@ -300,7 +294,10 @@ const rebalanceFull = async (idleCDO, address, skipRedeem, skipFeeDeposit) => {
   await run("print-info", {cdo: idleCDO.address});
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
-  const rewardTokens = await idleCDO.getRewards();
+  const strategyAddr = await idleCDO.strategy();
+  let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
+  const rewardTokens = await idleStrategy.getRewardTokens();
+
   let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
   let sellAmounts = res._soldAmounts;
   let minAmounts = res._swappedAmounts;
