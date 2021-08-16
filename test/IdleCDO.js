@@ -91,6 +91,8 @@ describe("IdleCDO", function () {
     await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
 
     await idleCDO.setUnlentPerc(BN('0'));
+    await idleCDO.setIsStkAAVEActive(false);
+
     // Params
     initialAmount = BN('100000').mul(ONE_TOKEN(18));
     // Fund wallets
@@ -196,7 +198,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(AABuyer).depositAA(_amount)
-    ).to.be.revertedWith("Contract limit");
+    ).to.be.revertedWith("2");
   });
   it("should not revert when calling depositAA and limit is 0", async () => {
     await idleCDO._setLimit(BN('0')); // no limit
@@ -211,7 +213,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(AABuyer).depositAA(_amount)
-    ).to.be.revertedWith("IDLE:DEFAULT_WAIT_SHUTDOWN");
+    ).to.be.revertedWith("4");
   });
 
   it("should call mint the correct amount whe totalSupply > 0", async () => {
@@ -282,7 +284,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(BBBuyer).depositBB(_amount)
-    ).to.be.revertedWith("Contract limit");
+    ).to.be.revertedWith("2");
   });
 
   it("should not revert when calling depositAA and limit is 0", async () => {
@@ -298,7 +300,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(BBBuyer).depositBB(_amount)
-    ).to.be.revertedWith("IDLE:DEFAULT_WAIT_SHUTDOWN");
+    ).to.be.revertedWith("4");
   });
 
   it("should call mint the correct amount whe totalSupply > 0", async () => {
@@ -343,7 +345,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(AABuyer).withdrawAA(_amount)
-    ).to.be.revertedWith("IDLE:AA_!ALLOWED");
+    ).to.be.revertedWith("3");
   });
 
   it("should revert when calling withdrawAA and strategyPrice decreased", async () => {
@@ -351,7 +353,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(AABuyer).withdrawAA(_amount)
-    ).to.be.revertedWith("IDLE:DEFAULT_WAIT_SHUTDOWN");
+    ).to.be.revertedWith("4");
   });
 
   it("should withdrawAA all AA balance if _amount supplied is 0", async () => {
@@ -458,7 +460,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(BBBuyer).withdrawBB(_amount)
-    ).to.be.revertedWith("IDLE:BB_!ALLOWED");
+    ).to.be.revertedWith("3");
   });
 
   it("should revert when calling withdrawBB and strategyPrice decreased", async () => {
@@ -466,7 +468,7 @@ describe("IdleCDO", function () {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
     await expect(
       idleCDO.connect(BBBuyer).withdrawBB(_amount)
-    ).to.be.revertedWith("IDLE:DEFAULT_WAIT_SHUTDOWN");
+    ).to.be.revertedWith("4");
   });
   it("should withdrawBB all BB balance if _amount supplied is 0", async () => {
     const _amount = BN('1000').mul(ONE_TOKEN(18));
@@ -577,7 +579,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).withdrawAA(_amount)
-    ).to.be.revertedWith("IDLE:TOO_LOW");
+    ).to.be.revertedWith("5");
   });
 
   // ###############
@@ -742,25 +744,6 @@ describe("IdleCDO", function () {
     expect(aprBB).to.be.equal(BN('12458924483343975331')); // +- 0.1%
   });
 
-  it("strategyAPR should return the current strategy apr", async () => {
-    await idleToken.setApr(BN('10').mul(ONE_TOKEN(18)));
-    let apr = await idleCDO.strategyAPR();
-    expect(apr).to.be.equal(BN('10').mul(ONE_TOKEN(18)));
-  });
-
-  it("strategyPrice should return the current strategy price", async () => {
-    await idleToken.setTokenPriceWithFee(BN('10').mul(ONE_TOKEN(18)));
-    let apr = await idleCDO.strategyPrice();
-    expect(apr).to.be.equal(BN('10').mul(ONE_TOKEN(18)));
-  });
-
-  it("strategyPrice should return the current strategy rewards", async () => {
-    await idleToken.setGovTokens([incentiveToken.address]);
-    let rewards = await idleCDO.getRewards();
-    expect(rewards.length).to.be.equal(1);
-    expect(rewards[0]).to.be.equal(incentiveToken.address);
-  });
-
   it("getCurrentAARatio should return the current AA ratio", async () => {
     await idleToken.setFee(BN('0'));
     // Initial apr 10%
@@ -829,26 +812,6 @@ describe("IdleCDO", function () {
     expect(priceBB).to.be.equal(BN('2440000000000000000'));
   });
 
-  it("virtualBalance should return the current balance for a tranche considering the full nav", async () => {
-    await idleToken.setFee(BN('0'));
-    // Initial apr 10%
-    await idleToken.setApr(BN('10').mul(ONE_TOKEN(18)));
-
-    let balAA = await idleCDO.virtualBalance(AA.address);
-    let balBB = await idleCDO.virtualBalance(BB.address);
-    expect(balAA).to.be.equal(0);
-    expect(balBB).to.be.equal(0);
-
-    const _amountAA = BN('1000').mul(one);
-    const _amountBB = BN('1000').mul(one);
-    await setupBasicDeposits(_amountAA, _amountBB, true, false);
-
-    balAA = await idleCDO.virtualBalance(AA.address);
-    balBB = await idleCDO.virtualBalance(BB.address);
-    expect(balAA).to.be.equal(BN('1360').mul(one));
-    expect(balBB).to.be.equal(BN('2440').mul(one));
-  });
-
   it("getIncentiveTokens should return the current incentiveTokens array", async () => {
     let rewards = await idleCDO.getIncentiveTokens();
     expect(rewards.length).to.be.equal(1);
@@ -876,7 +839,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).liquidate(BN('1000'), true)
-    ).to.be.revertedWith("IDLE:!AUTH");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setRebalancer(BBBuyer.address);
 
@@ -922,7 +885,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setRebalancer(addresses.addr0)
-    ).to.be.revertedWith("IDLE:IS_0");
+    ).to.be.revertedWith("0");
 
     await expect(
       idleCDO.connect(BBBuyer).setRebalancer(val)
@@ -935,7 +898,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setFeeReceiver(addresses.addr0)
-    ).to.be.revertedWith("IDLE:IS_0");
+    ).to.be.revertedWith("0");
 
     await expect(
       idleCDO.connect(BBBuyer).setFeeReceiver(val)
@@ -948,7 +911,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setGuardian(addresses.addr0)
-    ).to.be.revertedWith("IDLE:IS_0");
+    ).to.be.revertedWith("0");
 
     await expect(
       idleCDO.connect(BBBuyer).setGuardian(val)
@@ -961,7 +924,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setFee(BN('20001'))
-    ).to.be.revertedWith("IDLE:TOO_HIGH");
+    ).to.be.revertedWith("7");
 
     await expect(
       idleCDO.connect(BBBuyer).setFee(val)
@@ -974,7 +937,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setIdealRange(BN('100001'))
-    ).to.be.revertedWith("IDLE:TOO_HIGH");
+    ).to.be.revertedWith("7");
 
     await expect(
       idleCDO.connect(BBBuyer).setIdealRange(val)
@@ -987,7 +950,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.setUnlentPerc(BN('100001'))
-    ).to.be.revertedWith("IDLE:TOO_HIGH");
+    ).to.be.revertedWith("7");
 
     await expect(
       idleCDO.connect(BBBuyer).setUnlentPerc(val)
@@ -1071,7 +1034,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).emergencyShutdown()
-    ).to.be.revertedWith("IDLE:!AUTH");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setGuardian(BBBuyer.address);
 
@@ -1093,7 +1056,7 @@ describe("IdleCDO", function () {
     // only allowed people
     await expect(
       idleCDO.connect(BBBuyer).emergencyShutdown()
-    ).to.be.revertedWith("IDLE:!AUTH");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setGuardian(BBBuyer.address);
 
@@ -1107,7 +1070,7 @@ describe("IdleCDO", function () {
   it("setStrategy should set the relative addresses for incentiveTokens", async () => {
     await expect(
       idleCDO.setStrategy(addresses.addr0, [Random2Addr])
-    ).to.be.revertedWith("IDLE:IS_0");
+    ).to.be.revertedWith("0");
 
     await expect(
       idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
@@ -1147,7 +1110,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).harvest(true, true, false, [true], [BN('0')], [BN('0')])
-    ).to.be.revertedWith("IDLE:!AUTH");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setRebalancer(BBBuyer.address);
 

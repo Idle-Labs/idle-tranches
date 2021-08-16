@@ -88,4 +88,10 @@ contract IdleCDOStorage {
   uint256 public releaseBlocksPeriod;
   // amount of rewards sold in the last harvest (in `token`)
   uint256 internal harvestedRewards;
+  // stkAave address
+  address internal constant stkAave = address(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+  // cooldown period for stkAave unlock
+  uint32 public cooldownUnlockAt;
+  // if the cdo receive stkAAVE
+  bool internal isStkAAVEActive;
 }
