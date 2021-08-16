@@ -373,9 +373,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_amount > 0) {
       _currAARatio = getCurrentAARatio();
       bool shouldMintBB = _currAARatio >= trancheIdealWeightRatio;
+      address stakingRewards = shouldMintBB ? BBStaking : AAStaking;
+      bool isStakingRewardsActive = stakingRewards != address(0);
+      address _feeReceiver = feeReceiver;
 
       // mint tranches tokens to this contract
-      uint256 _minted = _mintShares(_amount, address(this),
+      uint256 _minted = _mintShares(_amount,
+        isStakingRewardsActive ? address(this) : _feeReceiver,
         // Choose the right tranche to mint based on getCurrentAARatio
         shouldMintBB ? BBTranche : AATranche
       );
@@ -383,9 +387,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       unclaimedFees = 0;
 
       // auto stake fees in staking contract for feeReceiver
-      address stakingRewards = shouldMintBB ? BBStaking : AAStaking;
-      if (stakingRewards != address(0)) {
-        IIdleCDOTrancheRewards(stakingRewards).stakeFor(feeReceiver, _minted);
+      if (isStakingRewardsActive) {
+        IIdleCDOTrancheRewards(stakingRewards).stakeFor(_feeReceiver, _minted);
       }
     }
   }
