@@ -290,6 +290,17 @@ task("integration")
     return {idleCDO};
   });
 
+const rebalanceIdleToken = async (signerAddress, idleToken, allocations) => {
+  console.log('🚧 Rebalancing idleToken ', idleToken.address);
+  await helpers.sudoCall(mainnetContracts.rebalancer, idleToken, 'setAllocations', [allocations.map(a => BN(a))]);
+  await helpers.sudoCall(signerAddress, idleToken, 'rebalance', []);
+  let res = await helpers.sudoStaticCall(signerAddress, idleToken, 'getAllAvailableTokens', []);
+  const aTokenAddr = res[3];
+  let aToken = await ethers.getContractAt("IERC20Detailed", aTokenAddr);
+  let aTokenBal = await helpers.sudoStaticCall(signerAddress, aToken, 'balanceOf', [idleToken.address]);
+  console.log('AToken balance ', aTokenBal.toString());
+}
+
 const rebalanceFull = async (idleCDO, address, skipRedeem, skipFeeDeposit) => {
   await run("print-info", {cdo: idleCDO.address});
   console.log('🚧 Waiting some time + 🚜 Harvesting');
