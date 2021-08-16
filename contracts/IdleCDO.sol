@@ -639,7 +639,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
     IStakedAave _stkAave = IStakedAave(stkAave);
     uint32 _cooldownUnlockAt = cooldownUnlockAt;
-    // If there's no a pending cooldown, begin the cooldown
+    // If there's no pending cooldown, begin a new cooldown
     // If there is a pending cooldown:
     // - If it is over, redeem stkAave and begin new cooldown
     // - If it is not over, do nothing
@@ -650,8 +650,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
         return;
       }
     }
-    _stkAave.cooldown();
-    cooldownUnlockAt = uint32(block.timestamp + _stkAave.COOLDOWN_SECONDS());
+
+    if (_stkAave.balanceOf(address(this)) > 0) {
+      _stkAave.cooldown();
+      cooldownUnlockAt = uint32(block.timestamp + _stkAave.COOLDOWN_SECONDS());
+    }
   }
 
   // ###################
