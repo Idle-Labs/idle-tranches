@@ -72,8 +72,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get strategy token symbol (eg. idleDAI)
     string memory _symbol = IERC20Detailed(_strategyToken).symbol();
     // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
-    AATranche = address(new IdleCDOTranche(_concat(string("IdleCDO AA Tranche - "), _symbol), _concat(string("IDLECDO_AA_"), _symbol)));
-    BBTranche = address(new IdleCDOTranche(_concat(string("IdleCDO BB Tranche - "), _symbol), _concat(string("IDLECDO_BB_"), _symbol)));
+    AATranche = address(new IdleCDOTranche(_concat(string("IdleCDO AA Tranche - "), _symbol), _concat(string("AA_"), _symbol)));
+    BBTranche = address(new IdleCDOTranche(_concat(string("IdleCDO BB Tranche - "), _symbol), _concat(string("BB_"), _symbol)));
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
@@ -581,7 +581,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     for (uint256 i = 0; i < _rewards.length; i++) {
       _rewardToken = _rewards[i];
       // check if it should be sold or not
-      if (_skipReward[i] || _rewardToken == stkAave || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+      if (_skipReward[i] || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+      // do not sell stkAAVE but only AAVE if present
+      if (_rewardToken == stkAave) {
+        _rewardToken = AAVE;
+      }
       // set token to sell in the uniswap path
       _path[0] = _rewardToken;
       // Market sell _rewardToken in this contract for _token

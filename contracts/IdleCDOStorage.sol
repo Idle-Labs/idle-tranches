@@ -90,6 +90,8 @@ contract IdleCDOStorage {
   uint256 internal harvestedRewards;
   // stkAave address
   address internal constant stkAave = address(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+  // aave address
+  address internal constant AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
   // cooldown period for stkAave unlock
   uint32 public cooldownUnlockAt;
   // if the cdo receive stkAAVE

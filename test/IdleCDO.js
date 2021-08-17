@@ -129,9 +129,9 @@ describe("IdleCDO", function () {
 
     expect(await idleCDO.AATranche()).to.equal(AA.address);
     expect(await idleCDO.BBTranche()).to.equal(BB.address);
-    expect(await AAERC20.symbol()).to.equal('IDLECDO_AA_IDLEDAI');
+    expect(await AAERC20.symbol()).to.equal('AA_IDLEDAI');
     expect(await AAERC20.name()).to.equal('IdleCDO AA Tranche - IDLEDAI');
-    expect(await BBERC20.symbol()).to.equal('IDLECDO_BB_IDLEDAI');
+    expect(await BBERC20.symbol()).to.equal('BB_IDLEDAI');
     expect(await BBERC20.name()).to.equal('IdleCDO BB Tranche - IDLEDAI');
     expect(await idleCDO.token()).to.equal(underlying.address);
     expect(await idleCDO.strategy()).to.equal(strategy.address);
