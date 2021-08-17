@@ -653,6 +653,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_cooldownUnlockAt > 0) {
       if (_cooldownUnlockAt < block.timestamp) {
         _stkAave.redeem(address(this), type(uint256).max);
+        _cooldownUnlockAt = 0;
       } else {
         return;
       }
