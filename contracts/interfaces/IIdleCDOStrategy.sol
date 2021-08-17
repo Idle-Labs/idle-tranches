@@ -7,6 +7,7 @@ interface IIdleCDOStrategy {
   function tokenDecimals() external view returns(uint256);
   function oneToken() external view returns(uint256);
   function redeemRewards() external;
+  function pullStkAAVE() external returns(uint256);
   function price() external view returns(uint256);
   function getRewardTokens() external view returns(address[] memory);
   function deposit(uint256 _amount) external returns(uint256);

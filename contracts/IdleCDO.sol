@@ -638,29 +638,32 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @notice used to start the cooldown for unstaking stkAAVE and claiming AAVE rewards (for the contract itself)
-  /// partially modified from https://github.com/indexed-finance/nirn/blob/master/contracts/adapters/aave-v2/AaveV2Erc20Adapter.sol#L268
   function _claimStkAave() internal {
     if (!isStkAAVEActive) {
       return;
     }
 
     IStakedAave _stkAave = IStakedAave(stkAave);
-    uint32 _cooldownUnlockAt = cooldownUnlockAt;
-    // If there's no pending cooldown, begin a new cooldown
+    uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
     // If there is a pending cooldown:
-    // - If it is over, redeem stkAave and begin new cooldown
-    // - If it is not over, do nothing
-    if (_cooldownUnlockAt > 0) {
-      if (_cooldownUnlockAt < block.timestamp) {
+    if (_stakersCooldown > 0) {
+      // If it is over, redeem stkAave and begin new cooldown
+      if (_stakersCooldown + _stkAave.COOLDOWN_SECONDS() < block.timestamp) {
         _stkAave.redeem(address(this), type(uint256).max);
       } else {
+        // If it is not over, do nothing
         return;
       }
     }
 
+    // Pull new stkAAVE rewards
+    uint256 _bal = IIdleCDOStrategy(strategy).pullStkAAVE();
+
+    // If there's no pending cooldown or we just redeem the prev locked rewards,
+    // then begin a new cooldown
     if (_stkAave.balanceOf(address(this)) > 0) {
+      // start a new cooldown
       _stkAave.cooldown();
-      cooldownUnlockAt = uint32(block.timestamp + _stkAave.COOLDOWN_SECONDS());
     }
   }
 

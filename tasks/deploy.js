@@ -43,6 +43,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
       ],
       signer
     );
+    await strategy.setWhitelistedCDO(idleCDO.address);
     const AAaddr = await idleCDO.AATranche();
     const BBaddr = await idleCDO.BBTranche();
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);

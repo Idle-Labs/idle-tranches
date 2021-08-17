@@ -13,6 +13,7 @@ require("solidity-coverage");
 require("./tasks/helpers");
 require("./tasks/tests");
 require("./tasks/deploy");
+require("./tasks/test-harvest");
 
 const BN = require("bignumber.js");
 

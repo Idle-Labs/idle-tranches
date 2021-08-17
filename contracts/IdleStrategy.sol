@@ -31,6 +31,9 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   IERC20Detailed public underlyingToken;
   /// @notice idleToken contract
   IIdleToken public idleToken;
+  address internal constant stkAave = address(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+  address internal constant idleGovTimelock = address(0xD6dABBc2b275114a2366555d6C481EF08FDC2556);
+  address public whitelistedCDO;
   /// ###### End of storage V1
 
   // Used to prevent initialization of the implementation contract
@@ -91,6 +94,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   }
 
   /// @notice Anyone can call this because this contract holds no idleTokens and so no 'old' rewards
+  /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
   /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`.
   /// redeem rewards and transfer them to msg.sender
   function redeemRewards() external override {
@@ -122,6 +126,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   // ###################
 
   /// @notice sends all gov tokens in this contract to an address
+  /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
   /// @dev only called
   /// @param _to address where to send gov tokens (rewards)
   function _withdrawGovToken(address _to) internal {
@@ -130,8 +135,8 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
       IERC20Detailed govToken = IERC20Detailed(_govTokens[i]);
       // get the current contract balance
       uint256 bal = govToken.balanceOf(address(this));
-      if (bal > 0) {
-        // transfer all gov tokens
+      if (bal > 0 && address(govToken) != stkAave) {
+        // transfer all gov tokens except for stkAAVE
         govToken.safeTransfer(_to, bal);
       }
     }
@@ -182,12 +187,30 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   // Protected
   // ###################
 
-  /// @notice This contract should not have funds at the end of each tx, this method is just for leftovers
+  /// @notice Allow the CDO to pull stkAAVE rewards
+  /// @return _bal amount of stkAAVE transferred
+  function pullStkAAVE() external override returns(uint256 _bal) {
+    require(msg.sender == whitelistedCDO || msg.sender == idleGovTimelock || msg.sender == owner(), "!AUTH");
+
+    IERC20Detailed _stkAave = IERC20Detailed(stkAave);
+    _bal = _stkAave.balanceOf(address(this));
+    if (_bal > 0) {
+      _stkAave.transfer(msg.sender, _bal);
+    }
+  }
+
+  /// @notice This contract should not have funds at the end of each tx (except for stkAAVE), this method is just for leftovers
   /// @dev Emergency method
   /// @param _token address of the token to transfer
   /// @param value amount of `_token` to transfer
   /// @param _to receiver address
   function transferToken(address _token, uint256 value, address _to) external onlyOwner nonReentrant {
     IERC20Detailed(_token).safeTransfer(_to, value);
+  }
+
+  /// @notice allow to update address whitelisted to pull stkAAVE rewards
+  function setWhitelistedCDO(address _cdo) external onlyOwner {
+    require(_cdo != address(0), "IS_0");
+    whitelistedCDO = _cdo;
   }
 }

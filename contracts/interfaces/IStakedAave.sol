@@ -6,4 +6,5 @@ interface IStakedAave {
   function redeem(address to, uint256 amount) external;
   function cooldown() external;
   function balanceOf(address) external view returns (uint256);
+  function stakersCooldowns(address) external view returns (uint256);
 }

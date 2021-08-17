@@ -301,20 +301,25 @@ const rebalanceIdleToken = async (signerAddress, idleToken, allocations) => {
   console.log('AToken balance ', aTokenBal.toString());
 }
 
-const rebalanceFull = async (idleCDO, address, skipRedeem, skipFeeDeposit) => {
+const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDeposit) => {
   await run("print-info", {cdo: idleCDO.address});
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
+
+
+  let stkAaveToken = await ethers.getContractAt("IStakedAave", mainnetContracts.stkAAVE);
+  console.log('stakersCooldowns', (await stkAaveToken.stakersCooldowns(idleCDO.address)).toString());
+
   const strategyAddr = await idleCDO.strategy();
   let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
   const rewardTokens = await idleStrategy.getRewardTokens();
 
-  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipRedeem, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
+  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
   let sellAmounts = res._soldAmounts;
   let minAmounts = res._swappedAmounts;
   // Add some slippage tolerance
   minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipRedeem, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts]);
+  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts]);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
   await run("mine-multiple", {blocks: '500'});
@@ -322,6 +327,12 @@ const rebalanceFull = async (idleCDO, address, skipRedeem, skipFeeDeposit) => {
   // (be sure to have a pinned block with allocation in compound)
   let cToken = await ethers.getContractAt("ICToken", testToken.cToken);
   await cToken.accrueInterest();
+
   console.log('🚧 After some time...');
+  console.log('stakersCooldowns', (await stkAaveToken.stakersCooldowns(idleCDO.address)).toString());
   await run("print-info", {cdo: idleCDO.address});
+}
+
+module.exports = {
+  rebalanceFull,
 }
