@@ -88,32 +88,26 @@ task("test-harvest", "")
     // amount bought should be less than the one of AABuyerAddr because price increased
     await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
 
-    console.log('######## First real rebalance (with interest and rewards accrued)');
-
-
     const blocksPerDay = 6000;
     const daysBlocks = (days) => (blocksPerDay * days).toString();
 
     // harvest 2
-    // await run("mine-multiple", {blocks: '500'});
-    console.log("harvest 2");
+    console.log('######## harvest 2 with interest and rewards accrued');
     await rebalanceFull(idleCDO, creatorAddr, true, true);
     console.log("************************ stkAAVE balance", (await stkAave.balanceOf(idleCDO.address)).toString());
     console.log("************************ underlying balance", (await underlyingContract.balanceOf(idleCDO.address)).toString());
 
     // harvest 3
-    // console.log("wait 6 days");
+    console.log('######## harvest 3 should do nothing with stkAAVE because cooldown is active');
     await run("mine-multiple", {blocks: daysBlocks(6)});
-    console.log("harvest 3");
     await rebalanceFull(idleCDO, creatorAddr, true, true);
     console.log("************************ stkAAVE balance", (await stkAave.balanceOf(idleCDO.address)).toString());
     console.log("************************ underlying balance", (await underlyingContract.balanceOf(idleCDO.address)).toString());
 
     // harvest 4
-    // time.increase
-    console.log("wait 11 days");
+    console.log('######## harvest 4 should redeem AAVE and convert them in underlying + pull new stkAAVE and start a new cooldown');
     await hre.run("increase-time-mine", { time: time.duration.days(11).toString() });
     await rebalanceFull(idleCDO, creatorAddr, true, true);
-    console.log("************************ idleCDO stkAAVE balance", (await stkAave.balanceOf(idleCDO.address)).toString());
+    console.log("************************ stkAAVE balance", (await stkAave.balanceOf(idleCDO.address)).toString());
     console.log("************************ underlying balance", (await underlyingContract.balanceOf(idleCDO.address)).toString());
   });

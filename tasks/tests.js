@@ -306,10 +306,6 @@ const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDepo
   console.log('🚧 Waiting some time + 🚜 Harvesting');
   await run("mine-multiple", {blocks: '500'});
 
-
-  let stkAaveToken = await ethers.getContractAt("IStakedAave", mainnetContracts.stkAAVE);
-  console.log('stakersCooldowns', (await stkAaveToken.stakersCooldowns(idleCDO.address)).toString());
-
   const strategyAddr = await idleCDO.strategy();
   let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
   const rewardTokens = await idleStrategy.getRewardTokens();
@@ -327,12 +323,10 @@ const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDepo
   // (be sure to have a pinned block with allocation in compound)
   let cToken = await ethers.getContractAt("ICToken", testToken.cToken);
   await cToken.accrueInterest();
-
-  console.log('🚧 After some time...');
-  console.log('stakersCooldowns', (await stkAaveToken.stakersCooldowns(idleCDO.address)).toString());
   await run("print-info", {cdo: idleCDO.address});
 }
 
 module.exports = {
   rebalanceFull,
+  rebalanceIdleToken
 }
