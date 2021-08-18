@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -657,7 +657,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
 
     // Pull new stkAAVE rewards
-    uint256 _bal = IIdleCDOStrategy(strategy).pullStkAAVE();
+    IIdleCDOStrategy(strategy).pullStkAAVE();
 
     // If there's no pending cooldown or we just redeem the prev locked rewards,
     // then begin a new cooldown
