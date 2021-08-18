@@ -30,6 +30,35 @@ module.exports = {
         }
       }
     ],
+    overrides: {
+      "contracts/IdleCDOTrancheRewards.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      },
+      "contracts/IdleCDOTranche.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      },
+      "contracts/IdleStrategy.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      }
+    }
   },
   networks: {
     hardhat: {
