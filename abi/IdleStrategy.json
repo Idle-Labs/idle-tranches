@@ -152,6 +152,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "pullStkAAVE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_bal",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -199,6 +212,19 @@
   {
     "inputs": [],
     "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_cdo",
+        "type": "address"
+      }
+    ],
+    "name": "setWhitelistedCDO",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -284,6 +310,19 @@
     "outputs": [
       {
         "internalType": "contract IERC20Detailed",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "whitelistedCDO",
+    "outputs": [
+      {
+        "internalType": "address",
         "name": "",
         "type": "address"
       }
