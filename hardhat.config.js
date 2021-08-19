@@ -88,7 +88,8 @@ module.exports = {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
-      timeout: 120000
+      gasMultiplier: 1.2,
+      timeout: 1200000
     },
   },
   // etherscan: {

@@ -31,7 +31,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
-        BN('1000000').mul(ONE_TOKEN(deployToken.decimals)), // limit
+        BN('500000').mul(ONE_TOKEN(deployToken.decimals)), // limit
         deployToken.underlying,
         mainnetContracts.treasuryMultisig, // recovery address
         creator, // guardian
@@ -43,7 +43,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
       ],
       signer
     );
-    await strategy.setWhitelistedCDO(idleCDO.address);
+    await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     const AAaddr = await idleCDO.AATranche();
     const BBaddr = await idleCDO.BBTranche();
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
@@ -62,11 +62,24 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const stakingRewardsBB = await helpers.deployUpgradableContract(
       'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
     );
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
+    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
     console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
     console.log(`staking reward contract set`);
     console.log();
     return {idleCDO, strategy, AAaddr, BBaddr};
+  });
+
+/**
+ * @name info
+ */
+task("info", "IdleCDO info")
+  .addParam("cdo")
+  .setAction(async (args) => {
+    console.log(args.cdo);
+    let idleCDO = await ethers.getContractAt("IdleCDO", args.cdo);
+    console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
+    console.log(`AATranche: ${await idleCDO.AATranche()}, BBTranche: ${await idleCDO.BBTranche()}`);
+    console.log(`IdleStrategy: ${await idleCDO.strategy()}`);
   });
 
 /**
@@ -91,7 +104,7 @@ task("upgrade", "Upgrade IdleCDO instance")
       signer = await helpers.getSigner();
     }
 
-    console.log('Usign signer with address: ', await signer.getAddress());
+    console.log('Using signer with address: ', await signer.getAddress());
     await helpers.upgradeContract(contractAddress, 'IdleCDO', [], signer);
     console.log(`IdleCDO upgraded`);
   });
