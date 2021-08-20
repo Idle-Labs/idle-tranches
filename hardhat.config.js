@@ -63,14 +63,11 @@ module.exports = {
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true,
-      forking: {
-        url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-        blockNumber: 12554260, // DAI all in compound for `integration` task
-        // blockNumber: 12876984, // idleCDO on idleDAI deployed with some unlent fund on both tranches
-        // blockNumber: 12881290, // idleCDO on has fund in Idle
-        // blockNumber: 12881370, // idleCDO after first harvest + sell + both trache rewards contract with IDLEs
-        // blockNumber: 12914895, // block for upgrade test
-      }
+      // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   // blockNumber: 12554260, // DAI all in compound for `integration` task
+      //   blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
+      // }
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -92,9 +89,9 @@ module.exports = {
       timeout: 1200000
     },
   },
-  // etherscan: {
-  //   apiKey: process.env.ETHERSCAN_API_KEY,
-  // },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY,
+  },
   abiExporter: {
     // path: './abis',
     // clear: true,

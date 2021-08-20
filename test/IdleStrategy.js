@@ -25,10 +25,12 @@ describe("IdleStrategy", function () {
     RandomAddr = Random.address;
     Random2 = signers[6];
     Random2Addr = Random2.address;
+    stkAAVEAddr = addresses.IdleTokens.mainnet.stkAAVE;
 
     one = ONE_TOKEN(18);
 
     const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const MockERC20Enhanced = await ethers.getContractFactory("MockERC20Enhanced");
     const MockIdleToken = await ethers.getContractFactory("MockIdleToken");
 
     underlying = await MockERC20.deploy("DAI", "DAI");
@@ -39,11 +41,17 @@ describe("IdleStrategy", function () {
 
     idleToken = await MockIdleToken.deploy(underlying.address);
     await idleToken.deployed();
+    // Params
+    initialAmount = BN('100000').mul(ONE_TOKEN(18));
+
+    // Mock stkAAVE at the mainnet address
+    await hre.ethers.provider.send("hardhat_setCode", [stkAAVEAddr, MockERC20Enhanced.bytecode]);
+    stkAAVE = await ethers.getContractAt("MockERC20Enhanced", stkAAVEAddr);
+    // give 100k stkAAVE to owner
+    await stkAAVE.initialize('stkAAVE', 'stkAAVE');
 
     strategy = await helpers.deployUpgradableContract('IdleStrategy', [idleToken.address, owner.address], owner);
 
-    // Params
-    initialAmount = BN('100000').mul(ONE_TOKEN(18));
     // Fund wallets
     await helpers.fundWallets(underlying.address, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr, BBBuyer2Addr, idleToken.address], owner.address, initialAmount);
 
@@ -222,6 +230,20 @@ describe("IdleStrategy", function () {
     expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
   });
 
+  it("setWhitelistedCDO should set the relative address and be called only by the owner", async () => {
+    const val = RandomAddr;
+    await strategy.setWhitelistedCDO(val);
+    expect(await strategy.whitelistedCDO()).to.be.equal(val);
+
+    await expect(
+      strategy.setWhitelistedCDO(addresses.addr0)
+    ).to.be.revertedWith("IS_0");
+
+    await expect(
+      strategy.connect(BBBuyer).setWhitelistedCDO(val)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
   it("should return the current price", async () => {
     const _amount = BN('1000').mul(one);
     await idleToken.setTokenPriceWithFee(_amount);
@@ -253,6 +275,21 @@ describe("IdleStrategy", function () {
     await strategy.transferToken(incentiveToken.address, _amount, BBBuyerAddr);
     const finalBal = await incentiveToken.balanceOf(BBBuyerAddr);
     expect(finalBal.sub(initialBal)).to.be.equal(_amount);
+  });
+
+  it("should allow only whitelistedCDO or owner to pullStkAAVE", async () => {
+    // await strategy.setWhitelistedCDO(AABuyerAddr);
+    // const _amount = BN('1000').mul(one);
+    console.log(stkAAVE)
+
+    console.log(await stkAAVE.name());
+    // await stkAAVE.transfer(strategy.address, _amount);
+    // await strategy.connect(AABuyer).pullStkAAVE();
+    // expect(await stkAAVE.balanceOf(AABuyerAddr)).to.equal(_amount);
+    //
+    // await expect(
+    //   strategy.connect(BBBuyer).pullStkAAVE()
+    // ).to.be.revertedWith("!AUTH");
   });
 
   const deposit = async (addr, amount) => {
