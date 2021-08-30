@@ -1392,7 +1392,7 @@ describe("IdleCDO", function () {
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('200').mul(one));
   });
 
-  it("harvest should return _soldAmounts and _swappedAmounts", async () => {
+  it("harvest should return _soldAmounts, _swappedAmounts and _redeemedRewards", async () => {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
@@ -1416,6 +1416,8 @@ describe("IdleCDO", function () {
     expect(res._soldAmounts[0]).to.be.equal(_amountAA);
     expect(res._swappedAmounts.length).to.be.equal(1);
     expect(res._swappedAmounts[0]).to.be.equal(_minAmount);
+    expect(res._redeemedRewards.length).to.be.equal(1);
+    expect(res._redeemedRewards[0]).to.be.equal(_amountAA);
 
     // send 3000 IDLE to idleCDO
     // Use all contract balance if 0 is passed as _sellAmounts
@@ -1426,6 +1428,9 @@ describe("IdleCDO", function () {
     expect(res._soldAmounts[0]).to.be.equal(_amountToSend);
     expect(res._swappedAmounts.length).to.be.equal(1);
     expect(res._swappedAmounts[0]).to.be.equal(_minAmount);
+    expect(res._redeemedRewards.length).to.be.equal(1);
+    // still the old value as no real harvest has been made
+    expect(res._redeemedRewards[0]).to.be.equal(_amountAA);
   });
 
   it("harvest should sell non incentiveTokens if bal > 0", async () => {

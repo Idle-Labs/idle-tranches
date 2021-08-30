@@ -700,7 +700,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256[] calldata _minAmount,
     uint256[] calldata _sellAmounts
   ) external
-    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
+    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256[] memory _redeemedRewards) {
     require(msg.sender == rebalancer || msg.sender == owner(), "6");
     // Fetch state variable once to save gas
     address _token = token;
@@ -708,7 +708,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // Check whether to redeem rewards from strategy or not
     if (!_skipRedeem) {
       // Redeem all rewards associated with the strategy
-      IIdleCDOStrategy(_strategy).redeemRewards();
+      _redeemedRewards = IIdleCDOStrategy(_strategy).redeemRewards();
       // Redeem unlocked AAVE if any and start a new cooldown for stkAAVE
       _claimStkAave();
       // Sell rewards
