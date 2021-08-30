@@ -11,7 +11,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 
-const testToken = addresses.deployTokens.DAI;
+const testToken = addresses.deployTokens.idledai;
 
 const waitBlocks = async (n) => {
   for (var i = 0; i < n; i++) {
@@ -20,8 +20,15 @@ const waitBlocks = async (n) => {
 }
 
 task("test-harvest", "")
+  .addOptionalParam('cdoname')
   .setAction(async (args) => {
-    let {idleCDO, AAaddr, BBaddr, idleToken, strategy} = await run("print-info");
+    let res;
+    if (args.cdoname) {
+      res = await run("print-info", {cdo: addresses.deployTokens[args.cdoname].cdo.cdoAddr});
+    } else {
+      res = await run("print-info");
+    }
+    let {idleCDO, AAaddr, BBaddr, idleToken, strategy} = res;
 
     console.log('######## Setup');
     // Get signers

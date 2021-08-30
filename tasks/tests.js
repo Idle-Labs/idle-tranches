@@ -7,7 +7,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 
-const testToken = addresses.deployTokens.DAI;
+const testToken = addresses.deployTokens.idledai;
 
 /**
  * @name print-info
@@ -26,7 +26,7 @@ task("print-info")
       strategy = await ethers.getContractAt("IIdleCDOStrategy", await idleCDO.strategy());
     } else {
       // Run 'deploy' task
-      const res = await run("deploy");
+      const res = await run("deploy", {cdoname: 'idledai'});
       idleCDO = res.idleCDO;
       AAaddr = res.AAaddr;
       BBaddr = res.BBaddr;
