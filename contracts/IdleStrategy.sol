@@ -97,7 +97,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
   /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`.
   /// redeem rewards and transfer them to msg.sender
-  function redeemRewards() external override {
+  function redeemRewards() external override returns (uint256[] memory _balances) {
     IIdleToken _idleToken = idleToken;
     // Get all idleTokens from msg.sender
     uint256 bal = _idleToken.balanceOf(msg.sender);
@@ -108,7 +108,7 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
       // Give all idleTokens back to msg.sender
       _idleToken.transfer(msg.sender, bal);
       // Send all gov tokens to msg.sender
-      _withdrawGovToken(msg.sender);
+      _balances = _withdrawGovToken(msg.sender);
     }
   }
 
@@ -129,12 +129,15 @@ contract IdleStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
   /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
   /// @dev only called
   /// @param _to address where to send gov tokens (rewards)
-  function _withdrawGovToken(address _to) internal {
+  function _withdrawGovToken(address _to) internal returns (uint256[] memory _balances) {
     address[] memory _govTokens = idleToken.getGovTokens();
+    _balances = new uint256[](_govTokens.length);
     for (uint256 i = 0; i < _govTokens.length; i++) {
       IERC20Detailed govToken = IERC20Detailed(_govTokens[i]);
       // get the current contract balance
       uint256 bal = govToken.balanceOf(address(this));
+      // stkAAVE balance is included
+      _balances[i] = bal;
       if (bal > 0 && address(govToken) != stkAave) {
         // transfer all gov tokens except for stkAAVE
         govToken.safeTransfer(_to, bal);

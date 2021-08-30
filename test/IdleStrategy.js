@@ -211,22 +211,42 @@ describe("IdleStrategy", function () {
     const initialBal = await underlying.balanceOf(addr);
     const initialIdleTokenBal = await idleToken.balanceOf(addr);
 
+    const resStatic = await staticRedeemRewards(addr, _amount);
     await redeemRewards(addr, _amount);
-
     const finalIdleTokenBal = await idleToken.balanceOf(addr);
     const finalBal = await underlying.balanceOf(addr);
     const finalBalIncentive = await incentiveToken.balanceOf(addr);
 
+    // Check return value
+    expect(resStatic[0]).to.equal(_amount);
     // token and idleToken balance are the same
     expect(finalIdleTokenBal).to.equal(initialIdleTokenBal);
     expect(finalBal).to.equal(initialBal);
     // incentive token balance is increased
     expect(finalBalIncentive.sub(initialBalIncentive)).to.equal(_amount);
 
-    // No token left in the contract
+    // No token left in the contract (besides for stkAAVE)
     expect(await incentiveToken.balanceOf(strategy.address)).to.equal(0);
     expect(await underlying.balanceOf(strategy.address)).to.equal(0);
     expect(await idleToken.balanceOf(strategy.address)).to.equal(0);
+  });
+
+  it("should redeemRewards with stkAAVE as incentive token", async () => {
+    const addr = AABuyerAddr;
+    const _amount = BN('1000').mul(one);
+
+    await deposit(addr, _amount);
+
+    fakeStkAave.balanceOf.returns(_amount);
+
+    // Mock the return of gov tokens
+    await idleToken.setGovTokens([stkAAVEAddr]);
+    await idleToken.setGovAmount(_amount);
+
+    const res = await staticRedeemRewards(addr, _amount);
+    // Check return value
+    expect(res[0]).to.equal(_amount);
+    fakeStkAave.balanceOf.atCall(0).should.be.calledWith(strategy.address);
   });
 
   it("setWhitelistedCDO should set the relative address and be called only by the owner", async () => {
@@ -286,7 +306,7 @@ describe("IdleStrategy", function () {
 
     await strategy.connect(AABuyer).pullStkAAVE();
     fakeStkAave.balanceOf.atCall(0).should.be.calledWith(strategy.address);
-    expect(fakeStkAave.transfer).to.have.been.calledWith(AABuyerAddr, _amount.toString());
+    fakeStkAave.transfer.atCall(0).should.be.calledWith(AABuyerAddr, _amount.toString());
 
     await expect(
       strategy.connect(BBBuyer).pullStkAAVE()
@@ -307,6 +327,11 @@ describe("IdleStrategy", function () {
   }
   const redeemRewards = async (addr, amount) => {
     await helpers.sudoCall(addr, idleToken, 'approve', [strategy.address, MAX_UINT]);
-    await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    return res;
+  }
+  const staticRedeemRewards = async (addr, amount) => {
+    await helpers.sudoCall(addr, idleToken, 'approve', [strategy.address, MAX_UINT]);
+    return await helpers.sudoStaticCall(addr, strategy, 'redeemRewards', []);
   }
 });
