@@ -1,8 +1,12 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
+const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
 const addresses = require("../lib/addresses");
 const { expect } = require("chai");
+const { FakeContract, smock } = require('@defi-wonderland/smock');
+
+require('chai').use(smock.matchers);
 
 const BN = n => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
@@ -30,7 +34,6 @@ describe("IdleStrategy", function () {
     one = ONE_TOKEN(18);
 
     const MockERC20 = await ethers.getContractFactory("MockERC20");
-    const MockERC20Enhanced = await ethers.getContractFactory("MockERC20Enhanced");
     const MockIdleToken = await ethers.getContractFactory("MockIdleToken");
 
     underlying = await MockERC20.deploy("DAI", "DAI");
@@ -44,12 +47,6 @@ describe("IdleStrategy", function () {
     // Params
     initialAmount = BN('100000').mul(ONE_TOKEN(18));
 
-    // Mock stkAAVE at the mainnet address
-    await hre.ethers.provider.send("hardhat_setCode", [stkAAVEAddr, MockERC20Enhanced.bytecode]);
-    stkAAVE = await ethers.getContractAt("MockERC20Enhanced", stkAAVEAddr);
-    // give 100k stkAAVE to owner
-    await stkAAVE.initialize('stkAAVE', 'stkAAVE');
-
     strategy = await helpers.deployUpgradableContract('IdleStrategy', [idleToken.address, owner.address], owner);
 
     // Fund wallets
@@ -57,6 +54,8 @@ describe("IdleStrategy", function () {
 
     // set IdleToken mocked params
     await idleToken.setTokenPriceWithFee(BN(10**18));
+
+    fakeStkAave = await smock.fake(erc20.abi, { address: stkAAVEAddr });
   });
 
   it("should not reinitialize the contract", async () => {
@@ -278,18 +277,20 @@ describe("IdleStrategy", function () {
   });
 
   it("should allow only whitelistedCDO or owner to pullStkAAVE", async () => {
-    // await strategy.setWhitelistedCDO(AABuyerAddr);
-    // const _amount = BN('1000').mul(one);
-    console.log(stkAAVE)
+    // set params
+    const _amount = BN('1000').mul(one);
+    await strategy.setWhitelistedCDO(AABuyerAddr);
+    // Mock response
+    fakeStkAave.balanceOf.returnsAtCall(0, _amount);
+    fakeStkAave.transfer.returnsAtCall(true);
 
-    console.log(await stkAAVE.name());
-    // await stkAAVE.transfer(strategy.address, _amount);
-    // await strategy.connect(AABuyer).pullStkAAVE();
-    // expect(await stkAAVE.balanceOf(AABuyerAddr)).to.equal(_amount);
-    //
-    // await expect(
-    //   strategy.connect(BBBuyer).pullStkAAVE()
-    // ).to.be.revertedWith("!AUTH");
+    await strategy.connect(AABuyer).pullStkAAVE();
+    fakeStkAave.balanceOf.atCall(0).should.be.calledWith(strategy.address);
+    expect(fakeStkAave.transfer).to.have.been.calledWith(AABuyerAddr, _amount.toString());
+
+    await expect(
+      strategy.connect(BBBuyer).pullStkAAVE()
+    ).to.be.revertedWith("!AUTH");
   });
 
   const deposit = async (addr, amount) => {
