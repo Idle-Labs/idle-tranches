@@ -66,7 +66,9 @@ module.exports = {
       // forking: {
       //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
-      //   blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
+      //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
+      //   blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
+      //   blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
       // }
     },
     coverage: {

@@ -46,22 +46,21 @@ task("test-harvest", "")
     const stkAave = await ethers.getContractAt("IERC20Detailed", addresses.IdleTokens.mainnet.stkAAVE);
     // Get utils
     const oneToken = await helpers.oneToken(underlying);
-    const creatorAddr = await creator.getAddress();
+    const creatorAddr = args.cdoname ? addresses.idleDeployer : await creator.getAddress();
     const AABuyerAddr = await AAbuyer.getAddress();
     const AABuyer2Addr = await AAbuyer2.getAddress();
     const BBBuyerAddr = await BBbuyer.getAddress();
     const feeCollectorAddr = await feeCollector.getAddress();
-
     // set fee receiver
-    await idleCDO.setFeeReceiver(feeCollectorAddr);
-
+    await helpers.sudoCall(creatorAddr, idleCDO, 'setFeeReceiver', [feeCollectorAddr]);
     // enrich idleCDO contract (do NOT reassign the object like below)
     // idleCDO = {...idleCDO, AAContract, BBContract, underlyingContract};
     idleCDO.idleToken = idleToken;
 
     // move funds to AAVE V2
     await hre.ethers.provider.send("hardhat_setBalance", [addresses.timelock, "0xffffffffffffffff"]);
-    await helpers.sudoCall(addresses.timelock, idleToken, 'setAllocations', [[BN("0"), BN("0"), BN("0"), BN("100000")]]);
+    await hre.ethers.provider.send("hardhat_setBalance", [addresses.whale, "0xffffffffffffffff"]);
+    await helpers.sudoCall(addresses.timelock, idleToken, 'setAllocations', [[BN("0"), BN("0"), BN("100000")]]);
     await helpers.sudoCall(creatorAddr, idleToken, 'rebalance', []);
 
     idleCDO.AAContract = AAContract;
@@ -70,7 +69,7 @@ task("test-harvest", "")
     idleCDO.BBStaking = stakingRewardsBB;
     idleCDO.underlyingContract = underlyingContract;
     // Params
-    const amount = BN('100000').mul(oneToken);
+    const amount = BN('10000').mul(oneToken);
     // Fund wallets
     await helpers.fundWallets(underlying, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr, creatorAddr], addresses.whale, amount);
 
