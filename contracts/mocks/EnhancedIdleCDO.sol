@@ -15,4 +15,7 @@ contract EnhancedIdleCDO is IdleCDO {
   function updateAccountingForTest() external {
     _updateAccounting();
   }
+  function claimStkAave() external {
+    _claimStkAave();
+  }
 }
