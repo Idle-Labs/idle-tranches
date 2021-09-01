@@ -134,7 +134,7 @@ task("upgrade-strategy", "Upgrade IdleCDO strategy")
 task("get-signer-or-fake", "Upgrade IdleCDO instance")
   .setAction(async (args) => {
     let signer;
-    if (hre.network != 'mainnet') {
+    if (hre.network.name !== 'mainnet') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
