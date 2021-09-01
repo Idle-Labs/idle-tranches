@@ -397,6 +397,11 @@
         "internalType": "uint256[]",
         "name": "_swappedAmounts",
         "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "_redeemedRewards",
+        "type": "uint256[]"
       }
     ],
     "stateMutability": "nonpayable",
