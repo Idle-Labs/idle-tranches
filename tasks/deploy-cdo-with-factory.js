@@ -25,8 +25,7 @@ task("deploy-with-cdo-factory", "Deploy IdleCDO using IdleCDOFactory")
     console.log("proxyAdminAddress: ", proxyAdminAddress);
     await helpers.prompt("continue? [y/n]", true);
 
-    const cdoFactoryAddress = await hre.run("deploy-cdo-factory");
-    const cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress, signer);
+    const cdoFactory = await hre.run("deploy-cdo-factory");
 
     const cdoname = "idledai";
     const deployToken = addresses.deployTokens[cdoname];
@@ -50,10 +49,6 @@ task("deploy-with-cdo-factory", "Deploy IdleCDO using IdleCDOFactory")
     const res = await cdoFactory.deployCDO(idleCDO.address, proxyAdminAddress, initMethodCall);
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
-    console.log("***************", events)
-    // const proxyAddress = events[0].args.proxy;
-    // console.log("proxyAddress", proxyAddress)
-
-    // const proxy = await ethers.getContractAt("Foo", proxyAddress);
-    // console.log("proxy x", (await proxy.x()).toString())
+    const proxyAddress = events[0].args.proxy;
+    console.log("proxyAddress", proxyAddress)
   });
