@@ -45,7 +45,7 @@ task("deploy-with-cdo-factory", "Deploy IdleCDO using IdleCDOFactory")
       incentiveTokens
     ]);
 
-
+    console.log("deploying with factory...");
     const res = await cdoFactory.deployCDO(idleCDO.address, proxyAdminAddress, initMethodCall);
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
