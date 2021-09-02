@@ -2,10 +2,19 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
+const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
+
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
+
+const deployImplementation = async (cdoname) => {
+  let { idleCDO, strategy, AAaddr, BBaddr } = await hre.run("deploy", { cdoname: cdoname });
+  const implAddress = await getImplementationAddress(hre.ethers.provider, idleCDO.address);
+
+  return {idleCDO, implAddress, strategy};
+}
 
 /**
  * @name deploy
@@ -29,10 +38,11 @@ task("deploy-with-cdo-factory", "Deploy IdleCDO using IdleCDOFactory")
 
     const cdoname = "idledai";
     const deployToken = addresses.deployTokens[cdoname];
-    const { idleCDO, strategy, AAaddr, BBaddr } = await hre.run("deploy", { cdoname: cdoname });
-
     const incentiveTokens = [mainnetContracts.IDLE];
+    const {idleCDO, implAddress, strategy} = await deployImplementation(cdoname);
+
     const IdleCDO = await ethers.getContractFactory("IdleCDO");
+
     const initMethodCall = idleCDO.interface.encodeFunctionData("initialize", [
       BN('500000').mul(ONE_TOKEN(deployToken.decimals)), // limit
       deployToken.underlying,
@@ -46,7 +56,7 @@ task("deploy-with-cdo-factory", "Deploy IdleCDO using IdleCDOFactory")
     ]);
 
     console.log("deploying with factory...");
-    const res = await cdoFactory.deployCDO(idleCDO.address, proxyAdminAddress, initMethodCall);
+    const res = await cdoFactory.deployCDO(implAddress, proxyAdminAddress, initMethodCall);
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
     const proxyAddress = events[0].args.proxy;
