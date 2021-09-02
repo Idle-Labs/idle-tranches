@@ -62,7 +62,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     const factoryAddress = args.factory;
     const limit = args.limit;
     const governanceFund = args.governanceFund;
-    const strategy = args.strategy;
+    const strategyAddress = args.strategy;
     const trancheAPRSplitRatio = args.trancheAPRSplitRatio;
     const trancheIdealWeightRatio = args.trancheIdealWeightRatio;
     const incentiveTokens = args.incentiveTokens.split(",").map(s => s.trim());
@@ -75,7 +75,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     console.log("cdoImplementation:       ", cdoImplementationAddress);
     console.log("limit:                   ", limit.toString());
     console.log("governanceFund:          ", governanceFund);
-    console.log("strategy:                ", strategy);
+    console.log("strategy:                ", strategyAddress);
     console.log("trancheAPRSplitRatio:    ", trancheAPRSplitRatio.toString());
     console.log("trancheIdealWeightRatio: ", trancheIdealWeightRatio.toString());
     console.log("incentiveTokens:");
@@ -83,7 +83,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
       console.log(`* ${incentiveTokens[i]}`);
     };
 
-    await helpers.prompt("continue? [y/n]", false)//true);
+    await helpers.prompt("continue? [y/n]", true);
 
     const cdoFactory = await ethers.getContractAt("IdleCDOFactory", factoryAddress);
     const idleCDO = await ethers.getContractAt("IdleCDO", cdoImplementationAddress);
@@ -95,7 +95,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
       governanceFund, // recovery address
       creator, // guardian
       mainnetContracts.rebalancer,
-      strategy,
+      strategyAddress,
       trancheAPRSplitRatio,
       trancheIdealWeightRatio,
       incentiveTokens

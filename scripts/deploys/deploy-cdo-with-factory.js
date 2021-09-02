@@ -19,7 +19,7 @@ async function main() {
   const params = {
     factory: cdoFactory.address,
     cdoname: cdoname,
-    cdoImplementation: idleCDO.address,
+    cdoImplementation: implAddress,
     limit: BN('500000').mul(ONE_TOKEN(deployToken.decimals)).toString(), // limit
     governanceFund: mainnetContracts.treasuryMultisig, // recovery address
     strategy: strategy.address,
