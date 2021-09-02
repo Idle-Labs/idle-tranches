@@ -14,8 +14,7 @@ require("./tasks/helpers");
 require("./tasks/tests");
 require("./tasks/deploy");
 require("./tasks/test-harvest");
-require("./tasks/deploy-cdo-factory");
-require("./tasks/deploy-cdo-with-factory");
+require("./tasks/cdo-factory");
 
 const BN = require("bignumber.js");
 
