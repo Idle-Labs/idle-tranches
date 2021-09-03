@@ -220,6 +220,14 @@ const checkBalance = async (tokenContract, address, balance) => {
   check(bal, balance, `Requested bal ${bal} is equal to the provided one ${balance}`);
 }
 
+const isEmptyString = (s) => {
+  if (s === undefined || s === null) {
+    return true;
+  }
+
+  return s.toString().trim() == "";
+}
+
 module.exports = {
   impersonateSigner,
   getSigner,
@@ -243,5 +251,7 @@ module.exports = {
   withdraw,
   withdrawWithGain,
   getBalance,
-  checkBalance
+  checkBalance,
+  isEmptyString,
+  log,
 }
