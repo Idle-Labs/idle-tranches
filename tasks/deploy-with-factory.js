@@ -7,13 +7,19 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 
-task("deploy-usdc-with-factory", "Deploy USDC IdleCDO, IdleStrategy and Staking contract for rewards with default parameters")
+task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and Staking contract for rewards with default parameters")
+  .addParam('cdoname')
   .setAction(async (args) => {
     // Run 'compile' task
     await run("compile");
-    const cdoname = "idleusdc";
+    const cdoname = args.cdoname;
     let cdoProxyAddressToClone = undefined;
     const deployToken = addresses.deployTokens[cdoname];
+
+    if (deployToken === undefined) {
+      console.log(`🛑 deployToken not found with specified cdoname (${cdoname})`)
+      return;
+    }
 
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
