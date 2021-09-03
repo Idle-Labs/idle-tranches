@@ -2,6 +2,7 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
+const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
@@ -36,7 +37,8 @@ task("deploy-cdo-factory", "Deploy IdleCDOFactory")
  */
 task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
   .addParam('cdoname', "The underlying asset (idledai/idleusdc/idleusdt)")
-  .addParam('cdoImplementation', "The CDO implementation address")
+  .addParam('cdoImplementation', "The CDO implementation address", "", types.string, true)
+  .addParam('cloneFromProxy', "The CDO proxy to clone the implementation from", "", types.string, true)
   .addParam('proxyAdmin', "The ProxyAdmin address", "", types.string, true)
   .addParam('factory', "The CDOFactory address")
   .addParam('limit', "CDO param _limit")
@@ -57,8 +59,18 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
       proxyAdminAddress = defaultProxyAdminAddress;
     }
 
+    if (helpers.isEmptyString(args.cdoImplementation) && helpers.isEmptyString(args.cloneFromProxy)) {
+      throw("cdoImplementationAddress or cloneFromProxy must be specified");
+    }
+
+    let cdoImplementationAddress = args.cdoImplementation;
+    if (helpers.isEmptyString(cdoImplementationAddress)) {
+      console.log("\n🔎 Retrieving implementation from proxy (", args.cloneFromProxy, ")");
+      cdoImplementationAddress = await getImplementationAddress(hre.ethers.provider, args.cloneFromProxy);
+      console.log("🔎 using implementation address", cdoImplementationAddress, "\n");
+    }
+
     const cdoname = args.cdoname;
-    const cdoImplementationAddress = args.cdoImplementation;
     const factoryAddress = args.factory;
     const limit = args.limit;
     const governanceFund = args.governanceFund;
@@ -106,5 +118,5 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
     const proxyAddress = events[0].args.proxy;
-    console.log("proxyAddress", proxyAddress)
+    return proxyAddress;
   });

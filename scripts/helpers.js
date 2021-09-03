@@ -13,6 +13,8 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
+const isEmptyString = (s) => s.toString().trim() == "";
+
 const impersonateSigner = async (acc) => {
   await hre.ethers.provider.send("hardhat_impersonateAccount", [acc]);
   await hre.ethers.provider.send("hardhat_setBalance", [acc, "0xffffffffffffffff"]);
@@ -243,5 +245,6 @@ module.exports = {
   withdraw,
   withdrawWithGain,
   getBalance,
-  checkBalance
+  checkBalance,
+  isEmptyString,
 }
