@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 
@@ -13,9 +13,7 @@ contract IdleCDOStorage {
   // variable used to save the last tx.origin and block.number
   bytes32 internal _lastCallerBlock;
   // variable used to save the block of the latest harvest
-  uint256 public latestHarvestBlock;
-  // variable used to define the min blocks that need to be passed after an harvest, before withdraw is allowed
-  uint256 public coolingPeriod;
+  uint256 internal latestHarvestBlock;
   // WETH address
   address public weth;
   // tokens used to incentivize the idle tranche ideal ratio
@@ -70,10 +68,6 @@ contract IdleCDOStorage {
   uint256 public lastNAVBB;
   // last saved lending provider price
   uint256 public lastStrategyPrice;
-  // Price for redeeming AA tranche, updated on each `harvest` call
-  uint256 public lastAAPrice;
-  // Price for redeeming BB tranche, updated on each `harvest` call
-  uint256 public lastBBPrice;
   // Keeps track of unclaimed fees for feeReceiver
   uint256 public unclaimedFees;
   // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
@@ -86,4 +80,14 @@ contract IdleCDOStorage {
 
   // trancheIdealWeightRatio ± idealRanges, used in updateIncentives
   uint256 public idealRange;
+  // period, in blocks, for progressively releasing harvested rewards to users
+  uint256 public releaseBlocksPeriod;
+  // amount of rewards sold in the last harvest (in `token`)
+  uint256 internal harvestedRewards;
+  // stkAave address
+  address internal constant stkAave = address(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+  // aave address
+  address internal constant AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+  // if the cdo receive stkAAVE
+  bool internal isStkAAVEActive;
 }

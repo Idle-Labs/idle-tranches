@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Apache 2.0
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -14,6 +14,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Upgradeable;
 
+  // ERROR MESSAGES:
+  // 0 = is 0
+  // 1 = already initialized
+  // 2 = Contract limit reached
+
   // TVL limit in underlying value
   uint256 public limit;
   // recovery address
@@ -22,9 +27,9 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @param _limit TVL limit. (0 means unlimited)
   /// @param _governanceRecoveryFund recovery address
   /// @param _owner owner address
-  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal initializer {
-    require(_governanceRecoveryFund != address(0), 'IS_0');
-    require(_owner != address(0), 'IS_0');
+  function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal {
+    require(_governanceRecoveryFund != address(0), '0');
+    require(_owner != address(0), '0');
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -39,10 +44,11 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// TVL didn't exceed a threshold
   /// @param _amount new amount to deposit
   function _guarded(uint256 _amount) internal view {
-    if (limit == 0) {
+    uint256 _limit = limit;
+    if (_limit == 0) {
       return;
     }
-    require(getContractValue() + _amount <= limit, 'Contract limit');
+    require(getContractValue() + _amount <= _limit, '2');
   }
 
   /// @notice abstract method, should return the TVL in underlyings
@@ -57,7 +63,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @notice Emergency method, tokens gets transferred to the governanceRecoveryFund address
   /// @param _token address of the token to transfer
   /// @param _value amount to transfer
-  function transferToken(address _token, uint256 _value) external onlyOwner nonReentrant {
+  function transferToken(address _token, uint256 _value) external onlyOwner {
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
   }
 }

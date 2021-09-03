@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 interface IIdleCDOStrategy {
   function strategyToken() external view returns(address);
   function token() external view returns(address);
   function tokenDecimals() external view returns(uint256);
   function oneToken() external view returns(uint256);
-  function redeemRewards() external;
+  function redeemRewards() external returns(uint256[] memory);
+  function pullStkAAVE() external returns(uint256);
   function price() external view returns(uint256);
   function getRewardTokens() external view returns(address[] memory);
   function deposit(uint256 _amount) external returns(uint256);

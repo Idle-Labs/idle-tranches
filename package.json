@@ -24,8 +24,7 @@
     "url": "https://github.com/Idle-Labs/idle-utils/issues"
   },
   "homepage": "https://idle.finance",
-  "scripts": {
-  },
+  "scripts": {},
   "devDependencies": {
     "@ledgerhq/hw-app-eth": "^5.38.0",
     "@ledgerhq/hw-transport-node-hid": "^5.38.0",
@@ -34,14 +33,16 @@
     "chai": "^4.2.0",
     "ethereum-waffle": "^3.3.0",
     "ethers": "^5.0.32",
-    "hardhat": "^2.2.1",
+    "hardhat": "^2.6.1",
     "hardhat-abi-exporter": "^2.2.1",
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-etherscan-abi": "^0.1.1",
-    "solidity-coverage": "^0.7.16"
+    "solidity-coverage": "^0.7.17"
   },
   "dependencies": {
-    "@nomiclabs/hardhat-etherscan": "^2.1.1",
+    "@defi-wonderland/smock": "^2.0.1",
+    "@nomiclabs/ethereumjs-vm": "^4",
+    "@nomiclabs/hardhat-etherscan": "^2.1.4",
     "@nomiclabs/hardhat-solhint": "^2.0.0",
     "@openzeppelin/contracts": "^4.0.0",
     "@openzeppelin/contracts-upgradeable": "^4.0.0",

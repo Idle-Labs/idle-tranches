@@ -3,7 +3,7 @@
  * @title: Idle Token interface
  * @author: Idle Labs Inc., idle.finance
  */
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 import "./IERC20Detailed.sol";
 
@@ -29,4 +29,5 @@ interface IIdleToken is IERC20Detailed {
   function protocolWrappers(address) external view returns (address);
   function tokenPriceWithFee(address user) external view returns (uint256 priceWFee);
   function fee() external view returns (uint256);
+  function setAllocations(uint256[] calldata _allocations) external;
 }

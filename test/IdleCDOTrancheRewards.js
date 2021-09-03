@@ -1,8 +1,15 @@
 const { expect } = require("chai");
 const { BigNumber } = require("@ethersproject/bignumber");
 const addresses = require('../lib/addresses');
-
+const helpers = require('../scripts/helpers');
 const BN = v => BigNumber.from(v.toString());
+
+const waitBlocks = async (n) => {
+  log(`mining ${n} blocks...`);
+  for (var i = 0; i < n; i++) {
+    await ethers.provider.send("evm_mine");
+  };
+}
 
 // pretty number
 const pn = (_n) => {
@@ -49,7 +56,7 @@ describe('IdleCDOTrancheRewards', function() {
     this.recoveryFund = recoveryFund;
     this.accounts = accounts;
     this.tokenUtils = erc20Utils("18");
-    this.coolingPeriod = 2;
+    this.coolingPeriod = 100;
 
     const MockERC20 = await hre.ethers.getContractFactory("MockERC20");
     this.accounts = accounts;
@@ -83,6 +90,16 @@ describe('IdleCDOTrancheRewards', function() {
     await this.contract.connect(user).stake(amount);
   }
 
+  const stakeFor = async (user, amount) => {
+    amount = this.tokenUtils.fromUnits(amount);
+    // owner sends amount to cdo address
+    await this.tranche.connect(this.owner).transfer(this.cdo.address, amount);
+    const signer = await helpers.impersonateSigner(this.cdo.address);
+    await this.tranche.connect(signer).approve(this.contract.address, amount);
+    // cdo stakes amount for the user
+    await this.contract.connect(signer).stakeFor(user.address, amount);
+  }
+
   const depositReward = async (amount) => {
     amount = this.tokenUtils.fromUnits(amount);
     await this.rewardToken1.transfer(this.cdo.address, amount);
@@ -91,13 +108,10 @@ describe('IdleCDOTrancheRewards', function() {
 
   const unstake = async (user, amount, blocksToMine) => {
     if (blocksToMine == undefined) {
-      blocksToMine = this.coolingPeriod;
+      blocksToMine = 0;
     }
 
-    log(`mining ${blocksToMine} blocks...`);
-    for (var i = 0; i < blocksToMine; i++) {
-      await ethers.provider.send("evm_mine");
-    };
+    await waitBlocks(blocksToMine);
 
     amount = this.tokenUtils.fromUnits(amount);
     await this.contract.connect(user).unstake(amount);
@@ -108,15 +122,15 @@ describe('IdleCDOTrancheRewards', function() {
   }
 
   const checkUserStakes = async (user, expected) => {
-    expect(await this.contract.usersStakes(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    expect(await this.contract.usersStakes(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "60" /* 60 WEI */);
   }
 
   const checkExpectedUserRewards = async (user, expected) => {
-    expect(await this.contract.expectedUserReward(user.address, this.rewardToken1.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    expect(await this.contract.expectedUserReward(user.address, this.rewardToken1.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "60" /* 60 WEI */);
   }
 
   const checkRewardBalance = async (user, expected) => {
-    expect(await this.rewardToken1.balanceOf(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "40" /* 40 WEI */);
+    expect(await this.rewardToken1.balanceOf(user.address)).to.be.closeTo(this.tokenUtils.fromUnits(expected), "60" /* 60 WEI */);
   }
 
   const dump = async () => {
@@ -129,6 +143,11 @@ describe('IdleCDOTrancheRewards', function() {
     log("\n-----------------------------");
     log("total rewards           ", pn(await this.rewardToken1.balanceOf(this.contract.address)));
     log("rewards index           ", pn(await this.contract.rewardsIndexes(this.rewardToken1.address)));
+    log("adjusted rewards index  ", pn(await this.contract.adjustedRewardIndex(this.rewardToken1.address)));
+    log("locked rewards          ", pn(await this.contract.lockedRewards(this.rewardToken1.address)));
+    log("locked block            ", pn(await this.contract.lockedRewardsLastBlock(this.rewardToken1.address)));
+    log("current block           ", pn((await ethers.provider.getBlockNumber())));
+    log("cooling period          ", pn((await this.contract.coolingPeriod())));
     log("total staked            ", pn(await this.contract.totalStaked()));
 
     log("");
@@ -152,10 +171,46 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "50");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "100");
 
     await stake(user1, "10")
     await checkUserStakes(user1, "20");
     await checkExpectedUserRewards(user1, "100");
+  });
+
+  it ('stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stake(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+    await dump();
+
+    await depositReward("100");
+    let depositBlockNumber = await ethers.provider.getBlockNumber();
+    await dump();
+    await checkExpectedUserRewards(user1, "0");
+
+    await stake(user1, "10")
+    await stake(user1, "10")
+    await stake(user1, "10")
+    const blocksMined = (await ethers.provider.getBlockNumber()) - depositBlockNumber;
+    const expectedReward = blocksMined * 100 / this.coolingPeriod;
+    await dump();
+
+    await checkExpectedUserRewards(user1, expectedReward.toString());
+    await waitBlocks(this.coolingPeriod - blocksMined - 1);
+    await checkExpectedUserRewards(user1, "99");
+    await waitBlocks(1);
+
+    await checkUserStakes(user1, "40");
+    await checkExpectedUserRewards(user1, "100");
+    await dump();
   });
 
   it ('unstake', async () => {
@@ -165,6 +220,9 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "100");
 
     await unstake(user1, "10")
     await checkUserStakes(user1, "0");
@@ -172,17 +230,39 @@ describe('IdleCDOTrancheRewards', function() {
     await checkRewardBalance(user1, "100");
   });
 
-  it ('fails if unstake is called before cooling period', async () => {
+  it ('unstake after stakeFor', async () => {
     const [user1] = this.accounts;
-    await stake(user1, "10")
-    for (var i = 0; i < this.coolingPeriod; i++) {
-      await expect(
-        unstake(user1, "10", 0)
-      ).to.be.revertedWith("COOLING_PERIOD");
-    };
+    await stakeFor(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
 
-    // after cooling period it's possible to unstake
-    unstake(user1, "10", 0);
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "100");
+
+    await unstake(user1, "10")
+    await checkUserStakes(user1, "0");
+    await checkExpectedUserRewards(user1, "0");
+    await checkRewardBalance(user1, "100");
+  });
+
+  it ('unstake before cooling period are proportional', async () => {
+    const [user1, user2] = this.accounts;
+    await stake(user1, "10")
+    await stake(user2, "10")
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "25");
+    await checkExpectedUserRewards(user2, "25");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "50");
+    await checkExpectedUserRewards(user2, "50");
   });
 
   it ('owner can set the cooling period', async () => {
@@ -192,10 +272,10 @@ describe('IdleCDOTrancheRewards', function() {
       this.contract.connect(this.accounts[0]).setCoolingPeriod("0")
     ).to.be.revertedWith("Ownable: caller is not the owner");
 
-    await this.contract.connect(this.owner).setCoolingPeriod("100");
+    await this.contract.connect(this.owner).setCoolingPeriod(this.coolingPeriod * 2);
     const newCoolingPeriod = await this.contract.coolingPeriod();
     expect(newCoolingPeriod).to.not.be.equal(this.coolingPeriod);
-    expect(newCoolingPeriod).to.be.equal("100");
+    expect(newCoolingPeriod).to.be.equal(this.coolingPeriod * 2);
   });
 
   it ('unstake when paused should not claim rewards', async () => {
@@ -205,6 +285,8 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
     await checkExpectedUserRewards(user1, "100");
 
     await this.contract.connect(this.owner).pause();
@@ -223,6 +305,26 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "100");
+    await claim(user1);
+
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+    await checkRewardBalance(user1, "100");
+  });
+
+  it ('claim after stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
+    await checkUserStakes(user1, "10");
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "100");
     await claim(user1);
 
     await checkUserStakes(user1, "10");
@@ -236,15 +338,47 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user1, "0");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
     await checkExpectedUserRewards(user1, "100");
 
     await depositReward("100");
+    await checkExpectedUserRewards(user1, "100");
+    await waitBlocks(this.coolingPeriod);
     await checkExpectedUserRewards(user1, "200");
 
     await claim(user1);
 
     await checkExpectedUserRewards(user1, "0");
 
+    const unsupportedTokenAddress = this.accounts[0].address;
+    await expect(
+      this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
+    ).to.be.revertedWith("!SUPPORTED");
+  });
+
+  it ('expectedUserReward after stakeFor', async () => {
+    const [user1] = this.accounts;
+    await stakeFor(user1, "10")
+    await checkExpectedUserRewards(user1, "0");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "0");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "100");
+
+    await depositReward("100");
+    await checkExpectedUserRewards(user1, "100");
+    await waitBlocks(this.coolingPeriod);
+    await checkExpectedUserRewards(user1, "200");
+
+    await claim(user1);
+
+    await checkExpectedUserRewards(user1, "0");
+  });
+
+  it ('throws an error if token is not supported', async () => {
+    const [user1] = this.accounts;
     const unsupportedTokenAddress = this.accounts[0].address;
     await expect(
       this.contract.expectedUserReward(user1.address, unsupportedTokenAddress)
@@ -265,6 +399,10 @@ describe('IdleCDOTrancheRewards', function() {
     log("deposit 100 reward1");
     await depositReward("100");
     await dump();
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
+
+    await waitBlocks(this.coolingPeriod);
     await checkExpectedUserRewards(user1, "100");
     await checkExpectedUserRewards(user2, "0");
 
@@ -287,6 +425,7 @@ describe('IdleCDOTrancheRewards', function() {
 
     log("deposit 100 reward1");
     await depositReward("100");
+    await waitBlocks(this.coolingPeriod);
     await dump();
     await checkExpectedUserRewards(user1, "180");
     await checkExpectedUserRewards(user2, "20");
@@ -324,6 +463,7 @@ describe('IdleCDOTrancheRewards', function() {
 
     log("deposit 100 reward1");
     await depositReward("100");
+    await waitBlocks(this.coolingPeriod);
     await dump();
     await checkExpectedUserRewards(user1, "100");
     await checkExpectedUserRewards(user2, "0");
@@ -340,8 +480,17 @@ describe('IdleCDOTrancheRewards', function() {
     const user = this.accounts[0];
     await stake(user, "10")
     await depositReward("100");
+    const depositBlockNumber = await ethers.provider.getBlockNumber();
+    await checkExpectedUserRewards(user, "0");
+
     await stake(user, "20")
     await stake(user, "30")
+
+    const blocksMined = (await ethers.provider.getBlockNumber()) - depositBlockNumber;
+    const expectedReward = blocksMined * 100 / this.coolingPeriod;
+    await checkExpectedUserRewards(user, expectedReward.toString());
+
+    await waitBlocks(this.coolingPeriod - blocksMined);
     await checkExpectedUserRewards(user, "100");
 
     // for rounding problems, the user expected Reward is
@@ -408,7 +557,7 @@ describe('IdleCDOTrancheRewards', function() {
     expect(await this.rewardToken1.balanceOf(this.recoveryFund.address)).to.be.bignumber.equal(this.tokenUtils.fromUnits("100"));
   });
 
-  it("transferToken failes if ", async () => {
+  it("transferToken failes if address is 0", async () => {
     await expect(
       this.contract.connect(this.owner).transferToken(addresses.addr0, this.tokenUtils.fromUnits("100"))
     ).to.be.revertedWith("Address is 0");

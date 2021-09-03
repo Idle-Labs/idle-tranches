@@ -13,6 +13,7 @@ require("solidity-coverage");
 require("./tasks/helpers");
 require("./tasks/tests");
 require("./tasks/deploy");
+require("./tasks/test-harvest");
 
 const BN = require("bignumber.js");
 
@@ -20,26 +21,55 @@ module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.4",
+        version: "0.8.7",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 300
+            runs: 1
           }
         }
       }
     ],
+    overrides: {
+      "contracts/IdleCDOTrancheRewards.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      },
+      "contracts/IdleCDOTranche.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      },
+      "contracts/IdleStrategy.sol": {
+        version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999
+          }
+        }
+      }
+    }
   },
   networks: {
     hardhat: {
-      // allowUnlimitedContractSize: true,
-      forking: {
-        url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-        // blockNumber: 12554260, // DAI all in compound for `integration` task
-        // blockNumber: 12876984, // idleCDO on idleDAI deployed with some unlent fund on both tranches
-        // blockNumber: 12881290, // idleCDO on has fund in Idle
-        blockNumber: 12881370, // idleCDO after first harvest + sell + both trache rewards contract with IDLEs
-      }
+      allowUnlimitedContractSize: true,
+      // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   // blockNumber: 12554260, // DAI all in compound for `integration` task
+      //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
+      //   blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
+      //   blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
+      // }
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -57,12 +87,13 @@ module.exports = {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
-      timeout: 120000
+      gasMultiplier: 1.2,
+      timeout: 1200000
     },
   },
-  // etherscan: {
-  //   apiKey: process.env.ETHERSCAN_API_KEY,
-  // },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY,
+  },
   abiExporter: {
     // path: './abis',
     // clear: true,

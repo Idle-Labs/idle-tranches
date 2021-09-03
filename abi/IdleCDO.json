@@ -180,19 +180,6 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "coolingPeriod",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -342,19 +329,6 @@
   },
   {
     "inputs": [],
-    "name": "getRewards",
-    "outputs": [
-      {
-        "internalType": "address[]",
-        "name": "",
-        "type": "address[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "governanceRecoveryFund",
     "outputs": [
       {
@@ -392,6 +366,11 @@
         "type": "bool"
       },
       {
+        "internalType": "bool",
+        "name": "_skipFeeDeposit",
+        "type": "bool"
+      },
+      {
         "internalType": "bool[]",
         "name": "_skipReward",
         "type": "bool[]"
@@ -417,6 +396,11 @@
       {
         "internalType": "uint256[]",
         "name": "_swappedAmounts",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "_redeemedRewards",
         "type": "uint256[]"
       }
     ],
@@ -510,32 +494,6 @@
   },
   {
     "inputs": [],
-    "name": "lastAAPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "lastBBPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "lastNAVAA",
     "outputs": [
       {
@@ -563,38 +521,6 @@
   {
     "inputs": [],
     "name": "lastStrategyPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_tranche",
-        "type": "address"
-      }
-    ],
-    "name": "lastTranchePrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "latestHarvestBlock",
     "outputs": [
       {
         "internalType": "uint256",
@@ -729,6 +655,19 @@
   },
   {
     "inputs": [],
+    "name": "releaseBlocksPeriod",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -769,19 +708,6 @@
       }
     ],
     "name": "setAllowBBWithdraw",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_newCoolingPeriod",
-        "type": "uint256"
-      }
-    ],
-    "name": "setCoolingPeriod",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -854,12 +780,38 @@
   {
     "inputs": [
       {
+        "internalType": "bool",
+        "name": "_isStkAAVEActive",
+        "type": "bool"
+      }
+    ],
+    "name": "setIsStkAAVEActive",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_rebalancer",
         "type": "address"
       }
     ],
     "name": "setRebalancer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_releaseBlocksPeriod",
+        "type": "uint256"
+      }
+    ],
+    "name": "setReleaseBlocksPeriod",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -960,32 +912,6 @@
         "internalType": "address",
         "name": "",
         "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "strategyAPR",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "strategyPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1124,25 +1050,6 @@
     "name": "unpause",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_tranche",
-        "type": "address"
-      }
-    ],
-    "name": "virtualBalance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {
