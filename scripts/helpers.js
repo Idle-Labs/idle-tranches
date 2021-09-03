@@ -46,7 +46,7 @@ const deployContract = async (contractName, params, signer) => {
   let contract = await contractFactory.deploy(...params);
   await contract.deployed();
   let contractReceipt = await contract.deployTransaction.wait()
-  log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash} ((gas ${contractReceipt.cumulativeGasUsed.toString()}))`);
   log();
   return contract;
 };
@@ -57,10 +57,10 @@ const deployUpgradableContract = async (contractName, params, signer) => {
   let contract = await hre.upgrades.deployProxy(contractFactory, params);
   await contract.deployed();
   let contractReceipt = await contract.deployTransaction.wait()
-  log(`📤 ${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log(`📤 ${contractName} created (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}, (gas ${contractReceipt.cumulativeGasUsed.toString()})`);
   return contract;
 };
-const upgradeContract = async (address, contractName, params, signer) => {
+const upgradeContract = async (address, contractName, signer) => {
   log(`Upgrading ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
   let contract = await hre.upgrades.upgradeProxy(address, contractFactory);
@@ -69,7 +69,7 @@ const upgradeContract = async (address, contractName, params, signer) => {
   // let contract = await upgrades.upgradeProxy(address, contractFactory, params);
   let contractReceipt = await contract.deployTransaction.wait();
   console.log(contractReceipt);
-  log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash}`);
+  log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash} (gas ${contractReceipt.cumulativeGasUsed.toString()})`);
   return contract;
 };
 const fundWallets = async (underlying, to, from, amount) => {
@@ -148,7 +148,7 @@ const sudoCall = async (acc, contract, method, params) => {
   const res = await contractImpersonated[method](...params);
   const receipt = await res.wait();
   // console.log('⛽ used: ', receipt.gasUsed.toString());
-  return [contractImpersonated, signer]
+  return [contractImpersonated, signer, receipt]
 };
 const sudoStaticCall = async (acc, contract, method, params) => {
   const [contractImpersonated, signer] = await sudo(acc, contract);

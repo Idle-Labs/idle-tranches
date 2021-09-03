@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.4;
+pragma solidity 0.8.7;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -98,8 +98,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     revertIfTooLow = true;
     // skipDefaultCheck = false is the default value
     // Set allowance for strategy
-    IERC20Detailed(_guardedToken).safeIncreaseAllowance(_strategy, type(uint256).max);
-    IERC20Detailed(strategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
+    _allowUnlimitedSpend(_guardedToken, _strategy);
+    _allowUnlimitedSpend(strategyToken, _strategy);
     // Save current strategy price
     lastStrategyPrice = _strategyPrice();
     // Fee params
@@ -638,30 +638,33 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @notice used to start the cooldown for unstaking stkAAVE and claiming AAVE rewards (for the contract itself)
-  /// partially modified from https://github.com/indexed-finance/nirn/blob/master/contracts/adapters/aave-v2/AaveV2Erc20Adapter.sol#L268
   function _claimStkAave() internal {
     if (!isStkAAVEActive) {
       return;
     }
 
     IStakedAave _stkAave = IStakedAave(stkAave);
-    uint32 _cooldownUnlockAt = cooldownUnlockAt;
-    // If there's no pending cooldown, begin a new cooldown
+    uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
     // If there is a pending cooldown:
-    // - If it is over, redeem stkAave and begin new cooldown
-    // - If it is not over, do nothing
-    if (_cooldownUnlockAt > 0) {
-      if (_cooldownUnlockAt < block.timestamp) {
+    if (_stakersCooldown > 0) {
+      // If it is over, redeem stkAave and begin new cooldown
+      if (_stakersCooldown + _stkAave.COOLDOWN_SECONDS() < block.timestamp) {
         _stkAave.redeem(address(this), type(uint256).max);
         _cooldownUnlockAt = 0;
       } else {
+        // If it is not over, do nothing
         return;
       }
     }
 
+    // Pull new stkAAVE rewards
+    IIdleCDOStrategy(strategy).pullStkAAVE();
+
+    // If there's no pending cooldown or we just redeem the prev locked rewards,
+    // then begin a new cooldown
     if (_stkAave.balanceOf(address(this)) > 0) {
+      // start a new cooldown
       _stkAave.cooldown();
-      cooldownUnlockAt = uint32(block.timestamp + _stkAave.COOLDOWN_SECONDS());
     }
   }
 
@@ -698,25 +701,28 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256[] calldata _minAmount,
     uint256[] calldata _sellAmounts
   ) external
-    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts) {
+    returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256[] memory _redeemedRewards) {
     require(msg.sender == rebalancer || msg.sender == owner(), "6");
     // Fetch state variable once to save gas
     address _token = token;
     address _strategy = strategy;
     // Check whether to redeem rewards from strategy or not
-    if (!_skipRedeem) {
-      // Redeem all rewards associated with the strategy
-      IIdleCDOStrategy(_strategy).redeemRewards();
-      // Redeem unlocked AAVE if any and start a new cooldown for stkAAVE
-      _claimStkAave();
-      // Sell rewards
+    if (!_skipRedeem || !_skipIncentivesUpdate || !_skipFeeDeposit) {
       uint256 _totSold;
-      (_soldAmounts, _swappedAmounts, _totSold) = _sellAllRewards(_token, _sellAmounts, _minAmount, _skipReward);
+
+      if (!_skipRedeem) {
+        // Redeem all rewards associated with the strategy
+        _redeemedRewards = IIdleCDOStrategy(_strategy).redeemRewards();
+        // Redeem unlocked AAVE if any and start a new cooldown for stkAAVE
+        _claimStkAave();
+        // Sell rewards
+        (_soldAmounts, _swappedAmounts, _totSold) = _sellAllRewards(_token, _sellAmounts, _minAmount, _skipReward);
+      }
       // update last saved harvest block number
       latestHarvestBlock = block.number;
       // update harvested rewards value
       harvestedRewards = _totSold;
-      // split converted rewards and update tranche prices
+      // split converted rewards if any and update tranche prices
       // NOTE: harvested rewards won't be counted directly but released over time
       _updateAccounting();
 
@@ -788,8 +794,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     IERC20Detailed _token = IERC20Detailed(token);
     // revoke allowance for the current strategy
     address _currStrategy = strategy;
-    _token.safeApprove(_currStrategy, 0);
-    IERC20Detailed(strategyToken).safeApprove(_currStrategy, 0);
+    _removeAllowance(address(_token), _currStrategy);
+    _removeAllowance(strategyToken, _currStrategy);
     // Updated strategy variables
     strategy = _strategy;
     // Update incentive tokens
@@ -798,9 +804,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address _newStrategyToken = IIdleCDOStrategy(_strategy).strategyToken();
     strategyToken = _newStrategyToken;
     // Approve underlyingToken
-    _token.safeIncreaseAllowance(_strategy, type(uint256).max);
+    _allowUnlimitedSpend(address(_token), _strategy);
     // Approve the new strategy to transfer strategyToken out from this contract
-    IERC20Detailed(_newStrategyToken).safeIncreaseAllowance(_strategy, type(uint256).max);
+    _allowUnlimitedSpend(_newStrategyToken, _strategy);
     // Update last strategy price
     lastStrategyPrice = _strategyPrice();
   }
@@ -864,23 +870,23 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address _currBBStaking = BBStaking;
     bool _isAAStakingActive = _currAAStaking != address(0);
     bool _isBBStakingActive = _currBBStaking != address(0);
-
+    address _incentiveToken;
     // Remove allowance for incentive tokens for current staking contracts
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-      IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
+      _incentiveToken = _incentiveTokens[i];
       if (_isAAStakingActive) {
-        _incentiveToken.safeApprove(_currAAStaking, 0);
+        _removeAllowance(_incentiveToken, _currAAStaking);
       }
       if (_isBBStakingActive) {
-        _incentiveToken.safeApprove(_currBBStaking, 0);
+        _removeAllowance(_incentiveToken, _currBBStaking);
       }
     }
     // Remove allowace for tranche tokens (used for staking fees)
     if (_isAAStakingActive && _AATranche != address(0)) {
-      IERC20Detailed(_AATranche).safeApprove(_currAAStaking, 0);
+      _removeAllowance(_AATranche, _currAAStaking);
     }
     if (_isBBStakingActive && _BBTranche != address(0)) {
-      IERC20Detailed(_BBTranche).safeApprove(_currBBStaking, 0);
+      _removeAllowance(_BBTranche, _currBBStaking);
     }
 
     // Update staking contract addresses
@@ -892,22 +898,22 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
     // Increase allowance for incentiveTokens
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-      IERC20Detailed _incentiveToken = IERC20Detailed(_incentiveTokens[i]);
+      _incentiveToken = _incentiveTokens[i];
       // Approve each staking contract to spend each incentiveToken on beahlf of this contract
       if (_isAAStakingActive) {
-        _incentiveToken.safeIncreaseAllowance(_AAStaking, type(uint256).max);
+        _allowUnlimitedSpend(_incentiveToken, _AAStaking);
       }
       if (_isBBStakingActive) {
-        _incentiveToken.safeIncreaseAllowance(_BBStaking, type(uint256).max);
+        _allowUnlimitedSpend(_incentiveToken, _BBStaking);
       }
     }
 
     // Increase allowance for tranche tokens (used for staking fees)
     if (_isAAStakingActive && _AATranche != address(0)) {
-      IERC20Detailed(_AATranche).safeIncreaseAllowance(_AAStaking, type(uint256).max);
+      _allowUnlimitedSpend(_AATranche, _AAStaking);
     }
     if (_isBBStakingActive && _BBTranche != address(0)) {
-      IERC20Detailed(_BBTranche).safeIncreaseAllowance(_BBStaking, type(uint256).max);
+      _allowUnlimitedSpend(_BBTranche, _BBStaking);
     }
   }
 
@@ -949,6 +955,20 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
+  }
+
+  /// @dev Set allowance for _token to 0 for _spender
+  /// @param _token token address
+  /// @param _spender spender address
+  function _removeAllowance(address _token, address _spender) internal {
+    IERC20Detailed(_token).safeApprove(_spender, 0);
+  }
+
+  /// @dev Set allowance for _token to unlimited for _spender
+  /// @param _token token address
+  /// @param _spender spender address
+  function _allowUnlimitedSpend(address _token, address _spender) internal {
+    IERC20Detailed(_token).safeIncreaseAllowance(_spender, type(uint256).max);
   }
 
   /// @dev Set last caller and block.number hash. This should be called at the beginning of the first function to protect

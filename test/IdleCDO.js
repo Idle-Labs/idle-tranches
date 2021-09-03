@@ -2,7 +2,11 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
+const stkAAVEjson = require("../artifacts/contracts/interfaces/IStakedAave.sol/IStakedAave.json");
 const { expect } = require("chai");
+const { FakeContract, smock } = require('@defi-wonderland/smock');
+
+require('chai').use(smock.matchers);
 
 const BN = n => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
@@ -26,6 +30,8 @@ describe("IdleCDO", function () {
     RandomAddr = Random.address;
     Random2 = signers[6];
     Random2Addr = Random2.address;
+    stkAAVEAddr = addresses.IdleTokens.mainnet.stkAAVE;
+
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -103,7 +109,7 @@ describe("IdleCDO", function () {
     // set IdleToken2 mocked params
     await idleToken2.setTokenPriceWithFee(BN(2 * 10**18));
   });
-
+  
   it("should not reinitialize the contract", async () => {
     await expect(
       idleCDO.connect(owner).initialize(
@@ -366,24 +372,7 @@ describe("IdleCDO", function () {
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
     expect(await idleCDO.lastNAVAA()).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
-    // redeem price is still 1, no harvests since the price increase
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN('900').mul(one)));
-  });
-
-  it("should withdrawAA all AA balance if _amount supplied is 0", async () => {
-    const _amount = BN('1000').mul(ONE_TOKEN(18));
-    await firstDepositAA(_amount);
-    // update lending protocol price which is now 2
-    await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
-    // to update tranchePriceAA which will be 1.9
-    await idleCDO.harvest(false, true, false, [true], [BN('0')], [BN('0')]);
-
-    const _amountW = BN('0').mul(ONE_TOKEN(18));
-    await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
-    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
-    expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
-    // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900
-    expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(BN('900').mul(ONE_TOKEN(18)).add(initialAmount));
   });
 
   it("withdrawAA should redeem the _amount of AA tranche tokens requested", async () => {
@@ -1120,16 +1109,39 @@ describe("IdleCDO", function () {
     expect(finalBal).to.be.equal(_amountAA);
   });
 
-  it("harvest should skipRedeem if flag is passed", async () => {
+  it("harvest should the update accounting if all flags are true", async () => {
     const _amountAA = BN('1000').mul(one);
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
     await idleToken.setTokenPriceWithFee(BN(2 * 10**18));
-    await idleCDO.harvest(true, true, false, [true], [BN('0')], [BN('0')]);
+    await idleCDO.harvest(true, true, true, [true], [BN('0')], [BN('0')]);
     // underlying should have been deposited in Idle
     const finalBal = await idleToken.balanceOf(idleCDO.address);
     expect(finalBal).to.be.equal(_amountAA.div(2));
     // prices have not been updated
     expect(await idleCDO.priceAA()).to.be.equal(one);
+  });
+
+  it("harvest should skipRedeem of rewards if flag is passed", async () => {
+    const _amountAA = BN('1000').mul(one);
+    // await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
+    await firstDepositAA(_amountAA);
+    await idleToken.setTokenPriceWithFee(BN(2 * 10**18));
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amountAA);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amountAA);
+    const initialBalIncentive = await incentiveToken.balanceOf(idleCDO.address);
+
+    await idleCDO.harvest(true, true, false, [true], [BN('0')], [BN('0')]);
+    // no new incentive tokens should be present in the contract
+    const finalBalIncentive = await incentiveToken.balanceOf(idleCDO.address);
+    expect(finalBalIncentive).to.be.equal(initialBalIncentive);
+
+    // prices have been updated
+    expect(await idleCDO.priceAA()).to.be.equal(BN(1.9 * 10**18));
+    expect(await idleCDO.harvestedRewardsPublic()).to.be.equal(BN(0));
+    const blocknumber = await ethers.provider.getBlockNumber();
+    expect(await idleCDO.latestHarvestBlockPublic()).to.be.equal(BN(blocknumber));
   });
 
   it("harvest should redeem rewards", async () => {
@@ -1392,7 +1404,7 @@ describe("IdleCDO", function () {
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('200').mul(one));
   });
 
-  it("harvest should return _soldAmounts and _swappedAmounts", async () => {
+  it("harvest should return _soldAmounts, _swappedAmounts and _redeemedRewards", async () => {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
@@ -1416,6 +1428,8 @@ describe("IdleCDO", function () {
     expect(res._soldAmounts[0]).to.be.equal(_amountAA);
     expect(res._swappedAmounts.length).to.be.equal(1);
     expect(res._swappedAmounts[0]).to.be.equal(_minAmount);
+    expect(res._redeemedRewards.length).to.be.equal(1);
+    expect(res._redeemedRewards[0]).to.be.equal(_amountAA);
 
     // send 3000 IDLE to idleCDO
     // Use all contract balance if 0 is passed as _sellAmounts
@@ -1426,6 +1440,9 @@ describe("IdleCDO", function () {
     expect(res._soldAmounts[0]).to.be.equal(_amountToSend);
     expect(res._swappedAmounts.length).to.be.equal(1);
     expect(res._swappedAmounts[0]).to.be.equal(_minAmount);
+    expect(res._redeemedRewards.length).to.be.equal(1);
+    // still the old value as no real harvest has been made
+    expect(res._redeemedRewards[0]).to.be.equal(_amountAA);
   });
 
   it("harvest should sell non incentiveTokens if bal > 0", async () => {
@@ -1463,6 +1480,63 @@ describe("IdleCDO", function () {
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('200').mul(one));
     const nav = await idleCDO.getContractValue();
     expect(nav).to.be.equal(BN('3800').mul(one));
+  });
+
+  it("claimStkAave new cooldown", async () => {
+    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+
+    await idleCDO.setIsStkAAVEActive(true);
+    await strategy.setWhitelistedCDO(idleCDO.address);
+    // Mock response
+    fakeStkAave.stakersCooldowns.returnsAtCall(0, 0);
+    fakeStkAave.balanceOf.returnsAtCall(0, 0);
+    fakeStkAave.balanceOf.returnsAtCall(1, 100);
+
+    await idleCDO.connect(AABuyer).claimStkAave();
+    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+    fakeStkAave.balanceOf.atCall(1).should.be.calledWith(idleCDO.address);
+    fakeStkAave.cooldown.should.be.calledOnce;
+  });
+
+  it("claimStkAave cooldown ended", async () => {
+    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+    await idleCDO.setIsStkAAVEActive(true);
+    await strategy.setWhitelistedCDO(idleCDO.address);
+    // Mock response
+    fakeStkAave.stakersCooldowns.returnsAtCall(0, 100);
+    fakeStkAave.COOLDOWN_SECONDS.returns(100);
+    fakeStkAave.redeem.returns();
+    // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
+    fakeStkAave.balanceOf.returns(0, 0);
+    await idleCDO.connect(AABuyer).claimStkAave();
+    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+    fakeStkAave.redeem.atCall(0).should.be.calledWith(idleCDO.address, MAX_UINT);
+    // 1 inside pullStkAAVE and 1 in idleCDO
+    fakeStkAave.balanceOf.should.be.calledTwice;
+  });
+
+  it("claimStkAave cooldown active", async () => {
+    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+    await idleCDO.setIsStkAAVEActive(true);
+    await strategy.setWhitelistedCDO(idleCDO.address);
+    // Mock response
+    const timestamp = (await ethers.provider.getBlock()).timestamp;
+    fakeStkAave.stakersCooldowns.returnsAtCall(0, BN(timestamp));
+    fakeStkAave.COOLDOWN_SECONDS.returns(100000);
+    await idleCDO.connect(AABuyer).claimStkAave();
+    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+
+    // Redeem should not be called
+    let isFailed;
+    try {
+      fakeStkAave.redeem.should.be.calledOnce;
+    } catch (e) {
+      isFailed = true;
+    }
+
+    expect(isFailed).to.be.true;
   });
 
   // ###############
