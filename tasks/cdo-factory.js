@@ -35,12 +35,10 @@ task("deploy-cdo-factory", "Deploy IdleCDOFactory")
  * @name deploy
  * eg `npx hardhat deploy-with-cdo-factory`
  */
-task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
-  .addParam('cdoname', "The underlying asset (idledai/idleusdc/idleusdt)")
+task("deploy-with-factory-generic", "Deploy IdleCDO using IdleCDOFactory")
   .addParam('cdoImplementation', "The CDO implementation address", "", types.string, true)
   .addParam('cloneFromProxy', "The CDO proxy to clone the implementation from", "", types.string, true)
   .addParam('proxyAdmin', "The ProxyAdmin address", "", types.string, true)
-  .addParam('factory', "The CDOFactory address")
   .addParam('limit', "CDO param _limit")
   .addParam('governanceFund', "CDO param _governanceFund")
   .addParam('strategy', "CDO param _strategy")
@@ -71,7 +69,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     }
 
     const cdoname = args.cdoname;
-    const factoryAddress = args.factory;
+    let   cdoFactoryAddress = mainnetContracts.cdoFactory;
     const limit = args.limit;
     const governanceFund = args.governanceFund;
     const strategyAddress = args.strategy;
@@ -79,11 +77,28 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     const trancheIdealWeightRatio = args.trancheIdealWeightRatio;
     const incentiveTokens = args.incentiveTokens.split(",").map(s => s.trim());
 
+    console.log("\n🔎 Retrieving underlying token from strategy (", args.strategyAddress, ")");
+    const strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress);
+    const underlyingAddress = await strategy.token();
+    const underlyingToken = await ethers.getContractAt("IERC20Detailed", underlyingAddress);
+    const underlyingName = await underlyingToken.name();
+
+    if (hre.network.name === 'hardhat' && cdoFactoryAddress === undefined) {
+      console.log("\n⚠️  Local network - cdoFactoryAddress is undefined, deploying CDOFactory\n");
+      const cdoFactory = await hre.run("deploy-cdo-factory");
+      cdoFactoryAddress = cdoFactory.address;
+    }
+
+    if (helpers.isEmptyString(cdoFactoryAddress)) {
+      console.log("🛑 cdoFactoryAddress must be specified")
+      return;
+    }
+
     console.log("creator:                 ", creator);
     console.log("network:                 ", hre.network.name);
     console.log("proxyAdmin:              ", proxyAdminAddress);
-    console.log("factory:                 ", factoryAddress);
-    console.log("cdoname:                 ", cdoname);
+    console.log("factory:                 ", cdoFactoryAddress);
+    console.log("underlying:              ", `(${underlyingAddress, underlyingName}`);
     console.log("cdoImplementation:       ", cdoImplementationAddress);
     console.log("limit:                   ", limit.toString());
     console.log("governanceFund:          ", governanceFund);
@@ -97,13 +112,12 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
 
     await helpers.prompt("continue? [y/n]", true);
 
-    const cdoFactory = await ethers.getContractAt("IdleCDOFactory", factoryAddress);
+    const cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress);
     const idleCDO = await ethers.getContractAt("IdleCDO", cdoImplementationAddress);
-    const deployToken = addresses.deployTokens[cdoname];
 
     const initMethodCall = idleCDO.interface.encodeFunctionData("initialize", [
       limit,
-      deployToken.underlying,
+      underlyingAddress,
       governanceFund, // recovery address
       creator, // guardian
       mainnetContracts.rebalancer,
@@ -121,4 +135,77 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     const receipt = await res.wait();
     helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${receipt.cumulativeGasUsed.toString()})`);
     return proxyAddress;
+  });
+
+task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and Staking contract for rewards with default parameters")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+    const cdoname = args.cdoname;
+    let cdoProxyAddressToClone = undefined;
+    const deployToken = addresses.deployTokens[cdoname];
+
+    if (deployToken === undefined) {
+      console.log(`🛑 deployToken not found with specified cdoname (${cdoname})`)
+      return;
+    }
+
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+
+    if (hre.network.name === 'hardhat') {
+      console.log("\n⚠️  Local network - deploying test CDO\n");
+      let { idleCDO, strategy, AAaddr, BBaddr } = await hre.run("deploy", { cdoname: cdoname });
+      cdoProxyAddressToClone = idleCDO.address;
+    }
+
+    if (helpers.isEmptyString(cdoProxyAddressToClone)) {
+      console.log("🛑 cdoProxyAddressToClone must be specified")
+      return;
+    }
+
+    await helpers.prompt("continue? [y/n]", true);
+
+    const incentiveTokens = [mainnetContracts.IDLE];
+    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.idleToken, creator], signer);
+
+    const deployParams = {
+      cdoname: cdoname,
+      // cdoImplementation: implAddress,
+      cloneFromProxy: cdoProxyAddressToClone,
+      limit: BN('500000').mul(ONE_TOKEN(deployToken.decimals)).toString(), // limit
+      governanceFund: mainnetContracts.treasuryMultisig, // recovery address
+      strategy: strategy.address,
+      trancheAPRSplitRatio: BN('20000').toString(), // apr split: 20% interest to AA and 80% BB
+      trancheIdealWeightRatio: BN('50000').toString(), // ideal value: 50% AA and 50% BB tranches
+      incentiveTokens: [mainnetContracts.IDLE].join(","),
+    }
+    const idleCDOAddress = await hre.run("deploy-with-factory-generic", deployParams);
+    const idleCDO = await ethers.getContractAt("IdleCDO", idleCDOAddress);
+
+    await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
+    const AAaddr = await idleCDO.AATranche();
+    const BBaddr = await idleCDO.BBTranche();
+    console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
+
+    const stakingCoolingPeriod = BN(1500);
+    const stakingRewardsParams = [
+      incentiveTokens,
+      creator, // owner / guardian
+      idleCDO.address,
+      mainnetContracts.devLeagueMultisig, // recovery address
+      stakingCoolingPeriod
+    ];
+    const stakingRewardsAA = await helpers.deployUpgradableContract(
+      'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
+    );
+    const stakingRewardsBB = await helpers.deployUpgradableContract(
+      'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
+    );
+    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
+    console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
+    console.log(`staking reward contract set`);
+    console.log();
+    return {idleCDO, strategy, AAaddr, BBaddr};
   });
