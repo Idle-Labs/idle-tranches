@@ -18,4 +18,10 @@ contract EnhancedIdleCDO is IdleCDO {
   function claimStkAave() external {
     _claimStkAave();
   }
+  function harvestedRewardsPublic() external view returns (uint256) {
+    return harvestedRewards;
+  }
+  function latestHarvestBlockPublic() external view returns (uint256) {
+    return latestHarvestBlock;
+  }
 }
