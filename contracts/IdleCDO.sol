@@ -14,7 +14,7 @@ import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
 import "./IdleCDOStorage.sol";
 
-/// @title A continous tranche implementation
+/// @title A perpetual tranche implementation
 /// @author Idle Labs Inc.
 /// @notice More info and high level overview in the README
 /// @dev The contract is upgradable, to add storage slots, create IdleCDOStorageVX and inherit from IdleCDOStorage, then update the definitaion below
@@ -395,9 +395,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice It allows users to burn their tranche token and redeem their principal + interest back
   /// @dev automatically reverts on lending provider default (_strategyPrice decreased).
-  /// A user should wait at least one harvest before rededeming otherwise the redeemed amount
-  /// would be less than the deposited one due to the use of a checkpointed price at last harvest (lastAAPrice and lastBBPrice)
-  /// Ideally users should redeem right after an `harvest` call for maximum profits
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
   /// @return toRedeem number of underlyings redeemed
@@ -595,7 +592,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _tranche tranche address
-  /// @return last saved price for minting tranche tokens, in underlyings
+  /// @return last saved tranche price, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
     if (IdleCDOTranche(_tranche).totalSupply() == 0) {
       return oneToken;
@@ -677,9 +674,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// - redeems rewards (if any) from the lending provider
   /// - converts the rewards NOT present in the `incentiveTokens` array, in underlyings through uniswap v2
   /// - calls _updateAccounting to update the accounting of the system with the new underlyings received
-  /// - it then convert fees in tranche tokens
+  /// - it then convert fees in tranche tokens and stake tranche tokens in the IdleCDOTrancheRewards if any
   /// - sends the correct amount of `incentiveTokens` to the each of the IdleCDOTrancheRewards contracts
-  /// - calls _updateLastTranchePrices to save the last tranche prices
   /// - Finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
   ///   lending provider through the IIdleCDOStrategy `deposit` call
   /// The method will be called by an external, whitelisted, keeper bot which will call the method sistematically (eg once a day)
