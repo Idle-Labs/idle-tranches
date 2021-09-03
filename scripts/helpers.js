@@ -13,7 +13,13 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
-const isEmptyString = (s) => s.toString().trim() == "";
+const isEmptyString = (s) => {
+  if (s === undefined || s === null) {
+    return true;
+  }
+
+  return s.toString().trim() == "";
+}
 
 const impersonateSigner = async (acc) => {
   await hre.ethers.provider.send("hardhat_impersonateAccount", [acc]);
@@ -247,4 +253,5 @@ module.exports = {
   getBalance,
   checkBalance,
   isEmptyString,
+  log,
 }

@@ -118,5 +118,7 @@ task("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory")
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
     const proxyAddress = events[0].args.proxy;
+    const receipt = await res.wait();
+    helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${receipt.cumulativeGasUsed.toString()})`);
     return proxyAddress;
   });
