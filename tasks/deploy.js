@@ -21,7 +21,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
 
-    if (deployToken.cdo.cdoAddr && hre.network == 'mainnet') {
+    if (deployToken.cdo && deployToken.cdo.cdoAddr && hre.network == 'mainnet') {
       console.log(`CDO Already deployed here ${deployToken.cdo.cdoAddr}`);
       return;
     }
