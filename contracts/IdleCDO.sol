@@ -647,7 +647,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       // If it is over, redeem stkAave and begin new cooldown
       if (_stakersCooldown + _stkAave.COOLDOWN_SECONDS() < block.timestamp) {
         _stkAave.redeem(address(this), type(uint256).max);
-        _cooldownUnlockAt = 0;
       } else {
         // If it is not over, do nothing
         return;
