@@ -36,11 +36,14 @@
     "hardhat": "^2.6.1",
     "hardhat-abi-exporter": "^2.2.1",
     "hardhat-contract-sizer": "^2.0.3",
+    "hardhat-docgen": "^1.1.2",
     "hardhat-etherscan-abi": "^0.1.1",
     "solidity-coverage": "^0.7.17"
   },
   "dependencies": {
     "@defi-wonderland/smock": "^2.0.1",
+    "@ethersproject/hardware-wallets": "^5.4.0",
+    "@gnosis.pm/safe-ethers-adapters": "^0.1.0-alpha.3",
     "@nomiclabs/ethereumjs-vm": "^4",
     "@nomiclabs/hardhat-etherscan": "^2.1.6",
     "@nomiclabs/hardhat-solhint": "^2.0.0",

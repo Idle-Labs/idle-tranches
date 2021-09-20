@@ -2,7 +2,9 @@ const rl = require("readline");
 const { BigNumber } = require("@ethersproject/bignumber");
 const { time } = require("@openzeppelin/test-helpers");
 const addresses = require("../lib/addresses");
-const { HardwareSigner } = require("../lib/HardwareSigner");
+const { LedgerSigner } = require("@ethersproject/hardware-wallets");
+const { SafeEthersSigner, SafeService } = require("@gnosis.pm/safe-ethers-adapters");
+
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 
@@ -18,10 +20,24 @@ const impersonateSigner = async (acc) => {
   await hre.ethers.provider.send("hardhat_setBalance", [acc, "0xffffffffffffffff"]);
   return await hre.ethers.getSigner(acc);
 }
+const getMultisigSigner = async (skipLog) => {
+  const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
+  const service = new SafeService('https://safe-transaction.gnosis.io/');
+  const signer = await SafeEthersSigner.create(
+    addresses.IdleTokens.mainnet.devLeagueMultisig, ledgerSigner, service, ethers.provider
+  );
+  const address = await signer.getAddress();
+  if (!skipLog) {
+    log(`Deploying with ${address}`);
+    log();
+  }
+  return signer;
+};
 const getSigner = async (skipLog) => {
   let [signer] = await ethers.getSigners();
   if (hre.network.name == 'mainnet') {
-    signer = new HardwareSigner(ethers.provider, null, "m/44'/60'/0'/0/0");
+    signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
+
   }
   const address = await signer.getAddress();
   if (!skipLog) {
@@ -230,6 +246,7 @@ const isEmptyString = (s) => {
 
 module.exports = {
   impersonateSigner,
+  getMultisigSigner,
   getSigner,
   callContract,
   deployContract,

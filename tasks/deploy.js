@@ -129,15 +129,118 @@ task("upgrade-strategy", "Upgrade IdleCDO strategy")
   });
 
 /**
+ * @name transfer-ownership-cdo
+ */
+task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+
+    // #### Change this if needed (avoid passing it via cli)
+    const to = addresses.IdleTokens.mainnet.devLeagueMultisig;
+    // ####
+
+    console.log('NEW OWNER: ', to);
+    const deployToken = addresses.deployTokens[args.cdoname];
+    console.log('deployToken', deployToken)
+    const proxyAdminAddress = deployToken.cdo.proxyAdmin;
+    const contractAddress = deployToken.cdo.cdoAddr;
+    const strategyAddress = deployToken.cdo.strategy;
+    if (!contractAddress || !strategyAddress || !proxyAdminAddress || !to) {
+      console.log(`IdleCDOAddress, to, strategyAddress and proxyAdminAddress Must be defined`);
+      return;
+    }
+    await helpers.prompt("continue? [y/n]", true);
+    const signer = await run('get-signer-or-fake');
+
+    const AARewardsAddress = deployToken.cdo.AArewards;
+    if (AARewardsAddress) {
+      console.log('Transfer ownership of AARewards');
+      let AARewards = await ethers.getContractAt("IdleCDOTrancheRewards", AARewardsAddress);
+      await AARewards.connect(signer).transferOwnership(to);
+      console.log('New Owner', await AARewards.owner());
+    }
+
+    const BBRewardsAddress = deployToken.cdo.BBrewards;
+    if (BBRewardsAddress) {
+      console.log('Transfer ownership of BBRewards');
+      let BBRewards = await ethers.getContractAt("IdleCDOTrancheRewards", BBRewardsAddress);
+      await BBRewards.connect(signer).transferOwnership(to);
+      console.log('New Owner', await BBRewards.owner());
+    }
+
+    console.log('Transfer ownership of IdleCDOStrategy');
+    let strategy = await ethers.getContractAt("IdleStrategy", strategyAddress);
+    await strategy.connect(signer).transferOwnership(to);
+    console.log('New Owner', await strategy.owner());
+
+    console.log('Transfer ownership of IdleCDO');
+    let cdo = await ethers.getContractAt("IdleCDO", contractAddress);
+    await cdo.connect(signer).transferOwnership(to);
+
+    console.log('Transfer owner of proxyAdmin for all');
+    let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
+    await admin.connect(signer).transferOwnership(to);
+
+    console.log('New Owner', await admin.owner());
+  });
+
+/**
+ * @name pause-cdo-multisig
+ */
+task("pause-cdo-multisig", "Upgrade IdleCDO instance")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const deployToken = addresses.deployTokens[args.cdoname];
+    console.log('deployToken', deployToken)
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    const multisig = await run('get-multisig-or-fake');
+    await cdo.connect(multisig).pause();
+    console.log('Is Paused ? ', await cdo.paused());
+  });
+
+/**
+ * @name emergency-shutdown-cdo-multisig
+ */
+task("emergency-shutdown-cdo-multisig", "Upgrade IdleCDO instance")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const deployToken = addresses.deployTokens[args.cdoname];
+    console.log('deployToken', deployToken)
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    const multisig = await run('get-multisig-or-fake');
+    await cdo.connect(multisig).emergencyShutdown();
+    console.log('Is Paused ? ', await cdo.paused());
+    console.log('Allow AA withdraw ? ', await cdo.allowAAWithdraw());
+    console.log('Allow BB withdraw ? ', await cdo.allowBBWithdraw());
+  });
+
+/**
  * @name get-signer-or-fake
  */
-task("get-signer-or-fake", "Upgrade IdleCDO instance")
+subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
     if (hre.network.name !== 'mainnet') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
+    }
+    console.log('Using signer with address: ', await signer.getAddress());
+    return signer;
+  });
+
+/**
+ * @name get-multisig-or-fake
+ */
+subtask("get-multisig-or-fake", "Get multisig signer")
+  .setAction(async (args) => {
+    let signer;
+    if (hre.network.name !== 'mainnet') {
+      signer = await helpers.impersonateSigner(args.fakeAddress || addresses.IdleTokens.mainnet.devLeagueMultisig);
+    } else {
+      signer = await helpers.getMultisigSigner();
     }
     console.log('Using signer with address: ', await signer.getAddress());
     return signer;
