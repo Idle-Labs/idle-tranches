@@ -16,6 +16,7 @@ require("./tasks/tests");
 require("./tasks/deploy");
 require("./tasks/test-harvest");
 require("./tasks/cdo-factory");
+require("./tasks/test-cards");
 
 const BN = require("bignumber.js");
 
