@@ -37,7 +37,6 @@ const getSigner = async (skipLog) => {
   let [signer] = await ethers.getSigners();
   if (hre.network.name == 'mainnet') {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
-
   }
   const address = await signer.getAddress();
   if (!skipLog) {

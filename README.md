@@ -87,3 +87,7 @@ npx hardhat deploy --network YOUR_CONFIGURED_NETWORK
 ```
 npx hardhat coverage
 ```
+
+## Code Contributions
+We welcome new contributors and code contributions with open arms! Please be sure to follow our contribution [guidelines](https://github.com/Idle-Labs/idle-tranches/blob/master/CONTRIBUTING.md) when proposing any new code. Idle Finance is a
+decentralized protocol managed by a decentralized governance, any new code contributions are more likely to be accepted into future deployments and proposals if they have been openly discussed within the community first in our forum https://gov.idle.finance/
