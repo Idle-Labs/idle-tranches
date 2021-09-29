@@ -57,6 +57,15 @@ Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal
 export ALCHEMY_API_KEY=XXXX
 ```
 
+then uncomment the following block in `hardhat.config.js`:
+
+```
+forking: {
+  url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+  blockNumber: 12554260, // DAI all in compound
+}
+```
+
 For unit tests run:
 ```
 npx hardhat test
