@@ -49,32 +49,32 @@ Notes:
 yarn install
 ```
 
-## Unit Tests
-
-```
-npx hardhat test
-```
-
-## Integration tests (in fork)
+## Testing
 
 Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal:
 
 ```
 export ALCHEMY_API_KEY=XXXX
 ```
-then uncomment the
+
+then uncomment the following block in `hardhat.config.js`:
+
 ```
 forking: {
   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
   blockNumber: 12554260, // DAI all in compound
 }
 ```
-block in `hardhat.config.js` and then run
 
+For unit tests run:
 ```
-npx hardhat integration
+npx hardhat test
 ```
-or any other tasks in `tasks/*`
+
+For any other task:
+```
+npx hardhat TASK_NAME
+```
 
 ## Deploy
 
