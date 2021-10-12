@@ -758,22 +758,26 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // ###################
 
   /// @param _allowed flag to allow AA withdraws
-  function setAllowAAWithdraw(bool _allowed) external onlyOwner {
+  function setAllowAAWithdraw(bool _allowed) external {
+    _checkOnlyOwner();
     allowAAWithdraw = _allowed;
   }
 
   /// @param _allowed flag to allow BB withdraws
-  function setAllowBBWithdraw(bool _allowed) external onlyOwner {
+  function setAllowBBWithdraw(bool _allowed) external {
+    _checkOnlyOwner();
     allowBBWithdraw = _allowed;
   }
 
   /// @param _allowed flag to enable the 'default' check (whether _strategyPrice decreased or not)
-  function setSkipDefaultCheck(bool _allowed) external onlyOwner {
+  function setSkipDefaultCheck(bool _allowed) external {
+    _checkOnlyOwner();
     skipDefaultCheck = _allowed;
   }
 
   /// @param _allowed flag to enable the check if redeemed amount during liquidations is enough
-  function setRevertIfTooLow(bool _allowed) external onlyOwner {
+  function setRevertIfTooLow(bool _allowed) external {
+    _checkOnlyOwner();
     revertIfTooLow = _allowed;
   }
 
@@ -784,7 +788,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// if the lending provider is changed
   /// @param _strategy new strategy address
   /// @param _incentiveTokens array of incentive tokens addresses
-  function setStrategy(address _strategy, address[] memory _incentiveTokens) external onlyOwner {
+  function setStrategy(address _strategy, address[] memory _incentiveTokens) external {
+    _checkOnlyOwner();
+
     require(_strategy != address(0), '0');
     IERC20Detailed _token = IERC20Detailed(token);
     // revoke allowance for the current strategy
@@ -807,56 +813,66 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _rebalancer new rebalancer address
-  function setRebalancer(address _rebalancer) external onlyOwner {
+  function setRebalancer(address _rebalancer) external {
+    _checkOnlyOwner();
     require((rebalancer = _rebalancer) != address(0), '0');
   }
 
   /// @param _feeReceiver new fee receiver address
-  function setFeeReceiver(address _feeReceiver) external onlyOwner {
+  function setFeeReceiver(address _feeReceiver) external {
+    _checkOnlyOwner();
     require((feeReceiver = _feeReceiver) != address(0), '0');
   }
 
   /// @param _guardian new guardian (pauser) address
-  function setGuardian(address _guardian) external onlyOwner {
+  function setGuardian(address _guardian) external {
+    _checkOnlyOwner();
     require((guardian = _guardian) != address(0), '0');
   }
 
   /// @param _fee new fee
-  function setFee(uint256 _fee) external onlyOwner {
+  function setFee(uint256 _fee) external {
+    _checkOnlyOwner();
     require((fee = _fee) <= MAX_FEE, '7');
   }
 
   /// @param _unlentPerc new unlent percentage
-  function setUnlentPerc(uint256 _unlentPerc) external onlyOwner {
+  function setUnlentPerc(uint256 _unlentPerc) external {
+    _checkOnlyOwner();
     require((unlentPerc = _unlentPerc) <= FULL_ALLOC, '7');
   }
 
   /// @param _releaseBlocksPeriod new # of blocks after an harvest during which
   /// harvested rewards gets progressively redistriburted to users
-  function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external onlyOwner {
+  function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external {
+    _checkOnlyOwner();
     releaseBlocksPeriod = _releaseBlocksPeriod;
   }
 
   /// @param _isStkAAVEActive whether the contract receive stkAAVE or not
-  function setIsStkAAVEActive(bool _isStkAAVEActive) external onlyOwner {
+  function setIsStkAAVEActive(bool _isStkAAVEActive) external {
+    _checkOnlyOwner();
     isStkAAVEActive = _isStkAAVEActive;
   }
 
   /// @param _idealRange new ideal range
-  function setIdealRange(uint256 _idealRange) external onlyOwner {
+  function setIdealRange(uint256 _idealRange) external {
+    _checkOnlyOwner();
     require((idealRange = _idealRange) <= FULL_ALLOC, '7');
   }
 
   /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
   /// @param _incentiveTokens array with new incentive tokens
-  function setIncentiveTokens(address[] memory _incentiveTokens) external onlyOwner {
+  function setIncentiveTokens(address[] memory _incentiveTokens) external {
+    _checkOnlyOwner();
     incentiveTokens = _incentiveTokens;
   }
 
   /// @notice Set tranche Rewards contract addresses (for tranches incentivization)
   /// @param _AAStaking IdleCDOTrancheRewards contract address for AA tranches
   /// @param _BBStaking IdleCDOTrancheRewards contract address for BB tranches
-  function setStakingRewards(address _AAStaking, address _BBStaking) external onlyOwner {
+  function setStakingRewards(address _AAStaking, address _BBStaking) external {
+    _checkOnlyOwner();
     // Read state variable once
     address _AATranche = AATranche;
     address _BBTranche = BBTranche;
@@ -974,6 +990,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkSameTx() internal view {
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "8");
+  }
+
+  /// @dev Check that the second function is not called in the same tx from the same tx.origin
+  function _checkOnlyOwner() internal view {
+    require(owner() == msg.sender, '6');
   }
 
   /// @dev this method is only used to check whether a token is an incentive tokens or not

@@ -88,6 +88,8 @@ const upgradeContract = async (address, contractName, signer) => {
   return contract;
 };
 const fundWallets = async (underlying, to, from, amount) => {
+  await hre.network.provider.send("hardhat_setBalance", [from, "0xffffffffffffffff"])
+
   let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
   const decimals = await underlyingContract.decimals();
   [underlyingContract] = await sudo(from, underlyingContract);

@@ -841,7 +841,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setAllowAAWithdraw(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setAllowBBWithdraw should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setAllowBBWithdraw(true);
@@ -849,7 +849,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setAllowBBWithdraw(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setSkipDefaultCheck should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setSkipDefaultCheck(true);
@@ -857,7 +857,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setSkipDefaultCheck(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setRevertIfTooLow should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setRevertIfTooLow(true);
@@ -865,7 +865,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setRevertIfTooLow(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setRebalancer should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -878,7 +878,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setRebalancer(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setFeeReceiver should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -891,7 +891,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setFeeReceiver(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setGuardian should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -904,7 +904,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setGuardian(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setFee should set the relative address and be called only by the owner", async () => {
     const val = BN('15000');
@@ -917,7 +917,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setFee(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setIdealRange should set the relative address and be called only by the owner", async () => {
     const val = BN('15000');
@@ -930,7 +930,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setIdealRange(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setUnlentPerc should set the unlent percentage and be called only by the owner", async () => {
     const val = BN('15000');
@@ -943,7 +943,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setUnlentPerc(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setReleaseBlocksPeriod should set the release reward period and be called only by the owner", async () => {
     const val = BN('1600');
@@ -952,7 +952,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setReleaseBlocksPeriod(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setStakingRewards should set the relative addresses for incentiveTokens", async () => {
     await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
@@ -973,7 +973,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setStakingRewards(RandomAddr, Random2Addr)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setStakingRewards to 0 addresses", async () => {
     // set staking contract to some address
@@ -1063,7 +1063,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setStrategy(strategy2.address, [Random2Addr]);
     expect(await idleCDO.strategy()).to.be.equal(strategy2.address);
@@ -1085,7 +1085,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).transferToken(underlying.address, BN('1000').mul(one))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setGuardian(BBBuyer.address);
 
