@@ -109,7 +109,7 @@ describe("IdleCDO", function () {
     // set IdleToken2 mocked params
     await idleToken2.setTokenPriceWithFee(BN(2 * 10**18));
   });
-  
+
   it("should not reinitialize the contract", async () => {
     await expect(
       idleCDO.connect(owner).initialize(
@@ -385,7 +385,8 @@ describe("IdleCDO", function () {
 
     const _amountW = BN('500').mul(ONE_TOKEN(18));
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
-    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('950').mul(ONE_TOKEN(18)));
+    // 950 + 100 of fees
+    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('1050').mul(ONE_TOKEN(18)));
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('500').mul(ONE_TOKEN(18)));
     // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900 -> requested half => tot 950
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.sub(BN('50').mul(ONE_TOKEN(18))));
@@ -434,7 +435,8 @@ describe("IdleCDO", function () {
 
     const _amountW = BN('0').mul(ONE_TOKEN(18));
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
-    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
+    // fee in AA tranche tokens
+    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('100').mul(ONE_TOKEN(18)));
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
     // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(BN('900').mul(ONE_TOKEN(18)).add(initialAmount));
@@ -1219,7 +1221,7 @@ describe("IdleCDO", function () {
     // 2000 + (80% of 1800) = 2440 / 1000 = 2.44
     expect(await idleCDO.priceBB()).to.be.equal(BN('2440000000000000000'));
   });
-  it("harvest should convert fees in AA tranche tokens and stake them if curr AA ratio is low", async () => {
+  it("harvest should convert fees in AA tranche tokens and stake them if staking contract is present", async () => {
     // set fee receiver
     await idleCDO.setFeeReceiver(RandomAddr);
     // Initialize deposits
@@ -1248,34 +1250,6 @@ describe("IdleCDO", function () {
     const navAAafter = await idleCDO.lastNAVAA();
     // 1360 + 200 gain in AA from fees = 1560
     expect(navAAafter).to.be.equal(BN('1560').mul(one));
-  });
-
-  it("harvest should convert fees in BB tranche tokens and stake them if curr AA ratio is too high", async () => {
-    // set fee receiver
-    await idleCDO.setFeeReceiver(RandomAddr);
-    // Initialize deposits
-    const _amountAA = BN('1000').mul(one);
-    const _amountBB = BN('0').mul(one);
-    await setupBasicDeposits(_amountAA, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amountAA);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amountAA);
-    // gain is 1000 -> fee is 100
-    const gain = BN('100').mul(one);
-    // NAVAA = 1900 -> NAVBB = 0 -> tot 1900
-    // AARatio = 100%
-    // ideal ratio = 50% +- 10%
-    // so it will mint BB tokens
-    const vPriceBB = await idleCDO.virtualPrice(BB.address);
-    const expected = gain.mul(one).div(vPriceBB);
-
-    expect(await BB.balanceOf(RandomAddr)).to.be.equal(BN('0'));
-    await idleCDO.harvest(false, true, false, [true], [BN('0')], [BN('0')]);
-    expect(await stakingRewardsBB.usersStakes(RandomAddr)).to.be.equal(expected);
-    expect(await idleCDO.unclaimedFees()).to.be.equal(0);
-    const navBBafter = await idleCDO.lastNAVBB();
-    expect(navBBafter).to.be.equal(BN('100').mul(one));
   });
 
   it("harvest should give incentive to AA staking rewards if AA ratio is low", async () => {

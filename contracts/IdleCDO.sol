@@ -362,26 +362,21 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
   }
 
-  /// @notice convert fees (`unclaimedFees`) in tranche tokens
-  /// the tranche token minted is based on the current AA ratio, so to mint the tranche
-  /// that it's needed most to reach the trancheIdealWeightRatio. The tranche tokens
-  /// are then automatically staked in the relative IdleCDOTrancheRewards contact if present
+  /// @notice convert fees (`unclaimedFees`) in AA tranche tokens
+  /// Tranche tokens are then automatically staked in the relative IdleCDOTrancheRewards contact if present
   /// @dev this will be called only during harvests
-  /// @return _currAARatio current AA ratio
-  function _depositFees() internal returns (uint256 _currAARatio) {
+  function _depositFees() internal {
     uint256 _amount = unclaimedFees;
     if (_amount > 0) {
-      _currAARatio = getCurrentAARatio();
-      bool shouldMintBB = _currAARatio >= trancheIdealWeightRatio;
-      address stakingRewards = shouldMintBB ? BBStaking : AAStaking;
+      address stakingRewards = AAStaking;
       bool isStakingRewardsActive = stakingRewards != address(0);
       address _feeReceiver = feeReceiver;
 
       // mint tranches tokens to this contract
       uint256 _minted = _mintShares(_amount,
         isStakingRewardsActive ? address(this) : _feeReceiver,
-        // Choose the right tranche to mint based on getCurrentAARatio
-        shouldMintBB ? BBTranche : AATranche
+        // Mint AA tranche tokens as fees
+        AATranche
       );
       // reset unclaimedFees counter
       unclaimedFees = 0;
@@ -462,8 +457,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice sends rewards to the tranche rewards staking contracts
   /// @dev this method is called only during harvests
-  /// @param currAARatio current AA tranche ratio
-  function _updateIncentives(uint256 currAARatio) internal {
+  function _updateIncentives() internal {
+    uint256 currAARatio = getCurrentAARatio();
     // Read state variables only once to save gas
     uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
@@ -721,16 +716,15 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       // NOTE: harvested rewards won't be counted directly but released over time
       _updateAccounting();
 
-      uint256 currAARatio;
       if (!_skipFeeDeposit) {
         // Get fees in the form of totalSupply diluition
         // NOTE we return currAARatio to reuse it in _updateIncentives and so to save some gas
-        currAARatio = _depositFees();
+        _depositFees();
       }
 
       if (!_skipIncentivesUpdate) {
         // Update tranche incentives distribution and send rewards to staking contracts
-        _updateIncentives(currAARatio == 0 ? getCurrentAARatio() : currAARatio);
+        _updateIncentives();
       }
     }
 
