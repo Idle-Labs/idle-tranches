@@ -992,11 +992,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "8");
   }
 
-  /// @dev Check that the second function is not called in the same tx from the same tx.origin
-  function _checkOnlyOwner() internal view {
-    require(owner() == msg.sender, '6');
-  }
-
   /// @dev this method is only used to check whether a token is an incentive tokens or not
   /// in the harvest call. The maximum number of element in the array will be a small number (eg at most 3-5)
   /// @param _array array of addresses to search for an element
