@@ -56,7 +56,8 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
 
   /// @notice set contract TVL limit
   /// @param _limit limit in underlying value, 0 means no limit
-  function _setLimit(uint256 _limit) external onlyOwner {
+  function _setLimit(uint256 _limit) external {
+    require(owner() == msg.sender, '6');
     limit = _limit;
   }
 
