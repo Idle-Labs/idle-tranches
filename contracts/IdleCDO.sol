@@ -458,7 +458,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice sends rewards to the tranche rewards staking contracts
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
-    uint256 currAARatio = getCurrentAARatio();
     // Read state variables only once to save gas
     uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
@@ -467,6 +466,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address _AAStaking = AAStaking;
     bool _isBBStakingActive = _BBStaking != address(0);
     bool _isAAStakingActive = _AAStaking != address(0);
+
+    uint256 currAARatio;
+    if (_isBBStakingActive && _isAAStakingActive) {  
+      currAARatio = getCurrentAARatio();
+    }
 
     // Check if BB tranches should be rewarded (if AA ratio is too high)
     if (_isBBStakingActive && (!_isAAStakingActive || (currAARatio > (_trancheIdealWeightRatio + _idealRange)))) {
