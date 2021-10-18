@@ -469,12 +469,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     bool _isAAStakingActive = _AAStaking != address(0);
 
     // Check if BB tranches should be rewarded (if AA ratio is too high)
-    if (_isBBStakingActive && (currAARatio > (_trancheIdealWeightRatio + _idealRange))) {
+    if (_isBBStakingActive && (!_isAAStakingActive || (currAARatio > (_trancheIdealWeightRatio + _idealRange)))) {
       // give more rewards to BB holders, ie send some rewards to BB Staking contract
       return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
     }
     // Check if AA tranches should be rewarded (id AA ratio is too low)
-    if (_isAAStakingActive && (currAARatio < (_trancheIdealWeightRatio - _idealRange))) {
+    if (_isAAStakingActive && (!_isBBStakingActive || (currAARatio < (_trancheIdealWeightRatio - _idealRange)))) {
       // give more rewards to AA holders, ie send some rewards to AA Staking contract
       return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
     }

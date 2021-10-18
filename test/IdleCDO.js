@@ -1270,6 +1270,44 @@ describe("IdleCDO", function () {
     expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
   });
 
+  it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
+    await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
+    const feeReceiver = RandomAddr;
+    // set fee receiver
+    await idleCDO.setFeeReceiver(feeReceiver);
+    // Initialize deposits
+    const _amount = BN('1000').mul(one);
+    const _amountBB = BN('100').mul(one);
+    await setupBasicDeposits(_amount, _amountBB, true, false);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amount);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amount);
+
+    await idleCDO.harvest(false, false, false, [true], [BN('0')], [BN('0')]);
+    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
+    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
+  });
+
+  it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
+    await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
+    const feeReceiver = RandomAddr;
+    // set fee receiver
+    await idleCDO.setFeeReceiver(feeReceiver);
+    // Initialize deposits
+    const _amount = BN('100').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amount, _amountBB, true, false);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amount);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amount);
+
+    await idleCDO.harvest(false, false, false, [true], [BN('0')], [BN('0')]);
+    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
+    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
+  });
+
   it("harvest should give incentive to BB staking rewards if AA ratio is high", async () => {
     const feeReceiver = RandomAddr;
     // set fee receiver
