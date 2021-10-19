@@ -934,6 +934,32 @@ describe("IdleCDO", function () {
       idleCDO.connect(BBBuyer).setIdealRange(val)
     ).to.be.revertedWith("6");
   });
+  it("setTrancheAPRSplitRatio should set the relative value and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setTrancheAPRSplitRatio(val);
+    expect(await idleCDO.trancheAPRSplitRatio()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setTrancheAPRSplitRatio(BN('100001'))
+    ).to.be.revertedWith("7");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setTrancheAPRSplitRatio(val)
+    ).to.be.revertedWith("6");
+  });
+  it("setTrancheIdealWeightRatio should set the relative value and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setTrancheIdealWeightRatio(val);
+    expect(await idleCDO.trancheIdealWeightRatio()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setTrancheIdealWeightRatio(BN('100001'))
+    ).to.be.revertedWith("7");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setTrancheIdealWeightRatio(val)
+    ).to.be.revertedWith("6");
+  });
   it("setUnlentPerc should set the unlent percentage and be called only by the owner", async () => {
     const val = BN('15000');
     await idleCDO.setUnlentPerc(val);

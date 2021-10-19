@@ -468,7 +468,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     bool _isAAStakingActive = _AAStaking != address(0);
 
     uint256 currAARatio;
-    if (_isBBStakingActive && _isAAStakingActive) {  
+    if (_isBBStakingActive && _isAAStakingActive) {
       currAARatio = getCurrentAARatio();
     }
 
@@ -857,6 +857,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setIdealRange(uint256 _idealRange) external {
     _checkOnlyOwner();
     require((idealRange = _idealRange) <= FULL_ALLOC, '7');
+  }
+
+  /// @param _trancheAPRSplitRatio new apr split ratio
+  function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external {
+    _checkOnlyOwner();
+    require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
+  }
+
+  /// @param _trancheIdealWeightRatio new ideal weight ratio (for incentives)
+  function setTrancheIdealWeightRatio(uint256 _trancheIdealWeightRatio) external {
+    _checkOnlyOwner();
+    require((trancheIdealWeightRatio = _trancheIdealWeightRatio) <= FULL_ALLOC, '7');
   }
 
   /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
