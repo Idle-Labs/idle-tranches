@@ -85,10 +85,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     _updateUserIdx(_user, _amount);
     // increase the staked amount associated with the user
     usersStakes[_user] += _amount;
-    // get _amount of `tranche` tokens from the payer
-    IERC20Detailed(tranche).safeTransferFrom(_payer, address(this), _amount);
     // increase the total staked amount counter
     totalStaked += _amount;
+    // get _amount of `tranche` tokens from the payer
+    IERC20Detailed(tranche).safeTransferFrom(_payer, address(this), _amount);
   }
 
   /// @notice Unstake _amount of tranche tokens and redeem ALL accrued rewards
@@ -114,10 +114,10 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     }
     // if _amount is greater than usersStakes[msg.sender], the next line fails
     usersStakes[msg.sender] -= _amount;
-    // send funds to the user
-    IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
     // update the total staked counter
     totalStaked -= _amount;
+    // send funds to the user
+    IERC20Detailed(tranche).safeTransfer(msg.sender, _amount);
   }
 
   /// @notice Sends all the expected rewards to the msg.sender
