@@ -61,8 +61,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _trancheIdealWeightRatio, // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
     address[] memory _incentiveTokens
   ) external initializer {
+    uint256 _idealRange = FULL_ALLOC / 10;
     require(token == address(0), '1');
     require(_rebalancer != address(0) && _strategy != address(0) && _guardedToken != address(0), "0");
+    require( _trancheAPRSplitRatio <= FULL_ALLOC, '7');
+    require(_trancheIdealWeightRatio <= (FULL_ALLOC - _idealRange), '7');
+    require(_trancheIdealWeightRatio >= _idealRange, '5');
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
@@ -81,7 +85,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     rebalancer = _rebalancer;
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
     trancheIdealWeightRatio = _trancheIdealWeightRatio;
-    idealRange = 10000; // trancheIdealWeightRatio ± 10%
+    idealRange = _idealRange; // trancheIdealWeightRatio ± 10%
     uint256 _oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
     oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -868,7 +872,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _trancheIdealWeightRatio new ideal weight ratio (for incentives)
   function setTrancheIdealWeightRatio(uint256 _trancheIdealWeightRatio) external {
     _checkOnlyOwner();
-    require((trancheIdealWeightRatio = _trancheIdealWeightRatio) <= FULL_ALLOC, '7');
+    require((_trancheIdealWeightRatio) >= idealRange, '5');
+    require((trancheIdealWeightRatio = _trancheIdealWeightRatio) <= (FULL_ALLOC - idealRange), '7');
   }
 
   /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
