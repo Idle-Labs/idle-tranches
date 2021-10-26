@@ -14,12 +14,9 @@ const one = ONE_TOKEN(18);
 task("change-rewards", "Update rewards IdleCDO instance")
   .addParam('cdoname')
   .setAction(async (args) => {
-    // await run('upgrade-cdo-multisig', {cdoname: args.cdoname});
-
     const multisig = await run('get-multisig-or-fake');
 
     const deployToken = addresses.deployTokens[args.cdoname];
-    console.log('deployToken', deployToken)
 
     let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
     cdo = cdo.connect(multisig);

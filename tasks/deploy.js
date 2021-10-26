@@ -38,7 +38,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
         creator, // guardian
         mainnetContracts.rebalancer,
         strategy.address,
-        BN('20000'), // apr split: 20% interest to AA and 80% BB
+        BN('10000'), // apr split: 10% interest to AA and 90% BB
         BN('50000'), // ideal value: 50% AA and 50% BB tranches
         incentiveTokens
       ],
@@ -60,10 +60,16 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     const stakingRewardsAA = await helpers.deployUpgradableContract(
       'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
     );
-    const stakingRewardsBB = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
-    );
-    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
+
+    // Uncomment if staking rewards contract is present for junior holders too
+    //
+    // const stakingRewardsBB = await helpers.deployUpgradableContract(
+    //   'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
+    // );
+    // await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
+
+    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, addresses.addr0);
+
     console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
     console.log(`staking reward contract set`);
     console.log();
@@ -110,36 +116,31 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
 task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
   .addParam('cdoname')
   .setAction(async (args) => {
-    // Run 'compile' task
-    await run("compile");
-    const deployToken = addresses.deployTokens[args.cdoname];
+    await run("upgrade-with-multisig", {
+      cdoname: args.cdoname,
+      contractName: 'IdleCDO',
+      contractKey: 'cdoAddr',
+      // initMethod: '_init',
+      // initParams: []
+    });
+  });
 
-    const contractAddress = deployToken.cdo.cdoAddr;
-    if (!contractAddress) {
-      console.log(`IdleCDO Must be deployed`);
-      return;
-    }
-    await helpers.prompt("continue? [y/n]", true);
-    let signer = await run('get-signer-or-fake');
-    // deploy implementation with any signer
-    const newImpl = await helpers.prepareContractUpgrade(contractAddress, 'IdleCDO', signer);
-
-    // Use multisig for calling upgrade or upgradeAndCall
-    signer = await run('get-multisig-or-fake');
-    const proxyAdminAddress = deployToken.cdo.proxyAdmin;
-    if (!newImpl || !proxyAdminAddress) {
-      console.log(`New impl or proxyAdmin address are null`);
-      return;
-    }
-
-    let cdoContract = await ethers.getContractAt("IdleCDO", contractAddress);
-    let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
-    admin = admin.connect(signer);
-    await admin.upgrade(contractAddress, newImpl);
-
-    // const initMethodCall = contract.interface.encodeFunctionData("_init", []);
-    // await admin.upgradeAndCall(contractAddress, newImpl, initMethodCall);
-    // await run('test-harvest', {cdoname: 'idledai'});
+/**
+ * @name upgrade-rewards
+ */
+task("upgrade-rewards", "Upgrade IdleCDOTrancheRewards contract")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    await run("upgrade-with-multisig", {
+      cdoname: args.cdoname,
+      contractName: 'IdleCDOTrancheRewards',
+      contractKey: 'AArewards'
+    });
+    await run("upgrade-with-multisig", {
+      cdoname: args.cdoname,
+      contractName: 'IdleCDOTrancheRewards',
+      contractKey: 'BBrewards'
+    });
   });
 
 /**
@@ -148,22 +149,11 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
 task("upgrade-strategy", "Upgrade IdleCDO strategy")
   .addParam('cdoname')
   .setAction(async (args) => {
-    // Run 'compile' task
-    await run("compile");
-    const deployToken = addresses.deployTokens[args.cdoname];
-    console.log('deployToken', deployToken)
-    console.log('deployToken.cdo', deployToken.cdo)
-    const contractAddress = deployToken.cdo.strategy;
-    if (!contractAddress) {
-      console.log(`IdleCDO strategy Must be deployed`);
-      return;
-    }
-    console.log(contractAddress);
-
-    await helpers.prompt("continue? [y/n]", true);
-    const signer = await run('get-signer-or-fake');
-    await helpers.upgradeContract(contractAddress, 'IdleStrategy', signer);
-    console.log(`IdleStrategy upgraded`);
+    await run("upgrade-with-multisig", {
+      cdoname: args.cdoname,
+      contractName: 'IdleStrategy',
+      contractKey: 'strategy' // check eg CDOs.idleDAI.*
+    });
   });
 
 /**
@@ -252,6 +242,57 @@ task("emergency-shutdown-cdo-multisig", "Upgrade IdleCDO instance")
     console.log('Is Paused ? ', await cdo.paused());
     console.log('Allow AA withdraw ? ', await cdo.allowAAWithdraw());
     console.log('Allow BB withdraw ? ', await cdo.allowBBWithdraw());
+  });
+
+/**
+ * @name upgrade-with-multisig
+ */
+subtask("upgrade-with-multisig", "Get signer")
+  .addParam('cdoname')
+  .addParam('contractName')
+  .addParam('contractKey')
+  .addOptionalParam('initMethod')
+  .addOptionalParam('initParams')
+  .setAction(async (args) => {
+    await run("compile");
+    const deployToken = addresses.deployTokens[args.cdoname];
+    const contractName = args.contractName;
+
+    console.log('To upgrade: ', contractName)
+    console.log('deployToken', deployToken)
+
+    const contractAddress = deployToken.cdo[args.contractKey];
+
+    if (!contractAddress || !contractName) {
+      console.log(`contractAddress and contractName must be defined`);
+      return;
+    }
+
+    await helpers.prompt("continue? [y/n]", true);
+    let signer = await run('get-signer-or-fake');
+    // deploy implementation with any signer
+    const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+
+    // Use multisig for calling upgrade or upgradeAndCall
+    signer = await run('get-multisig-or-fake');
+    const proxyAdminAddress = deployToken.cdo.proxyAdmin;
+    if (!newImpl || !proxyAdminAddress) {
+      console.log(`New impl or proxyAdmin address are null`);
+      return;
+    }
+
+    let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
+    admin = admin.connect(signer);
+
+    if (args.initMethod) {
+      let contract = await ethers.getContractAt(contractName, contractAddress);
+      const initMethodCall = contract.interface.encodeFunctionData(args.initMethod, args.initParams || []);
+      await admin.upgradeAndCall(contractAddress, newImpl, initMethodCall);
+    } else {
+      await admin.upgrade(contractAddress, newImpl);
+    }
+
+    console.log(`${args.contractKey} (contract: ${contractName}) Upgraded, new impl ${newImpl}`);
   });
 
 /**
