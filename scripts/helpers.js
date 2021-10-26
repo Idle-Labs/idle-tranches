@@ -87,7 +87,16 @@ const upgradeContract = async (address, contractName, signer) => {
   log(`📤 ${contractName} upgraded (proxy): ${contract.address} @tx: ${contractReceipt.transactionHash} (gas ${contractReceipt.cumulativeGasUsed.toString()})`);
   return contract;
 };
+const prepareContractUpgrade = async (address, contractName, signer) => {
+  log(`Upgrading ${contractName}`);
+  const contractFactory = await ethers.getContractFactory(contractName, signer);
+  let impl = await hre.upgrades.prepareUpgrade(address, contractFactory);
+  log(`📤 ${contractName} new implementation deployed: ${impl}`);
+  return impl;
+};
 const fundWallets = async (underlying, to, from, amount) => {
+  await hre.network.provider.send("hardhat_setBalance", [from, "0xffffffffffffffff"])
+
   let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
   const decimals = await underlyingContract.decimals();
   [underlyingContract] = await sudo(from, underlyingContract);
@@ -251,6 +260,7 @@ module.exports = {
   deployContract,
   deployUpgradableContract,
   upgradeContract,
+  prepareContractUpgrade,
   fundWallets,
   prompt,
   check,

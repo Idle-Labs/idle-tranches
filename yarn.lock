@@ -23,11 +23,6 @@
     chalk "^2.0.0"
     js-tokens "^4.0.0"
 
-"@cto.af/textdecoder@^0.0.0":
-  version "0.0.0"
-  resolved "https://registry.yarnpkg.com/@cto.af/textdecoder/-/textdecoder-0.0.0.tgz#e1e8d84c936c30a0f4619971f19ca41941af9fdc"
-  integrity sha512-sJpx3F5xcVV/9jNYJQtvimo4Vfld/nD3ph+ZWtQzZ03Zo8rJC7QKQTRcIGS13Rcz80DwFNthCWMrd58vpY4ZAQ==
-
 "@defi-wonderland/smock@^2.0.1":
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/@defi-wonderland/smock/-/smock-2.0.1.tgz#93796bf30a31a1437c4b76be4d6b95e2b53cc6c4"
@@ -1670,12 +1665,12 @@
   resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-4.0.0.tgz#54d1de30911635020c383cb73b160b698e7ae179"
   integrity sha512-UcIJl/vUVjTr3H1yYXZi7Sr2PlXzBEHVUJKOUlVyzyy0FI8oQCCy0Wx+BuK/fojdnmLeMvUk4KUvhKUybP+C7Q==
 
-"@openzeppelin/hardhat-upgrades@^1.9.0":
-  version "1.9.0"
-  resolved "https://registry.yarnpkg.com/@openzeppelin/hardhat-upgrades/-/hardhat-upgrades-1.9.0.tgz#68d9d5b5876809f49ae445973614ea9624474872"
-  integrity sha512-ND1sqm8dpTY6CZLdaC5IgtUo6zvlVgSeqadrWRbr/N7J2Bs2JsINWA2G+r4IeunzbcOJFB7GHTs/RkFR6hNLmA==
+"@openzeppelin/hardhat-upgrades@^1.10.0":
+  version "1.10.0"
+  resolved "https://registry.yarnpkg.com/@openzeppelin/hardhat-upgrades/-/hardhat-upgrades-1.10.0.tgz#e7751e3b9a005ccc9cef4e0de190628b181b59b6"
+  integrity sha512-iGe058iV7Ba/g11RxlbqBG47nbqbZn1FRdg1FCQq7xPmvjRhXmFsoI/5gGw5el0aZlLDRtpFOBZbzMZvI/S7iw==
   dependencies:
-    "@openzeppelin/upgrades-core" "^1.8.0"
+    "@openzeppelin/upgrades-core" "^1.9.0"
 
 "@openzeppelin/test-helpers@^0.5.11":
   version "0.5.11"
@@ -1693,13 +1688,13 @@
     web3 "^1.2.5"
     web3-utils "^1.2.5"
 
-"@openzeppelin/upgrades-core@^1.8.0":
-  version "1.8.0"
-  resolved "https://registry.yarnpkg.com/@openzeppelin/upgrades-core/-/upgrades-core-1.8.0.tgz#b2d6f747e3a4c3e37a18d1b13f45b7617dde2260"
-  integrity sha512-hO/SqUusFzD8mxrtDllShTE0eeWXsBkrR8zjjr8C8j+/gzvWQnd9HkNGTh7bpf8giUGzkERDuOOpFdSI1R3yvQ==
+"@openzeppelin/upgrades-core@^1.9.0":
+  version "1.9.2"
+  resolved "https://registry.yarnpkg.com/@openzeppelin/upgrades-core/-/upgrades-core-1.9.2.tgz#9d7497f58b1f2bb704c162c716302bfff7923749"
+  integrity sha512-LU2NMvnz+6jXheh3Rnfql4UgtS7ViHWwcivS3JRI9DMCazmlyibwMYz5QMakrNNGAF7bY0t0Sw1UCfe5qTYxjA==
   dependencies:
     bn.js "^5.1.2"
-    cbor "^7.0.0"
+    cbor "^8.0.0"
     chalk "^4.1.0"
     compare-versions "^3.6.0"
     debug "^4.1.1"
@@ -3782,13 +3777,12 @@ cbor@^5.0.2, cbor@^5.1.0:
     bignumber.js "^9.0.1"
     nofilter "^1.0.4"
 
-cbor@^7.0.0:
-  version "7.0.4"
-  resolved "https://registry.yarnpkg.com/cbor/-/cbor-7.0.4.tgz#8a3ef39f07ac3fdb69dda461b87db7113233481b"
-  integrity sha512-9hBTn31l7+9qteBso7+HPp2R5ytqFRBd98fHK4ZTpvrba8V7CuoOsEL0S6vf7+11gubMTd3RW97lOgMTl5SNfg==
+cbor@^8.0.0:
+  version "8.0.2"
+  resolved "https://registry.yarnpkg.com/cbor/-/cbor-8.0.2.tgz#d0f5088423437efcc160e9304bd0576f45d06abb"
+  integrity sha512-H5WTjQYgyHQI0VrCmbyQBOPy1353MjmUi/r3DbPib4U13vuyqm7es9Mfpe8G58bN/mCdRlJWkiCrPl1uM1wAlg==
   dependencies:
-    "@cto.af/textdecoder" "^0.0.0"
-    nofilter "^2.0.3"
+    nofilter "^3.0.3"
 
 chai-bn@^0.2.1:
   version "0.2.1"
@@ -8868,12 +8862,10 @@ nofilter@^1.0.4:
   resolved "https://registry.yarnpkg.com/nofilter/-/nofilter-1.0.4.tgz#78d6f4b6a613e7ced8b015cec534625f7667006e"
   integrity sha512-N8lidFp+fCz+TD51+haYdbDGrcBWwuHX40F5+z0qkUjMJ5Tp+rdSuAkMJ9N9eoolDlEVTf6u5icM+cNKkKW2mA==
 
-nofilter@^2.0.3:
-  version "2.0.3"
-  resolved "https://registry.yarnpkg.com/nofilter/-/nofilter-2.0.3.tgz#f5460f3cb33147005883e3f5d4476239501fa187"
-  integrity sha512-FbuXC+lK+GU2+63D1kC1ETiZo+Z7SIi7B+mxKTCH1byrh6WFvfBCN/wpherFz0a0bjGd7EKTst/cz0yLeNngug==
-  dependencies:
-    "@cto.af/textdecoder" "^0.0.0"
+nofilter@^3.0.3:
+  version "3.1.0"
+  resolved "https://registry.yarnpkg.com/nofilter/-/nofilter-3.1.0.tgz#c757ba68801d41ff930ba2ec55bab52ca184aa66"
+  integrity sha512-l2NNj07e9afPnhAhvgVrCD/oy2Ai1yfLpuo3EpiO1jFTsB4sFz6oIfAfSZyQzVpkZQ9xS8ZS5g1jCBgq4Hwo0g==
 
 noop-logger@^0.1.1:
   version "0.1.1"

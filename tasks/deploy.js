@@ -105,6 +105,44 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
   });
 
 /**
+ * @name upgrade-cdo-multisig
+ */
+task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+    const deployToken = addresses.deployTokens[args.cdoname];
+
+    const contractAddress = deployToken.cdo.cdoAddr;
+    if (!contractAddress) {
+      console.log(`IdleCDO Must be deployed`);
+      return;
+    }
+    await helpers.prompt("continue? [y/n]", true);
+    let signer = await run('get-signer-or-fake');
+    // deploy implementation with any signer
+    const newImpl = await helpers.prepareContractUpgrade(contractAddress, 'IdleCDO', signer);
+
+    // Use multisig for calling upgrade or upgradeAndCall
+    signer = await run('get-multisig-or-fake');
+    const proxyAdminAddress = deployToken.cdo.proxyAdmin;
+    if (!newImpl || !proxyAdminAddress) {
+      console.log(`New impl or proxyAdmin address are null`);
+      return;
+    }
+
+    let cdoContract = await ethers.getContractAt("IdleCDO", contractAddress);
+    let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
+    admin = admin.connect(signer);
+    await admin.upgrade(contractAddress, newImpl);
+
+    // const initMethodCall = contract.interface.encodeFunctionData("_init", []);
+    // await admin.upgradeAndCall(contractAddress, newImpl, initMethodCall);
+    // await run('test-harvest', {cdoname: 'idledai'});
+  });
+
+/**
  * @name upgrade-strategy
  */
 task("upgrade-strategy", "Upgrade IdleCDO strategy")

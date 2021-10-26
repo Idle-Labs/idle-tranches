@@ -109,7 +109,7 @@ describe("IdleCDO", function () {
     // set IdleToken2 mocked params
     await idleToken2.setTokenPriceWithFee(BN(2 * 10**18));
   });
-  
+
   it("should not reinitialize the contract", async () => {
     await expect(
       idleCDO.connect(owner).initialize(
@@ -385,7 +385,8 @@ describe("IdleCDO", function () {
 
     const _amountW = BN('500').mul(ONE_TOKEN(18));
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
-    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('950').mul(ONE_TOKEN(18)));
+    // 950 + 100 of fees
+    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('1050').mul(ONE_TOKEN(18)));
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('500').mul(ONE_TOKEN(18)));
     // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900 -> requested half => tot 950
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.sub(BN('50').mul(ONE_TOKEN(18))));
@@ -434,7 +435,8 @@ describe("IdleCDO", function () {
 
     const _amountW = BN('0').mul(ONE_TOKEN(18));
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
-    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
+    // fee in AA tranche tokens
+    expect(await idleCDO.lastNAVAA()).to.be.equal(BN('100').mul(ONE_TOKEN(18)));
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0'));
     // 2000 - 10% of fees on 1000 of gain -> initialAmount - 1000 + 1900
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(BN('900').mul(ONE_TOKEN(18)).add(initialAmount));
@@ -841,7 +843,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setAllowAAWithdraw(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setAllowBBWithdraw should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setAllowBBWithdraw(true);
@@ -849,7 +851,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setAllowBBWithdraw(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setSkipDefaultCheck should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setSkipDefaultCheck(true);
@@ -857,7 +859,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setSkipDefaultCheck(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setRevertIfTooLow should set the relative flag and be called only by the owner", async () => {
     await idleCDO.setRevertIfTooLow(true);
@@ -865,7 +867,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setRevertIfTooLow(false)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setRebalancer should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -878,7 +880,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setRebalancer(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setFeeReceiver should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -891,7 +893,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setFeeReceiver(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setGuardian should set the relative address and be called only by the owner", async () => {
     const val = RandomAddr;
@@ -904,7 +906,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setGuardian(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setFee should set the relative address and be called only by the owner", async () => {
     const val = BN('15000');
@@ -917,7 +919,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setFee(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setIdealRange should set the relative address and be called only by the owner", async () => {
     const val = BN('15000');
@@ -930,7 +932,33 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setIdealRange(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
+  });
+  it("setTrancheAPRSplitRatio should set the relative value and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setTrancheAPRSplitRatio(val);
+    expect(await idleCDO.trancheAPRSplitRatio()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setTrancheAPRSplitRatio(BN('100001'))
+    ).to.be.revertedWith("7");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setTrancheAPRSplitRatio(val)
+    ).to.be.revertedWith("6");
+  });
+  it("setTrancheIdealWeightRatio should set the relative value and be called only by the owner", async () => {
+    const val = BN('15000');
+    await idleCDO.setTrancheIdealWeightRatio(val);
+    expect(await idleCDO.trancheIdealWeightRatio()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setTrancheIdealWeightRatio(BN('100001'))
+    ).to.be.revertedWith("7");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setTrancheIdealWeightRatio(val)
+    ).to.be.revertedWith("6");
   });
   it("setUnlentPerc should set the unlent percentage and be called only by the owner", async () => {
     const val = BN('15000');
@@ -943,7 +971,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setUnlentPerc(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setReleaseBlocksPeriod should set the release reward period and be called only by the owner", async () => {
     const val = BN('1600');
@@ -952,7 +980,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setReleaseBlocksPeriod(val)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setStakingRewards should set the relative addresses for incentiveTokens", async () => {
     await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
@@ -973,7 +1001,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setStakingRewards(RandomAddr, Random2Addr)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
   });
   it("setStakingRewards to 0 addresses", async () => {
     // set staking contract to some address
@@ -1063,7 +1091,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setStrategy(strategy2.address, [Random2Addr]);
     expect(await idleCDO.strategy()).to.be.equal(strategy2.address);
@@ -1085,7 +1113,7 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).transferToken(underlying.address, BN('1000').mul(one))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("6");
 
     await idleCDO.setGuardian(BBBuyer.address);
 
@@ -1219,7 +1247,7 @@ describe("IdleCDO", function () {
     // 2000 + (80% of 1800) = 2440 / 1000 = 2.44
     expect(await idleCDO.priceBB()).to.be.equal(BN('2440000000000000000'));
   });
-  it("harvest should convert fees in AA tranche tokens and stake them if curr AA ratio is low", async () => {
+  it("harvest should convert fees in AA tranche tokens and stake them if staking contract is present", async () => {
     // set fee receiver
     await idleCDO.setFeeReceiver(RandomAddr);
     // Initialize deposits
@@ -1250,34 +1278,6 @@ describe("IdleCDO", function () {
     expect(navAAafter).to.be.equal(BN('1560').mul(one));
   });
 
-  it("harvest should convert fees in BB tranche tokens and stake them if curr AA ratio is too high", async () => {
-    // set fee receiver
-    await idleCDO.setFeeReceiver(RandomAddr);
-    // Initialize deposits
-    const _amountAA = BN('1000').mul(one);
-    const _amountBB = BN('0').mul(one);
-    await setupBasicDeposits(_amountAA, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amountAA);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amountAA);
-    // gain is 1000 -> fee is 100
-    const gain = BN('100').mul(one);
-    // NAVAA = 1900 -> NAVBB = 0 -> tot 1900
-    // AARatio = 100%
-    // ideal ratio = 50% +- 10%
-    // so it will mint BB tokens
-    const vPriceBB = await idleCDO.virtualPrice(BB.address);
-    const expected = gain.mul(one).div(vPriceBB);
-
-    expect(await BB.balanceOf(RandomAddr)).to.be.equal(BN('0'));
-    await idleCDO.harvest(false, true, false, [true], [BN('0')], [BN('0')]);
-    expect(await stakingRewardsBB.usersStakes(RandomAddr)).to.be.equal(expected);
-    expect(await idleCDO.unclaimedFees()).to.be.equal(0);
-    const navBBafter = await idleCDO.lastNAVBB();
-    expect(navBBafter).to.be.equal(BN('100').mul(one));
-  });
-
   it("harvest should give incentive to AA staking rewards if AA ratio is low", async () => {
     const feeReceiver = RandomAddr;
     // set fee receiver
@@ -1294,6 +1294,44 @@ describe("IdleCDO", function () {
     await idleCDO.harvest(false, false, false, [true], [BN('0')], [BN('0')]);
     expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
     expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
+  });
+
+  it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
+    await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
+    const feeReceiver = RandomAddr;
+    // set fee receiver
+    await idleCDO.setFeeReceiver(feeReceiver);
+    // Initialize deposits
+    const _amount = BN('1000').mul(one);
+    const _amountBB = BN('100').mul(one);
+    await setupBasicDeposits(_amount, _amountBB, true, false);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amount);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amount);
+
+    await idleCDO.harvest(false, false, false, [true], [BN('0')], [BN('0')]);
+    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
+    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
+  });
+
+  it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
+    await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
+    const feeReceiver = RandomAddr;
+    // set fee receiver
+    await idleCDO.setFeeReceiver(feeReceiver);
+    // Initialize deposits
+    const _amount = BN('100').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amount, _amountBB, true, false);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amount);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amount);
+
+    await idleCDO.harvest(false, false, false, [true], [BN('0')], [BN('0')]);
+    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
+    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
   });
 
   it("harvest should give incentive to BB staking rewards if AA ratio is high", async () => {

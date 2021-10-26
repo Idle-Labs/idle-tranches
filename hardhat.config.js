@@ -16,6 +16,7 @@ require("./tasks/tests");
 require("./tasks/deploy");
 require("./tasks/test-harvest");
 require("./tasks/cdo-factory");
+require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
 
@@ -27,7 +28,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 25
+            runs: 310
           }
         }
       }
@@ -71,7 +72,8 @@ module.exports = {
         // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
         // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
         // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
-        blockNumber: 13261760 // pre transfer ownership
+        // blockNumber: 13261760 // pre transfer ownership
+        blockNumber: 13441245 // gas optimizations
       }
     },
     coverage: {
