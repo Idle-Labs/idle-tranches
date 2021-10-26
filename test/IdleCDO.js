@@ -953,8 +953,12 @@ describe("IdleCDO", function () {
     expect(await idleCDO.trancheIdealWeightRatio()).to.be.equal(val);
 
     await expect(
-      idleCDO.setTrancheIdealWeightRatio(BN('100001'))
+      idleCDO.setTrancheIdealWeightRatio(BN('90001'))
     ).to.be.revertedWith("7");
+
+    await expect(
+      idleCDO.setTrancheIdealWeightRatio(BN('9999'))
+    ).to.be.revertedWith("5");
 
     await expect(
       idleCDO.connect(BBBuyer).setTrancheIdealWeightRatio(val)
