@@ -110,6 +110,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     fee = 10000; // 10% performance fee
     feeReceiver = address(0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4); // feeCollector
     guardian = _owner;
+    feeSplit = FULL_ALLOC; // all to feeReceiver as default
     // StkAAVE unwrapping is active
     isStkAAVEActive = true;
   }
@@ -375,9 +376,17 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       address stakingRewards = AAStaking;
       bool isStakingRewardsActive = stakingRewards != address(0);
       address _feeReceiver = feeReceiver;
+      address _referral = referral;
+      uint256 _referralAmount;
+
+      if (_referral != address(0)) {
+        // If the contract has a referral, then we give the referral a share of the fees (in AA tranche tokens)
+        _referralAmount = _amount * (FULL_ALLOC - feeSplit) / FULL_ALLOC;
+        _mintShares(_referralAmount, _referral, AATranche);
+      }
 
       // mint tranches tokens to this contract
-      uint256 _minted = _mintShares(_amount,
+      uint256 _minted = _mintShares(_amount - _referralAmount,
         isStakingRewardsActive ? address(this) : _feeReceiver,
         // Mint AA tranche tokens as fees
         AATranche
@@ -456,6 +465,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_revertIfNeeded) {
       // keep 100 wei as margin for rounding errors
       require(_redeemedTokens + 100 >= _amount, '5');
+    }
+    if (_redeemedTokens > _amount) {
+      _redeemedTokens = _amount;
     }
   }
 
@@ -826,6 +838,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     require((feeReceiver = _feeReceiver) != address(0), '0');
   }
 
+  /// @notice set new referral address
+  /// @dev can be called only by the owner
+  /// @param _referral new referral address (can be address(0))
+  function setReferral(address _referral) external {
+    _checkOnlyOwner();
+    referral = _referral;
+  }
+
   /// @param _guardian new guardian (pauser) address
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
@@ -836,6 +856,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setFee(uint256 _fee) external {
     _checkOnlyOwner();
     require((fee = _fee) <= MAX_FEE, '7');
+  }
+
+  /// @notice set fee split between feeReceiver and referral (if any). If referral is not set, fee goes to feeReceiver.
+  /// @dev can be called only by the owner
+  /// @param _feeSplit new fee split
+  function setFeeSplit(uint256 _feeSplit) external {
+    _checkOnlyOwner();
+    require((feeSplit = _feeSplit) <= FULL_ALLOC, '8');
   }
 
   /// @param _unlentPerc new unlent percentage

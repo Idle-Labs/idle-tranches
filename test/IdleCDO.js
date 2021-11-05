@@ -167,6 +167,7 @@ describe("IdleCDO", function () {
     // GuardedLaunchUpgradable
     expect(await idleCDO.limit()).to.be.equal(BN('1000000').mul(ONE_TOKEN(18)));
     expect(await idleCDO.governanceRecoveryFund()).to.equal(owner.address);
+    expect(await idleCDO.feeSplit()).to.equal(BN('100000'));
   });
 
   // ###############
@@ -908,6 +909,16 @@ describe("IdleCDO", function () {
       idleCDO.connect(BBBuyer).setGuardian(val)
     ).to.be.revertedWith("6");
   });
+  it("setReferral should set the relative address and be called only by the owner", async () => {
+    const val = RandomAddr;
+    await idleCDO.setReferral(val);
+    expect(await idleCDO.referral()).to.be.equal(val);
+
+    await expect(
+      idleCDO.connect(BBBuyer).setReferral(val)
+    ).to.be.revertedWith("6");
+  });
+  
   it("setFee should set the relative address and be called only by the owner", async () => {
     const val = BN('15000');
     await idleCDO.setFee(val);
@@ -919,6 +930,19 @@ describe("IdleCDO", function () {
 
     await expect(
       idleCDO.connect(BBBuyer).setFee(val)
+    ).to.be.revertedWith("6");
+  });
+  it("setFeeSplit should set the fee split ratio between feeReceiver and referral", async () => {
+    const val = BN('50000');
+    await idleCDO.setFeeSplit(val);
+    expect(await idleCDO.feeSplit()).to.be.equal(val);
+
+    await expect(
+      idleCDO.setFeeSplit(BN('100001'))
+    ).to.be.revertedWith("8");
+
+    await expect(
+      idleCDO.connect(BBBuyer).setFeeSplit(val)
     ).to.be.revertedWith("6");
   });
   it("setIdealRange should set the relative address and be called only by the owner", async () => {
@@ -1579,6 +1603,54 @@ describe("IdleCDO", function () {
     }
 
     expect(isFailed).to.be.true;
+  });
+
+  it("harvest should split fees between feeReceiver and referral if referral is present and feeSplit > 0", async () => {
+    // set fee receiver, referral and 50/50 fee split
+    await idleCDO.setReferral(Random2Addr);
+    await idleCDO.setFeeSplit(BN('50000'));
+    await idleCDO.setFeeReceiver(RandomAddr);
+    // Initialize deposits
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true, false);
+    // Mock the return of gov tokens
+    await incentiveToken.transfer(idleToken.address, _amountAA);
+    await idleToken.setGovTokens([incentiveToken.address]);
+    await idleToken.setGovAmount(_amountAA);
+    // gain is 2000 -> fee is 200
+    const fee = BN('200').mul(one);
+    // NAVAA = 1360 -> NAVBB = 2440 -> tot 3800
+    // AARatio = 1360 / 3800 = 35.789%
+    // ideal ratio = 50% +- 10%
+    // so it will mint AA tokens
+    const vPriceAA = await idleCDO.virtualPrice(AA.address);
+    const expected = fee.mul(one).div(vPriceAA);
+
+    expect(await AA.balanceOf(RandomAddr)).to.be.equal(BN('0'));
+    expect(await AA.balanceOf(Random2Addr)).to.be.equal(BN('0'));
+    await idleCDO.harvest(false, true, false, [true], [BN('0')], [BN('0')]);
+
+    // check balance in tranche rewards staking contract
+    expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.equal(expected.div(BN('2')));
+    // check that referral got the fee
+    expect(await AA.balanceOf(Random2Addr)).to.be.equal(expected.div(BN('2')));
+
+    expect(await idleCDO.unclaimedFees()).to.be.equal(0);
+    const navAAafter = await idleCDO.lastNAVAA();
+    // 1360 + 200 fee in AA from fees = 1560
+    expect(navAAafter).to.be.equal(BN('1560').mul(one));
+  });
+
+  it("liquidate should return at most _amount to avoid rounding errors", async () => {
+    const _amountAA = BN('1000').mul(one);
+    const _amountBB = BN('1000').mul(one);
+    await setupBasicDeposits(_amountAA, _amountBB, true, false);
+    const fakeStrategy = await smock.fake('IdleStrategy', { address: strategy.address });
+    fakeStrategy.redeemUnderlying.returnsAtCall(0, BN('1100').mul(one));
+
+    balAA = await idleCDO.callStatic.liquidate(BN('1000').mul(one), true);
+    expect(balAA).to.be.equal(BN('1000').mul(one));
   });
 
   // ###############
