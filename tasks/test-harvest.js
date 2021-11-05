@@ -37,7 +37,6 @@ task("test-harvest", "")
     const underlying = await idleCDO.token();
     let compERC20 = await ethers.getContractAt("IERC20Detailed", mainnetContracts.COMP);
     let idleERC20 = await ethers.getContractAt("IERC20Detailed", mainnetContracts.IDLE);
-    let cTokenContract = await ethers.getContractAt("IERC20Detailed", testToken.cToken);
     let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
     let AAContract = await ethers.getContractAt("IdleCDOTranche", AAaddr);
     let BBContract = await ethers.getContractAt("IdleCDOTranche", BBaddr);
