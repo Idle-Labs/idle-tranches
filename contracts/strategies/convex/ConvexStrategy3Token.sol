@@ -10,7 +10,7 @@ contract ConvexStrategy2Token is ConvexBaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
     
     /// @notice curve N_COINS for the pool
-    uint256 public constant CURVE_UNDERLYINGS_SIZE = 2;
+    uint256 public constant CURVE_UNDERLYINGS_SIZE = 3;
 
     function _curveUnderlyingsSize() internal pure override returns(uint256) {
         return CURVE_UNDERLYINGS_SIZE;
