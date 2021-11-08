@@ -29,7 +29,6 @@ contract ConvexStrategy2Token is ConvexBaseStrategy {
         _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
-        uint256 _minimum = 0;
-        ICurveDeposit_2token(_pool).add_liquidity(_depositArray, _minimum);
+        ICurveDeposit_2token(_pool).add_liquidity(_depositArray, 0);
     }
 }

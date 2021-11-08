@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.7;
 
-interface ICurveDeposit_3token {
+interface ICurveDeposit_4token {
     function get_virtual_price() external view returns (uint256);
 
-    function add_liquidity(uint256[3] calldata amounts, uint256 min_mint_amount)
+    function add_liquidity(uint256[4] calldata amounts, uint256 min_mint_amount)
         external;
 
     function remove_liquidity_imbalance(
-        uint256[3] calldata amounts,
+        uint256[4] calldata amounts,
         uint256 max_burn_amount
     ) external;
 
-    function remove_liquidity(uint256 _amount, uint256[3] calldata amounts)
+    function remove_liquidity(uint256 _amount, uint256[4] calldata amounts)
         external;
 
     function exchange(
@@ -22,7 +22,7 @@ interface ICurveDeposit_3token {
         uint256 _min_to_amount
     ) external;
 
-    function calc_token_amount(uint256[3] calldata amounts, bool deposit)
+    function calc_token_amount(uint256[4] calldata amounts, bool deposit)
         external
         view
         returns (uint256);
