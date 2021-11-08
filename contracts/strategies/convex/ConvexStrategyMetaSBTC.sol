@@ -2,15 +2,17 @@
 pragma solidity 0.8.7;
 
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
-import {ICurveDeposit_2token_underlying} from "../../interfaces/curve/ICurveDeposit_2token_underlying.sol";
+import {DepositZap} from "../../interfaces/curve/DepositZap.sol";
 import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-contract ConvexStrategy2TokenUnderlying is ConvexBaseStrategy {
+contract ConvexStrategyMetaSBTC is ConvexBaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
     /// @notice curve N_COINS for the pool
-    uint256 public constant CURVE_UNDERLYINGS_SIZE = 2;
+    uint256 public constant CURVE_UNDERLYINGS_SIZE = 4;
+    /// @notice curve sBTC deposit zap
+    address public constant SBTC_DEPOSIT_ZAP = address(0x7AbDBAf29929e7F8621B757D2a7c04d78d633834);
 
     function _curveUnderlyingsSize() internal pure override returns(uint256) {
         return CURVE_UNDERLYINGS_SIZE;
@@ -25,12 +27,11 @@ contract ConvexStrategy2TokenUnderlying is ConvexBaseStrategy {
         _deposit.safeApprove(_pool, 0);
         _deposit.safeApprove(_pool, _balance);
 
-        uint256[2] memory _depositArray;
+        uint256[4] memory _depositArray;
         _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
-        // we also use only underlying because we liquidate rewards for one of the
-        // underlying assetss
-        ICurveDeposit_2token_underlying(_pool).add_liquidity(_depositArray, 0, true);
+        // we also use the zap to deploy funds into a meta pool
+        DepositZap(SBTC_DEPOSIT_ZAP).add_liquidity(_pool, _depositArray, 0, msg.sender);
     }
 }

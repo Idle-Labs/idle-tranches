@@ -31,6 +31,6 @@ contract ConvexStrategy3TokenUnderlying is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         // we also use only underlying because we liquidate rewards for one of the
         // underlying assetss
-        ICurveDeposit_3token(_pool).add_liquidity(_depositArray, 0, true);
+        ICurveDeposit_3token_underlying(_pool).add_liquidity(_depositArray, 0, true);
     }
 }

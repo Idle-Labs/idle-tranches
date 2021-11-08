@@ -5,7 +5,7 @@ interface ICurveDeposit_4token_underlying {
     function get_virtual_price() external view returns (uint256);
 
     function add_liquidity(
-        uint256[3] calldata amounts,
+        uint256[4] calldata amounts,
         uint256 min_mint_amount,
         bool use_underlying
     ) external;

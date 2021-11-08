@@ -31,6 +31,6 @@ contract ConvexStrategy4TokenUnderlying is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         // we also use only underlying because we liquidate rewards for one of the
         // underlying assetss
-        ICurveDeposit_4token(_pool).add_liquidity(_depositArray, 0, true);
+        ICurveDeposit_4token_underlying(_pool).add_liquidity(_depositArray, 0, true);
     }
 }

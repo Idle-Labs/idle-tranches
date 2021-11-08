@@ -238,7 +238,7 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   /// @return redeemed amount of underlyings redeemed
   function _redeem(uint256 _amount) internal onlyWhitelistedCDO returns(uint256 redeemed) {
     if (_amount > 0) {
-      IERC20Detailed _curvePoolToken = curvePoolToken;
+      IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
       
       // burn strategy tokens for the msg.sender
       _burn(msg.sender, _amount);
@@ -247,11 +247,11 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
       IBooster(BOOSTER).withdraw(poolID, _amount);
       
       // check for balance and transfer it
-      redeemed = _curvePoolToken.balanceOf(address(this));
+      redeemed = _curveLpToken.balanceOf(address(this));
       require(redeemed == _amount, "Wrong amount withdrawn");
 
       // transfer underlying lp tokens to msg.sender
-      _curvePoolToken.safeTransfer(msg.sender, redeemed);
+      _curveLpToken.safeTransfer(msg.sender, redeemed);
     }
 
     return redeemed;
