@@ -11,6 +11,7 @@ import "../../interfaces/IIdleCDOStrategy.sol";
 import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/convex/IBooster.sol";
 import "../../interfaces/convex/IBaseRewardPool.sol";
+import "../../interfaces/curve/IMainRegistry.sol";
 
 /// @author @dantop114
 /// @title ConvexStrategy
@@ -26,9 +27,7 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   /// @notice convex rewards pool id for the underlying curve lp token
   uint256 public poolID;
   /// @notice curve lp token to deposit in convex
-  address public curvePool;
-  /// @notice curve pool ERC20 contract
-  IERC20Detailed public curvePoolToken;
+  address public curveLpToken;
   /// @notice deposit token address to deposit into curve pool
   address public curveDeposit;
   /// @notice deposit token array position
@@ -38,11 +37,13 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   /// @notice address of the tokenized strategy position, in this case this contract address
   address public override strategyToken;
   /// @notice decimals of the underlying asset
-  uint256 public curvePoolDecimals;
+  uint256 public curveLpDecimals;
   /// @notice convex booster address
   address internal constant BOOSTER = address(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
   /// @notice weth token address
   address public constant WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+  /// @notice Curve main registry
+  address public constant MAIN_REGISTRY = address(0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5);
   /// @notice whitelisted CDO for this strategy
   address public whitelistedCDO;
 
@@ -75,7 +76,7 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   // Used to prevent initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    curvePool = address(1);
+    curveLpToken = address(1);
   }
 
   // ###################
@@ -88,7 +89,7 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   /// @param _deposit deposit token to use for Curve pool
   /// @param _owner owner address
   function initialize(uint256 _poolID, address _deposit, uint256 _depositPosition, address _owner) public initializer {
-    require(curvePool == address(0), 'Initialized');
+    require(curveLpToken == address(0), 'Initialized');
     require(_depositPosition < _curveUnderlyingsSize(), 'Deposit token position invalid');
 
     // Initialize contracts
@@ -101,22 +102,22 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
     // Check if Convex pool is active
     require(!shutdown, 'Convex Pool is not active');
 
-    string memory _name = string(abi.encodePacked("Idle ", curvePoolToken.name(), " Convex Strategy"));
-    string memory _symbol = string(abi.encodePacked("idleCvx", curvePoolToken.symbol()));
+    string memory _name = string(abi.encodePacked("Idle ", IERC20Detailed(_crvLp).name(), " Convex Strategy"));
+    string memory _symbol = string(abi.encodePacked("idleCvx", IERC20Detailed(_crvLp).symbol()));
     ERC20Upgradeable.__ERC20_init(_name, _symbol);
 
     // Set basic parameters
-    curvePool = _crvLp;
+    curveLpToken = _crvLp;
     poolID = _poolID;
     rewardPool = _rewardPool;
     strategyToken = address(this); // this contract is tokenizing the position
-    curvePoolDecimals = IERC20Detailed(curvePool).decimals();
-    ONE_CURVE_LP_TOKEN = 10**(curvePoolDecimals);
+    curveLpDecimals = IERC20Detailed(_crvLp).decimals();
+    ONE_CURVE_LP_TOKEN = 10**(curveLpDecimals);
     curveDeposit = _deposit;
     depositPosition = _depositPosition;
 
     // set rewards to give back to CDO 
-    rewards.push(curvePool);
+    rewards.push(curveLpToken);
 
     // transfer ownership
     transferOwnership(_owner);
@@ -131,11 +132,11 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   }
 
   function token() external override view returns(address) {
-    return curvePool;
+    return curveLpToken;
   }
 
   function tokenDecimals() external override view returns(uint256) {
-    return curvePoolDecimals;
+    return curveLpDecimals;
   }
 
   // ###################
@@ -148,7 +149,7 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   function deposit(uint256 _amount) external onlyWhitelistedCDO override returns (uint256 minted) {
     if (_amount > 0) {
       /// get `tokens` from msg.sender
-      curvePoolToken.safeTransferFrom(msg.sender, address(this), _amount);
+      IERC20Detailed(curveLpToken).safeTransferFrom(msg.sender, address(this), _amount);
       /// deposit those in convex and stake
       IBooster(BOOSTER).depositAll(poolID, true);
       /// mint strategy tokens to msg.sender
@@ -201,12 +202,12 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
 
     _curveDeposit();
 
-    IERC20Detailed _curvePool = IERC20Detailed(curvePool);
-    uint256 _curvePoolBalance = _curvePool.balanceOf(address(this));
-    _curvePool.safeTransfer(whitelistedCDO, _curvePoolBalance);
+    IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
+    uint256 _curveLpBalance = _curveLpToken.balanceOf(address(this));
+    _curveLpToken.safeTransfer(whitelistedCDO, _curveLpBalance);
 
     _balances = new uint256[](1);
-    _balances[0] = _curvePoolBalance;
+    _balances[0] = _curveLpBalance;
   }
 
   /// @dev msg.sender should approve this contract first
@@ -226,6 +227,10 @@ abstract contract ConvexBaseStrategy is Initializable, OwnableUpgradeable, Reent
   function _curveUnderlyingsSize() virtual internal returns(uint256);
 
   function _curveDeposit() virtual internal;
+
+  function _curvePool() internal returns(address) {
+    return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
+  }
 
 
   /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`

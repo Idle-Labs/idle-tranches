@@ -19,15 +19,17 @@ contract ConvexStrategy2Token is ConvexBaseStrategy {
     function _curveDeposit() internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
+        
+        address _pool = _curvePool();
 
-        _deposit.safeApprove(curvePool, 0);
-        _deposit.safeApprove(curvePool, _balance);
+        _deposit.safeApprove(_pool, 0);
+        _deposit.safeApprove(_pool, _balance);
 
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256 _minimum = 0;
-        ICurveDeposit_2token(curveDeposit).add_liquidity(_depositArray, _minimum);
+        ICurveDeposit_2token(_pool).add_liquidity(_depositArray, _minimum);
     }
 }
