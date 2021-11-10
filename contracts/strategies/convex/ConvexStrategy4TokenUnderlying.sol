@@ -12,11 +12,15 @@ contract ConvexStrategy4TokenUnderlying is ConvexBaseStrategy {
     /// @notice curve N_COINS for the pool
     uint256 public constant CURVE_UNDERLYINGS_SIZE = 4;
 
+    /// @return size of the curve deposit array
     function _curveUnderlyingsSize() internal pure override returns(uint256) {
         return CURVE_UNDERLYINGS_SIZE;
     }
 
-    function _curveDeposit() internal override {
+    /// @notice Deposits in Curve for lending pools with 4 tokens
+    /// @dev This should be used to implement the strategy with newest curve pools like ib (Iron Bank)
+    ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
+    function _depositInCurve() internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
         
@@ -25,12 +29,12 @@ contract ConvexStrategy4TokenUnderlying is ConvexBaseStrategy {
         _deposit.safeApprove(_pool, 0);
         _deposit.safeApprove(_pool, _balance);
 
-        uint256[4] memory _depositArray;
-        _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         // we also use only underlying because we liquidate rewards for one of the
         // underlying assetss
+        uint256[4] memory _depositArray;
+        _depositArray[depositPosition] = _balance;
         ICurveDeposit_4token_underlying(_pool).add_liquidity(_depositArray, 0, true);
     }
 }

@@ -4,9 +4,10 @@ pragma solidity 0.8.7;
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
 import {ICurveDeposit_2token} from "../../interfaces/curve/ICurveDeposit_2token.sol";
 import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
+import {IWETH9} from "../../interfaces/IWETH9.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-contract ConvexStrategy2Token is ConvexBaseStrategy {
+contract ConvexStrategyETH is ConvexBaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
     /// @notice curve N_COINS for the pool
@@ -17,22 +18,19 @@ contract ConvexStrategy2Token is ConvexBaseStrategy {
         return CURVE_UNDERLYINGS_SIZE;
     }
 
-    /// @notice Deposits in Curve for 2 tokens
-    /// @dev To implement the strategy with old curve pools like compound and y
-    ///      this contract should be used with respective _underlying_ deposit contracts
-    ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
+    /// @notice Deposits in Curve for pools with 2 ETH-based tokens
+    /// @dev This should be used to implement the strategy with curve pool such as reth, steth, seth
     function _depositInCurve() internal override {
-        IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
-        uint256 _balance = _deposit.balanceOf(address(this));
+        IWETH9 _weth = IWETH9(WETH);
+        uint256 _balance = _weth.balanceOf(address(this));
         
-        address _pool = _curvePool();
-        _deposit.safeApprove(_pool, 0);
-        _deposit.safeApprove(_pool, _balance);
-
+        _weth.withdraw(_balance);
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_2token(_pool).add_liquidity(_depositArray, 0);
+        ICurveDeposit_2token(_curvePool()).add_liquidity{value: _balance}(_depositArray, 0);
     }
+
+    receive() external payable {}
 }

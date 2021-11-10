@@ -15,11 +15,13 @@ contract ConvexStrategyMeta3Pool is ConvexBaseStrategy {
     address public constant CRV_3POOL_DEPOSIT_ZAP =
         address(0xA79828DF1850E8a3A3064576f380D90aECDD3359);
 
+    /// @return size of the curve deposit array
     function _curveUnderlyingsSize() internal pure override returns (uint256) {
         return CURVE_UNDERLYINGS_SIZE;
     }
 
-    function _curveDeposit() internal override {
+    /// @notice Deposits in Curve for metapools based on 3pool
+    function _depositInCurve() internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
 
@@ -28,11 +30,12 @@ contract ConvexStrategyMeta3Pool is ConvexBaseStrategy {
         _deposit.safeApprove(_pool, 0);
         _deposit.safeApprove(_pool, _balance);
 
-        uint256[4] memory _depositArray;
-        _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         // we also use the zap to deploy funds into a meta pool
+        uint256[4] memory _depositArray;
+        _depositArray[depositPosition] = _balance;
+
         DepositZap(CRV_3POOL_DEPOSIT_ZAP).add_liquidity(
             _pool,
             _depositArray,

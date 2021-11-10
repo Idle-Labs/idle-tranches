@@ -14,11 +14,13 @@ contract ConvexStrategyMetaSBTC is ConvexBaseStrategy {
     /// @notice curve sBTC deposit zap
     address public constant SBTC_DEPOSIT_ZAP = address(0x7AbDBAf29929e7F8621B757D2a7c04d78d633834);
 
-    function _curveUnderlyingsSize() internal pure override returns(uint256) {
+    /// @return size of the curve deposit array
+    function _curveUnderlyingsSize() internal pure override returns (uint256) {
         return CURVE_UNDERLYINGS_SIZE;
     }
 
-    function _curveDeposit() internal override {
+    /// @notice Deposits in Curve for metapools based on sbtc
+    function _depositInCurve() internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
         
@@ -27,11 +29,12 @@ contract ConvexStrategyMetaSBTC is ConvexBaseStrategy {
         _deposit.safeApprove(_pool, 0);
         _deposit.safeApprove(_pool, _balance);
 
-        uint256[4] memory _depositArray;
-        _depositArray[depositPosition] = _balance;
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         // we also use the zap to deploy funds into a meta pool
+        uint256[4] memory _depositArray;
+        _depositArray[depositPosition] = _balance;
+
         DepositZap(SBTC_DEPOSIT_ZAP).add_liquidity(_pool, _depositArray, 0, msg.sender);
     }
 }
