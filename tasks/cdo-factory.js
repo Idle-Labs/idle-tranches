@@ -112,7 +112,8 @@ task("deploy-with-factory-generic", "Deploy IdleCDO using IdleCDOFactory")
 
     await helpers.prompt("continue? [y/n]", true);
 
-    const cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress);
+    let cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress);
+    cdoFactory = cdoFactory.connect(signer);
     const idleCDO = await ethers.getContractAt("IdleCDO", cdoImplementationAddress);
 
     const initMethodCall = idleCDO.interface.encodeFunctionData("initialize", [
@@ -168,8 +169,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     await helpers.prompt("continue? [y/n]", true);
 
-    const incentiveTokens = [];
-    // const incentiveTokens = [mainnetContracts.IDLE];
+    const incentiveTokens = [mainnetContracts.IDLE];
     const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.idleToken, creator], signer);
 
     const deployParams = {
@@ -185,6 +185,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const idleCDOAddress = await hre.run("deploy-with-factory-generic", deployParams);
     const idleCDO = await ethers.getContractAt("IdleCDO", idleCDOAddress);
 
+    console.log("Setting whitelisted CDO");
     await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     const AAaddr = await idleCDO.AATranche();
     const BBaddr = await idleCDO.BBTranche();
@@ -199,9 +200,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       stakingCoolingPeriod
     ];
 
-    // const stakingRewardsAA = await helpers.deployUpgradableContract(
-    //   'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
-    // );
+    const stakingRewardsAA = await helpers.deployUpgradableContract(
+      'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
+    );
 
     // Uncomment if staking rewards contract is present for junior holders too
     //
@@ -210,7 +211,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     // );
     // await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
 
-    // await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, addresses.addr0);
+    console.log("Setting staking rewards");
+    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, addresses.addr0);
 
     console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
     console.log(`staking reward contract set`);
