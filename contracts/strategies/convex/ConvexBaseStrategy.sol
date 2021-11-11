@@ -36,12 +36,12 @@ abstract contract ConvexBaseStrategy is
     address public curveLpToken;
     /// @notice deposit token address to deposit into curve pool
     address public curveDeposit;
+    /// @notice depositor contract used to deposit underlyings
+    address public depositor;
     /// @notice deposit token array position
     uint256 public depositPosition;
     /// @notice convex crv rewards pool address
     address public rewardPool;
-    /// @notice address of the tokenized strategy position, in this case this contract address
-    address public override strategyToken;
     /// @notice decimals of the underlying asset
     uint256 public curveLpDecimals;
     /// @notice convex booster address
@@ -50,9 +50,6 @@ abstract contract ConvexBaseStrategy is
     /// @notice weth token address
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    /// @notice Curve main registry
-    address public constant MAIN_REGISTRY =
-        address(0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5);
     /// @notice whitelisted CDO for this strategy
     address public whitelistedCDO;
 
@@ -92,6 +89,13 @@ abstract contract ConvexBaseStrategy is
     // Initializer
     // ###################
 
+
+    struct CurveArgs {
+        address deposit;
+        address depositor;
+        uint256 depositPosition;
+    }
+
     // Struct used to initialize rewards swaps
     struct Reward {
         address reward;
@@ -108,55 +112,44 @@ abstract contract ConvexBaseStrategy is
     /// @notice can only be called once
     /// @dev Initialize the upgradable contract. If `_deposit` equals WETH address, _weth2Deposit is ignored as param.
     /// @param _poolID convex pool id
-    /// @param _deposit deposit token to use for Curve pool
     /// @param _owner owner address
+    /// @param _curveArgs curve addresses and deposit details
+    /// @param _rewards initial rewards (with paths and routers)
+    /// @param _weth2Deposit initial WETH -> deposit paths and routers
     function initialize(
         uint256 _poolID,
-        address _deposit,
-        uint256 _depositPosition,
         address _owner,
+        CurveArgs memory _curveArgs,
         Reward[] memory _rewards,
         Weth2Deposit memory _weth2Deposit
     ) public initializer {
         require(curveLpToken == address(0), "Initialized");
-        require(
-            _depositPosition < _curveUnderlyingsSize(),
-            "Deposit token position invalid"
-        );
+        require(_curveArgs.depositPosition < _curveUnderlyingsSize(), "Deposit token position invalid");
 
         // Initialize contracts
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
 
         // Check Curve LP Token and Convex PoolID
-        (address _crvLp, , , address _rewardPool, , bool shutdown) = IBooster(
-            BOOSTER
-        ).poolInfo(_poolID);
+        (address _crvLp, , , address _rewardPool, , bool shutdown) = IBooster(BOOSTER).poolInfo(_poolID);
 
         // Check if Convex pool is active
         require(!shutdown, "Convex Pool is not active");
 
-        string memory _name = string(
-            abi.encodePacked(
-                "Idle ",
-                IERC20Detailed(_crvLp).name(),
-                " Convex Strategy"
-            )
+        ERC20Upgradeable.__ERC20_init(
+            string(abi.encodePacked("Idle ", IERC20Detailed(_crvLp).name(), " Convex Strategy")),
+            string(abi.encodePacked("idleCvx", IERC20Detailed(_crvLp).symbol()))
         );
-        string memory _symbol = string(
-            abi.encodePacked("idleCvx", IERC20Detailed(_crvLp).symbol())
-        );
-        ERC20Upgradeable.__ERC20_init(_name, _symbol);
 
         // Set basic parameters
         curveLpToken = _crvLp;
         poolID = _poolID;
         rewardPool = _rewardPool;
-        strategyToken = address(this); // this contract is tokenizing the position
         curveLpDecimals = IERC20Detailed(_crvLp).decimals();
         ONE_CURVE_LP_TOKEN = 10**(curveLpDecimals);
-        curveDeposit = _deposit;
-        depositPosition = _depositPosition;
+        curveDeposit = _curveArgs.deposit;
+        depositor = _curveArgs.depositor;
+        depositPosition = _curveArgs.depositPosition;
 
         // set approval for curveLpToken
         IERC20Detailed(_crvLp).approve(BOOSTER, type(uint256).max);
@@ -166,7 +159,7 @@ abstract contract ConvexBaseStrategy is
             addReward(_rewards[i].reward, _rewards[i].router, _rewards[i].path);
         }
 
-        if (_deposit != WETH) setWeth2Deposit(_weth2Deposit.router, _weth2Deposit.path);
+        if (_curveArgs.deposit != WETH) setWeth2Deposit(_weth2Deposit.router, _weth2Deposit.path);
 
         // transfer ownership
         transferOwnership(_owner);
@@ -175,6 +168,10 @@ abstract contract ConvexBaseStrategy is
     // ###################
     // Interface implementation
     // ###################
+
+    function strategyToken() external view override returns(address) {
+        return address(this);
+    }
 
     function oneToken() external view override returns (uint256) {
         return ONE_CURVE_LP_TOKEN;
@@ -426,8 +423,11 @@ abstract contract ConvexBaseStrategy is
     function _depositInCurve() internal virtual;
 
     function _curvePool() internal returns (address) {
-        return
-            IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
+        // Curve main registry
+        address mainRegistry = address(
+            0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5
+        );
+        return IMainRegistry(mainRegistry).get_pool_from_lp_token(curveLpToken);
     }
 
     /// @dev msg.sender does not need to approve this contract to spend `_amount` of `strategyToken`
@@ -459,7 +459,7 @@ abstract contract ConvexBaseStrategy is
         return redeemed;
     }
 
-    function _validPath(address[] memory _path, address _out) internal {
+    function _validPath(address[] memory _path, address _out) internal pure {
         require(_path.length >= 2, "Path length less than 2");
         require(_path[_path.length - 1] == _out, "Last asset should be WETH");
     }

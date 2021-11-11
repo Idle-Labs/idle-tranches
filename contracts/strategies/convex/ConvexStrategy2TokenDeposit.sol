@@ -6,7 +6,7 @@ import {ICurveDeposit_2token} from "../../interfaces/curve/ICurveDeposit_2token.
 import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-contract ConvexStrategy2Token is ConvexBaseStrategy {
+contract ConvexStrategy2TokenDeposit is ConvexBaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
     /// @notice curve N_COINS for the pool
@@ -22,16 +22,18 @@ contract ConvexStrategy2Token is ConvexBaseStrategy {
     ///      this contract should be used with respective _underlying_ deposit contracts
     ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
     function _depositInCurve() internal override {
+        address _depositor = depositor;
+        require(_depositor != address(0), "Depositor address is zero");
+
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
-        uint256 _balance = _deposit.balanceOf(address(this));
-        
-        address _pool = _curvePool();
-        _deposit.safeApprove(_pool, 0);
-        _deposit.safeApprove(_pool, _balance);
+        uint256 _balance = _deposit.balanceOf(address(this));        
+
+        _deposit.safeApprove(_depositor, 0);
+        _deposit.safeApprove(_depositor, _balance);
 
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_2token(_pool).add_liquidity(_depositArray, 0);
+        ICurveDeposit_2token(_depositor).add_liquidity(_depositArray, 0);
     }
 }

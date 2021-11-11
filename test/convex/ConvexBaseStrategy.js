@@ -2,6 +2,7 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../../scripts/helpers");
 const { expect } = require("chai");
+const addresses = require("../../lib/addresses");
 const { smock } = require('@defi-wonderland/smock');
 const { ethers, network } = require("hardhat");
 
@@ -33,6 +34,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     owner = signers[0];
     Random = signers[1];
     RandomAddr = Random.address;
+    Random2Addr = signers[2].address;
 
     one = ONE_TOKEN(18);
 
@@ -46,13 +48,14 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     // funding the whale to transfer 3crv
     await owner.sendTransaction({to: WHALE_3CRV, value: ethers.utils.parseEther("20")});
 
+    curve_args = [USDC, addresses.addr0, DEPOSIT_POSITION_3CRV]
     reward_cvx = [CVX, SUSHI_ROUTER, CVXWETH];
     reward_crv = [CRV, SUSHI_ROUTER, CRVWETH];
     weth2deposit = [SUSHI_ROUTER, WETHUSDC];
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, USDC, DEPOSIT_POSITION_3CRV, owner.address, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -62,7 +65,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
 
   it("should not reinitialize the contract", async () => {
     await expect(
-      strategy.connect(owner).initialize(POOL_ID_3CRV, USDC, DEPOSIT_POSITION_3CRV, owner.address, [reward_crv, reward_cvx], weth2deposit),
+      strategy.connect(owner).initialize(POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit),
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
@@ -77,6 +80,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     expect(await strategy.owner()).to.equal(owner.address);
 
     // from convex strat specific storage
+    expect(await strategy.depositor()).to.equal(addresses.addr0);
     expect(await strategy.curveLpToken()).to.equal(TOKEN_3CRV);
     expect(await strategy.curveLpDecimals()).to.be.equal(BN(18));
     expect(await strategy.curveDeposit()).to.be.equal(USDC);
@@ -97,13 +101,70 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     expect(await strategy.rewardRouter(CVX)).to.equal(SUSHI_ROUTER);
   });
 
-  it("should not deposit if not whitelisted", async () => {
+  it("should not be able to deposit if not whitelisted", async () => {
     const addr = RandomAddr;
     const _amount = BN('1000').mul(one);
     
     await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
 
     await expect(deposit(addr, _amount)).to.be.revertedWith('Not whitelisted CDO');
+
+    // No token left in the contract
+    expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
+    expect(await strategy.balanceOf(strategy.address)).to.equal(0);
+  });
+
+  it("should not be able to redeem if not whitelisted", async () => {
+    const addr = RandomAddr;
+    const _amount = BN('1000').mul(one);
+
+    setWhitelistedCDO(addr);
+    
+    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
+
+    await deposit(addr, _amount);
+
+    setWhitelistedCDO(Random2Addr);
+
+    await expect(redeem(addr, _amount)).to.be.revertedWith('Not whitelisted CDO');
+
+    // No token left in the contract
+    expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
+    expect(await strategy.balanceOf(strategy.address)).to.equal(0);
+  });
+
+  it("should not be able to redeemUnderlying if not whitelisted", async () => {
+    const addr = RandomAddr;
+    const _amount = BN('1000').mul(one);
+
+    setWhitelistedCDO(addr);
+    
+    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
+
+    await deposit(addr, _amount);
+
+    setWhitelistedCDO(Random2Addr);
+
+    await expect(redeemUnderlying(addr, _amount)).to.be.revertedWith('Not whitelisted CDO');
+
+    // No token left in the contract
+    expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
+    expect(await strategy.balanceOf(strategy.address)).to.equal(0);
+  });
+
+  it("should not be able to redeemRewards if not whitelisted", async () => {
+    const addr = RandomAddr;
+    const _amount = BN('1000').mul(one);
+
+    setWhitelistedCDO(addr);
+    
+    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
+
+    await deposit(addr, _amount);
+
+    setWhitelistedCDO(Random2Addr);
+
+    await expect(redeemRewards(RandomAddr)).to.be.revertedWith('Not whitelisted CDO');
 
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
@@ -199,61 +260,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
     expect(await strategy.balanceOf(strategy.address)).to.equal(0);
-  });
-
-  // Mock the return of gov tokens
-  it("should redeemRewards (simulate 7 days)", async () => {
-    const addr = RandomAddr;
-    const _amount = BN('500000').mul(one);
-
-    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
-
-    setWhitelistedCDO(addr);
-
-    await deposit(addr, _amount);
-
-    // happy path: the strategy earns money! yay!
-    
-    // TODO: is there any way to calculate rewards and expected return in a PRECISE way?
-    // harvest finance and co. seems to not cover the precision of the strategy, testing instead
-    // that at least it earns something...
-
-    // forwarding the chain to retrieve some rewards (1 day)
-    // simulating the whole process 
-
-    // Using half days is to simulate how we doHardwork in the real world
-    let days = 15;
-    let oneDay = 3600 * 24;
-    const initial3crvBalance = await erc20_3crv.balanceOf(addr);
-    for(let i = 0; i < days; i++) {
-      // distribute CRVs to reward pools, this is not an automatic
-      booster.earmarkRewards(POOL_ID_3CRV);
-
-      await network.provider.send("evm_increaseTime", [oneDay]);
-      await network.provider.send("evm_mine", []);
-
-      const roundInitialBalance = await erc20_3crv.balanceOf(addr);
-      await redeemRewards(addr);
-      const roundFinalBalance = await erc20_3crv.balanceOf(addr);
-
-      // basic expectation
-      expect(roundFinalBalance.gt(roundInitialBalance));
-    }
-    const final3crvBalance = await erc20_3crv.balanceOf(addr);
-
-    // basic expectation
-    expect(final3crvBalance.gt(initial3crvBalance));
-
-    const gained = ethers.utils.formatEther(final3crvBalance.sub(initial3crvBalance));
-    
-    console.log('💵 Total 3crv earned (15 days): ', gained);
-
-    // No token left in the contract
-    expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
-    expect(await strategy.balanceOf(strategy.address)).to.equal(0);
-  });
-  
-
+  });  
 
   const setWhitelistedCDO = async (addr) => {
     await helpers.sudoCall(owner.address, strategy, 'setWhitelistedCDO', [addr]);
@@ -272,7 +279,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     await helpers.sudoCall(addr, strategy, 'redeemUnderlying', [amount]);
   }
   
-  const redeemRewards = async (addr, amount) => {
+  const redeemRewards = async (addr) => {
     const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
     return res;
   }
