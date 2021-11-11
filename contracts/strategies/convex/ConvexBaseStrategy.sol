@@ -44,8 +44,10 @@ abstract contract ConvexBaseStrategy is
     address public rewardPool;
     /// @notice decimals of the underlying asset
     uint256 public curveLpDecimals;
+    /// @notice Curve main registry
+    address public constant MAIN_REGISTRY = address(0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5);
     /// @notice convex booster address
-    address internal constant BOOSTER =
+    address public constant BOOSTER =
         address(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
     /// @notice weth token address
     address public constant WETH =
@@ -63,9 +65,6 @@ abstract contract ConvexBaseStrategy is
     mapping(address => address[]) public reward2WethPath;
     /// @notice univ2-like router for each reward
     mapping(address => address) public rewardRouter;
-
-    /// @notice this contract rewards (should include only curve pool token address)
-    address[] public rewards;
 
     /// ###### End of storage V1
 
@@ -90,6 +89,7 @@ abstract contract ConvexBaseStrategy is
     // ###################
 
 
+    // Struct used to set Curve deposits
     struct CurveArgs {
         address deposit;
         address depositor;
@@ -320,10 +320,7 @@ abstract contract ConvexBaseStrategy is
         external
         view
         override
-        returns (address[] memory)
-    {
-        return rewards;
-    }
+        returns (address[] memory rewardTokens) {}
 
     // ###################
     // Protected
@@ -407,7 +404,7 @@ abstract contract ConvexBaseStrategy is
         delete reward2WethPath[_reward];
     }
 
-    /// @notice allow to update address whitelisted to pull stkAAVE rewards
+    /// @notice allow to update whitelisted address
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
         whitelistedCDO = _cdo;
@@ -417,17 +414,15 @@ abstract contract ConvexBaseStrategy is
     // Internal
     // ###################
 
-    /// @return N_COINS for curve pool
+    /// @return number of underlying coins depending on Curve pool
     function _curveUnderlyingsSize() internal virtual returns (uint256);
 
+    /// @notice Virtual method that implements deposit in Curve
     function _depositInCurve() internal virtual;
 
-    function _curvePool() internal returns (address) {
-        // Curve main registry
-        address mainRegistry = address(
-            0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5
-        );
-        return IMainRegistry(mainRegistry).get_pool_from_lp_token(curveLpToken);
+    /// @return address of pool from LP token
+    function _curvePool() internal returns (address) {        
+        return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
     }
 
     /// @dev msg.sender does not need to approve this contract to spend `_amount` of `strategyToken`
@@ -448,15 +443,12 @@ abstract contract ConvexBaseStrategy is
             // withdraw underlying lp tokens from Convex Booster
             IBooster(BOOSTER).withdraw(poolID, _amount);
 
-            // check for balance and transfer it
+            // get current balance and transfer it
             redeemed = _curveLpToken.balanceOf(address(this));
-            require(redeemed == _amount, "Wrong amount withdrawn");
 
             // transfer underlying lp tokens to msg.sender
             _curveLpToken.safeTransfer(msg.sender, redeemed);
         }
-
-        return redeemed;
     }
 
     function _validPath(address[] memory _path, address _out) internal pure {
