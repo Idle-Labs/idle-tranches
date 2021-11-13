@@ -109,6 +109,20 @@ describe("LidoCDOTrancheGateway", function () {
     );
   });
 
+  afterEach(async function () {
+    await hre.network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: hre.network.config.forking.url,
+            blockNumber: hre.network.config.forking.blockNumber
+          }
+        }
+      ]
+    });
+  })
+
   it("should not reinitialize the contract", async () => {
     await expect(
       idleCDO.connect(owner).initialize(

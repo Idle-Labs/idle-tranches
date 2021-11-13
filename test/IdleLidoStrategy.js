@@ -82,6 +82,20 @@ describe("IdleLidoStrategy", function () {
     await lido.setOracle(oracle.address);
   });
 
+  afterEach(async function () {
+    await hre.network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: hre.network.config.forking.url,
+            blockNumber: hre.network.config.forking.blockNumber
+          }
+        }
+      ]
+    });
+  })
+  
   it("should not reinitialize the contract", async () => {
     await expect(
       strategy
