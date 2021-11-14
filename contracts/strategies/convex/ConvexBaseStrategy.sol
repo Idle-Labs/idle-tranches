@@ -315,7 +315,7 @@ abstract contract ConvexBaseStrategy is
         return 0;
     }
 
-    /// @return tokens array of reward token addresses
+    /// @return rewardTokens tokens array of reward token addresses
     function getRewardTokens()
         external
         view
