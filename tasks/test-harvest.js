@@ -37,7 +37,6 @@ task("test-harvest", "")
     const underlying = await idleCDO.token();
     let compERC20 = await ethers.getContractAt("IERC20Detailed", mainnetContracts.COMP);
     let idleERC20 = await ethers.getContractAt("IERC20Detailed", mainnetContracts.IDLE);
-    let cTokenContract = await ethers.getContractAt("IERC20Detailed", testToken.cToken);
     let underlyingContract = await ethers.getContractAt("IERC20Detailed", underlying);
     let AAContract = await ethers.getContractAt("IdleCDOTranche", AAaddr);
     let BBContract = await ethers.getContractAt("IdleCDOTranche", BBaddr);
@@ -46,7 +45,8 @@ task("test-harvest", "")
     const stkAave = await ethers.getContractAt("IERC20Detailed", addresses.IdleTokens.mainnet.stkAAVE);
     // Get utils
     const oneToken = await helpers.oneToken(underlying);
-    const creatorAddr = args.cdoname ? addresses.idleDeployer : await creator.getAddress();
+    const creatorAddr = args.cdoname ? addresses.IdleTokens.mainnet.devLeagueMultisig : await creator.getAddress();
+    // const creatorAddr = args.cdoname ? addresses.idleDeployer : await creator.getAddress();
     const AABuyerAddr = await AAbuyer.getAddress();
     const AABuyer2Addr = await AAbuyer2.getAddress();
     const BBBuyerAddr = await BBbuyer.getAddress();

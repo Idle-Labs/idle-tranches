@@ -321,8 +321,10 @@ const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDepo
   await run("mine-multiple", {blocks: '500'});
   // Poking cToken contract to accrue interest and let strategyPrice increase.
   // (be sure to have a pinned block with allocation in compound)
-  let cToken = await ethers.getContractAt("ICToken", testToken.cToken);
-  await cToken.accrueInterest();
+  if (testToken.cToken) {
+    let cToken = await ethers.getContractAt("ICToken", testToken.cToken);
+    await cToken.accrueInterest();
+  }
   await run("print-info", {cdo: idleCDO.address});
 }
 
