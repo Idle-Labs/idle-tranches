@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = 1;
-const WHALE_3CRV = '0x0B096d1f0ba7Ef2b3C7ecB8d4a5848043CdeBD50';
+const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -55,7 +55,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, 1500, curve_args, [reward_crv, reward_cvx], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -65,7 +65,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
 
   it("should not reinitialize the contract", async () => {
     await expect(
-      strategy.connect(owner).initialize(POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit),
+      strategy.connect(owner).initialize(POOL_ID_3CRV, owner.address, 1500, curve_args, [reward_crv, reward_cvx], weth2deposit),
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
@@ -260,7 +260,53 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
     expect(await strategy.balanceOf(strategy.address)).to.equal(0);
-  });  
+  });
+
+  it("price should be updated based on events", async () => {
+    const addr = RandomAddr;
+    const _amount = BN('10000').mul(one);
+
+    // price should increase after some harvesting
+    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
+    
+    setWhitelistedCDO(addr);
+
+    // price equals one lp token at the beginning, totalSupply == 0
+    const initialPrice = await strategy.price();
+    console.log("💲 Initial Price: ", initialPrice.toString());
+    
+    expect(initialPrice).to.equal(ethers.utils.parseEther('1'));    
+    
+    await deposit(addr, _amount);
+
+    // distribute CRVs to reward pools, this is not an automatic
+    booster.earmarkRewards(POOL_ID_3CRV);
+
+    await network.provider.send("evm_increaseTime", [3600 * 24]); // one day of rewards
+    await network.provider.send("evm_mine", []);
+    
+    await redeemRewards(addr);
+
+    const instantHarvestPrice = await strategy.price();
+    console.log("💲 (Immediate) Harvest Price: ", instantHarvestPrice.toString());
+
+    expect(instantHarvestPrice.eq(initialPrice)).to.be.true;
+
+    for(let i = 0; i < 1500; i++) { await network.provider.send("evm_mine", []); } // wait 1500 blocks
+
+    const harvestPrice = await strategy.price();
+    console.log("💲 Harvest Price: ", harvestPrice.toString());
+
+    expect(harvestPrice.gt(initialPrice)).to.be.true;
+
+    // price should stay the same when redeeming
+    await redeem(addr, BN('5000'));
+
+    const redeemPrice = await strategy.price();
+    console.log("💲 After redeem Price: ", redeemPrice.toString());
+
+    expect(redeemPrice.eq(harvestPrice)).to.be.true;
+  });
 
   const setWhitelistedCDO = async (addr) => {
     await helpers.sudoCall(owner.address, strategy, 'setWhitelistedCDO', [addr]);

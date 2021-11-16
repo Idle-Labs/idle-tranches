@@ -15,7 +15,7 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = BN(0);
-const WHALE_3CRV = '0x0f70a91dd4ae5a17868991180c0d4fcdba82f6b7';
+const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
 const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -27,7 +27,7 @@ const CVXWETH = [CVX, WETH]
 const CRVWETH = [CRV, WETH]
 const WETHDAI = [WETH, DAI]
 
-describe("IdleLidoCDO", function () {
+describe("IdleConvexCDO", function () {
   beforeEach(async () => {
     // deploy contracts
     addr0 = addresses.addr0;
@@ -68,7 +68,7 @@ describe("IdleLidoCDO", function () {
 
     strategy = await helpers.deployUpgradableContract(
       "ConvexStrategy3Token",
-      [POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]
+      [POOL_ID_3CRV, owner.address, 0, curve_args, [reward_crv, reward_cvx], weth2deposit]
     );
 
     idleCDO = await helpers.deployUpgradableContract(

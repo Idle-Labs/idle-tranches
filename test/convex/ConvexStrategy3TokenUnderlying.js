@@ -55,7 +55,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategy3TokenUnderlying', [POOL_ID_IBCRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategy3TokenUnderlying', [POOL_ID_IBCRV, owner.address, 0, curve_args, [reward_crv, reward_cvx], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -85,7 +85,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     // Using half days is to simulate how we doHardwork in the real world
     let days = 15;
     let oneDay = 3600 * 24;
-    const initialibcrvBalance = await erc20_ibcrv.balanceOf(addr);
+    const initialSharePrice = await strategy.price();
     for(let i = 0; i < days; i++) {
       // distribute CRVs to reward pools, this is not an automatic
       booster.earmarkRewards(POOL_ID_IBCRV);
@@ -93,21 +93,21 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
       await network.provider.send("evm_increaseTime", [oneDay]);
       await network.provider.send("evm_mine", []);
 
-      const roundInitialBalance = await erc20_ibcrv.balanceOf(addr);
-      await redeemRewards(addr);
-      const roundFinalBalance = await erc20_ibcrv.balanceOf(addr);
+      const roundInitialPrice = await strategy.price();
+      await redeemRewards(addr);      
+      const roundFinalPrice = await strategy.price();
 
       // basic expectation
-      expect(roundFinalBalance.gt(roundInitialBalance));
+      expect(roundFinalPrice.gt(roundInitialPrice)).to.be.true;
     }
-    const finalibcrvBalance = await erc20_ibcrv.balanceOf(addr);
+    const finalSharePrice = await strategy.price();
 
     // basic expectation
-    expect(finalibcrvBalance.gt(initialibcrvBalance));
+    expect(finalSharePrice.gt(initialSharePrice)).to.be.true;
 
-    const gained = ethers.utils.formatEther(finalibcrvBalance.sub(initialibcrvBalance));
+    const priceGain = ethers.utils.formatEther(finalSharePrice.sub(initialSharePrice));
     
-    console.log('💵 Total ibcrv earned (15 days): ', gained);
+    console.log('💵 Price gain (15 days): ', priceGain);
 
     // No token left in the contract
     expect(await erc20_ibcrv.balanceOf(strategy.address)).to.equal(0);

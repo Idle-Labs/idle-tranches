@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = 1;
-const WHALE_3CRV = '0x0f70a91dd4ae5a17868991180c0d4fcdba82f6b7';
+const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -55,7 +55,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, 0, curve_args, [reward_crv, reward_cvx], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -65,7 +65,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
 
   it("should redeemRewards (simulate 7 days)", async () => {
     const addr = RandomAddr;
-    const _amount = BN('500000').mul(one);
+    const _amount = BN('100000').mul(one);
 
     await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
 
@@ -85,7 +85,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     // Using half days is to simulate how we doHardwork in the real world
     let days = 15;
     let oneDay = 3600 * 24;
-    const initial3crvBalance = await erc20_3crv.balanceOf(addr);
+    const initialSharePrice = await strategy.price();
     for(let i = 0; i < days; i++) {
       // distribute CRVs to reward pools, this is not an automatic
       booster.earmarkRewards(POOL_ID_3CRV);
@@ -93,21 +93,21 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
       await network.provider.send("evm_increaseTime", [oneDay]);
       await network.provider.send("evm_mine", []);
 
-      const roundInitialBalance = await erc20_3crv.balanceOf(addr);
-      await redeemRewards(addr);
-      const roundFinalBalance = await erc20_3crv.balanceOf(addr);
+      const roundInitialPrice = await strategy.price();
+      await redeemRewards(addr);      
+      const roundFinalPrice = await strategy.price();
 
       // basic expectation
-      expect(roundFinalBalance.gt(roundInitialBalance));
+      expect(roundFinalPrice.gt(roundInitialPrice)).to.be.true;
     }
-    const final3crvBalance = await erc20_3crv.balanceOf(addr);
+    const finalSharePrice = await strategy.price();
 
     // basic expectation
-    expect(final3crvBalance.gt(initial3crvBalance));
+    expect(finalSharePrice.gt(initialSharePrice)).to.be.true;
 
-    const gained = ethers.utils.formatEther(final3crvBalance.sub(initial3crvBalance));
+    const priceGain = ethers.utils.formatEther(finalSharePrice.sub(initialSharePrice));
     
-    console.log('💵 Total 3crv earned (15 days): ', gained);
+    console.log('💵 Price gain (15 days): ', priceGain);
 
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);

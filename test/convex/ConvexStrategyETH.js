@@ -51,7 +51,7 @@ describe("ConvexStrategyETH (using stETH pool for tests)", async () => {
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategyETH', [POOL_ID_STECRV, owner.address, curve_args, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategyETH', [POOL_ID_STECRV, owner.address, 0, curve_args, [reward_crv, reward_cvx], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -81,7 +81,7 @@ describe("ConvexStrategyETH (using stETH pool for tests)", async () => {
     // Using half days is to simulate how we doHardwork in the real world
     let days = 30;
     let oneDay = 3600 * 24;
-    const initialsteCRVBalance = await erc20_steth.balanceOf(addr);
+    const initialSharePrice = await strategy.price();
     for(let i = 0; i < days; i++) {
       // distribute CRVs to reward pools, this is not an automatic
       booster.earmarkRewards(POOL_ID_STECRV);
@@ -89,21 +89,21 @@ describe("ConvexStrategyETH (using stETH pool for tests)", async () => {
       await network.provider.send("evm_increaseTime", [oneDay]);
       await network.provider.send("evm_mine", []);
 
-      const roundInitialBalance = await erc20_steth.balanceOf(addr);
-      await redeemRewards(addr);
-      const roundFinalBalance = await erc20_steth.balanceOf(addr);
+      const roundInitialPrice = await strategy.price();
+      await redeemRewards(addr);      
+      const roundFinalPrice = await strategy.price();
 
       // basic expectation
-      expect(roundFinalBalance.gt(roundInitialBalance));
+      expect(roundFinalPrice.gt(roundInitialPrice)).to.be.true;
     }
-    const finalsteCRVBalance = await erc20_steth.balanceOf(addr);
+    const finalSharePrice = await strategy.price();
 
     // basic expectation
-    expect(finalsteCRVBalance.gt(initialsteCRVBalance));
+    expect(finalSharePrice.gt(initialSharePrice)).to.be.true;
 
-    const gained = ethers.utils.formatEther(finalsteCRVBalance.sub(initialsteCRVBalance));
+    const priceGain = ethers.utils.formatEther(finalSharePrice.sub(initialSharePrice));
     
-    console.log('💎 Total stETH earned (30 days): ', gained);
+    console.log('💵 Price gain (15 days): ', priceGain);
 
     // No token left in the contract
     expect(await erc20_steth.balanceOf(strategy.address)).to.equal(0);
