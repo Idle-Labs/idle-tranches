@@ -193,6 +193,7 @@ describe("IdleConvexCDO", function () {
         BBBuyerAddr,
         AABuyer2Addr,
         BBBuyer2Addr,
+        RandomAddr
       ],
       WHALE_3CRV,
       _amount
@@ -207,8 +208,7 @@ describe("IdleConvexCDO", function () {
     expect(await underlying.balanceOf(AABuyerAddr)).to.be.closeTo(_amount.sub(_amount), 1);
     expect(await underlying.balanceOf(BBBuyerAddr)).to.be.closeTo(_amount.sub(_amount.div(BN('2'))), 1);
 
-    // Do an harvest to do a real deposit in Idle
-    // no gov tokens collected now because it's the first deposit
+    // Do an harvest to do a real deposit in ConvexStrategy
     await rebalanceFull(idleCDO, owner.address, true, true, false);
     // strategy price should be increased after a rebalance and some time
     // Buy AA tranche with `amount` underlying from another user
@@ -219,10 +219,15 @@ describe("IdleConvexCDO", function () {
     console.log('######## First real rebalance (with CVX, CRV rewards accrued)');
 
     // tranchePriceAA and tranchePriceBB have been updated just before the deposit
-    // some gov token (IDLE) should be present in the contract after the rebalance
     await rebalanceFull(idleCDO, owner.address, false, false, false);
     // so no IDLE in IdleCDO
     await helpers.checkBalance(idle, idleCDO.address, BN('0'));
+
+    // strategy price should be increased after a rebalance and some time
+    // Buy AA tranche with `amount` underlying from another user
+    const aa3TrancheBal = await helpers.deposit('AA', idleCDO, RandomAddr, _amount);
+    await helpers.checkIncreased(aa3TrancheBal, aa2TrancheBal, 'AA2 bal is greater than the newly minted bal after harvest');
+
 
     console.log('######## Withdraws');
     // First user withdraw
