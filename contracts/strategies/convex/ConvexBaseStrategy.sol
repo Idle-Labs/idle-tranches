@@ -226,16 +226,16 @@ abstract contract ConvexBaseStrategy is
         if (_amount > 0) {
             /// get `tokens` from msg.sender
             IERC20Detailed(curveLpToken).safeTransferFrom(msg.sender, address(this), _amount);
-            minted = _depositAndMint(whitelistedCDO, _amount, price());
+            minted = _depositAndMint(msg.sender, _amount, price());
         }
     }
 
     /// @dev msg.sender doesn't need to approve the spending of strategy token
     /// @param _amount amount of strategyTokens to redeem
     /// @return redeemed amount of underlyings redeemed
-    function redeem(uint256 _amount) external override returns (uint256 redeemed) {
+    function redeem(uint256 _amount) external onlyWhitelistedCDO override returns (uint256 redeemed) {
         if(_amount > 0) {
-            redeemed = _redeem(_amount, price());
+            redeemed = _redeem(msg.sender, _amount, price());
         }
     }
 
@@ -245,13 +245,14 @@ abstract contract ConvexBaseStrategy is
     /// @return redeemed amount of underlyings redeemed
     function redeemUnderlying(uint256 _amount)
         external
+        onlyWhitelistedCDO
         override
         returns (uint256 redeemed)
     {
         if(_amount > 0) {
             uint256 _cachedPrice = price();
             uint256 _shares = _amount * ONE_CURVE_LP_TOKEN / _cachedPrice;
-            redeemed = _redeem(_shares, _cachedPrice);
+            redeemed = _redeem(msg.sender, _shares, _cachedPrice);
         }
     }
 
@@ -471,25 +472,26 @@ abstract contract ConvexBaseStrategy is
 
     /// @notice Internal function to deposit in the Convex Booster and mint shares
     /// @dev Used for deposit and during an harvest
-    /// @param _receiver the address that receives the minted amount
     /// @param _lpTokens amount to mint
     /// @param _price we give the price as input to save on gas when calculating price
-    function _depositAndMint(address _receiver, uint256 _lpTokens, uint256 _price) internal returns (uint256 minted) {
+    function _depositAndMint(address _account, uint256 _lpTokens, uint256 _price) 
+        internal 
+        returns (uint256 minted)
+    {
         // deposit in convex
         _stakeConvex(_lpTokens);
 
         // mint strategy tokens to msg.sender
         minted = _lpTokens * ONE_CURVE_LP_TOKEN / _price;
-        _mint(_receiver, minted);
+        _mint(_account, minted);
     }
 
     /// @dev msg.sender does not need to approve this contract to spend `_amount` of `strategyToken`
     /// @param _shares amount of strategyTokens to redeem
     /// @param _price we give the price as input to save on gas when calculating price
     /// @return redeemed amount of underlyings redeemed
-    function _redeem(uint256 _shares, uint256 _price)
+    function _redeem(address _account, uint256 _shares, uint256 _price)
         internal
-        onlyWhitelistedCDO
         returns (uint256 redeemed)
     {
         // update total staked lp tokens
@@ -499,14 +501,14 @@ abstract contract ConvexBaseStrategy is
         IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
 
         // burn strategy tokens for the msg.sender
-        _burn(whitelistedCDO, _shares);
+        _burn(_account, _shares);
 
         // exit reward pool (without claiming) and unwrap staking position
         IBaseRewardPool(rewardPool).withdraw(redeemed, false);
         IBooster(BOOSTER).withdraw(poolID, redeemed);
 
         // transfer underlying lp tokens to msg.sender
-        _curveLpToken.safeTransfer(whitelistedCDO, redeemed);
+        _curveLpToken.safeTransfer(_account, redeemed);
     }
 
     function _lockedLpTokens() internal view returns(uint256 _locked) {
