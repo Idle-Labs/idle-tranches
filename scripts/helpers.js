@@ -15,6 +15,13 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
+async function advanceNBlock (n) {
+  let startingBlock = await time.latestBlock();
+  await time.increase(15 * Math.round(n));
+  let endBlock = startingBlock.addn(n);
+  await time.advanceBlockTo(endBlock);
+}
+
 const impersonateSigner = async (acc) => {
   await hre.ethers.provider.send("hardhat_impersonateAccount", [acc]);
   await hre.ethers.provider.send("hardhat_setBalance", [acc, "0xffffffffffffffff"]);
@@ -253,6 +260,7 @@ const isEmptyString = (s) => {
 }
 
 module.exports = {
+  advanceNBlock,
   impersonateSigner,
   getMultisigSigner,
   getSigner,
