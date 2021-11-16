@@ -325,6 +325,10 @@ abstract contract ConvexBaseStrategy is
             latestHarvestBlock = block.number;
             totalLpTokensLocked = _curveLpBalance;
         }
+
+        // return harvested curve lp tokens
+        _balances = new uint256[](1);
+        _balances[0] = _curveLpBalance;
     }
 
     // ###################
