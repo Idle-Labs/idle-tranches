@@ -29,6 +29,7 @@ abstract contract ConvexBaseStrategy is
 
     /// ###### Storage V1
     /// @notice one curve lp token
+    /// @dev we use this as base unit of the strategy token too
     uint256 public ONE_CURVE_LP_TOKEN;
     /// @notice convex rewards pool id for the underlying curve lp token
     uint256 public poolID;
@@ -52,6 +53,9 @@ abstract contract ConvexBaseStrategy is
     /// @notice weth token address
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    /// @notice curve ETH mock address
+    address public constant ETH = 
+        address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
     /// @notice whitelisted CDO for this strategy
     address public whitelistedCDO;
 
@@ -65,6 +69,15 @@ abstract contract ConvexBaseStrategy is
     mapping(address => address[]) public reward2WethPath;
     /// @notice univ2-like router for each reward
     mapping(address => address) public rewardRouter;
+
+    /// @notice total LP tokens staked
+    uint256 public totalLpTokensStaked;
+    /// @notice total LP tokens locked
+    uint256 public totalLpTokensLocked;
+    /// @notice harvested LP tokens release delay
+    uint256 public releaseBlocksPeriod;
+    /// @notice latest harvest
+    uint256 public latestHarvestBlock;
 
     /// ###### End of storage V1
 
@@ -119,10 +132,12 @@ abstract contract ConvexBaseStrategy is
     function initialize(
         uint256 _poolID,
         address _owner,
+        uint256 _releasePeriod,
         CurveArgs memory _curveArgs,
         Reward[] memory _rewards,
         Weth2Deposit memory _weth2Deposit
     ) public initializer {
+        // Sanity checks
         require(curveLpToken == address(0), "Initialized");
         require(_curveArgs.depositPosition < _curveUnderlyingsSize(), "Deposit token position invalid");
 
@@ -132,9 +147,13 @@ abstract contract ConvexBaseStrategy is
 
         // Check Curve LP Token and Convex PoolID
         (address _crvLp, , , address _rewardPool, , bool shutdown) = IBooster(BOOSTER).poolInfo(_poolID);
+        curveLpToken = _crvLp;
 
-        // Check if Convex pool is active
+        // Pool and deposit asset checks
+        address _deposit = _curveArgs.deposit == WETH ? ETH : _curveArgs.deposit;
+
         require(!shutdown, "Convex Pool is not active");
+        require(_deposit == _curveUnderlyingCoins(_curveArgs.depositPosition), "Deposit token invalid");
 
         ERC20Upgradeable.__ERC20_init(
             string(abi.encodePacked("Idle ", IERC20Detailed(_crvLp).name(), " Convex Strategy")),
@@ -142,7 +161,6 @@ abstract contract ConvexBaseStrategy is
         );
 
         // Set basic parameters
-        curveLpToken = _crvLp;
         poolID = _poolID;
         rewardPool = _rewardPool;
         curveLpDecimals = IERC20Detailed(_crvLp).decimals();
@@ -150,6 +168,7 @@ abstract contract ConvexBaseStrategy is
         curveDeposit = _curveArgs.deposit;
         depositor = _curveArgs.depositor;
         depositPosition = _curveArgs.depositPosition;
+        releaseBlocksPeriod = _releasePeriod;
 
         // set approval for curveLpToken
         IERC20Detailed(_crvLp).approve(BOOSTER, type(uint256).max);
@@ -177,12 +196,18 @@ abstract contract ConvexBaseStrategy is
         return ONE_CURVE_LP_TOKEN;
     }
 
+    // @notice 
     function token() external view override returns (address) {
         return curveLpToken;
     }
 
+    // @notice Underlying token decimals
     function tokenDecimals() external view override returns (uint256) {
         return curveLpDecimals;
+    }
+
+    function decimals() public view override returns (uint8) {
+        return uint8(curveLpDecimals); // should be safe
     }
 
     // ###################
@@ -200,25 +225,34 @@ abstract contract ConvexBaseStrategy is
     {
         if (_amount > 0) {
             /// get `tokens` from msg.sender
-            IERC20Detailed(curveLpToken).safeTransferFrom(
-                msg.sender,
-                address(this),
-                _amount
-            );
-            /// deposit those in convex and stake
-            IBooster(BOOSTER).depositAll(poolID, true);
-            /// mint strategy tokens to msg.sender
-            _mint(msg.sender, _amount);
-
-            minted = _amount;
+            IERC20Detailed(curveLpToken).safeTransferFrom(msg.sender, address(this), _amount);
+            minted = _depositAndMint(whitelistedCDO, _amount, price());
         }
     }
 
-    /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
+    /// @dev msg.sender doesn't need to approve the spending of strategy token
     /// @param _amount amount of strategyTokens to redeem
-    /// @return amount of underlyings redeemed
-    function redeem(uint256 _amount) external override returns (uint256) {
-        return _redeem(_amount);
+    /// @return redeemed amount of underlyings redeemed
+    function redeem(uint256 _amount) external override returns (uint256 redeemed) {
+        if(_amount > 0) {
+            redeemed = _redeem(_amount, price());
+        }
+    }
+
+    /// @dev msg.sender should approve this contract first
+    /// to spend `_amount * ONE_IDLE_TOKEN / price()` of `strategyToken`
+    /// @param _amount amount of underlying tokens to redeem
+    /// @return redeemed amount of underlyings redeemed
+    function redeemUnderlying(uint256 _amount)
+        external
+        override
+        returns (uint256 redeemed)
+    {
+        if(_amount > 0) {
+            uint256 _cachedPrice = price();
+            uint256 _shares = _amount * ONE_CURVE_LP_TOKEN / _cachedPrice;
+            redeemed = _redeem(_shares, _cachedPrice);
+        }
     }
 
     /// @notice Anyone can call this because this contract holds no strategy tokens and so no 'old' rewards
@@ -279,35 +313,32 @@ abstract contract ConvexBaseStrategy is
         }
 
         _depositInCurve();
-
         IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
         uint256 _curveLpBalance = _curveLpToken.balanceOf(address(this));
-        _curveLpToken.safeTransfer(whitelistedCDO, _curveLpBalance);
 
-        _balances = new uint256[](1);
-        _balances[0] = _curveLpBalance;
-    }
+        if(_curveLpBalance > 0) {
+            // deposit in curve and stake on convex
+            _stakeConvex(_curveLpBalance);
 
-    /// @dev msg.sender should approve this contract first
-    /// to spend `_amount * ONE_IDLE_TOKEN / price()` of `strategyToken`
-    /// @param _amount amount of underlying tokens to redeem
-    /// @return amount of underlyings redeemed
-    function redeemUnderlying(uint256 _amount)
-        external
-        override
-        returns (uint256)
-    {
-        // we are getting price before transferring so price of msg.sender
-        return _redeem(_amount);
+            // update locked lp tokens to update price
+            latestHarvestBlock = block.number;
+            totalLpTokensLocked = _curveLpBalance;
+        }
     }
 
     // ###################
     // Views
     // ###################
 
-    /// @return net price in underlyings of 1 strategyToken
-    function price() public view override returns (uint256) {
-        return ONE_CURVE_LP_TOKEN;
+    /// @return _price net price in underlyings of 1 strategyToken
+    function price() public view override returns (uint256 _price) {
+        uint256 _totalSupply = totalSupply();
+
+        if(_totalSupply == 0) {
+            _price = ONE_CURVE_LP_TOKEN;
+        } else {
+            _price = (totalLpTokensStaked - _lockedLpTokens()) * ONE_CURVE_LP_TOKEN / totalSupply();
+        }
     }
 
     /// @return returns 0, don't know if there are ways you can calculate APR on-chain for Convex
@@ -425,29 +456,67 @@ abstract contract ConvexBaseStrategy is
         return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
     }
 
+    function _curveUnderlyingCoins(uint256 _position) internal returns (address) {
+        address[8] memory _coins = IMainRegistry(MAIN_REGISTRY).get_underlying_coins(_curvePool());
+        return _coins[_position];
+    }
+
+    /// @notice Internal helper function to deposit in convex and update total LP tokens staked
+    /// @param _lpTokens number of LP tokens to stake
+    function _stakeConvex(uint256 _lpTokens) internal {
+        // update total staked lp tokens and deposit in convex
+        totalLpTokensStaked += _lpTokens;
+        IBooster(BOOSTER).depositAll(poolID, true);
+    }
+
+    /// @notice Internal function to deposit in the Convex Booster and mint shares
+    /// @dev Used for deposit and during an harvest
+    /// @param _receiver the address that receives the minted amount
+    /// @param _lpTokens amount to mint
+    /// @param _price we give the price as input to save on gas when calculating price
+    function _depositAndMint(address _receiver, uint256 _lpTokens, uint256 _price) internal returns (uint256 minted) {
+        // deposit in convex
+        _stakeConvex(_lpTokens);
+
+        // mint strategy tokens to msg.sender
+        minted = _lpTokens * ONE_CURVE_LP_TOKEN / _price;
+        _mint(_receiver, minted);
+    }
+
     /// @dev msg.sender does not need to approve this contract to spend `_amount` of `strategyToken`
-    /// @param _amount amount of strategyTokens to redeem
+    /// @param _shares amount of strategyTokens to redeem
+    /// @param _price we give the price as input to save on gas when calculating price
     /// @return redeemed amount of underlyings redeemed
-    function _redeem(uint256 _amount)
+    function _redeem(uint256 _shares, uint256 _price)
         internal
         onlyWhitelistedCDO
         returns (uint256 redeemed)
     {
-        if (_amount > 0) {
-            IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
+        // update total staked lp tokens
+        redeemed = (_shares * _price) / ONE_CURVE_LP_TOKEN;
+        totalLpTokensStaked -= redeemed;
+        
+        IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
 
-            // burn strategy tokens for the msg.sender
-            _burn(msg.sender, _amount);
-            // exit reward pool (without claiming)
-            IBaseRewardPool(rewardPool).withdraw(_amount, false);
-            // withdraw underlying lp tokens from Convex Booster
-            IBooster(BOOSTER).withdraw(poolID, _amount);
+        // burn strategy tokens for the msg.sender
+        _burn(whitelistedCDO, _shares);
 
-            // get current balance and transfer it
-            redeemed = _curveLpToken.balanceOf(address(this));
+        // exit reward pool (without claiming) and unwrap staking position
+        IBaseRewardPool(rewardPool).withdraw(redeemed, false);
+        IBooster(BOOSTER).withdraw(poolID, redeemed);
 
-            // transfer underlying lp tokens to msg.sender
-            _curveLpToken.safeTransfer(msg.sender, redeemed);
+        // transfer underlying lp tokens to msg.sender
+        _curveLpToken.safeTransfer(whitelistedCDO, redeemed);
+    }
+
+    function _lockedLpTokens() internal view returns(uint256 _locked) {
+        uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
+        uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
+        uint256 _totalLockedLpTokens = totalLpTokensLocked;
+
+        if (_totalLockedLpTokens > 0 && _blocksSinceLastHarvest < _releaseBlocksPeriod) {
+            // progressively release harvested rewards
+            _locked = _totalLockedLpTokens * (_releaseBlocksPeriod - _blocksSinceLastHarvest) / _releaseBlocksPeriod;
         }
     }
 
