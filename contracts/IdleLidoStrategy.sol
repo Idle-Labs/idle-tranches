@@ -119,12 +119,6 @@ contract IdleLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardU
     // Internal
     // ###################
 
-    /// @notice sends all gov tokens in this contract to an address
-    /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
-    /// @dev only called
-    /// @param _to address where to send gov tokens (rewards)
-    function _withdrawGovToken(address _to) internal returns (uint256[] memory _balances) {}
-
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
     /// @param _amount amount of strategyTokens to redeem
     /// @return redeemed amount of underlyings redeemed

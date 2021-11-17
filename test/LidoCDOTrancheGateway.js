@@ -33,6 +33,8 @@ describe("LidoCDOTrancheGateway", function () {
 
     one = ONE_TOKEN(18);
 
+    await hre.network.provider.send("hardhat_setBalance", [owner.address, "0xfffffffffffffffffff"])
+
     const Gateway = await ethers.getContractFactory("LidoCDOTrancheGateway");
     const MockLido = await ethers.getContractFactory("MockLido"); // underlyingToken
     const WETH = await ethers.getContractFactory("MockWETH"); // strategyToken
@@ -108,20 +110,6 @@ describe("LidoCDOTrancheGateway", function () {
       initialAmount
     );
   });
-
-  afterEach(async function () {
-    await hre.network.provider.request({
-      method: "hardhat_reset",
-      params: [
-        {
-          forking: {
-            jsonRpcUrl: hre.network.config.forking.url,
-            blockNumber: hre.network.config.forking.blockNumber
-          }
-        }
-      ]
-    });
-  })
 
   it("should not reinitialize the contract", async () => {
     await expect(
