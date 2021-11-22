@@ -24,7 +24,10 @@
     "url": "https://github.com/Idle-Labs/idle-utils/issues"
   },
   "homepage": "https://idle.finance",
-  "scripts": {},
+  "scripts": {
+    "test": "npx hardhat test test/*.js",
+    "test-integration": "npx hardhat test test/integration/**/*.js"
+  },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
