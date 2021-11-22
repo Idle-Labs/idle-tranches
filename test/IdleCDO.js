@@ -167,7 +167,7 @@ describe("IdleCDO", function () {
     // GuardedLaunchUpgradable
     expect(await idleCDO.limit()).to.be.equal(BN('1000000').mul(ONE_TOKEN(18)));
     expect(await idleCDO.governanceRecoveryFund()).to.equal(owner.address);
-    expect(await idleCDO.feeSplit()).to.equal(BN('100000'));
+    expect(await idleCDO.feeSplit()).to.equal(BN('0'));
   });
 
   // ###############
@@ -1606,9 +1606,9 @@ describe("IdleCDO", function () {
   });
 
   it("harvest should split fees between feeReceiver and referral if referral is present and feeSplit > 0", async () => {
-    // set fee receiver, referral and 50/50 fee split
+    // set fee receiver, referral and 10/90 fee split
     await idleCDO.setReferral(Random2Addr);
-    await idleCDO.setFeeSplit(BN('50000'));
+    await idleCDO.setFeeSplit(BN('10000'));
     await idleCDO.setFeeReceiver(RandomAddr);
     // Initialize deposits
     const _amountAA = BN('1000').mul(one);
@@ -1620,9 +1620,6 @@ describe("IdleCDO", function () {
     await idleToken.setGovAmount(_amountAA);
     // gain is 2000 -> fee is 200
     const fee = BN('200').mul(one);
-    // NAVAA = 1360 -> NAVBB = 2440 -> tot 3800
-    // AARatio = 1360 / 3800 = 35.789%
-    // ideal ratio = 50% +- 10%
     // so it will mint AA tokens
     const vPriceAA = await idleCDO.virtualPrice(AA.address);
     const expected = fee.mul(one).div(vPriceAA);
@@ -1632,9 +1629,9 @@ describe("IdleCDO", function () {
     await idleCDO.harvest(false, true, false, [true], [BN('0')], [BN('0')]);
 
     // check balance in tranche rewards staking contract
-    expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.equal(expected.div(BN('2')));
+    expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.closeTo(expected.div(BN('10')).mul(BN('9')), 10);
     // check that referral got the fee
-    expect(await AA.balanceOf(Random2Addr)).to.be.equal(expected.div(BN('2')));
+    expect(await AA.balanceOf(Random2Addr)).to.be.equal(expected.div(BN('10')));
 
     expect(await idleCDO.unclaimedFees()).to.be.equal(0);
     const navAAafter = await idleCDO.lastNAVAA();
