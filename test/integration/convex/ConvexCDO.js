@@ -214,7 +214,7 @@ describe("IdleConvexCDO", function () {
     // Buy AA tranche with `amount` underlying from another user
     const aa2TrancheBal = await helpers.deposit('AA', idleCDO, AABuyer2Addr, _amount);
     // amount bought should be less than the one of AABuyerAddr because price increased
-    await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
+    await helpers.check(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
 
     console.log('######## First real rebalance (with CVX, CRV rewards accrued)');
 
@@ -251,10 +251,7 @@ describe("IdleConvexCDO", function () {
     // wait 15 days
     await mineBlocks({ increaseOf: oneDay })
 
-    let res = await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, [], [], []]);
-    let redeemedRewards = res._redeemedRewards;
-
-    console.log("Redeemed: ", redeemedRewards);
+    await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, [], [], []]);
   }
 
   const mineBlocks = async ({ increaseOf }) => {

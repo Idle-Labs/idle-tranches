@@ -73,7 +73,7 @@ module.exports = {
       //   // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
       //   // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
       //   // blockNumber: 13261760 // pre transfer ownership
-      //   blockNumber: 13441245 // gas optimizations
+      //   blockNumber: 13666020 // convex integration tests
       // }
     },
     coverage: {

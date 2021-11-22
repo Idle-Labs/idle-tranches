@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_COMPOUND = 0;
 const DEPOSIT_POSITION_COMPOUND = 0;
-const WHALE_COMPOUND = '0xd68b6e9fc4eab0f041c5d2bf1ee7c4fd87d4e99f';
+const WHALE_COMPOUND = '0x3d8d742ee7fbc497ae671528a19a1489ba204482';
 const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const TOKEN_COMPOUND = '0x845838DF265Dcd2c412A1Dc9e959c7d08537f8a2'
 const DEPOSIT_COMPOUND = '0xeB21209ae4C2c9FF2a86ACA31E123764A3B6Bc06';
@@ -65,11 +65,10 @@ describe("ConvexStrategy2Token (using compound for tests)", async () => {
 
   it("should redeemRewards (simulate 7 days)", async () => {
     const addr = RandomAddr;
-    const _amount = BN('500000').mul(one);
+    const _amount = BN('5000').mul(one);
 
     await helpers.fundWallets(TOKEN_COMPOUND, [RandomAddr], WHALE_COMPOUND, _amount);
-
-    setWhitelistedCDO(addr);
+    await setWhitelistedCDO(addr);
 
     await deposit(addr, _amount);
 
