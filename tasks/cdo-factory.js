@@ -141,11 +141,13 @@ task("deploy-with-factory-generic", "Deploy IdleCDO using IdleCDOFactory")
 task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and Staking contract for rewards with default parameters")
   .addParam('cdoname')
   .addParam('proxyCdoAddress')
+  .addOptionalParam('strategyAddress')
   .setAction(async (args) => {
     // Run 'compile' task
     await run("compile");
     const cdoname = args.cdoname;
     let cdoProxyAddressToClone = args.proxyCdoAddress;
+    const strategyAddress = args.strategyAddress;
     const deployToken = addresses.deployTokens[cdoname];
 
     if (deployToken === undefined) {
@@ -170,7 +172,12 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     await helpers.prompt("continue? [y/n]", true);
 
     const incentiveTokens = [mainnetContracts.IDLE];
-    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.idleToken, creator], signer);
+    let strategy;
+    if (strategyAddres && strategyAddress !== addresses.addr0) {
+      strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress);
+    } else {
+      strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.idleToken, creator], signer);
+    }
 
     const deployParams = {
       cdoname,
@@ -219,4 +226,3 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log();
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
-
