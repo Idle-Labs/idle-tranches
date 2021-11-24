@@ -110,7 +110,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     fee = 10000; // 10% performance fee
     feeReceiver = address(0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4); // feeCollector
     guardian = _owner;
-    feeSplit = FULL_ALLOC; // all to feeReceiver as default
+    // feeSplit = 0; // default all to feeReceiver as default
     // StkAAVE unwrapping is active
     isStkAAVEActive = true;
   }
@@ -378,10 +378,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       address _feeReceiver = feeReceiver;
       address _referral = referral;
       uint256 _referralAmount;
-
       if (_referral != address(0)) {
         // If the contract has a referral, then we give the referral a share of the fees (in AA tranche tokens)
-        _referralAmount = _amount * (FULL_ALLOC - feeSplit) / FULL_ALLOC;
+        _referralAmount = _amount * feeSplit / FULL_ALLOC;
         _mintShares(_referralAmount, _referral, AATranche);
       }
 
