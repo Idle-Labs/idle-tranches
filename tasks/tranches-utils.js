@@ -28,7 +28,7 @@ task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards wi
     await helpers.prompt("continue? [y/n]", true);
 
     const incentiveTokens = [mainnetContracts.IDLE];
-    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.idleToken, creator], signer);
+    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.strategyParams[0], creator], signer);
     const idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [

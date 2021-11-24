@@ -54,8 +54,8 @@ const getSigner = async (acc) => {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();
-  log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
-  log();
+  // log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
+  // log();
   return signer;
 };
 const callContract = async (address, method, params, from = null) => {

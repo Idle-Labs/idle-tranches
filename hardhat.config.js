@@ -15,7 +15,6 @@ require("./tasks/tests");
 require("./tasks/cdo-factory");
 require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
-require("./tasks/strategies");
 
 const BN = require("bignumber.js");
 

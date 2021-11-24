@@ -86,7 +86,28 @@ npx hardhat TASK_NAME
 ## Deploy
 
 ```
-npx hardhat deploy --network YOUR_CONFIGURED_NETWORK
+npx hardhat deploy-with-factory-params --network YOUR_CONFIGURED_NETWORK --cdoname CDO_NAME 
+```
+
+`CDO_NAME` should be the name of the key of the `deployTokens` object in `lib/addresses.js` with all params for deployment.
+This is an example of config for deploying an IdleCDO with Lido strategy:
+```
+  lido: {
+    underlying: mainnetContracts.stETH,    // underlying token for the IdleCDO
+    decimals: 18,                          // underlying token decimals
+    proxyCdoAddress: CDOs.idleDAI.cdoAddr, // address of another IdleCDO where we will get the implementation to use
+    strategyName: 'IdleLidoStrategy',      // name of the strategy contract
+    strategyParams: [                      // strategy params for `initialize` call
+      mainnetContracts.wstETH,
+      mainnetContracts.stETH,
+      'owner'                              // The string 'owner' can be used to replace a specific address with the deployer of the strategy
+    ],
+    AAStaking: false,                      // if rewards are distributed in IdleCDO to AA holders
+    BBStaking: false,                      // if rewards are distributed in IdleCDO to BB holders
+    stkAAVEActive: false,                  // if IdleCDO needs to manage stkAAVE
+    limit: '1000000',                      // deposit limit for this IdleCDO
+    AARatio: '10000'                       // Interest rate split for AA holders. `100000` means 100% to AA
+  },
 ```
 
 ## Coverage
