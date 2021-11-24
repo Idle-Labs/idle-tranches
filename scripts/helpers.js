@@ -40,16 +40,22 @@ const getMultisigSigner = async (skipLog) => {
   }
   return signer;
 };
-const getSigner = async (skipLog) => {
-  let [signer] = await ethers.getSigners();
+const getSigner = async (acc) => {
+  let signer;
+  if (acc) {
+    // impersonate
+    signer = await impersonateSigner(acc);
+  } else {
+    // get first signer
+    [signer] = await hre.ethers.getSigners();
+  }
+  // In mainnet overwrite signer to be the ledger signer
   if (hre.network.name == 'mainnet') {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();
-  if (!skipLog) {
-    log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
-    log();
-  }
+  log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
+  log();
   return signer;
 };
 const callContract = async (address, method, params, from = null) => {

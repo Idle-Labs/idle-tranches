@@ -11,12 +11,11 @@ require("hardhat-etherscan-abi");
 require("solidity-coverage");
 
 // Tasks
-require("./tasks/helpers");
 require("./tasks/tests");
-require("./tasks/deploy");
-require("./tasks/test-harvest");
 require("./tasks/cdo-factory");
+require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
+require("./tasks/strategies");
 
 const BN = require("bignumber.js");
 
