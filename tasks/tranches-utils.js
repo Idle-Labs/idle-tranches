@@ -277,14 +277,14 @@ task("change-rewards", "Update rewards IdleCDO instance")
  * @name find-convex-params
  * find params for a convex strategy (convexPoolId, depositPosition)
  */
-task("find-convex-params", "Update rewards IdleCDO instance")
+task("find-convex-params", "Fiind depositPosition for depositToken of a convex pool of the given lpToken")
   .addParam('lpToken')
   .addParam('depositToken')
   .setAction(async (args) => {
     const lpToken = args.lpToken;
     const depositToken = args.depositToken;
-    // const strategyName = args.strategyName;
-    let crvReg = await hre.ethers.getContractAt(ICurveRegistryAbi, '0x90e00ace148ca3b23ac1bc8c240c2a7dd9c2d7f5');
+
+    const crvReg = await hre.ethers.getContractAt(ICurveRegistryAbi, '0x90e00ace148ca3b23ac1bc8c240c2a7dd9c2d7f5');
     const poolAddr = await crvReg.get_pool_from_lp_token(lpToken);
     const poolName = await crvReg.get_pool_name(poolAddr);
     let coins = await crvReg.get_coins(poolAddr);
