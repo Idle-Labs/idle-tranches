@@ -6,7 +6,7 @@ const addresses = require("../lib/addresses");
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
-
+const ICurveRegistryAbi = require("../abi/ICurveRegistry.json");
 /**
  * @name deploy
  * eg `npx hardhat deploy --cdoname idledai`
@@ -271,6 +271,42 @@ task("change-rewards", "Update rewards IdleCDO instance")
 
     console.log('AA ideal apr', BN(await cdo.getIdealApr(deployToken.cdo.AATranche)).toString());
     console.log('BB ideal apr', BN(await cdo.getIdealApr(deployToken.cdo.BBTranche)).toString());
+  });
+
+/**
+ * @name find-convex-params
+ * find params for a convex strategy (convexPoolId, depositPosition)
+ */
+task("find-convex-params", "Update rewards IdleCDO instance")
+  .addParam('lpToken')
+  .addParam('depositToken')
+  .setAction(async (args) => {
+    const lpToken = args.lpToken;
+    const depositToken = args.depositToken;
+    // const strategyName = args.strategyName;
+    let crvReg = await hre.ethers.getContractAt(ICurveRegistryAbi, '0x90e00ace148ca3b23ac1bc8c240c2a7dd9c2d7f5');
+    const poolAddr = await crvReg.get_pool_from_lp_token(lpToken);
+    const poolName = await crvReg.get_pool_name(poolAddr);
+    let coins = await crvReg.get_coins(poolAddr);
+    let uCoins = await crvReg.get_underlying_coins(poolAddr);
+
+    const curveWETHAddr = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    // if a coin is equal to curveWETHAddr then replace the value with the real WETH address
+    coins = coins.map(coin => coin == curveWETHAddr ? mainnetContracts.WETH : coin);
+    uCoins = uCoins.map(coin => coin == curveWETHAddr ? mainnetContracts.WETH : coin);
+
+    console.log({ poolName, poolAddr, lpToken, depositToken, coins, uCoins });
+
+    const position = coins.indexOf(depositToken);
+    const uPosition = uCoins.indexOf(depositToken);
+    
+    if (position >= 0) {
+      console.log('deposit position: ', position);
+    } else if (uPosition >= 0) {
+      console.log('deposit position (underlying): ', uPosition);
+    } else {
+      console.log('deposit token not found in pool');
+    }
   });
 
 /**
