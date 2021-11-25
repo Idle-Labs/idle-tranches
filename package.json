@@ -36,6 +36,8 @@
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-docgen": "^1.1.2",
     "hardhat-etherscan-abi": "^0.1.1",
+    "prettier": "^2.4.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.19",
     "solidity-coverage": "^0.7.17"
   },
   "dependencies": {
