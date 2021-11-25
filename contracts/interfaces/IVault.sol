@@ -11,4 +11,8 @@ interface IVault {
     function exit(uint256 _first, uint256 _last) external;
 
     function rawBalanceOf(address _account) external view returns (uint256);
+
+    function claimRewards() external;
+
+    function claimRewards(uint256 _first, uint256 _last) external;
 }

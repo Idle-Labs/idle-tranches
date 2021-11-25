@@ -198,4 +198,20 @@ contract IdleStrategy is
             }
         }
     }
+
+    // pass (0,0) as paramsif you want to claim for all epochs
+    function claimGovernanceTokens(uint256 startRound, uint256 endRound)
+        public
+        onlyOwner
+    {
+        require(
+            startRound >= endRound,
+            "Start Round Cannot be more the end round"
+        );
+        if (startRound == 0 && endRound == 0) {
+            vault.claimRewards(); // this be a infy gas call,
+        } else {
+            vault.claimRewards(startRound, endRound);
+        }
+    }
 }
