@@ -12,7 +12,7 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract IdleStrategy is
+contract IdleMStableStrategy is
     Initializable,
     OwnableUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -54,6 +54,9 @@ contract IdleStrategy is
     constructor() {
         token = address(1);
     }
+
+    event Deposit(address indexed user, uint256 amount, uint256 sharesRecevied);
+    event Redeem(address indexed user, uint256 credits, uint256 received);
 
     function initialize(
         address _strategyToken,
@@ -114,19 +117,26 @@ contract IdleStrategy is
     {
         require(_amount != 0, "Deposit amount should be greater than 0");
         underlyingToken.transferFrom(msg.sender, address(this), _amount);
+        underlyingToken.approve(address(imUSD), _amount);
         uint256 interestTokensReceived = imUSD.depositSavings(_amount);
-        Credits[msg.sender] = Credits[msg.sender].add(interestTokensReceived);
-        totalCredits = totalCredits.add(interestTokensReceived);
-
-        govTokenShares[msg.sender] = govTokenShares[msg.sender].add(
-            interestTokensReceived
-        );
-        totalGovTokenShares = totalGovTokenShares.add(interestTokensReceived);
 
         uint256 interestTokenAvailable = imUSD.balanceOf(address(this));
         imUSD.approve(address(vault), interestTokenAvailable);
-        vault.stake(interestTokenAvailable);
 
+        uint256 rawBalanceBefore = vault.rawBalanceOf(address(this));
+        vault.stake(interestTokenAvailable);
+        uint256 rawBalanceAfter = vault.rawBalanceOf(address(this));
+        uint256 rawBalanceIncreased = rawBalanceAfter.sub(rawBalanceBefore);
+
+        Credits[msg.sender] = Credits[msg.sender].add(rawBalanceIncreased);
+        totalCredits = totalCredits.add(rawBalanceIncreased);
+
+        govTokenShares[msg.sender] = govTokenShares[msg.sender].add(
+            rawBalanceIncreased
+        );
+        totalGovTokenShares = totalGovTokenShares.add(rawBalanceIncreased);
+
+        emit Deposit(msg.sender, _amount, rawBalanceIncreased);
         return interestTokensReceived;
     }
 
@@ -174,10 +184,12 @@ contract IdleStrategy is
         );
         Credits[msg.sender] = Credits[msg.sender].sub(_amount);
         totalCredits = totalCredits.sub(_amount);
+        vault.withdraw(_amount);
 
         uint256 massetReceived = imUSD.redeem(_amount);
         underlyingToken.transfer(msg.sender, massetReceived);
         _withdrawGovTokens(msg.sender);
+        emit Redeem(msg.sender, _amount, massetReceived);
         return massetReceived;
     }
 
@@ -199,19 +211,27 @@ contract IdleStrategy is
         }
     }
 
-    // pass (0,0) as paramsif you want to claim for all epochs
     function claimGovernanceTokens(uint256 startRound, uint256 endRound)
         public
         onlyOwner
+    {
+        _claimGovernanceTokens(startRound, endRound);
+    }
+
+    // pass (0,0) as paramsif you want to claim for all epochs
+    function _claimGovernanceTokens(uint256 startRound, uint256 endRound)
+        internal
     {
         require(
             startRound >= endRound,
             "Start Round Cannot be more the end round"
         );
+
         if (startRound == 0 && endRound == 0) {
             vault.claimRewards(); // this be a infy gas call,
         } else {
             vault.claimRewards(startRound, endRound);
         }
+        totalGovTokens = IERC20Detailed(govToken).balanceOf(address(this));
     }
 }
