@@ -10,9 +10,13 @@ interface IVault {
 
     function exit(uint256 _first, uint256 _last) external;
 
+    function withdraw(uint256 _amount) external;
+
     function rawBalanceOf(address _account) external view returns (uint256);
 
     function claimRewards() external;
 
     function claimRewards(uint256 _first, uint256 _last) external;
+
+    function boostDirector() external view returns (address);
 }
