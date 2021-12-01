@@ -21,7 +21,7 @@ contract ConvexStrategy4TokenDeposit is ConvexBaseStrategy {
     /// @dev To implement the strategy with old curve pools like compound and y
     ///      this contract should be used with respective _underlying_ deposit contracts
     ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
-    function _depositInCurve() internal override {
+    function _depositInCurve(uint256 _minLpTokens) internal override {
         address _depositor = depositor;
         require(_depositor != address(0), "Depositor address is zero");
 
@@ -34,6 +34,6 @@ contract ConvexStrategy4TokenDeposit is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[4] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_4token(_depositor).add_liquidity(_depositArray, 0);
+        ICurveDeposit_4token(_depositor).add_liquidity(_depositArray, _minLpTokens);
     }
 }

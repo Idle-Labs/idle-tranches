@@ -259,12 +259,19 @@ abstract contract ConvexBaseStrategy is
     /// @notice Anyone can call this because this contract holds no strategy tokens and so no 'old' rewards
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`.
     /// redeem rewards and transfer them to msg.sender
-    function redeemRewards()
+    /// @param _extraData extra data to be used when selling rewards for min amounts
+    function redeemRewards(bytes calldata _extraData)
         external
         override
         onlyWhitelistedCDO
         returns (uint256[] memory _balances)
     {
+        // decode params from _extraData to get the min amount for each convexRewards
+        uint256[] memory _minAmountsWETH = new uint256[](convexRewards.length);
+        uint256 _minDepositToken;
+        uint256 _minLpToken;
+         (_minAmountsWETH, _minDepositToken, _minLpToken) = abi.decode(_extraData, (uint256[], uint256, uint256));
+
         IBaseRewardPool(rewardPool).getReward();
 
         for (uint256 i = 0; i < convexRewards.length; i++) {
@@ -287,7 +294,7 @@ abstract contract ConvexBaseStrategy is
             // we accept 1 as minimum because this is executed by a trusted CDO
             _router.swapExactTokensForTokens(
                 _rewardBalance,
-                1,
+                _minAmountsWETH[i],
                 reward2WethPath[_reward],
                 address(this),
                 block.timestamp
@@ -306,19 +313,20 @@ abstract contract ConvexBaseStrategy is
 
             _wethRouter.swapExactTokensForTokens(
                 _wethBalance,
-                1,
+                _minDepositToken,
                 weth2DepositPath,
                 address(this),
                 block.timestamp
             );
         }
 
-        _depositInCurve();
+        _depositInCurve(_minLpToken);
+
         IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
         uint256 _curveLpBalance = _curveLpToken.balanceOf(address(this));
 
         if(_curveLpBalance > 0) {
-            // deposit in curve and stake on convex
+            // stake on convex
             _stakeConvex(_curveLpBalance);
 
             // update locked lp tokens to update price
@@ -454,7 +462,7 @@ abstract contract ConvexBaseStrategy is
     function _curveUnderlyingsSize() internal virtual returns (uint256);
 
     /// @notice Virtual method that implements deposit in Curve
-    function _depositInCurve() internal virtual;
+    function _depositInCurve(uint256 _minLpTokens) internal virtual;
 
     /// @return address of pool from LP token
     function _curvePool() internal returns (address) {        

@@ -20,7 +20,7 @@ contract ConvexStrategyETH is ConvexBaseStrategy {
 
     /// @notice Deposits in Curve for pools with 2 ETH-based tokens
     /// @dev This should be used to implement the strategy with curve pool such as reth, steth, seth
-    function _depositInCurve() internal override {
+    function _depositInCurve(uint256 _minLpTokens) internal override {
         IWETH9 _weth = IWETH9(WETH);
         uint256 _balance = _weth.balanceOf(address(this));
         
@@ -29,7 +29,7 @@ contract ConvexStrategyETH is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_2token(_curvePool()).add_liquidity{value: _balance}(_depositArray, 0);
+        ICurveDeposit_2token(_curvePool()).add_liquidity{value: _balance}(_depositArray, _minLpTokens);
     }
 
     receive() external payable {}
