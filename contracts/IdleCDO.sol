@@ -565,6 +565,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @notice method used to sell all sellable rewards for `_token` on uniswap
+  /// @param _strategy IIdleCDOStrategy stategy instance
   /// @param _sellAmounts array with amounts of rewards to sell
   /// @param _minAmount array with amounts of _token buy for each reward sold. (should have the same length as _sellAmounts)
   /// @param _skipReward array of flags for skipping the market sell of specific rewards (should have the same length as _sellAmounts)
