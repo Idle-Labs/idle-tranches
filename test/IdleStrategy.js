@@ -185,7 +185,7 @@ describe("IdleStrategy", function () {
   it("should skip redeemRewards if bal is 0", async () => {
     const addr = RandomAddr;
     const initialBalIncentive = await incentiveToken.balanceOf(addr);
-    await strategy.connect(Random).redeemRewards();
+    await strategy.connect(Random).redeemRewards('0x');
     const finalBalIncentive = await incentiveToken.balanceOf(addr);
     // incentive token balance is NOT increased
     expect(finalBalIncentive).to.equal(initialBalIncentive);
@@ -327,11 +327,11 @@ describe("IdleStrategy", function () {
   }
   const redeemRewards = async (addr, amount) => {
     await helpers.sudoCall(addr, idleToken, 'approve', [strategy.address, MAX_UINT]);
-    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', ['0x']);
     return res;
   }
   const staticRedeemRewards = async (addr, amount) => {
     await helpers.sudoCall(addr, idleToken, 'approve', [strategy.address, MAX_UINT]);
-    return await helpers.sudoStaticCall(addr, strategy, 'redeemRewards', []);
+    return await helpers.sudoStaticCall(addr, strategy, 'redeemRewards', ['0x']);
   }
 });

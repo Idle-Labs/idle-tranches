@@ -199,7 +199,7 @@ describe("IdleLidoStrategy", function () {
   });
   it("should skip redeemRewards if bal is 0", async () => {
     const addr = RandomAddr;
-    await strategy.connect(Random).redeemRewards();
+    await strategy.connect(Random).redeemRewards('0x');
 
     // No token left in the contract
     expect(await underlying.balanceOf(strategy.address)).to.equal(0);
@@ -290,6 +290,6 @@ describe("IdleLidoStrategy", function () {
   };
   const staticRedeemRewards = async (addr, amount) => {
     await helpers.sudoCall(addr, lido, "approve", [strategy.address, MAX_UINT]);
-    return await helpers.sudoStaticCall(addr, strategy, "redeemRewards", []);
+    return await helpers.sudoStaticCall(addr, strategy, "redeemRewards", ['0x']);
   };
 });
