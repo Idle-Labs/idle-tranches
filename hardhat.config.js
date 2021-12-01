@@ -22,40 +22,40 @@ module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.7",
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 270
+            runs: 999999
           }
         }
       }
     ],
     overrides: {
-      "contracts/IdleCDOTrancheRewards.sol": {
-        version: "0.8.7",
+      "contracts/IdleCDO.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: 1
           }
         }
       },
-      "contracts/IdleCDOTranche.sol": {
-        version: "0.8.7",
+      "contracts/GuardedLaunchUpgradable.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: 1
           }
         }
       },
-      "contracts/IdleStrategy.sol": {
-        version: "0.8.7",
+      "contracts/IdleCDOStorage.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: 1
           }
         }
       }
@@ -71,7 +71,8 @@ module.exports = {
       //   // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
       //   // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
       //   // blockNumber: 13261760 // pre transfer ownership
-      //   blockNumber: 13666020 // convex integration tests
+      //   // blockNumber: 13666020 // convex integration tests
+      //   blockNumber: 13685150 // lido deployment
       // }
     },
     coverage: {

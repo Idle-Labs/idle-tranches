@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
 import {ICurveDeposit_4token_underlying} from "../../interfaces/curve/ICurveDeposit_4token_underlying.sol";

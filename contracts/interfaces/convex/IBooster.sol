@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 interface IBooster {
     function deposit(uint256 _pid, uint256 _amount, bool _stake) external;
     function depositAll(uint256 _pid, bool _stake) external;
