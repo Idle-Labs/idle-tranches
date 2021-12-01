@@ -265,6 +265,21 @@ const isEmptyString = (s) => {
   return s.toString().trim() == "";
 }
 
+// paramsType: array of params types eg ['address', 'uint256']
+// params: array of params eg [to, amount]
+const encodeParams = (paramsType, params) => {
+  const abiCoder = new hre.ethers.utils.AbiCoder();
+  return abiCoder.encode(paramsType, params);
+}
+
+// method: string eg "transfer(address,uint256)"
+// methodName: string eg "transfer"
+// params: array of params eg [to, amount]
+const encodeFunctionCall = (method, methodName, params) => {
+  let iface = new ethers.utils.Interface([`function ${method}`]);
+  return iface.encodeFunctionData(methodName, params)
+}
+
 module.exports = {
   advanceNBlock,
   impersonateSigner,
@@ -294,4 +309,6 @@ module.exports = {
   checkBalance,
   isEmptyString,
   log,
+  encodeFunctionCall,
+  encodeParams
 }

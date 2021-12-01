@@ -125,7 +125,14 @@ describe("ConvexStrategy2Token (using compound for tests)", async () => {
   }
   
   const redeemRewards = async (addr) => {
-    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5, 5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }
 });
