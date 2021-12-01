@@ -17,6 +17,7 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
+const mainContactRuns = 110;
 
 module.exports = {
   solidity: {
@@ -37,7 +38,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1
+            runs: mainContactRuns
           }
         }
       },
@@ -46,7 +47,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1
+            runs: mainContactRuns
           }
         }
       },
@@ -55,7 +56,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1
+            runs: mainContactRuns
           }
         }
       }

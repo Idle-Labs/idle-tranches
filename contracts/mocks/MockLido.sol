@@ -28,7 +28,7 @@ contract MockLido is ERC20("Staked ETH", "stETH") {
         return address(this).balance;
     }
 
-    function submit(address _referral)
+    function submit(address)
         public
         payable
         returns (uint256 sharesAmount)
