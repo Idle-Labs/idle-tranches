@@ -30,13 +30,12 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     function mint(uint256 _risk, uint256 _amount) public returns (uint256) {
         IdleCDOCard _card = new IdleCDOCard();
-     
+
         // transfer amount to cards protocol
-        _erc20().safeTransferFrom(msg.sender, address(this), _amount);
+        idleCDOToken().safeTransferFrom(msg.sender, address(this), _amount);
 
         // approve the amount to be spend on cdos tranches
-        _erc20().approve(address(_card), _amount);
-
+        idleCDOToken().approve(address(_card), _amount);
 
         // calculate the amount to deposit in BB
         // proportional to risk
@@ -45,12 +44,12 @@ contract IdleCDOCardManager is ERC721Enumerable {
         // calculate the amount to deposit in AA
         // inversely proportional to risk
         uint256 depositAA = _amount.sub(depositBB);
-       
+
         _card.mint(depositAA, depositBB);
 
         // mint the Idle CDO card
         uint256 tokenId = _mint();
-        _cards[tokenId] = Card(_risk, _amount,address(_card));
+        _cards[tokenId] = Card(_risk, _amount, address(_card));
 
         return tokenId;
     }
@@ -68,10 +67,11 @@ contract IdleCDOCardManager is ERC721Enumerable {
         _burn(_tokenId);
 
         Card memory pos = card(_tokenId);
-        IdleCDOCard _card =  IdleCDOCard(pos.cardAddress);
-        uint256 toRedeem = _card.burn(msg.sender);     
-     
-        //_erc20().safeTransfer(msg.sender, toRedeem);
+        IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
+        uint256 toRedeem = _card.burn();
+
+        // transfer to card owner
+        idleCDOToken().safeTransfer(msg.sender, toRedeem);
     }
 
     function getApr(uint256 _exposure) public view returns (uint256) {
@@ -82,8 +82,19 @@ contract IdleCDOCardManager is ERC721Enumerable {
         // ratioAA = ratio of _exposure of the AA apr
         uint256 aprBB = idleCDO.getApr(idleCDO.BBTranche());
         uint256 ratioBB = percentage(_exposure, aprBB);
-        
+
         return ratioAA.add(ratioBB);
+    }
+
+    function balance(uint256 _tokenId)
+        public
+        view
+        returns (uint256 balanceAA, uint256 balanceBB)
+    {
+        Card memory pos = card(_tokenId);
+        require(pos.cardAddress != address(0), "inexistent card");
+        IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
+        return _card.balance();
     }
 
     function percentage(uint256 _percentage, uint256 _amount)
@@ -107,11 +118,10 @@ contract IdleCDOCardManager is ERC721Enumerable {
         return newItemId;
     }
 
-    function _erc20() private view returns (IERC20Detailed) {
+    function idleCDOToken() public view returns (IERC20Detailed) {
         return IERC20Detailed(idleCDO.token());
     }
 }
-
 
 contract IdleCDOCard {
     using SafeERC20Upgradeable for IERC20Detailed;
@@ -121,6 +131,14 @@ contract IdleCDOCard {
 
     IdleCDOCardManager internal manager;
 
+    modifier onlyOwner() {
+        require(
+            msg.sender == address(manager),
+            "Ownable: card caller is not the card manager owner"
+        );
+        _;
+    }
+
     constructor() {
         manager = IdleCDOCardManager(msg.sender);
         require(
@@ -128,43 +146,55 @@ contract IdleCDOCard {
         );
     }
 
-    function mint(uint256 _amountAA, uint256 _amountBB) public returns (uint256) {
+    function mint(uint256 _amountAA, uint256 _amountBB)
+        public
+        onlyOwner
+        returns (uint256)
+    {
         IdleCDO idleCDO = manager.idleCDO();
         uint256 amount = _amountAA.add(_amountBB);
-        
+
         // transfer amount to cards protocol
-        _erc20().safeTransferFrom(msg.sender, address(this), amount);
+        manager.idleCDOToken().safeTransferFrom(
+            address(manager),
+            address(this),
+            amount
+        );
 
         // approve the amount to be spend on cdos tranches
-        _erc20().approve(address(idleCDO), amount);
+        manager.idleCDOToken().approve(address(idleCDO), amount);
 
-       // deposit the amount to the cdos tranches;
+        // deposit the amount to the cdos tranches;
         idleCDO.depositAA(_amountAA);
         idleCDO.depositBB(_amountBB);
 
         return amount;
     }
 
-    function burn(address _owner) public returns (uint256 toRedeem) {
+    function burn() public onlyOwner returns (uint256 toRedeem) {
+        (uint256 balanceAA, uint256 balanceBB) = balance();
+
         IdleCDO idleCDO = manager.idleCDO();
-
-        uint256 balanceAA = IERC20Detailed(idleCDO.AATranche()).balanceOf(
-            address(this)
-        );
         uint256 toRedeemAA = balanceAA > 0 ? idleCDO.withdrawAA(0) : 0;
-
-        uint256 balanceBB = IERC20Detailed(idleCDO.BBTranche()).balanceOf(
-            address(this)
-        );
         uint256 toRedeemBB = balanceBB > 0 ? idleCDO.withdrawBB(0) : 0;
 
-        // transfers everything withdrawn to its owner
+        // transfers everything withdrawn to the manager
         toRedeem = toRedeemAA.add(toRedeemBB);
-        _erc20().safeTransfer(_owner, toRedeem);
+        manager.idleCDOToken().safeTransfer(address(manager), toRedeem);
     }
 
-    function _erc20() private view returns (IERC20Detailed) {
-        return IERC20Detailed(manager.idleCDO().token());
+    function balance()
+        public
+        view
+        returns (uint256 balanceAA, uint256 balanceBB)
+    {
+        IdleCDO idleCDO = manager.idleCDO();
+
+        balanceAA = IERC20Detailed(idleCDO.AATranche()).balanceOf(
+            address(this)
+        );
+        balanceBB = IERC20Detailed(idleCDO.BBTranche()).balanceOf(
+            address(this)
+        );
     }
 }
-
