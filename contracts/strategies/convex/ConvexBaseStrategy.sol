@@ -329,7 +329,7 @@ abstract contract ConvexBaseStrategy is
                 block.timestamp
             );
             // save in _balances the amount of depositToken to use off-chain
-            _balances[_convexRewards.length + 1] = _res[_res.length - 1];
+            _balances[_convexRewards.length] = _res[_res.length - 1];
         }
 
         _depositInCurve(_minLpToken);
@@ -338,7 +338,7 @@ abstract contract ConvexBaseStrategy is
         uint256 _curveLpBalance = _curveLpToken.balanceOf(address(this));
 
         // save in _balances the amount of curveLpTokens received to use off-chain
-        _balances[_convexRewards.length + 2] = _curveLpBalance;
+        _balances[_convexRewards.length + 1] = _curveLpBalance;
 
         if(_curveLpBalance > 0) {
             // stake on convex

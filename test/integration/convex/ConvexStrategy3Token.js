@@ -113,8 +113,6 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
     expect(await strategy.balanceOf(strategy.address)).to.equal(0);
   });
-  
-
 
   const setWhitelistedCDO = async (addr) => {
     await helpers.sudoCall(owner.address, strategy, 'setWhitelistedCDO', [addr]);
