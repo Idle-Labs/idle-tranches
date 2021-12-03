@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.7;
 
-import "../IdleCDOCardManager.sol";
+import "../IdleCDOCards.sol";
 
-contract EvilIdleCdoCardManager is IdleCDOCardManager {
+contract EvilIdleCdoCardManager is IdleCDOCards {
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  constructor(address _idleCDOAddress) IdleCDOCardManager(_idleCDOAddress) {}
+  constructor(address _idleCDOAddress) IdleCDOCards(_idleCDOAddress) {}
 
   function evilMint(address cardAddress, uint256 amountAA, uint256 amountBB) public returns (uint256) {
     uint256 _amount = amountAA + amountBB;
