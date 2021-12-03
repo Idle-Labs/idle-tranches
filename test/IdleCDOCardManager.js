@@ -435,7 +435,7 @@ describe("IdleCDOCardManager", () => {
       //approve
       await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
 
-      await expect(evilManager.connect(BBBuyer).mint2(card.cardAddress, ONE_THOUSAND_TOKEN, 0)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
+      await expect(evilManager.connect(BBBuyer).evilMint(card.cardAddress, ONE_THOUSAND_TOKEN, 0)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
     });
 
     it("should not allow non manager owner to burn", async () => {
@@ -452,7 +452,7 @@ describe("IdleCDOCardManager", () => {
       //approve
       await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
 
-      await expect(evilManager.connect(BBBuyer).burn2(card.cardAddress)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
+      await expect(evilManager.connect(BBBuyer).evilBurn(card.cardAddress)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
     });
   });
 });
