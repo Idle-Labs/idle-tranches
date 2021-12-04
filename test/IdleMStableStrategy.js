@@ -2,8 +2,7 @@ require("hardhat/config");
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
-const vaultAbi =
-  require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
+const vaultAbi = require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
 
 const addresses = require("../lib/addresses");
 const { expect } = require("chai");
@@ -15,10 +14,9 @@ require("chai").use(smock.matchers);
 
 const BN = (n) => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
-const MAX_UINT = BN(
-  "115792089237316195423570985008687907853269984665640564039457584007913129639935"
-);
+const MAX_UINT = BN("115792089237316195423570985008687907853269984665640564039457584007913129639935");
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const uniswapV3Factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 
 const imUSD_ADDRESS = "0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19";
 const mUSD_ADDRESS = "0xe2f2a5C287993345a840Db3B0845fbC70f5935a5";
@@ -47,9 +45,7 @@ describe.only("IdleMStableStrategy", function () {
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
-    let IdleMStableStrategyFactory = await ethers.getContractFactory(
-      "IdleMStableStrategy"
-    );
+    let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
     IdleMStableStrategy = await IdleMStableStrategyFactory.deploy();
     await IdleMStableStrategy.deployed();
 
@@ -67,6 +63,8 @@ describe.only("IdleMStableStrategy", function () {
       mUSD.address,
       meta.address,
       vault.address,
+      user.address, // assuming that user itself if the idle CDO.
+      uniswapV3Factory,
       owner.address
     );
   });
@@ -79,75 +77,40 @@ describe.only("IdleMStableStrategy", function () {
     expect(await imUSD.name()).to.eq("Interest bearing mUSD");
     expect(await mUSD.name()).to.eq("mStable USD");
     expect(await meta.name()).to.eq("Meta");
-    expect(await vault.boostDirector()).to.eq(
-      "0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592"
-    );
+    expect(await vault.boostDirector()).to.eq("0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592");
   });
 
   it("Deposit AMOUNT in Idle Tranche", async () => {
-    // approve tokens to idle-mstable-strategy
-
-    let strategySharesBefore = await IdleMStableStrategy.Credits(user.address);
     let totalSharesBefore = await IdleMStableStrategy.totalCredits();
-    let govTokenShareBefore = await IdleMStableStrategy.govTokenShares(
-      user.address
-    );
-    let totalGovSharesBefore = await IdleMStableStrategy.totalGovTokenShares();
 
-    await mUSD
-      .connect(user)
-      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
-    await expect(
-      IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)
-    ).to.emit(IdleMStableStrategy, "Deposit"); // calculating args pending
+    // approve tokens to idle-mstable-strategy
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await expect(IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)).to.emit(IdleMStableStrategy, "Deposit"); // calculating args pending
 
-    let strategySharesAfter = await IdleMStableStrategy.Credits(user.address);
     let totalSharesAfters = await IdleMStableStrategy.totalCredits();
-    let govTokenShareAfter = await IdleMStableStrategy.govTokenShares(
-      user.address
-    );
-    let totalGovSharesAfter = await IdleMStableStrategy.totalGovTokenShares();
 
     // strategy should not have any mUSD left
     expect(await mUSD.balanceOf(IdleMStableStrategy.address)).to.eq(0);
 
-    // check public variables and state updates
-    expect(strategySharesAfter.sub(strategySharesBefore)).gt(0);
-    expect(govTokenShareAfter.sub(govTokenShareBefore)).gt(0);
-    expect(strategySharesAfter.sub(strategySharesBefore)).eq(
-      govTokenShareAfter.sub(govTokenShareBefore)
-    );
-    expect(totalSharesAfters.sub(totalSharesBefore)).eq(
-      strategySharesAfter.sub(strategySharesBefore)
-    );
-    expect(totalGovSharesAfter.sub(totalGovSharesBefore)).gt(0);
-    expect(govTokenShareAfter.sub(govTokenShareBefore)).eq(
-      govTokenShareAfter.sub(govTokenShareBefore)
-    );
+    expect(totalSharesAfters.sub(totalSharesBefore)).gt(0);
 
     // check states in vault
     expect(await vault.rawBalanceOf(IdleMStableStrategy.address)).gt(0);
   });
 
   it("Redeem Tokens: redeem", async () => {
-    let strategySharesBefore = await IdleMStableStrategy.Credits(user.address);
+    let strategySharesBefore = await IdleMStableStrategy.totalCredits();
 
-    await mUSD
-      .connect(user)
-      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
-    await expect(
-      IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)
-    ).to.emit(IdleMStableStrategy, "Deposit");
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await expect(IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)).to.emit(IdleMStableStrategy, "Deposit");
 
-    let strategySharesAfter = await IdleMStableStrategy.Credits(user.address);
+    let strategySharesAfter = await IdleMStableStrategy.totalCredits();
 
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
 
     let redeemAmount = sharesReceived.div(10); // claim back a fraction of shares received
 
-    await expect(
-      IdleMStableStrategy.connect(user).redeem(redeemAmount)
-    ).to.emit(IdleMStableStrategy, "Redeem"); // args to be calculated
+    await expect(IdleMStableStrategy.connect(user).redeem(redeemAmount)).to.emit(IdleMStableStrategy, "Redeem"); // args to be calculated
   });
 });

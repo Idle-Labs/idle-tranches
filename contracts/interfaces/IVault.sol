@@ -19,4 +19,6 @@ interface IVault {
     function claimRewards(uint256 _first, uint256 _last) external;
 
     function boostDirector() external view returns (address);
+
+    function getRewardToken() external view returns (address);
 }
