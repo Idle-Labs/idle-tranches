@@ -90,7 +90,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
     // only claim gov token rewards
     function redeemRewards() external override onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards[0] = _swapGovTokenOnUniswap(msg.sender);
+        rewards[0] = _swapGovTokenOnUniswap();
     }
 
     function pullStkAAVE() external override returns (uint256) {
@@ -110,6 +110,10 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         require(_amount != 0, "Deposit amount should be greater than 0");
         underlyingToken.transferFrom(msg.sender, address(this), _amount);
+        return _depositToVault(_amount);
+    }
+
+    function _depositToVault(uint256 _amount) internal returns (uint256) {
         underlyingToken.approve(address(imUSD), _amount);
         uint256 interestTokensReceived = imUSD.depositSavings(_amount);
 
@@ -174,12 +178,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
         uint256 massetReceived = imUSD.redeem(_amount);
         underlyingToken.transfer(msg.sender, massetReceived);
-        _swapGovTokenOnUniswap(msg.sender);
+        _swapGovTokenOnUniswap();
         emit Redeem(msg.sender, _amount, massetReceived);
         return massetReceived;
     }
 
-    function _swapGovTokenOnUniswap(address _address) internal returns (uint256) {
+    function _swapGovTokenOnUniswap() internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
         IERC20Detailed(govToken).approve(address(uniswapPool), govTokensToSend);
         if (govTokensToSend < thresholdGovTokenToSwap) {
@@ -194,9 +198,9 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
         // uniswapPool.swap(address(this), false, int256(govTokensToSend), 1461446703485210103287273052203988822378723970341, data);
 
         uint256 underlyingBalanceAfter = underlyingToken.balanceOf(address(this));
-
-        underlyingToken.transfer(_address, underlyingBalanceAfter);
-        return underlyingBalanceAfter;
+        uint256 newCredits = _depositToVault(underlyingBalanceAfter);
+        totalCredits = totalCredits.add(newCredits);
+        return newCredits;
     }
 
     function claimGovernanceTokens(uint256 startRound, uint256 endRound) public onlyOwner {
