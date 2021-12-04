@@ -25,8 +25,8 @@ contract IdleMStableStrategyWrapper {
         address token,
         uint256 _amount,
         uint256 minOutputQuantity
-    ) public {
-        _depositToken(token, _amount, minOutputQuantity, true);
+    ) public returns (uint256){
+        return _depositToken(token, _amount, minOutputQuantity, true);
     }
 
     // this contract must be approved, token must one of the underlying token of mUSD
@@ -34,8 +34,8 @@ contract IdleMStableStrategyWrapper {
         address token,
         uint256 _amount,
         uint256 minOutputQuantity
-    ) public {
-        _depositToken(token, _amount, minOutputQuantity, false);
+    ) public returns (uint256){
+        return _depositToken(token, _amount, minOutputQuantity, false);
     }
 
     function withdrawTokenViaBurningAA(
