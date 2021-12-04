@@ -15,52 +15,83 @@ contract IdleMStableStrategyWrapper {
     IMAsset public mUSD;
     IdleCDO public immutable idleCDO;
 
-    uint256 public minOutputPercentage = 95000; // means 95%
-
     constructor(address _mUSD, IdleCDO _idleCDO) {
         mUSD = IMAsset(_mUSD);
         idleCDO = IdleCDO(_idleCDO);
     }
 
     // this contract must be approved, token must one of the underlying token of mUSD
-    function depositAAWithToken(address token, uint256 _amount) public {
-        IERC20Detailed tokenContract = IERC20Detailed(token);
-        tokenContract.transferFrom(msg.sender, address(this), _amount);
-        tokenContract.approve(address(mUSD), _amount);
-        uint256 _minOutputQuantity = _amount.mul(minOutputPercentage).div(
-            1000000
-        );
-        uint256 mUSDReceived = mUSD.mint(
-            token,
-            _amount,
-            _minOutputQuantity,
-            address(this)
-        );
-
-        mUSD.approve(address(idleCDO), mUSDReceived);
-
-        uint256 aaReceived = idleCDO.depositAA(mUSDReceived);
-        IERC20Detailed(idleCDO.AATranche()).transfer(msg.sender, aaReceived);
+    function depositAAWithToken(
+        address token,
+        uint256 _amount,
+        uint256 minOutputQuantity
+    ) public {
+        _depositToken(token, _amount, minOutputQuantity, true);
     }
 
     // this contract must be approved, token must one of the underlying token of mUSD
-    function depositBBWithToken(address token, uint256 _amount) public {
+    function depositBBWithToken(
+        address token,
+        uint256 _amount,
+        uint256 minOutputQuantity
+    ) public {
+        _depositToken(token, _amount, minOutputQuantity, false);
+    }
+
+    function withdrawTokenViaBurningAA(
+        address tokenToReceive,
+        uint256 amount,
+        uint256 minReceiveQuantity
+    ) public {
+        _withdrawToken(tokenToReceive, amount, minReceiveQuantity, true);
+    }
+
+    function withdrawTokenViaBurningBB(
+        address tokenToReceive,
+        uint256 amount,
+        uint256 minReceiveQuantity
+    ) public {
+        _withdrawToken(tokenToReceive, amount, minReceiveQuantity, false);
+    }
+
+    function _depositToken(
+        address token,
+        uint256 _amount,
+        uint256 _minOutputQuantity,
+        bool isTrancheAA
+    ) internal {
+        address tranche = isTrancheAA ? idleCDO.AATranche() : idleCDO.BBTranche();
+
         IERC20Detailed tokenContract = IERC20Detailed(token);
         tokenContract.transferFrom(msg.sender, address(this), _amount);
         tokenContract.approve(address(mUSD), _amount);
-        uint256 _minOutputQuantity = _amount.mul(minOutputPercentage).div(
-            1000000
-        );
-        uint256 mUSDReceived = mUSD.mint(
-            token,
-            _amount,
-            _minOutputQuantity,
-            address(this)
-        );
+        uint256 mUSDReceived = mUSD.mint(token, _amount, _minOutputQuantity, address(this));
 
         mUSD.approve(address(idleCDO), mUSDReceived);
 
         uint256 bbReceived = idleCDO.depositBB(mUSDReceived);
-        IERC20Detailed(idleCDO.BBTranche()).transfer(msg.sender, bbReceived);
+        IERC20Detailed(tranche).transfer(msg.sender, bbReceived);
+    }
+
+    // user must approve tranche tokens
+    // token = token that you want to receive
+    function _withdrawToken(
+        address token,
+        uint256 _amount,
+        uint256 _minOutputQuantity,
+        bool isTrancheAA
+    ) internal {
+        address tranche = isTrancheAA ? idleCDO.AATranche() : idleCDO.BBTranche();
+        IERC20Detailed trancheToken = IERC20Detailed(tranche);
+        trancheToken.transferFrom(msg.sender, address(this), _amount);
+        trancheToken.approve(address(idleCDO), _amount);
+
+        uint256 underlyingMusdReceived;
+        if (isTrancheAA) {
+            underlyingMusdReceived = idleCDO.withdrawAA(_amount);
+        } else {
+            underlyingMusdReceived = idleCDO.withdrawBB(_amount);
+        }
+        mUSD.redeem(token, underlyingMusdReceived, _minOutputQuantity, msg.sender);
     }
 }
