@@ -25,7 +25,7 @@ contract IdleMStableStrategyWrapper {
         address token,
         uint256 _amount,
         uint256 minOutputQuantity
-    ) public returns (uint256){
+    ) public returns (uint256) {
         return _depositToken(token, _amount, minOutputQuantity, true);
     }
 
@@ -34,7 +34,7 @@ contract IdleMStableStrategyWrapper {
         address token,
         uint256 _amount,
         uint256 minOutputQuantity
-    ) public returns (uint256){
+    ) public returns (uint256) {
         return _depositToken(token, _amount, minOutputQuantity, false);
     }
 
