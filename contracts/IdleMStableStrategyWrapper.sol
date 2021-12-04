@@ -59,7 +59,7 @@ contract IdleMStableStrategyWrapper {
         uint256 _amount,
         uint256 _minOutputQuantity,
         bool isTrancheAA
-    ) internal {
+    ) internal returns (uint256) {
         address tranche = isTrancheAA ? idleCDO.AATranche() : idleCDO.BBTranche();
 
         IERC20Detailed tokenContract = IERC20Detailed(token);
@@ -69,8 +69,14 @@ contract IdleMStableStrategyWrapper {
 
         mUSD.approve(address(idleCDO), mUSDReceived);
 
-        uint256 bbReceived = idleCDO.depositBB(mUSDReceived);
-        IERC20Detailed(tranche).transfer(msg.sender, bbReceived);
+        uint256 tTokens;
+        if (isTrancheAA) {
+            tTokens = idleCDO.depositAA(mUSDReceived);
+        } else {
+            tTokens = idleCDO.depositBB(mUSDReceived);
+        }
+        IERC20Detailed(tranche).transfer(msg.sender, tTokens);
+        return tTokens;
     }
 
     // user must approve tranche tokens
