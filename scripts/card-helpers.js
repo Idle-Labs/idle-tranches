@@ -204,7 +204,7 @@ const setAprs = async () => {
   
     // idle cdo cards deploy
     const IdleCDOCardManager = await hre.ethers.getContractFactory("IdleCDOCardManager");
-    cards = await IdleCDOCardManager.deploy(idleCDO.address);
+    cards = await IdleCDOCardManager.deploy([idleCDO.address]);
     await cards.deployed();
   
     //approve
