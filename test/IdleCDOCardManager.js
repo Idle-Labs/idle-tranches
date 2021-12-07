@@ -5,7 +5,7 @@ const { BigNumber } = require("@ethersproject/bignumber");
 
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
-const {initialIdleContractsDeploy, setAprs, balance, mint, mintAABuyer } = require("../scripts/card-helpers");
+const { initialIdleContractsDeploy, setAprs, balance, mint, mintAABuyer, approveNFT } = require("../scripts/card-helpers");
 
 const BN = (n) => BigNumber.from(n.toString());
 const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
@@ -13,85 +13,88 @@ const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
 
-describe("IdleCDOCards", () => {
+describe("IdleCDOCardManager", () => {
   beforeEach(async () => {
-
     // deploy mocks and idle CDO trenches contracts
     await initialIdleContractsDeploy();
 
     //deploy Idle CDO Cards contract
-    const IdleCDOCards = await ethers.getContractFactory("IdleCDOCards");
-    cards = await IdleCDOCards.deploy(idleCDO.address);
+    const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCardManager");
+    cards = await IdleCDOCardManager.deploy(idleCDO.address);
     await cards.deployed();
   });
 
   it("should be successfully initialized", async () => {
-    expect(await cards.name()).to.be.equal("IdleCDOCards");
+    expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
-  
+
   describe("when mint an idle cdo card", async () => {
     it("should deposit all the amount in AA if the risk exposure is 0%", async () => {
       const exposure = D18(0);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
-
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
+      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
     });
 
     it("should deposit all the amount in BB if the risk exposure is 100%", async () => {
       const exposure = D18(1);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
 
-      const bbTrancheBal = await balance("BB", idleCDO, cards.address);
-      expect(bbTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const bbTrancheBal = await balance("BB", idleCDO, pos.cardAddress);
+      expect(bbTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
     });
 
     it("should deposit 50% in AA / 50% in BB of the amount if the risk exposure 50%", async () => {
       const exposure = D18(0.5);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(BN("500").mul(ONE_TOKEN(18)));
-
-      const bbTrancheBal = await balance("BB", idleCDO, cards.address);
-      expect(bbTrancheBal).to.be.equal(BN("500").mul(ONE_TOKEN(18)));
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
+      expect(aaTrancheBal).to.be.equal(BN("500").mul(ONE_TOKEN(18)));
+
+      const bbTrancheBal = await balance("BB", idleCDO, pos.cardAddress);
+      expect(bbTrancheBal).to.be.equal(BN("500").mul(ONE_TOKEN(18)));
     });
 
     it("should deposit 75% in AA / 25% in BB of the amount if the risk exposure 25%", async () => {
       const exposure = D18(0.25);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
-
-      const bbTrancheBal = await balance("BB", idleCDO, cards.address);
-      expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
+
+      const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
+      expect(aaTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
+
+      const bbTrancheBal = await balance("BB", idleCDO, pos.cardAddress);
+      expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
     });
 
     it("should revert the transaction if risk exposure is greater than 100%", async () => {
@@ -163,19 +166,20 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
       await tx.wait();
 
-      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, cards.address);
+      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(0);
     });
 
@@ -190,15 +194,16 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
       await tx.wait();
@@ -220,19 +225,20 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
 
-      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, cards.address);
+      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(ONE_THOUSAND_TOKEN);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
@@ -249,15 +255,16 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
       await tx.wait();
@@ -282,26 +289,25 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const bbTrancheBal = await balance("BB", idleCDO, cards.address);
-      expect(bbTrancheBal).to.be.equal(ONE_THOUSAND_TOKEN);
-
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(0);
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(0);
+      expect(balanceBB).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
       await tx.wait();
 
-      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, cards.address);
+      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(0);
 
-      const bbTrancheBalAfterBurn = await balance("BB", idleCDO, cards.address);
+      const bbTrancheBalAfterBurn = await balance("BB", idleCDO, pos.cardAddress);
       expect(bbTrancheBalAfterBurn).to.be.equal(0);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(0);
@@ -321,26 +327,27 @@ describe("IdleCDOCards", () => {
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
 
-      const aaTrancheBal = await balance("AA", idleCDO, cards.address);
-      expect(aaTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
-
-      const bbTrancheBal = await balance("BB", idleCDO, cards.address);
-      expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
-
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
+      expect(aaTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
+
+      const bbTrancheBal = await balance("BB", idleCDO, pos.cardAddress);
+      expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
 
       tx = await cards.connect(AABuyer).burn(1);
       await tx.wait();
 
-      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, cards.address);
+      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(0);
 
-      const bbTrancheBalAfterBurn = await balance("BB", idleCDO, cards.address);
+      const bbTrancheBalAfterBurn = await balance("BB", idleCDO, pos.cardAddress);
       expect(bbTrancheBalAfterBurn).to.be.equal(0);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(0);
@@ -349,7 +356,7 @@ describe("IdleCDOCards", () => {
       expect(buyerBalanceBeforeBurn).to.be.equal(buyerBalanceAfterMint);
     });
 
-    it("should withdraw and transfer all AA amount and period earnings if expure card is 0%", async () => {
+    it("should withdraw and transfer all AA amount and period earnings if exposure card is 0%", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
@@ -401,6 +408,51 @@ describe("IdleCDOCards", () => {
       //gain with fee: apr: 77.33% fee:10% = (750*32% + 250*213.33% )*0.9 = 1000*77.33% = 696
       //initialAmount - 1000 + 1696
       expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
+    });
+  });
+
+  it("should not able to get a balance of an inexistent card", async () => {
+    await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
+  });
+
+  describe("Inner IdleCDOCard", () => {
+    it("should not be deployed by a not IdleCDOCardManger", async () => {
+      const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCard");
+      await expect(IdleCDOCardManager.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
+    });
+
+    it("should not allow non manager owner minting", async () => {
+      // mint a card with exposure 0.5
+      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+      // get a card address
+      const card = await cards.card(1);
+
+      //deploy the evil Idle CDO Cards contract
+      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
+      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
+      await evilManager.deployed();
+
+      //approve
+      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
+
+      await expect(evilManager.connect(BBBuyer).evilMint(card.cardAddress, ONE_THOUSAND_TOKEN, 0)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
+    });
+
+    it("should not allow non manager owner to burn", async () => {
+      // mint a card with exposure 0.5
+      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+      // get a card address
+      const card = await cards.card(1);
+
+      //deploy the evil Idle CDO Cards contract
+      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
+      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
+      await evilManager.deployed();
+
+      //approve
+      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
+
+      await expect(evilManager.connect(BBBuyer).evilBurn(card.cardAddress)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
     });
   });
 });
