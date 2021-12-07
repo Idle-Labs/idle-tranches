@@ -61,7 +61,6 @@ describe.only("IdleMStableStrategy", function () {
     await IdleMStableStrategy.connect(owner).initialize(
       imUSD.address,
       mUSD.address,
-      meta.address,
       vault.address,
       user.address, // assuming that user itself if the idle CDO.
       uniswapV3Factory,
@@ -81,13 +80,13 @@ describe.only("IdleMStableStrategy", function () {
   });
 
   it("Deposit AMOUNT in Idle Tranche", async () => {
-    let totalSharesBefore = await IdleMStableStrategy.totalCredits();
+    let totalSharesBefore = await IdleMStableStrategy.totalSupply();
 
     // approve tokens to idle-mstable-strategy
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
-    await expect(IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)).to.emit(IdleMStableStrategy, "Deposit"); // calculating args pending
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    let totalSharesAfters = await IdleMStableStrategy.totalCredits();
+    let totalSharesAfters = await IdleMStableStrategy.totalSupply();
 
     // strategy should not have any mUSD left
     expect(await mUSD.balanceOf(IdleMStableStrategy.address)).to.eq(0);
@@ -99,18 +98,32 @@ describe.only("IdleMStableStrategy", function () {
   });
 
   it("Redeem Tokens: redeem", async () => {
-    let strategySharesBefore = await IdleMStableStrategy.totalCredits();
+    let strategySharesBefore = await IdleMStableStrategy.totalSupply();
 
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
-    await expect(IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER)).to.emit(IdleMStableStrategy, "Deposit");
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    let strategySharesAfter = await IdleMStableStrategy.totalCredits();
+    let strategySharesAfter = await IdleMStableStrategy.totalSupply();
 
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
 
     let redeemAmount = sharesReceived.div(10); // claim back a fraction of shares received
 
-    await expect(IdleMStableStrategy.connect(user).redeem(redeemAmount)).to.emit(IdleMStableStrategy, "Redeem"); // args to be calculated
+    await IdleMStableStrategy.connect(user).redeem(redeemAmount);
+  });
+
+  it("Redeem Rewards", async () => {
+    let strategySharesBefore = await IdleMStableStrategy.totalSupply();
+
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+
+    let strategySharesAfter = await IdleMStableStrategy.totalSupply();
+
+    let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
+    expect(sharesReceived).gt(0);
+
+    await IdleMStableStrategy.connect(user)["redeemRewards()"]();
   });
 });

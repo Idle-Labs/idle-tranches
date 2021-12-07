@@ -13,10 +13,19 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./interfaces/IUniswapV3SwapCallback.sol";
 
-contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy, IUniswapV3SwapCallback {
+contract IdleMStableStrategy is
+    Initializable,
+    OwnableUpgradeable,
+    ERC20Upgradeable,
+    ReentrancyGuardUpgradeable,
+    IIdleCDOStrategy,
+    IUniswapV3SwapCallback
+{
     using SafeERC20Upgradeable for IERC20Detailed;
     using SafeMath for uint256;
 
@@ -42,24 +51,16 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
     address public govToken;
     IVault public vault;
 
-    uint256 public totalCredits;
-
     address public idleCDO;
     IUniswapV3Pool public uniswapPool;
-
-    uint256 public thresholdGovTokenToSwap;
 
     constructor() {
         token = address(1);
     }
 
-    event Deposit(address indexed user, uint256 amount, uint256 sharesRecevied);
-    event Redeem(address indexed user, uint256 credits, uint256 received);
-
     function initialize(
         address _strategyToken,
         address _underlyingToken,
-        address _govToken,
         address _vault,
         address _idleCDO,
         address _uniswapV3Factory,
@@ -75,14 +76,16 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
         tokenDecimals = underlyingToken.decimals();
         oneToken = 10**(tokenDecimals);
         imUSD = ISavingsContractV2(_strategyToken);
-        govToken = _govToken;
         vault = IVault(_vault);
+        govToken = vault.getRewardToken();
         idleCDO = _idleCDO;
 
-        address _uniswapPool = IUniswapV3Factory(_uniswapV3Factory).getPool(_underlyingToken, _govToken, 3000); //only pool for 3000 is available
+        address _uniswapPool = IUniswapV3Factory(_uniswapV3Factory).getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
         require(_uniswapPool != address(0), "Cannot initialize if there is no uniswap pool available");
         uniswapPool = IUniswapV3Pool(_uniswapPool);
-        thresholdGovTokenToSwap = 0; // check latter
+
+        ERC20Upgradeable.__ERC20_init("Idle MStable Strategy Token", string(abi.encodePacked("idleMS", underlyingToken.symbol())));
+
         //------//-------//
 
         transferOwnership(_owner);
@@ -90,7 +93,17 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
     // only claim gov token rewards
     function redeemRewards() external override onlyIdleCDO returns (uint256[] memory rewards) {
+        _claimGovernanceTokens(0, 0);
+        rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswap();
+    }
+
+    function redeemRewards(bytes calldata _extraData) external onlyIdleCDO returns (uint256[] memory rewards) {
+        (uint256 minAmountReceivedFromUniswap, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
+        _claimGovernanceTokens(startRound, endRound);
+        rewards = new uint256[](1);
+        rewards[0] = _swapGovTokenOnUniswap();
+        require(rewards[0] >= minAmountReceivedFromUniswap, "Should received more reward from uniswap than minAmountReceivedFromUniswap");
     }
 
     function pullStkAAVE() external override returns (uint256) {
@@ -103,7 +116,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
     function getRewardTokens() external view override returns (address[] memory) {
         address[] memory govTokens;
-        govTokens[0] = vault.getRewardToken();
+        govTokens[0] = govToken;
         return govTokens;
     }
 
@@ -125,9 +138,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
         uint256 rawBalanceAfter = vault.rawBalanceOf(address(this));
         uint256 rawBalanceIncreased = rawBalanceAfter.sub(rawBalanceBefore);
 
-        totalCredits = vault.rawBalanceOf(address(this));
-
-        emit Deposit(msg.sender, _amount, rawBalanceIncreased);
+        _mint(msg.sender, rawBalanceIncreased);
         return interestTokensReceived;
     }
 
@@ -168,27 +179,21 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
     // here _amount means credits, will redeem any governance token if there
     function _redeem(uint256 _amount) internal returns (uint256) {
         require(_amount != 0, "Amount shuld be greater than 0");
-        uint256 availableCredits = totalCredits;
+        uint256 availableCredits = totalSupply();
         require(availableCredits >= _amount, "Cannot redeem more than available");
 
-        _claimGovernanceTokens(0, 0);
-
-        totalCredits = totalCredits.sub(_amount);
+        _burn(msg.sender, _amount);
         vault.withdraw(_amount);
 
         uint256 massetReceived = imUSD.redeem(_amount);
         underlyingToken.transfer(msg.sender, massetReceived);
-        _swapGovTokenOnUniswap();
-        emit Redeem(msg.sender, _amount, massetReceived);
+
         return massetReceived;
     }
 
     function _swapGovTokenOnUniswap() internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
         IERC20Detailed(govToken).approve(address(uniswapPool), govTokensToSend);
-        if (govTokensToSend < thresholdGovTokenToSwap) {
-            return 0;
-        }
 
         bytes memory data;
         // min tick math = 4295128739;
@@ -199,7 +204,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
         uint256 underlyingBalanceAfter = underlyingToken.balanceOf(address(this));
         uint256 newCredits = _depositToVault(underlyingBalanceAfter);
-        totalCredits = totalCredits.add(newCredits);
+        _mint(msg.sender, newCredits);
         return newCredits;
     }
 
@@ -220,6 +225,17 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ReentrancyGua
 
     function changeIdleCDO(address _idleCDO) external onlyOwner {
         idleCDO = _idleCDO;
+    }
+
+    function changeUniswapPool(
+        address uniswapV3Factory,
+        address token1,
+        address token2,
+        uint24 rewardRate
+    ) external onlyOwner {
+        address _uniswapPool = IUniswapV3Factory(uniswapV3Factory).getPool(token1, token2, rewardRate);
+        require(_uniswapPool != address(0), "Should a pool that is already created");
+        uniswapPool = IUniswapV3Pool(_uniswapPool);
     }
 
     // modifiers

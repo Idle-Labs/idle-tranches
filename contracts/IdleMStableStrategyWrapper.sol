@@ -42,16 +42,16 @@ contract IdleMStableStrategyWrapper {
         address tokenToReceive,
         uint256 amount,
         uint256 minReceiveQuantity
-    ) public {
-        _withdrawToken(tokenToReceive, amount, minReceiveQuantity, true);
+    ) public returns (uint256) {
+        return _withdrawToken(tokenToReceive, amount, minReceiveQuantity, true);
     }
 
     function withdrawTokenViaBurningBB(
         address tokenToReceive,
         uint256 amount,
         uint256 minReceiveQuantity
-    ) public {
-        _withdrawToken(tokenToReceive, amount, minReceiveQuantity, false);
+    ) public returns (uint256) {
+        return _withdrawToken(tokenToReceive, amount, minReceiveQuantity, false);
     }
 
     function _depositToken(
@@ -86,7 +86,7 @@ contract IdleMStableStrategyWrapper {
         uint256 _amount,
         uint256 _minOutputQuantity,
         bool isTrancheAA
-    ) internal {
+    ) internal returns (uint256) {
         address tranche = isTrancheAA ? idleCDO.AATranche() : idleCDO.BBTranche();
         IERC20Detailed trancheToken = IERC20Detailed(tranche);
         trancheToken.transferFrom(msg.sender, address(this), _amount);
@@ -98,6 +98,7 @@ contract IdleMStableStrategyWrapper {
         } else {
             underlyingMusdReceived = idleCDO.withdrawBB(_amount);
         }
-        mUSD.redeem(token, underlyingMusdReceived, _minOutputQuantity, msg.sender);
+
+        return mUSD.redeem(token, underlyingMusdReceived, _minOutputQuantity, msg.sender);
     }
 }
