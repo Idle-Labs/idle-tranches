@@ -21,11 +21,20 @@ contract IdleCDOCards is ERC721Enumerable {
   }
 
   IdleCDO public idleCDO;
+  IdleCDO[] public idleCDOs;
+
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
 
-  constructor(address _idleCDOAddress) ERC721("IdleCDOCards", "ICC") {
-    idleCDO = IdleCDO(_idleCDOAddress);
+  constructor(address[] memory _idleCDOAddress) ERC721("IdleCDOCards", "ICC") {
+    idleCDO = IdleCDO(_idleCDOAddress[0]);
+    for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
+      idleCDOs.push(IdleCDO(_idleCDOAddress[i]));
+    }
+  }
+
+  function getIdleCDOs() public view returns (IdleCDO[] memory) {
+    return idleCDOs;
   }
 
   function mint(uint256 _risk, uint256 _amount) public returns (uint256) {

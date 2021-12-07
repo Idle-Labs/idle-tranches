@@ -6,6 +6,7 @@ const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
 const { initialIdleContractsDeploy, setAprs, balance, mint, mintAABuyer, approveNFT } = require("../scripts/card-helpers");
+const expectEvent = require("@openzeppelin/test-helpers/src/expectEvent");
 
 const BN = (n) => BigNumber.from(n.toString());
 const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
@@ -20,7 +21,7 @@ describe("IdleCDOCards", () => {
 
     //deploy Idle CDO Cards contract
     const IdleCDOCards = await ethers.getContractFactory("IdleCDOCards");
-    cards = await IdleCDOCards.deploy(idleCDO.address);
+    cards = await IdleCDOCards.deploy([idleCDO.address,idleCDOFEI.address]);
     await cards.deployed();
   });
 
@@ -28,7 +29,17 @@ describe("IdleCDOCards", () => {
     expect(await cards.name()).to.be.equal("IdleCDOCards");
   });
 
-  describe("when mint an idle cdo card", async () => {
+  it("should return a not empty list of idleCDOs", async () => {
+    expect(await cards.getIdleCDOs()).not.to.be.empty;
+  });
+
+  it("should return a idleCDOS list with two items (DAI and FEI)", async () => {
+    expect(await cards.getIdleCDOs()).to.have.lengthOf(2);
+    expect(await cards.getIdleCDOs()).to.be.eql([idleCDO.address, idleCDOFEI.address]);
+  });
+
+
+ describe("when mint an idle cdo card", async () => {
     it("should deposit all the amount in AA if the risk exposure is 0%", async () => {
       const exposure = D18(0);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
@@ -103,7 +114,7 @@ describe("IdleCDOCards", () => {
     });
   });
 
-  it("should allow to list tokens by owner", async () => {
+ it("should allow to list tokens by owner", async () => {
     await mintAABuyer(D18(0.25), ONE_THOUSAND_TOKEN);
     await mintAABuyer(D18(0.3), ONE_THOUSAND_TOKEN);
 
@@ -114,7 +125,7 @@ describe("IdleCDOCards", () => {
     expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
   });
 
-  describe("when returns APRs", async () => {
+ describe("when returns APRs", async () => {
     it("should return the AA tranche APR if exposure is 0%", async () => {
       // APR AA=4 BB=16
       await setAprs();
@@ -154,7 +165,7 @@ describe("IdleCDOCards", () => {
     });
   });
 
-  describe("when burn an idle cdo card", async () => {
+ describe("when burn an idle cdo card", async () => {
     it("should withdraw all AA amount if card exposure is 0%", async () => {
       let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
 
@@ -411,11 +422,11 @@ describe("IdleCDOCards", () => {
     });
   });
 
-  it("should not able to get a balance of an inexistent card", async () => {
+ it("should not able to get a balance of an inexistent card", async () => {
     await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
   });
 
-  describe("Inner IdleCDOCard", () => {
+ describe("Inner IdleCDOCard", () => {
     it("should not be deployed by a not IdleCDOCardManger", async () => {
       const IdleCDOCards = await ethers.getContractFactory("IdleCDOCard");
       await expect(IdleCDOCards.deploy()).to.be.revertedWith("function call to a non-contract account");
@@ -429,7 +440,7 @@ describe("IdleCDOCards", () => {
 
       //deploy the evil Idle CDO Cards contract
       const IdleCDOCards = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCards.deploy(idleCDO.address);
+      const evilManager = await IdleCDOCards.deploy([idleCDO.address]);
       await evilManager.deployed();
 
       //approve
@@ -446,7 +457,7 @@ describe("IdleCDOCards", () => {
 
       //deploy the evil Idle CDO Cards contract
       const IdleCDOCards = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCards.deploy(idleCDO.address);
+      const evilManager = await IdleCDOCards.deploy([idleCDO.address]);
       await evilManager.deployed();
 
       //approve

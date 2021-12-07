@@ -78,6 +78,11 @@ const setAprs = async () => {
         // 10M to creator
         underlying = await MockERC20.deploy("DAI", "DAI");
         await underlying.deployed();
+
+        //deploy FEI
+        underlyingFEI = await MockERC20.deploy("FEI", "FEI");
+        await underlyingFEI.deployed();
+
         // 10M to creator
         incentiveToken = await MockERC20.deploy("IDLE", "IDLE");
         await incentiveToken.deployed();
@@ -87,9 +92,20 @@ const setAprs = async () => {
         await idleToken.deployed();
         idleToken2 = await MockIdleToken.deploy(underlying.address);
         await idleToken2.deployed();
-    
+
+        // FEI idle tokens
+        idleTokenFEI = await MockIdleToken.deploy(underlyingFEI.address);
+        await idleTokenFEI.deployed();
+        idleToken2FEI = await MockIdleToken.deploy(underlyingFEI.address);
+        await idleTokenFEI.deployed();
+
         strategy = await helpers.deployUpgradableContract("IdleStrategy", [idleToken.address, owner.address], owner);
         strategy2 = await helpers.deployUpgradableContract("IdleStrategy", [idleToken2.address, owner.address], owner);
+
+        //FEI strategy
+        strategyFEI = await helpers.deployUpgradableContract("IdleStrategy", [idleTokenFEI.address, owner.address], owner);
+        strategy2FEI = await helpers.deployUpgradableContract("IdleStrategy", [idleToken2FEI.address, owner.address], owner);
+
         idleCDO = await helpers.deployUpgradableContract(
           "EnhancedIdleCDO",
           [
@@ -105,13 +121,36 @@ const setAprs = async () => {
           ],
           owner
         );
+
+        //FEI idle CDO
+        idleCDOFEI = await helpers.deployUpgradableContract(
+          "EnhancedIdleCDO",
+          [
+            BN("1000000").mul(ONE_TOKEN(18)), // limit
+            underlyingFEI.address, //guard
+            owner.address, // gov
+            owner.address, //owner
+            owner.address, //rebalancer
+            strategyFEI.address,
+            BN("20000"), // apr split: 20% interest to AA and 80% BB
+            BN("50000"), // ideal value: 50% AA and 50% BB tranches
+            incentiveTokens,
+          ],
+          owner
+        );
     
         await idleCDO.setWethForTest(weth.address);
         await idleCDO.setUniRouterForTest(uniRouter.address);
     
+        await idleCDOFEI.setWethForTest(weth.address);
+        await idleCDOFEI.setUniRouterForTest(uniRouter.address);
+
         AA = await hre.ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
         BB = await hre.ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
     
+        AAFEI = await hre.ethers.getContractAt("IdleCDOTranche", await idleCDOFEI.AATranche());
+        BBFEI = await hre.ethers.getContractAt("IdleCDOTranche", await idleCDOFEI.BBTranche());
+        
         const stakingRewardsParams = [
           incentiveTokens,
           owner.address, // owner / guardian
@@ -119,22 +158,44 @@ const setAprs = async () => {
           owner.address, // recovery address
           10, // cooling period
         ];
+
+        const stakingRewardsParamsFEI = [
+          incentiveTokens,
+          owner.address, // owner / guardian
+          idleCDOFEI.address,
+          owner.address, // recovery address
+          10, // cooling period
+        ];
+
         stakingRewardsAA = await helpers.deployUpgradableContract("IdleCDOTrancheRewards", [AA.address, ...stakingRewardsParams], owner);
         stakingRewardsBB = await helpers.deployUpgradableContract("IdleCDOTrancheRewards", [BB.address, ...stakingRewardsParams], owner);
         await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
-    
+      
+        stakingRewardsAAFEI = await helpers.deployUpgradableContract("IdleCDOTrancheRewards", [AAFEI.address, ...stakingRewardsParamsFEI], owner);
+        stakingRewardsBBFEI = await helpers.deployUpgradableContract("IdleCDOTrancheRewards", [BBFEI.address, ...stakingRewardsParamsFEI], owner);
+        await idleCDOFEI.setStakingRewards(stakingRewardsAAFEI.address, stakingRewardsBBFEI.address);
+
         await idleCDO.setUnlentPerc(BN("0"));
         await idleCDO.setIsStkAAVEActive(false);
     
+        await idleCDOFEI.setUnlentPerc(BN("0"));
+        await idleCDOFEI.setIsStkAAVEActive(false);
+
         // Params
         initialAmount = BN("100000").mul(ONE_TOKEN(18));
         // Fund wallets
         await helpers.fundWallets(underlying.address, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr, BBBuyer2Addr, idleToken.address], owner.address, initialAmount);
-    
+        await helpers.fundWallets(underlyingFEI.address, [AABuyerAddr, BBBuyerAddr, AABuyer2Addr, BBBuyer2Addr, idleTokenFEI.address], owner.address, initialAmount);
+
         // set IdleToken mocked params
         await idleToken.setTokenPriceWithFee(BN(10 ** 18));
         // set IdleToken2 mocked params
         await idleToken2.setTokenPriceWithFee(BN(2 * 10 ** 18));
+
+        // set IdleTokenFEI mocked params
+        await idleTokenFEI.setTokenPriceWithFee(BN(10 ** 18));
+        // set IdleToken2FEI mocked params
+        await idleToken2FEI.setTokenPriceWithFee(BN(2 * 10 ** 18));        
   }
 
   async function idleCDOCardsTestDeploy(params) {
