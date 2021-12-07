@@ -13,19 +13,19 @@ const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
 
-describe("IdleCDOCards", () => {
+describe("IdleCDOCardManager", () => {
   beforeEach(async () => {
     // deploy mocks and idle CDO trenches contracts
     await initialIdleContractsDeploy();
 
     //deploy Idle CDO Cards contract
-    const IdleCDOCards = await ethers.getContractFactory("IdleCDOCards");
-    cards = await IdleCDOCards.deploy(idleCDO.address);
+    const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCardManager");
+    cards = await IdleCDOCardManager.deploy(idleCDO.address);
     await cards.deployed();
   });
 
   it("should be successfully initialized", async () => {
-    expect(await cards.name()).to.be.equal("IdleCDOCards");
+    expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
 
   describe("when mint an idle cdo card", async () => {
@@ -417,8 +417,8 @@ describe("IdleCDOCards", () => {
 
   describe("Inner IdleCDOCard", () => {
     it("should not be deployed by a not IdleCDOCardManger", async () => {
-      const IdleCDOCards = await ethers.getContractFactory("IdleCDOCard");
-      await expect(IdleCDOCards.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
+      const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCard");
+      await expect(IdleCDOCardManager.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
     });
 
     it("should not allow non manager owner minting", async () => {
@@ -428,8 +428,8 @@ describe("IdleCDOCards", () => {
       const card = await cards.card(1);
 
       //deploy the evil Idle CDO Cards contract
-      const IdleCDOCards = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCards.deploy(idleCDO.address);
+      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
+      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
       await evilManager.deployed();
 
       //approve
@@ -445,8 +445,8 @@ describe("IdleCDOCards", () => {
       const card = await cards.card(1);
 
       //deploy the evil Idle CDO Cards contract
-      const IdleCDOCards = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCards.deploy(idleCDO.address);
+      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
+      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
       await evilManager.deployed();
 
       //approve

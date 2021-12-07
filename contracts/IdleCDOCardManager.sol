@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./IdleCDO.sol";
 import "./IdleCDOCard.sol";
 
-contract IdleCDOCards is ERC721Enumerable {
+contract IdleCDOCardManager is ERC721Enumerable {
   using Counters for Counters.Counter;
   using SafeERC20Upgradeable for IERC20Detailed;
   using SafeMath for uint256;
@@ -25,7 +25,7 @@ contract IdleCDOCards is ERC721Enumerable {
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
 
-  constructor(address _idleCDOAddress) ERC721("IdleCDOCards", "ICC") {
+  constructor(address _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
     idleCDO = IdleCDO(_idleCDOAddress);
   }
 

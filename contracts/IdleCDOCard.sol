@@ -4,13 +4,13 @@ pragma solidity 0.8.7;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./IdleCDO.sol";
-import "./IdleCDOCards.sol";
+import "./IdleCDOCardManager.sol";
 
 contract IdleCDOCard {
   using SafeERC20Upgradeable for IERC20Detailed;
   using SafeMath for uint256;
 
-  IdleCDOCards internal manager;
+  IdleCDOCardManager internal manager;
   IdleCDO internal idleCDO;
   IERC20Detailed internal underlying;
 
@@ -20,8 +20,8 @@ contract IdleCDOCard {
   }
 
   constructor(address _idleCDOAddress) {
-    manager = IdleCDOCards(msg.sender);
-    require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCards")), "creator is not an IdleCDOCards contract");
+    manager = IdleCDOCardManager(msg.sender);
+    require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCardManager")), "creator is not an IdleCDOCardManager contract");
     idleCDO = IdleCDO(_idleCDOAddress);
     underlying = IERC20Detailed(idleCDO.token());
   }
