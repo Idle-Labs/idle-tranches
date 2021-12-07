@@ -418,7 +418,7 @@ describe("IdleCDOCards", () => {
   describe("Inner IdleCDOCard", () => {
     it("should not be deployed by a not IdleCDOCardManger", async () => {
       const IdleCDOCards = await ethers.getContractFactory("IdleCDOCard");
-      await expect(IdleCDOCards.deploy()).to.be.revertedWith("function call to a non-contract account");
+      await expect(IdleCDOCards.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
     });
 
     it("should not allow non manager owner minting", async () => {

@@ -30,7 +30,7 @@ contract IdleCDOCards is ERC721Enumerable {
   }
 
   function mint(uint256 _risk, uint256 _amount) public returns (uint256) {
-    IdleCDOCard _card = new IdleCDOCard();
+    IdleCDOCard _card = new IdleCDOCard(address(idleCDO));
 
     // transfer amount to cards protocol
     idleCDOToken().safeTransferFrom(msg.sender, address(this), _amount);
