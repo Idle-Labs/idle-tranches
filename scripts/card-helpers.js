@@ -13,12 +13,20 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
 
 
-// APR AA=4 BB=16
-const setAprs = async () => {
+  // APR AA=4 BB=16
+  const setAprs = async () => {
     await idleToken.setFee(BN("0"));
     await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
     await mintAABuyer(D18(0.5), ONE_THOUSAND_TOKEN);
   };
+
+  // FEI APR AA=16 BB=4
+  const setFEIAprs = async () => {
+    await idleTokenFEI.setFee(BN("0"));
+    await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
+    await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
+  };
+
   
   const balance = async (type, idleCDO, addr) => {
     let AAContract = await hre.ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
@@ -37,14 +45,19 @@ const setAprs = async () => {
   };
   
   const mint = async (exposure, _amount, signer) => {
+    await mintCDO(idleCDO, exposure, _amount, signer);
+  };
+
+  const mintCDO = async (_idleCDO, exposure, _amount, signer) => {
     //approve
-    await approveNFT(idleCDO, cards, signer.address, _amount);
+    await approveNFT(_idleCDO, cards, signer.address, _amount);
     //mint
-    tx = await cards.connect(signer).mint(exposure, _amount);
+    tx = await cards.connect(signer).mint(_idleCDO.address, exposure, _amount);
     await tx.wait();
     //harvest
-    await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+    await _idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
   };
+
   
   const initialIdleContractsDeploy = async () => {
         // deploy contracts
@@ -226,6 +239,7 @@ const setAprs = async () => {
   
   module.exports = {
     setAprs,
+    setFEIAprs,
     balance,
     approveNFT,
     mintAABuyer,

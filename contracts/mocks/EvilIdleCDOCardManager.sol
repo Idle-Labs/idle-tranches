@@ -28,6 +28,6 @@ contract EvilIdleCdoCardManager is IdleCDOCardManager {
   }
 
   function erc20() private view returns (IERC20Detailed) {
-    return IERC20Detailed(this.idleCDO().token());
+    return IERC20Detailed(this.idleCDOs(0).token());
   }
 }

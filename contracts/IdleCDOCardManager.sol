@@ -21,14 +21,12 @@ contract IdleCDOCardManager is ERC721Enumerable {
     address cardAddress;
   }
 
-  IdleCDO public idleCDO;
   IdleCDO[] public idleCDOs;
 
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
 
   constructor(address[] memory _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
-    idleCDO = IdleCDO(_idleCDOAddress[0]);
     for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
       idleCDOs.push(IdleCDO(_idleCDOAddress[i]));
     }
@@ -38,14 +36,16 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return idleCDOs;
   }
 
-  function mint(uint256 _risk, uint256 _amount) public returns (uint256) {
-    IdleCDOCard _card = new IdleCDOCard(address(idleCDO));
+
+  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
+    IdleCDOCard _card = new IdleCDOCard(_idleCDOAddress);
+    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
 
     // transfer amount to cards protocol
-    idleCDOToken().safeTransferFrom(msg.sender, address(this), _amount);
+    underlying.safeTransferFrom(msg.sender, address(this), _amount);
 
     // approve the amount to be spend on cdos tranches
-    idleCDOToken().approve(address(_card), _amount);
+    underlying.approve(address(_card), _amount);
 
     // calculate the amount to deposit in BB
     // proportional to risk
@@ -81,7 +81,10 @@ contract IdleCDOCardManager is ERC721Enumerable {
     idleCDOToken().safeTransfer(msg.sender, toRedeem);
   }
 
-  function getApr(uint256 _exposure) public view returns (uint256) {
+  function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
+
+    IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
+
     // ratioAA = ratio of 1 - _exposure of the AA apr
     uint256 aprAA = idleCDO.getApr(idleCDO.AATranche());
     uint256 ratioAA = percentage(RATIO_PRECISION.sub(_exposure), aprAA);
@@ -115,6 +118,6 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function idleCDOToken() public view returns (IERC20Detailed) {
-    return IERC20Detailed(idleCDO.token());
+    return IERC20Detailed(idleCDOs[0].token());
   }
 }
