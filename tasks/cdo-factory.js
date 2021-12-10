@@ -232,13 +232,13 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log('stkAAVE distribution: ', args.stkAAVEActive);
     if (!args.stkAAVEActive) {
       console.log('Disabling stkAAVE distribution')
-      await idleCDO.setIsStkAAVEActive(false);
+      await idleCDO.connect(signer).setIsStkAAVEActive(false);
     }
     console.log();
 
     if ((await idleCDO.feeReceiver()) == '0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4') {
       console.log('Setting fee receiver to Treasury Multisig')
-      await idleCDO.connect(signer).setFeeReceiver(addresses.treasuryMultisig);
+      await idleCDO.connect(signer).setFeeReceiver(mainnetContracts.treasuryMultisig);
     }
     
     return {idleCDO, strategy, AAaddr, BBaddr};

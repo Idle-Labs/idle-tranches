@@ -183,7 +183,7 @@ task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
     const signer = await run('get-signer-or-fake');
 
     const AARewardsAddress = deployToken.cdo.AArewards;
-    if (AARewardsAddress) {
+    if (AARewardsAddress && AARewardsAddress !== addresses.addr0) {
       console.log('Transfer ownership of AARewards');
       let AARewards = await ethers.getContractAt("IdleCDOTrancheRewards", AARewardsAddress);
       await AARewards.connect(signer).transferOwnership(to);
@@ -191,7 +191,7 @@ task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
     }
 
     const BBRewardsAddress = deployToken.cdo.BBrewards;
-    if (BBRewardsAddress) {
+    if (BBRewardsAddress && BBRewardsAddress !== addresses.addr0) {
       console.log('Transfer ownership of BBRewards');
       let BBRewards = await ethers.getContractAt("IdleCDOTrancheRewards", BBRewardsAddress);
       await BBRewards.connect(signer).transferOwnership(to);
@@ -206,11 +206,11 @@ task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
     console.log('Transfer ownership of IdleCDO');
     let cdo = await ethers.getContractAt("IdleCDO", contractAddress);
     await cdo.connect(signer).transferOwnership(to);
+    console.log('New Owner', await cdo.owner());
 
     console.log('Transfer owner of proxyAdmin for all');
     let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
     await admin.connect(signer).transferOwnership(to);
-
     console.log('New Owner', await admin.owner());
   });
 
@@ -337,7 +337,6 @@ subtask("upgrade-with-multisig", "Get signer")
     let signer = await run('get-signer-or-fake');
     // deploy implementation with any signer
     const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
-
     // Use multisig for calling upgrade or upgradeAndCall
     signer = await run('get-multisig-or-fake');
     const proxyAdminAddress = deployToken.cdo.proxyAdmin;
