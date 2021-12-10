@@ -217,22 +217,31 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
   
     // idle cdo cards deploy
     const IdleCDOCardManager = await hre.ethers.getContractFactory("IdleCDOCardManager");
-    cards = await IdleCDOCardManager.deploy([idleCDO.address]);
+    cards = await IdleCDOCardManager.deploy([idleCDO.address, idleCDOFEI.address]);
     await cards.deployed();
   
+    //Configure DAI idleCDO
     //approve
     await approveNFT(idleCDO, cards, AABuyerAddr, D18("100000"));
-  
     // APR AA=0 BB=10
     await idleToken.setFee(BN("0"));
     await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
+
+    //Configure FEI idleCDO
+    //approve
+    await approveNFT(idleCDOFEI, cards, AABuyerAddr, D18("100000"));
+    // APR AA=0 BB=10
+    await idleTokenFEI.setFee(BN("0"));
+    await idleTokenFEI.setApr(BN("20").mul(ONE_TOKEN(18)));
   
     //await setAprs();
     console.log("=".repeat(80));
-    console.log(`📤 Idle CDO deployed at ${idleCDO.address} by owner ${owner.address}`);
     console.log(`📤 Idle CDO Cards deployed at ${cards.address}`);
+    console.log(`📤 Idle CDO DAI deployed at ${idleCDO.address} by owner ${owner.address}`);
+    console.log("💵 DAI Underlying Token address:", await idleToken.token());
+    console.log(`📤 Idle CDO FEI deployed at ${idleCDOFEI.address} by owner ${owner.address}`);
+    console.log("💵 FEI Underlying Token address:", await idleTokenFEI.token());
     console.log("🔎 Buyer address:", AABuyerAddr);
-    console.log("💵 Token address:", await idleToken.token());
     console.log("=".repeat(80));
     
   }
