@@ -29,17 +29,17 @@ describe("IdleCDOCardManager", () => {
     expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
 
-it("should return a not empty list of idleCDOs", async () => {
+  it("should return a not empty list of idleCDOs", async () => {
     expect(await cards.getIdleCDOs()).not.to.be.empty;
   });
 
-it("should return a idleCDOS list with two items (DAI and FEI)", async () => {
+  it("should return a idleCDOS list with two items (DAI and FEI)", async () => {
     expect(await cards.getIdleCDOs()).to.have.lengthOf(2);
     expect(await cards.getIdleCDOs()).to.be.eql([idleCDO.address, idleCDOFEI.address]);
   });
 
 
-describe("when mint an idle cdo card", async () => {
+  describe("when mint an idle cdo card", async () => {
    it("should deposit all the amount in AA if the risk exposure is 0%", async () => {
       const exposure = D18(0);
       await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
@@ -98,6 +98,7 @@ describe("when mint an idle cdo card", async () => {
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
       expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDO.address);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
@@ -128,6 +129,7 @@ describe("when mint an idle cdo card", async () => {
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(exposure));
       expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDOFEI.address);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
@@ -144,7 +146,7 @@ describe("when mint an idle cdo card", async () => {
     });
   });
 
-xit("should allow to list tokens by owner", async () => {
+it("should allow to list tokens by owner", async () => {
     await mintAABuyer(D18(0.25), ONE_THOUSAND_TOKEN);
     await mintAABuyer(D18(0.3), ONE_THOUSAND_TOKEN);
 
@@ -155,7 +157,7 @@ xit("should allow to list tokens by owner", async () => {
     expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
   });
 
-describe("when returns APRs", async () => {
+  describe("when returns APRs", async () => {
     it("should return the AA tranche APR if exposure is 0%", async () => {
       // APR AA=4 BB=16
       await setAprs();

@@ -19,6 +19,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 exposure;
     uint256 amount;
     address cardAddress;
+    address idleCDOAddress;
   }
 
   IdleCDO[] public idleCDOs;
@@ -59,7 +60,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     // mint the Idle CDO card
     uint256 tokenId = _mint();
-    _cards[tokenId] = Card(_risk, _amount, address(_card));
+    _cards[tokenId] = Card(_risk, _amount, address(_card), _idleCDOAddress);
 
     return tokenId;
   }
