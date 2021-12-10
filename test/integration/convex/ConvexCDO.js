@@ -251,7 +251,20 @@ describe("IdleConvexCDO", function () {
     // wait 15 days
     await mineBlocks({ increaseOf: oneDay })
 
-    await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, [], [], []]);
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5, 5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    await helpers.sudoCall(address, idleCDO, 'harvest', [
+      [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, skipRedeem && skipIncentivesUpdate && skipFeeDeposit], 
+      [], 
+      [], 
+      [],
+      extraData
+    ]);
   }
 
   const mineBlocks = async ({ increaseOf }) => {

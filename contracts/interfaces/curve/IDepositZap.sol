@@ -1,6 +1,6 @@
 
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 interface IDepositZap {
     /// @notice Wraps underlying coins and deposit them into _pool.

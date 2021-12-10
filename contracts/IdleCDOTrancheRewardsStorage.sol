@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 contract IdleCDOTrancheRewardsStorage {
   uint256 public constant ONE_TRANCHE_TOKEN = 10**18;

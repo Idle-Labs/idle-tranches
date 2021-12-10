@@ -121,13 +121,25 @@ task("harvest-cdo")
     const strategyAddr = await idleCDO.strategy();
     let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
     const rewardTokens = await idleStrategy.getRewardTokens();
-    let res = await idleCDO.callStatic.harvest(skipRedeem, skipIncentives, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')));
+    let res = await idleCDO.callStatic.harvest(
+      [skipRedeem, skipIncentives, skipFeeDeposit, skipRedeem && skipIncentives && skipFeeDeposit], // skipFlags
+      rewardTokens.map(r => false), 
+      rewardTokens.map(r => BN('0')), 
+      rewardTokens.map(r => BN('0')),
+      '0x' // extraData
+    );
     let sellAmounts = res._soldAmounts;
     let minAmounts = res._swappedAmounts;
     console.log(`sellAmounts ${sellAmounts}, minAmounts ${minAmounts}`);
     // Add some slippage tolerance
     minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-    let tx = await idleCDO.harvest(skipRedeem, skipIncentives, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts);
+    let tx = await idleCDO.harvest(
+      [skipRedeem, skipIncentives, skipFeeDeposit, skipRedeem && skipIncentives && skipFeeDeposit], // skipFlags
+      rewardTokens.map(r => false), 
+      minAmounts, 
+      sellAmounts,
+      '0x' // extraData
+    );
     tx = await tx.wait();
     console.log(`Tx ${tx.transactionHash}, ⛽ ${tx.cumulativeGasUsed}`);
   });
@@ -413,12 +425,12 @@ const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDepo
   let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
   const rewardTokens = await idleStrategy.getRewardTokens();
 
-  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
+  let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false], rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')), '0x']);
   let sellAmounts = res._soldAmounts;
   let minAmounts = res._swappedAmounts;
   // Add some slippage tolerance
   minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-  await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts]);
+  await helpers.sudoCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false], rewardTokens.map(r => false), minAmounts, sellAmounts, '0x']);
   await helpers.sudoCall(address, idleCDO.idleToken, 'rebalance', []);
 
   await run("mine-multiple", {blocks: '500'});

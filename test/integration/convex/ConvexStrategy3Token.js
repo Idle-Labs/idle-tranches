@@ -113,8 +113,6 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
     expect(await strategy.balanceOf(strategy.address)).to.equal(0);
   });
-  
-
 
   const setWhitelistedCDO = async (addr) => {
     await helpers.sudoCall(owner.address, strategy, 'setWhitelistedCDO', [addr]);
@@ -126,7 +124,14 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
   }
   
   const redeemRewards = async (addr) => {
-    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5, 5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }
 });

@@ -15,7 +15,7 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
-async function advanceNBlock (n) {
+async function advanceNBlock(n) {
   let startingBlock = await time.latestBlock();
   await time.increase(15 * Math.round(n));
   let endBlock = startingBlock.addn(n);
@@ -65,7 +65,7 @@ const callContract = async (address, method, params, from = null) => {
     [contract] = await sudo(from, contract);
   }
 
-  const res =  await contract[method](...params);
+  const res = await contract[method](...params);
   return res;
 };
 const deployContract = async (contractName, params, signer) => {
@@ -159,9 +159,9 @@ const checkAproximate = (a, b, message) => { // check a is withing 5% of b
 
   let _check
   if (b.eq(BigNumber.from('0'))) {
-      _check = a.eq(b)
+    _check = a.eq(b)
   } else {
-      _check = b.mul("95").lte(a.mul("100")) && a.mul("100").lte(b.mul("105"))
+    _check = b.mul("95").lte(a.mul("100")) && a.mul("100").lte(b.mul("105"))
   }
 
   let [icon, symbol] = _check ? ["✔️", "~="] : ["🚨🚨🚨", "!~="];
@@ -173,7 +173,7 @@ const checkIncreased = (a, b, message) => {
 };
 const toETH = n => ethers.utils.parseEther(n.toString());
 const sudo = async (acc, contract = null) => {
-  await hre.network.provider.request({method: "hardhat_impersonateAccount", params: [acc]});
+  await hre.network.provider.request({ method: "hardhat_impersonateAccount", params: [acc] });
   const signer = await ethers.provider.getSigner(acc);
   if (contract) {
     contract = await contract.connect(signer);
@@ -182,6 +182,7 @@ const sudo = async (acc, contract = null) => {
 };
 const sudoCall = async (acc, contract, method, params) => {
   const [contractImpersonated, signer] = await sudo(acc, contract);
+  await hre.ethers.provider.send("hardhat_setBalance", [acc, "0xffffffffffffffff"]);
   const res = await contractImpersonated[method](...params);
   const receipt = await res.wait();
   // console.log('⛽ used: ', receipt.gasUsed.toString());
@@ -221,6 +222,32 @@ const deposit = async (type, idleCDO, addr, amount) => {
   return aaTrancheBal;
 }
 
+const depositAndStake = async (type, idleCDO, addr, amount) => {
+  const trancheBal = await deposit(type, idleCDO, addr, amount);
+  const stakingRewardsAddr = await idleCDO[type == 'AA' ? 'AAStaking' : 'BBStaking']();
+  let staked = 0;
+  if (stakingRewardsAddr && stakingRewardsAddr != addresses.addr0) {
+    log(`🟩 Stake ${type}, addr: ${addr}, trancheBal: ${trancheBal}`);
+    const stakingRewards = await ethers.getContractAt("IdleCDOTrancheRewards", stakingRewardsAddr);
+    const trancheAddr = await idleCDO[type == 'AA' ? 'AATranche' : 'BBTranche']()
+    const tranche = await ethers.getContractAt("IdleCDOTranche", trancheAddr);
+    await sudoCall(addr, tranche, 'approve', [stakingRewardsAddr, amount]);
+    await sudoCall(addr, stakingRewards, 'stake', [trancheBal]);
+    staked = await stakingRewards.usersStakes(addr);
+  }
+  return [trancheBal, BN(staked)];
+}
+
+const withdrawAndUnstakeWithGain = async (type, idleCDO, addr, initialAmount) => {
+  const stakingRewardsAddr = await idleCDO[type == 'AA' ? 'AAStaking' : 'BBStaking']();
+  const stakingRewards = await ethers.getContractAt("IdleCDOTrancheRewards", stakingRewardsAddr);
+  const staked = await stakingRewards.usersStakes(addr);
+  log(`🟩 Staked ${type}, addr: ${addr}, amount: ${staked}`);
+  await sudoCall(addr, stakingRewards, 'unstake', [staked]);
+  // const trancheBal = BN(await (type == 'AA' ? AAContract : BBContract).balanceOf(addr));
+  return await withdrawWithGain(type, idleCDO, addr, initialAmount);
+}
+
 const withdrawWithGain = async (type, idleCDO, addr, initialAmount) => {
   let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
   let AAContract = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
@@ -252,6 +279,10 @@ const withdraw = async (type, idleCDO, addr, amount) => {
 const getBalance = async (tokenContract, address) => {
   return BN(await tokenContract.balanceOf(address));
 }
+const getTokenBalance = async (tokenAddress, address) => {
+  const contract = await ethers.getContractAt("IERC20Detailed", tokenAddress);
+  return BN(await contract.balanceOf(address));
+}
 const checkBalance = async (tokenContract, address, balance) => {
   const bal = await getBalance(tokenContract, address);
   check(bal, balance, `Requested bal ${bal} is equal to the provided one ${balance}`);
@@ -263,6 +294,21 @@ const isEmptyString = (s) => {
   }
 
   return s.toString().trim() == "";
+}
+
+// paramsType: array of params types eg ['address', 'uint256']
+// params: array of params eg [to, amount]
+const encodeParams = (paramsType, params) => {
+  const abiCoder = new hre.ethers.utils.AbiCoder();
+  return abiCoder.encode(paramsType, params);
+}
+
+// method: string eg "transfer(address,uint256)"
+// methodName: string eg "transfer"
+// params: array of params eg [to, amount]
+const encodeFunctionCall = (method, methodName, params) => {
+  let iface = new ethers.utils.Interface([`function ${method}`]);
+  return iface.encodeFunctionData(methodName, params)
 }
 
 module.exports = {
@@ -291,7 +337,12 @@ module.exports = {
   withdraw,
   withdrawWithGain,
   getBalance,
+  getTokenBalance,
   checkBalance,
   isEmptyString,
   log,
+  encodeFunctionCall,
+  encodeParams,
+  depositAndStake,
+  withdrawAndUnstakeWithGain,
 }

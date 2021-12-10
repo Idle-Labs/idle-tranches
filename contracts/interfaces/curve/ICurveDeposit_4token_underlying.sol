@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 interface ICurveDeposit_4token_underlying {
     function get_virtual_price() external view returns (uint256);

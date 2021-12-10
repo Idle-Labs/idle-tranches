@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
 import {ICurveDeposit_3token} from "../../interfaces/curve/ICurveDeposit_3token.sol";
@@ -21,7 +21,7 @@ contract ConvexStrategy3Token is ConvexBaseStrategy {
     /// @dev To implement the strategy with old curve pools like compound and y
     ///      this contract should be used with respective _underlying_ deposit contracts
     ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
-    function _depositInCurve() internal override {
+    function _depositInCurve(uint256 _minLpTokens) internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
         address _pool = _curvePool();
@@ -32,6 +32,6 @@ contract ConvexStrategy3Token is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[3] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_3token(_pool).add_liquidity(_depositArray, 0);
+        ICurveDeposit_3token(_pool).add_liquidity(_depositArray, _minLpTokens);
     }
 }

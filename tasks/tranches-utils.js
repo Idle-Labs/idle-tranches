@@ -277,7 +277,7 @@ task("change-rewards", "Update rewards IdleCDO instance")
  * @name find-convex-params
  * find params for a convex strategy (convexPoolId, depositPosition)
  */
-task("find-convex-params", "Fiind depositPosition for depositToken of a convex pool of the given lpToken")
+task("find-convex-params", "Find depositPosition for depositToken of a convex pool of the given lpToken")
   .addParam('lpToken')
   .addParam('depositToken')
   .setAction(async (args) => {

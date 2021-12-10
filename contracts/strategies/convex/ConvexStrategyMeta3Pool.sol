@@ -1,6 +1,6 @@
 
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
 import {IDepositZap} from "../../interfaces/curve/IDepositZap.sol";
@@ -22,7 +22,7 @@ contract ConvexStrategyMeta3Pool is ConvexBaseStrategy {
     }
 
     /// @notice Deposits in Curve for metapools based on 3pool
-    function _depositInCurve() internal override {
+    function _depositInCurve(uint256 _minLpTokens) internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
 
@@ -39,7 +39,7 @@ contract ConvexStrategyMeta3Pool is ConvexBaseStrategy {
         IDepositZap(CRV_3POOL_DEPOSIT_ZAP).add_liquidity(
             _pool,
             _depositArray,
-            0
+            _minLpTokens
         );
     }
 }
