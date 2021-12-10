@@ -227,7 +227,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
       console.log(`staking reward contracts set`);
     }
-
+    
     // Set flag for not receiving stkAAVE if needed
     console.log('stkAAVE distribution: ', args.stkAAVEActive);
     if (!args.stkAAVEActive) {
@@ -236,6 +236,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
     console.log();
 
+    if ((await idleCDO.feeReceiver()) == '0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4') {
+      console.log('Setting fee receiver to Treasury Multisig')
+      await idleCDO.connect(signer).setFeeReceiver(addresses.treasuryMultisig);
+    }
+    
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
       

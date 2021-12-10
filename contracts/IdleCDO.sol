@@ -108,7 +108,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     lastStrategyPrice = _strategyPrice();
     // Fee params
     fee = 10000; // 10% performance fee
-    feeReceiver = address(0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4); // feeCollector
+    feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver as default
     // StkAAVE unwrapping is active
