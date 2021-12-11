@@ -5,7 +5,7 @@ const { BigNumber } = require("@ethersproject/bignumber");
 
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
-const { initialIdleContractsDeploy, setAprs, setFEIAprs, balance, mint, mintAABuyer, approveNFT } = require("../scripts/card-helpers");
+const { initialIdleContractsDeploy, setAprs, setFEIAprs, balance, mint, mintAABuyer, approveNFT,mintCDO } = require("../scripts/card-helpers");
 const expectEvent = require("@openzeppelin/test-helpers/src/expectEvent");
 
 const BN = (n) => BigNumber.from(n.toString());
@@ -463,6 +463,35 @@ it("should allow to list tokens by owner", async () => {
       //gain with fee: apr: 77.33% fee:10% = (750*32% + 250*213.33% )*0.9 = 1000*77.33% = 696
       //initialAmount - 1000 + 1696
       expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
+    });
+
+    it("should withdraw and transfer all 25% BB + 75% AA (amount + period earnings) if exposure card is 25% in FEI idle cdo", async () => {
+      
+      // APR AA=4 BB=16
+      await idleTokenFEI.setFee(BN("0"));
+      await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mintCDO(idleCDOFEI,D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+
+      //mint
+      const exposure = D18(0.25);
+      await mintCDO(idleCDOFEI,exposure, ONE_THOUSAND_TOKEN, AABuyer);
+
+      // deposit in the lending protocol
+      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+
+      // update lending protocol price which is now 2
+      await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      //burn
+      const tokenIdCard = 2;
+      tx = await cards.connect(AABuyer).burn(tokenIdCard);
+      await tx.wait();
+
+      //gain with fee: apr: 77.33% fee:10% = (750*32% + 250*213.33% )*0.9 = 1000*77.33% = 696
+      //initialAmount - 1000 + 1696
+      expect(await underlyingFEI.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
     });
   });
 

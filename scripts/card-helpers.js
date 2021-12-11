@@ -253,6 +253,7 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     approveNFT,
     mintAABuyer,
     mint,
+    mintCDO,
     initialIdleContractsDeploy,
     idleCDOCardsTestDeploy
   }

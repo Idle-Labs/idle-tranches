@@ -37,7 +37,6 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return idleCDOs;
   }
 
-
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
     IdleCDOCard _card = new IdleCDOCard(_idleCDOAddress);
     IERC20Detailed underlying  = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
@@ -79,7 +78,8 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 toRedeem = _card.burn();
 
     // transfer to card owner
-    idleCDOToken().safeTransfer(msg.sender, toRedeem);
+    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+    underlying.safeTransfer(msg.sender, toRedeem);
   }
 
   function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
@@ -116,9 +116,5 @@ contract IdleCDOCardManager is ERC721Enumerable {
     _mint(msg.sender, newItemId);
 
     return newItemId;
-  }
-
-  function idleCDOToken() public view returns (IERC20Detailed) {
-    return IERC20Detailed(idleCDOs[0].token());
   }
 }
