@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IMAsset.sol";
@@ -92,18 +92,21 @@ contract IdleMStableStrategy is
     }
 
     // only claim gov token rewards
-    function redeemRewards() external override onlyIdleCDO returns (uint256[] memory rewards) {
+    function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
-        rewards[0] = _swapGovTokenOnUniswap();
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(4295128740); // will redeem whatever possible reward is available
     }
 
-    function redeemRewards(bytes calldata _extraData) external onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minAmountReceivedFromUniswap, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
+    function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
+        (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound, uint160 minTickMath) = abi.decode(
+            _extraData,
+            (uint256, uint256, uint256, uint160)
+        );
         _claimGovernanceTokens(startRound, endRound);
         rewards = new uint256[](1);
-        rewards[0] = _swapGovTokenOnUniswap();
-        require(rewards[0] >= minAmountReceivedFromUniswap, "Should received more reward from uniswap than minAmountReceivedFromUniswap");
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minTickMath);
+        require(rewards[0] >= minLiquidityTokenToReceive, "Should received more reward from uniswap than minLiquidityTokenToReceive");
     }
 
     function pullStkAAVE() external override returns (uint256) {
@@ -139,7 +142,7 @@ contract IdleMStableStrategy is
         uint256 rawBalanceIncreased = rawBalanceAfter.sub(rawBalanceBefore);
 
         _mint(msg.sender, rawBalanceIncreased);
-        return interestTokensReceived;
+        return rawBalanceIncreased;
     }
 
     // _amount is strategy token
@@ -179,9 +182,6 @@ contract IdleMStableStrategy is
     // here _amount means credits, will redeem any governance token if there
     function _redeem(uint256 _amount) internal returns (uint256) {
         require(_amount != 0, "Amount shuld be greater than 0");
-        uint256 availableCredits = totalSupply();
-        require(availableCredits >= _amount, "Cannot redeem more than available");
-
         _burn(msg.sender, _amount);
         vault.withdraw(_amount);
 
@@ -191,15 +191,16 @@ contract IdleMStableStrategy is
         return massetReceived;
     }
 
-    function _swapGovTokenOnUniswap() internal returns (uint256) {
+    // min tick math = 4295128739;
+    // max tick math = 1461446703485210103287273052203988822378723970342;
+    // decides slippage
+    function _swapGovTokenOnUniswapAndDepositToVault(uint160 minTickMath) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
         IERC20Detailed(govToken).approve(address(uniswapPool), govTokensToSend);
 
         bytes memory data;
-        // min tick math = 4295128739;
-        // max tick math = 1461446703485210103287273052203988822378723970342;
 
-        uniswapPool.swap(address(this), true, int256(govTokensToSend), 4295128740, data);
+        uniswapPool.swap(address(this), true, int256(govTokensToSend), minTickMath, data);
         // uniswapPool.swap(address(this), false, int256(govTokensToSend), 1461446703485210103287273052203988822378723970341, data);
 
         uint256 underlyingBalanceAfter = underlyingToken.balanceOf(address(this));
