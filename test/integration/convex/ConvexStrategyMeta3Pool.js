@@ -1,8 +1,8 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
-const helpers = require("../../scripts/helpers");
+const helpers = require("../../../scripts/helpers");
 const { expect } = require("chai");
-const addresses = require("../../lib/addresses");
+const addresses = require("../../../lib/addresses");
 const { smock } = require('@defi-wonderland/smock');
 const { ethers, network } = require("hardhat");
 
@@ -126,7 +126,14 @@ describe("ConvexStrategy3Token (using lusd3crv for tests)", async () => {
   }
   
   const redeemRewards = async (addr) => {
-    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5, 5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }
 });

@@ -24,14 +24,17 @@
     "url": "https://github.com/Idle-Labs/idle-utils/issues"
   },
   "homepage": "https://idle.finance",
-  "scripts": {},
+  "scripts": {
+    "test": "npx hardhat test test/*.js",
+    "test-integration": "npx hardhat test test/integration/**/*.js"
+  },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "chai": "^4.2.0",
     "ethereum-waffle": "^3.3.0",
-    "ethers": "^5.4.7",
-    "hardhat": "^2.6.8",
+    "ethers": "^5.5.0",
+    "hardhat": "^2.7.0",
     "hardhat-abi-exporter": "^2.2.1",
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-docgen": "^1.1.2",
@@ -42,7 +45,7 @@
   },
   "dependencies": {
     "@defi-wonderland/smock": "^2.0.1",
-    "@ethersproject/hardware-wallets": "^5.4.0",
+    "@ethersproject/hardware-wallets": "^5.5.0",
     "@gnosis.pm/safe-ethers-adapters": "^0.1.0-alpha.3",
     "@nomiclabs/ethereumjs-vm": "^4",
     "@nomiclabs/hardhat-etherscan": "^2.1.6",

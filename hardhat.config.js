@@ -11,53 +11,52 @@ require("hardhat-etherscan-abi");
 require("solidity-coverage");
 
 // Tasks
-require("./tasks/helpers");
 require("./tasks/tests");
-require("./tasks/deploy");
-require("./tasks/test-harvest");
 require("./tasks/cdo-factory");
+require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
+const mainContactRuns = 110;
 
 module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.7",
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 270
+            runs: 999999
           }
         }
       }
     ],
     overrides: {
-      "contracts/IdleCDOTrancheRewards.sol": {
-        version: "0.8.7",
+      "contracts/IdleCDO.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: mainContactRuns
           }
         }
       },
-      "contracts/IdleCDOTranche.sol": {
-        version: "0.8.7",
+      "contracts/GuardedLaunchUpgradable.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: mainContactRuns
           }
         }
       },
-      "contracts/IdleStrategy.sol": {
-        version: "0.8.7",
+      "contracts/IdleCDOStorage.sol": {
+        version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
+            runs: mainContactRuns
           }
         }
       }
@@ -66,15 +65,16 @@ module.exports = {
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true,
-      forking: {
-        url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-        // blockNumber: 12554260, // DAI all in compound for `integration` task
-        // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
-        // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
-        // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
-        // blockNumber: 13261760 // pre transfer ownership
-        blockNumber: 13441245 // gas optimizations
-      }
+      // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   // blockNumber: 12554260, // DAI all in compound for `integration` task
+      //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
+      //   // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
+      //   // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
+      //   // blockNumber: 13261760 // pre transfer ownership
+      //   // blockNumber: 13666020 // convex integration tests
+      //   blockNumber: 13685150 // lido deployment
+      // }
     },
     coverage: {
       url: "http://127.0.0.1:8545/",

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import {ConvexBaseStrategy} from "./ConvexBaseStrategy.sol";
 import {ICurveDeposit_2token_underlying} from "../../interfaces/curve/ICurveDeposit_2token_underlying.sol";
@@ -20,7 +20,7 @@ contract ConvexStrategy2TokenUnderlying is ConvexBaseStrategy {
     /// @notice Deposits in Curve for lending pools with 2 tokens 
     /// @dev This should be used to implement the strategy with newest curve pools like ib (Iron Bank)
     ///      See: https://curve.readthedocs.io/exchange-pools.html#id10
-    function _depositInCurve() internal override {
+    function _depositInCurve(uint256 _minLpTokens) internal override {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
         
@@ -34,6 +34,6 @@ contract ConvexStrategy2TokenUnderlying is ConvexBaseStrategy {
         // underlying assetss
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_2token_underlying(_pool).add_liquidity(_depositArray, 0, true);
+        ICurveDeposit_2token_underlying(_pool).add_liquidity(_depositArray, _minLpTokens, true);
     }
 }

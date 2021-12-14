@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "hardhat/console.sol";
@@ -28,7 +28,7 @@ contract MockLido is ERC20("Staked ETH", "stETH") {
         return address(this).balance;
     }
 
-    function submit(address _referral)
+    function submit(address)
         public
         payable
         returns (uint256 sharesAmount)

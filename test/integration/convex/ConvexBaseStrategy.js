@@ -1,8 +1,8 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
-const helpers = require("../../scripts/helpers");
+const helpers = require("../../../scripts/helpers");
 const { expect } = require("chai");
-const addresses = require("../../lib/addresses");
+const addresses = require("../../../lib/addresses");
 const { smock } = require('@defi-wonderland/smock');
 const { ethers, network } = require("hardhat");
 
@@ -307,11 +307,36 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
 
     expect(redeemPrice.eq(harvestPrice)).to.be.true;
   });
-
+  
+  it("redeemRewards should return the minAmounts to use for selling rewards to WETH, WETH to depositToken, and depositToken to curveLpToken", async () => {
+    const addr = RandomAddr;
+    const _amount = BN('10000').mul(one);
+    
+    // price should increase after some harvesting
+    await helpers.fundWallets(TOKEN_3CRV, [RandomAddr], WHALE_3CRV, _amount);
+    
+    setWhitelistedCDO(addr);
+    
+    await deposit(addr, _amount);
+    
+    // distribute CRVs to reward pools, this is not an automatic
+    booster.earmarkRewards(POOL_ID_3CRV);
+    
+    await network.provider.send("evm_increaseTime", [3600 * 24]); // one day of rewards
+    await network.provider.send("evm_mine", []);
+    
+    const res = await redeemRewards(addr, true);
+    expect(res.length).to.be.equal(4);
+    expect(res[0].gt(0)).to.be.true;
+    expect(res[1].gt(0)).to.be.true;
+    expect(res[2].gt(0)).to.be.true;
+    expect(res[3].gt(0)).to.be.true;
+  });
+  
   const setWhitelistedCDO = async (addr) => {
     await helpers.sudoCall(owner.address, strategy, 'setWhitelistedCDO', [addr]);
   }
-
+  
   const deposit = async (addr, amount) => {
     await helpers.sudoCall(addr, erc20_3crv, 'approve', [strategy.address, MAX_UINT]);
     await helpers.sudoCall(addr, strategy, 'deposit', [amount]);
@@ -325,8 +350,18 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     await helpers.sudoCall(addr, strategy, 'redeemUnderlying', [amount]);
   }
   
-  const redeemRewards = async (addr) => {
-    const [a,b,res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', []);
+  const redeemRewards = async (addr, static = false) => {
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5,5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    if (static) {
+      return await helpers.sudoStaticCall(addr, strategy, 'redeemRewards', [extraData]);
+    }
+    const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }
 });

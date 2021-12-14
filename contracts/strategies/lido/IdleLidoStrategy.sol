@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
-import "./interfaces/IIdleCDOStrategy.sol";
-import "./interfaces/IERC20Detailed.sol";
-import "./interfaces/ILido.sol";
-import "./interfaces/ILidoOracle.sol";
-import "./interfaces/IWstETH.sol";
+import "../../interfaces/IIdleCDOStrategy.sol";
+import "../../interfaces/IERC20Detailed.sol";
+import "../../interfaces/ILido.sol";
+import "../../interfaces/ILidoOracle.sol";
+import "../../interfaces/IWstETH.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -104,7 +104,7 @@ contract IdleLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// NOTE: stkAAVE rewards are not sent back to the use but accumulated in this contract until 'pullStkAAVE' is called
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`.
     /// redeem rewards and transfer them to msg.sender
-    function redeemRewards() external override returns (uint256[] memory _balances) {}
+    function redeemRewards(bytes calldata) external override returns (uint256[] memory _balances) {}
 
     /// @dev msg.sender should approve this contract first
     /// to spend `_amount * ONE_STETH_TOKEN / price()` of `strategyToken`

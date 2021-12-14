@@ -1,7 +1,7 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
-const helpers = require("../../scripts/helpers");
-const addresses = require("../../lib/addresses");
+const helpers = require("../../../scripts/helpers");
+const addresses = require("../../../lib/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require('@defi-wonderland/smock');
 const { solidityKeccak256 } = require("ethers/lib/utils");
@@ -214,7 +214,7 @@ describe("IdleConvexCDO", function () {
     // Buy AA tranche with `amount` underlying from another user
     const aa2TrancheBal = await helpers.deposit('AA', idleCDO, AABuyer2Addr, _amount);
     // amount bought should be less than the one of AABuyerAddr because price increased
-    await helpers.checkIncreased(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
+    await helpers.check(aa2TrancheBal, aaTrancheBal, 'AA1 bal is greater than the newly minted bal after harvest');
 
     console.log('######## First real rebalance (with CVX, CRV rewards accrued)');
 
@@ -251,10 +251,20 @@ describe("IdleConvexCDO", function () {
     // wait 15 days
     await mineBlocks({ increaseOf: oneDay })
 
-    let res = await helpers.sudoCall(address, idleCDO, 'harvest', [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, [], [], []]);
-    let redeemedRewards = res._redeemedRewards;
-
-    console.log("Redeemed: ", redeemedRewards);
+    // encode params for redeemRewards: uint256[], uint256, uint256
+    const params = [
+      [5, 5],
+      3,
+      4
+    ];
+    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    await helpers.sudoCall(address, idleCDO, 'harvest', [
+      [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, skipRedeem && skipIncentivesUpdate && skipFeeDeposit], 
+      [], 
+      [], 
+      [],
+      extraData
+    ]);
   }
 
   const mineBlocks = async ({ increaseOf }) => {

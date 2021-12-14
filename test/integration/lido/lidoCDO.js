@@ -1,7 +1,7 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
-const helpers = require("../../scripts/helpers");
-const addresses = require("../../lib/addresses");
+const helpers = require("../../../scripts/helpers");
+const addresses = require("../../../lib/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require('@defi-wonderland/smock');
 const { solidityKeccak256 } = require("ethers/lib/utils");
@@ -253,12 +253,12 @@ describe("IdleLidoCDO", function () {
     let idleStrategy = await ethers.getContractAt("IdleStrategy", strategyAddr);
     const rewardTokens = await idleStrategy.getRewardTokens();
 
-    let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0'))]);
-    let sellAmounts = res._soldAmounts;
-    let minAmounts = res._swappedAmounts;
+    let res = await helpers.sudoStaticCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false && skipIncentivesUpdate && skipFeeDeposit], rewardTokens.map(r => false), rewardTokens.map(r => BN('0')), rewardTokens.map(r => BN('0')), '0x']);
+    let sellAmounts = res[0];
+    let minAmounts = res[1];
     // Add some slippage tolerance
     minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-    await helpers.sudoCall(address, idleCDO, 'harvest', [false, skipIncentivesUpdate, skipFeeDeposit, rewardTokens.map(r => false), minAmounts, sellAmounts]);
+    await helpers.sudoCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false && skipIncentivesUpdate && skipFeeDeposit], rewardTokens.map(r => false), minAmounts, sellAmounts, '0x']);
     await mineBlocks({ blocks: 500 })
 
     // Lido oracle updates the status

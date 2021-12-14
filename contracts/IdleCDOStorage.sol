@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 
