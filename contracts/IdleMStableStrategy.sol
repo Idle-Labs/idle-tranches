@@ -95,18 +95,14 @@ contract IdleMStableStrategy is
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
-        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(4295128740); // will redeem whatever possible reward is available
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
 
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound, uint160 minTickMath) = abi.decode(
-            _extraData,
-            (uint256, uint256, uint256, uint160)
-        );
+        (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
         _claimGovernanceTokens(startRound, endRound);
         rewards = new uint256[](1);
-        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minTickMath);
-        require(rewards[0] >= minLiquidityTokenToReceive, "Should received more reward from uniswap than minLiquidityTokenToReceive");
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
 
     function pullStkAAVE() external override returns (uint256) {
@@ -191,14 +187,19 @@ contract IdleMStableStrategy is
     // min tick math = 4295128739;
     // max tick math = 1461446703485210103287273052203988822378723970342;
     // decides slippage
-    function _swapGovTokenOnUniswapAndDepositToVault(uint160 minTickMath) internal returns (uint256) {
+    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
         IERC20Detailed(govToken).approve(address(uniswapPool), govTokensToSend);
 
         bytes memory data;
+        uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
+        uniswapPool.swap(address(this), true, int256(govTokensToSend), 4295128740, data);
+        uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
 
-        uniswapPool.swap(address(this), true, int256(govTokensToSend), minTickMath, data);
-        // uniswapPool.swap(address(this), false, int256(govTokensToSend), 1461446703485210103287273052203988822378723970341, data);
+        require(
+            underlyingTokenBalanceAfter.sub(underlyingTokenBalanceBefore) >= minLiquidityTokenToReceive,
+            "Should received more reward from uniswap than minLiquidityTokenToReceive"
+        );
 
         uint256 underlyingBalanceAfter = underlyingToken.balanceOf(address(this));
         uint256 newCredits = _depositToVault(underlyingBalanceAfter);
