@@ -136,13 +136,10 @@ contract IdleMStableStrategy is
         uint256 interestTokenAvailable = imUSD.balanceOf(address(this));
         imUSD.approve(address(vault), interestTokenAvailable);
 
-        uint256 rawBalanceBefore = vault.rawBalanceOf(address(this));
         vault.stake(interestTokenAvailable);
-        uint256 rawBalanceAfter = vault.rawBalanceOf(address(this));
-        uint256 rawBalanceIncreased = rawBalanceAfter.sub(rawBalanceBefore);
 
-        _mint(msg.sender, rawBalanceIncreased);
-        return rawBalanceIncreased;
+        _mint(msg.sender, interestTokenAvailable);
+        return interestTokenAvailable;
     }
 
     // _amount is strategy token
