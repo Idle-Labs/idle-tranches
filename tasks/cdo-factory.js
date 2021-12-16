@@ -186,6 +186,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
     const idleCDOAddress = await hre.run("deploy-cdo-with-factory", deployParams);
     const idleCDO = await ethers.getContractAt("IdleCDO", idleCDOAddress);
+    console.log('owner idleCDO', await idleCDO.owner());
 
     if (strategy.setWhitelistedCDO) {
       console.log("Setting whitelisted CDO");

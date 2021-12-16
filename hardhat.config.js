@@ -72,8 +72,11 @@ module.exports = {
       //   // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
       //   // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
       //   // blockNumber: 13261760 // pre transfer ownership
-      //   // blockNumber: 13666020 // convex integration tests
-      //   blockNumber: 13685150 // lido deployment
+      //   // blockNumber: 13666020 // convex/lido integration tests
+      //   // blockNumber: 13728440 // idleFEI upgraded
+      //   // blockNumber: 13739407 // idleDAI upgraded
+      //   // blockNumber: 13776718 // lido deploy
+      //   blockNumber: 13810230 // convex deploy
       // }
     },
     coverage: {
