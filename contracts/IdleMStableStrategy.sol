@@ -150,7 +150,7 @@ contract IdleMStableStrategy is
     }
 
     function getApr() external view override returns (uint256) {
-        return oneToken;
+        return imUSD.exchangeRate().mul(6);
     }
 
     function uniswapV3SwapCallback(
