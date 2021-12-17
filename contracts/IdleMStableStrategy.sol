@@ -16,6 +16,7 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
 import "./interfaces/IUniswapV3SwapCallback.sol";
 
 contract IdleMStableStrategy is
@@ -53,6 +54,12 @@ contract IdleMStableStrategy is
 
     address public idleCDO;
     IUniswapV3Pool public uniswapPool;
+    IUniswapV3Factory public uniswapFactory;
+
+    uint256 public lastIndexAmount;
+    uint256 public lastIndexedTime;
+
+    uint256 constant YEAR = 365 days;
 
     constructor() {
         token = address(1);
@@ -80,12 +87,13 @@ contract IdleMStableStrategy is
         govToken = vault.getRewardToken();
         idleCDO = _idleCDO;
 
-        address _uniswapPool = IUniswapV3Factory(_uniswapV3Factory).getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
+        uniswapFactory = IUniswapV3Factory(_uniswapV3Factory);
+        address _uniswapPool = uniswapFactory.getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
         require(_uniswapPool != address(0), "Cannot initialize if there is no uniswap pool available");
         uniswapPool = IUniswapV3Pool(_uniswapPool);
 
         ERC20Upgradeable.__ERC20_init("Idle MStable Strategy Token", string(abi.encodePacked("idleMS", underlyingToken.symbol())));
-
+        lastIndexedTime = block.timestamp;
         //------//-------//
 
         transferOwnership(_owner);
@@ -127,6 +135,8 @@ contract IdleMStableStrategy is
 
     function _depositToVault(uint256 _amount) internal returns (uint256) {
         underlyingToken.approve(address(imUSD), _amount);
+        lastIndexAmount = lastIndexAmount.add(_amount);
+        lastIndexedTime = block.timestamp;
         uint256 interestTokensReceived = imUSD.depositSavings(_amount);
 
         uint256 interestTokenAvailable = imUSD.balanceOf(address(this));
@@ -146,11 +156,19 @@ contract IdleMStableStrategy is
     // _amount in underlying token
     function redeemUnderlying(uint256 _amount) external override returns (uint256) {
         uint256 _underlyingAmount = _amount.mul(oneToken).div(price());
+        lastIndexAmount = lastIndexAmount.sub(_underlyingAmount);
+        lastIndexedTime = block.timestamp;
         return _redeem(_underlyingAmount);
     }
 
     function getApr() external view override returns (uint256) {
-        return imUSD.exchangeRate().mul(6);
+        uint256 rawBalance = vault.rawBalanceOf(address(this));
+        uint256 expectedUnderlyingAmount = imUSD.creditsToUnderlying(rawBalance);
+
+        return
+            expectedUnderlyingAmount.sub(lastIndexAmount).mul(10**18).div(lastIndexAmount).mul(block.timestamp.sub(lastIndexedTime)).div(
+                YEAR
+            );
     }
 
     function uniswapV3SwapCallback(

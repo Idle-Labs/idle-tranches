@@ -23,12 +23,15 @@ const mUSD_ADDRESS = "0xe2f2a5C287993345a840Db3B0845fbC70f5935a5";
 const META_ADDESS = "0xa3BeD4E1c75D00fa6f4E5E6922DB7261B5E9AcD2";
 const VAULT_ADDRESS = "0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B";
 
+const USDTAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const musd_whale = "0xe008464f754e85e37bca41cce3fbd49340950b29";
 
 const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
 
 describe.only("IdleMStableStrategy", function () {
   let IdleMStableStrategy;
+  let PriceOracle;
+
   let owner;
   let user;
 
@@ -48,6 +51,10 @@ describe.only("IdleMStableStrategy", function () {
     let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
     IdleMStableStrategy = await IdleMStableStrategyFactory.deploy();
     await IdleMStableStrategy.deployed();
+
+    let PriceOracleFactory = await ethers.getContractFactory("PriceOracle");
+    PriceOracle = await PriceOracleFactory.deploy();
+    await PriceOracle.deployed();
 
     imUSD = await ethers.getContractAt(erc20.abi, imUSD_ADDRESS);
     mUSD = await ethers.getContractAt(erc20.abi, mUSD_ADDRESS);
@@ -125,5 +132,11 @@ describe.only("IdleMStableStrategy", function () {
     expect(sharesReceived).gt(0);
 
     await IdleMStableStrategy.connect(user)["redeemRewards()"]();
+  });
+
+  it("APR", async () => {
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+    console.log(await IdleMStableStrategy.getApr());
   });
 });
