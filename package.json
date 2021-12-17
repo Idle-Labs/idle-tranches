@@ -39,6 +39,7 @@
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-docgen": "^1.1.2",
     "hardhat-etherscan-abi": "^0.1.1",
+    "hardhat-log-remover": "^2.0.2",
     "prettier": "^2.4.1",
     "prettier-plugin-solidity": "^1.0.0-beta.19",
     "solidity-coverage": "^0.7.17"
@@ -56,6 +57,7 @@
     "@openzeppelin/test-helpers": "^0.5.11",
     "@uniswap/v2-core": "^1.0.1",
     "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "@uniswap/v3-periphery": "^1.3.0",
     "bignumber.js": "^9.0.1",
     "dotenv": "^9.0.2",
     "hardhat-gas-reporter": "^1.0.4"

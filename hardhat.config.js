@@ -1,6 +1,6 @@
-require('dotenv').config();
-require('chai').should();
-require('@openzeppelin/hardhat-upgrades');
+require("dotenv").config();
+require("chai").should();
+require("@openzeppelin/hardhat-upgrades");
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-etherscan");
 require("@nomiclabs/hardhat-solhint");
@@ -9,6 +9,8 @@ require("@nomiclabs/hardhat-solhint");
 require("hardhat-etherscan-abi");
 // require('hardhat-docgen');
 require("solidity-coverage");
+
+require('hardhat-log-remover');
 
 // Tasks
 require("./tasks/tests");
@@ -27,40 +29,49 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 999999
-          }
-        }
-      }
+            runs: 999999,
+          },
+        },
+      },
     ],
     overrides: {
+      "contracts/libraries/PriceOracle.sol": {
+        version: "0.7.6",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 999999,
+          },
+        },
+      },
       "contracts/IdleCDO.sol": {
         version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: mainContactRuns
-          }
-        }
+            runs: mainContactRuns,
+          },
+        },
       },
       "contracts/GuardedLaunchUpgradable.sol": {
         version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: mainContactRuns
-          }
-        }
+            runs: mainContactRuns,
+          },
+        },
       },
       "contracts/IdleCDOStorage.sol": {
         version: "0.8.10",
         settings: {
           optimizer: {
             enabled: true,
-            runs: mainContactRuns
-          }
-        }
-      }
-    }
+            runs: mainContactRuns,
+          },
+        },
+      },
+    },
   },
   networks: {
     hardhat: {
@@ -73,8 +84,9 @@ module.exports = {
         // blockNumber: 13126332 // there are stkAAVE in the contract in cooldown
         // blockNumber: 13261760 // pre transfer ownership
         // blockNumber: 13666020 // convex integration tests
-        blockNumber: 13441245 // lido deployment
-      }
+        // blockNumber: 13441245, // lido deployment
+        blockNumber: 13821985
+      },
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -90,10 +102,10 @@ module.exports = {
     },
     mainnet: {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-      gasPrice: 'auto',
-      gas: 'auto',
+      gasPrice: "auto",
+      gas: "auto",
       gasMultiplier: 1.1,
-      timeout: 1200000
+      timeout: 1200000,
     },
   },
   etherscan: {
@@ -103,17 +115,13 @@ module.exports = {
     // path: './abis',
     // clear: true,
     flat: true,
-    spacing: 2
+    spacing: 2,
   },
   docgen: {
-    path: './docs',
+    path: "./docs",
     clear: true,
     runOnCompile: false,
-    only: [
-      '^contracts/IdleCDO.sol',
-      '^contracts/IdleCDOTrancheRewards.sol',
-      '^contracts/IdleStrategy.sol'
-    ]
+    only: ["^contracts/IdleCDO.sol", "^contracts/IdleCDOTrancheRewards.sol", "^contracts/IdleStrategy.sol"],
   },
   contractSizer: {
     // alphaSort: true,
@@ -121,6 +129,6 @@ module.exports = {
     // disambiguatePaths: false,
   },
   mocha: {
-    timeout: 1000000
-  }
+    timeout: 1000000,
+  },
 };
