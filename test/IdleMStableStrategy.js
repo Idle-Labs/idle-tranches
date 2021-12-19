@@ -30,7 +30,6 @@ const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
 
 describe.only("IdleMStableStrategy", function () {
   let IdleMStableStrategy;
-  let PriceOracle;
 
   let owner;
   let user;
@@ -51,10 +50,6 @@ describe.only("IdleMStableStrategy", function () {
     let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
     IdleMStableStrategy = await IdleMStableStrategyFactory.deploy();
     await IdleMStableStrategy.deployed();
-
-    let PriceOracleFactory = await ethers.getContractFactory("PriceOracle");
-    PriceOracle = await PriceOracleFactory.deploy();
-    await PriceOracle.deployed();
 
     imUSD = await ethers.getContractAt(erc20.abi, imUSD_ADDRESS);
     mUSD = await ethers.getContractAt(erc20.abi, mUSD_ADDRESS);
