@@ -28,7 +28,6 @@ contract IdleMStableStrategy is
     IUniswapV3SwapCallback
 {
     using SafeERC20Upgradeable for IERC20Detailed;
-    using SafeMath for uint256;
 
     /// @notice underlying token address (eg mUSD)
     address public override token;
@@ -54,7 +53,6 @@ contract IdleMStableStrategy is
 
     address public idleCDO;
     IUniswapV3Pool public uniswapPool;
-    IUniswapV3Factory public uniswapFactory;
 
     uint256 public lastIndexAmount;
     uint256 public lastIndexedTime;
@@ -87,8 +85,7 @@ contract IdleMStableStrategy is
         govToken = vault.getRewardToken();
         idleCDO = _idleCDO;
 
-        uniswapFactory = IUniswapV3Factory(_uniswapV3Factory);
-        address _uniswapPool = uniswapFactory.getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
+        address _uniswapPool = IUniswapV3Factory(_uniswapV3Factory).getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
         require(_uniswapPool != address(0), "Cannot initialize if there is no uniswap pool available");
         uniswapPool = IUniswapV3Pool(_uniswapPool);
 
@@ -135,7 +132,7 @@ contract IdleMStableStrategy is
 
     function _depositToVault(uint256 _amount) internal returns (uint256) {
         underlyingToken.approve(address(imUSD), _amount);
-        lastIndexAmount = lastIndexAmount.add(_amount);
+        lastIndexAmount = lastIndexAmount + _amount;
         lastIndexedTime = block.timestamp;
         uint256 interestTokensReceived = imUSD.depositSavings(_amount);
 
@@ -155,8 +152,8 @@ contract IdleMStableStrategy is
 
     // _amount in underlying token
     function redeemUnderlying(uint256 _amount) external override returns (uint256) {
-        uint256 _underlyingAmount = _amount.mul(oneToken).div(price());
-        lastIndexAmount = lastIndexAmount.sub(_underlyingAmount);
+        uint256 _underlyingAmount = (_amount * oneToken) / price();
+        lastIndexAmount = lastIndexAmount - _underlyingAmount;
         lastIndexedTime = block.timestamp;
         return _redeem(_underlyingAmount);
     }
@@ -165,10 +162,14 @@ contract IdleMStableStrategy is
         uint256 rawBalance = vault.rawBalanceOf(address(this));
         uint256 expectedUnderlyingAmount = imUSD.creditsToUnderlying(rawBalance);
 
-        return
-            expectedUnderlyingAmount.sub(lastIndexAmount).mul(10**18).div(lastIndexAmount).mul(block.timestamp.sub(lastIndexedTime)).div(
-                YEAR
-            );
+        uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
+        if (gain == 0) {
+            return 0;
+        }
+        uint256 time = block.timestamp - lastIndexedTime;
+        uint256 gainPerc = ((gain * 10**18) / lastIndexAmount) * 100;
+        uint256 apr = (YEAR / time) * gainPerc;
+        return apr;
     }
 
     function uniswapV3SwapCallback(
@@ -215,7 +216,7 @@ contract IdleMStableStrategy is
         uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
 
         require(
-            underlyingTokenBalanceAfter.sub(underlyingTokenBalanceBefore) >= minLiquidityTokenToReceive,
+            underlyingTokenBalanceAfter - underlyingTokenBalanceBefore >= minLiquidityTokenToReceive,
             "Should received more reward from uniswap than minLiquidityTokenToReceive"
         );
 
