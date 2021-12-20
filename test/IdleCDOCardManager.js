@@ -110,18 +110,10 @@ describe("IdleCDOCardManager", () => {
     });
 
 
-    it("should deposit in the selected IdleCDOFEI trenches", async () => {
+    it("should deposit 25% in AA / 75% in BB of the amount if the risk exposure 75% in IdleCDO FEI", async () => {
 
-      const exposure = D18(0.25);
-      /// MINTER mints a card
-        //approve
-        await approveNFT(idleCDOFEI, cards, AABuyer.address, ONE_THOUSAND_TOKEN);
-        //mint
-        tx = await cards.connect(AABuyer).mint(idleCDOFEI.address, exposure, ONE_THOUSAND_TOKEN);
-        await tx.wait();
-        //harvest
-        await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
-      /////////////////////////////
+      const exposure = D18(0.75);
+      await mintCDO(idleCDOFEI,exposure, ONE_THOUSAND_TOKEN, AABuyer);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
@@ -134,13 +126,13 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
       const aaTrancheBal = await balance("AA", idleCDOFEI, pos.cardAddress);
-      expect(aaTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
+      expect(aaTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
 
       const bbTrancheBal = await balance("BB", idleCDOFEI, pos.cardAddress);
-      expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
+      expect(bbTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
     });
 
-    it("should revert the transaction if idleCDO selected is listed", async () => {
+    it("should revert the transaction if idleCDO selected is not listed", async () => {
       const exposure = D18(0.25);
       const notListedAddress ="0x1000000000000000000000000000000000000001";
       await expect(cards.connect(AABuyer).mint(notListedAddress, exposure, ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
@@ -471,7 +463,7 @@ describe("IdleCDOCardManager", () => {
       expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
     });
 
-    it("should withdraw and transfer all 25% BB + 75% AA (amount + period earnings) if exposure card is 25% in FEI idle cdo", async () => {
+    it("should withdraw and transfer all 25% BB + 75% AA (amount + period earnings) if exposure card is 25% in IdleCDO FEI", async () => {
       
       // APR AA=4 BB=16
       await idleTokenFEI.setFee(BN("0"));
@@ -503,46 +495,5 @@ describe("IdleCDOCardManager", () => {
 
   it("should not able to get a balance of an inexistent card", async () => {
     await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
-  });
-
-  describe("Inner IdleCDOCard", () => {
-    it("should not be deployed by a not IdleCDOCardManger", async () => {
-      const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCard");
-      await expect(IdleCDOCardManager.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
-    });
-
-    it("should not allow non manager owner minting", async () => {
-      // mint a card with exposure 0.5
-      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
-      // get a card address
-      const card = await cards.card(1);
-
-      //deploy the evil Idle CDO Cards contract
-      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCardManager.deploy([idleCDO.address]);
-      await evilManager.deployed();
-
-      //approve
-      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
-
-      await expect(evilManager.connect(BBBuyer).evilMint(card.cardAddress, ONE_THOUSAND_TOKEN, 0)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
-    });
-
-    it("should not allow non manager owner to burn", async () => {
-      // mint a card with exposure 0.5
-      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
-      // get a card address
-      const card = await cards.card(1);
-
-      //deploy the evil Idle CDO Cards contract
-      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCardManager.deploy([idleCDO.address]);
-      await evilManager.deployed();
-
-      //approve
-      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
-
-      await expect(evilManager.connect(BBBuyer).evilBurn(card.cardAddress)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
-    });
   });
 });

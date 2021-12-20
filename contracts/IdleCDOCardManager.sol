@@ -78,7 +78,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     Card memory pos = card(_tokenId);
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
-    uint256 toRedeem = _card.burn();
+    toRedeem = _card.burn();
 
     // transfer to card owner
     IERC20Detailed underlying  = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
@@ -93,7 +93,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 aprAA = idleCDO.getApr(idleCDO.AATranche());
     uint256 ratioAA = percentage(RATIO_PRECISION.sub(_exposure), aprAA);
 
-    // ratioAA = ratio of _exposure of the AA apr
+    // ratioBB = ratio of _exposure of the BB apr
     uint256 aprBB = idleCDO.getApr(idleCDO.BBTranche());
     uint256 ratioBB = percentage(_exposure, aprBB);
 
