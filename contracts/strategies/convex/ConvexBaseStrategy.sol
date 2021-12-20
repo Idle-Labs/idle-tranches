@@ -374,7 +374,11 @@ abstract contract ConvexBaseStrategy is
         }
     }
 
-    /// @return returns 0, don't know if there are ways you can calculate APR on-chain for Convex
+    /// @return returns an APR estimation.
+    /// @dev values returned by this method should be taken as an imprecise estimation.
+    ///      For client integration something more complex should be done to have a more precise
+    ///      estimate (eg. computing APR using historical APR data).
+    ///      Also it does not take into account compounding (APY).
     function getApr() external view override returns (uint256) {
         // // apr = rate * 1 year / harvest interval in days (supposing 6570 blocks a day)
         return latestPriceIncrease * (365 / (latestHarvestInterval / 6570)); 
