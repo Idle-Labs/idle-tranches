@@ -106,7 +106,8 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should deposit 25% in AA / 75% in BB of the amount if the risk exposure 75% in IdleCDO FEI", async () => {
-      await mintCDO(idleCDOFEI, EXPOSURE(0.75), ONE_THOUSAND_TOKEN, AABuyer);
+
+      await mintCDO(idleCDOFEI,EXPOSURE(0.75), ONE_THOUSAND_TOKEN, AABuyer);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
@@ -128,6 +129,7 @@ describe("IdleCDOCardManager", () => {
     it("should revert the transaction if idleCDO selected is not listed", async () => {
       const notListedAddress = "0x1000000000000000000000000000000000000001";
       await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
+
     });
 
     it("should revert the transaction if risk exposure is greater than 100%", async () => {
