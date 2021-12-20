@@ -140,13 +140,19 @@ describe("IdleCDOCardManager", () => {
       expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
     });
 
+    it("should revert the transaction if idleCDO selected is listed", async () => {
+      const exposure = D18(0.25);
+      const notListedAddress ="0x1000000000000000000000000000000000000001";
+      await expect(cards.connect(AABuyer).mint(notListedAddress, exposure, ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
+    });
+
    it("should revert the transaction if risk exposure is greater than 100%", async () => {
       const exposure = D18(1.000000001);
       await expect(mintAABuyer(exposure, ONE_THOUSAND_TOKEN)).to.be.revertedWith("percentage should be between 0 and 1");
     });
   });
 
-it("should allow to list tokens by owner", async () => {
+  it("should allow to list tokens by owner", async () => {
     await mintAABuyer(D18(0.25), ONE_THOUSAND_TOKEN);
     await mintAABuyer(D18(0.3), ONE_THOUSAND_TOKEN);
 

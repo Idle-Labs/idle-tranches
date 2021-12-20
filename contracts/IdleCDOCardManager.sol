@@ -38,6 +38,9 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
+    // check if _idleCDOAddress exists in idleCDOAddress array
+    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
+
     IdleCDOCard _card = new IdleCDOCard(_idleCDOAddress);
     IERC20Detailed underlying  = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
 
@@ -117,4 +120,14 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     return newItemId;
   }
+
+  function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
+    for (uint256 i = 0; i < idleCDOs.length; i++) {
+      if (address(idleCDOs[i]) == _idleCDOAddress) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 }
