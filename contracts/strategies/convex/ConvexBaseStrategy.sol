@@ -384,8 +384,9 @@ abstract contract ConvexBaseStrategy is
     ///      estimate (eg. computing APR using historical APR data).
     ///      Also it does not take into account compounding (APY).
     function getApr() external view override returns (uint256) {
-        // // apr = rate * 1 year / harvest interval in days (supposing 6570 blocks a day)
-        return latestPriceIncrease * (365 / (latestHarvestInterval / 6570)); 
+        // apr = rate * 1 year (in hours) / harvest interval in hours (supposing 273 blocks in an hour)
+        uint256 periods = 8760 / (latestHarvestInterval / 273);
+        return latestPriceIncrease * periods;
     }
 
     /// @return rewardTokens tokens array of reward token addresses
