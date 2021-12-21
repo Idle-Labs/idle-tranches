@@ -82,6 +82,8 @@ abstract contract ConvexBaseStrategy is
     /// ###### End of storage V1
 
     /// ###### Storage V2
+    /// @notice blocks per year
+    uint256 public BLOCKS_PER_YEAR;
     /// @notice latest harvest price gain in LP tokens
     uint256 public latestPriceIncrease;
     /// @notice latest estimated harvest interval
@@ -174,6 +176,7 @@ abstract contract ConvexBaseStrategy is
         depositor = _curveArgs.depositor;
         depositPosition = _curveArgs.depositPosition;
         releaseBlocksPeriod = _releasePeriod;
+        setBlocksPerYear(2465437); // given that blocks are mined at a 13.15s/block rate
 
         // set approval for curveLpToken
         IERC20Detailed(_crvLp).approve(BOOSTER, type(uint256).max);
@@ -384,9 +387,8 @@ abstract contract ConvexBaseStrategy is
     ///      estimate (eg. computing APR using historical APR data).
     ///      Also it does not take into account compounding (APY).
     function getApr() external view override returns (uint256) {
-        // apr = rate * 1 year (in hours) / harvest interval in hours (supposing 273 blocks in an hour)
-        uint256 periods = 8760 / (latestHarvestInterval / 273);
-        return latestPriceIncrease * periods;
+        // apr = rate * blocks in a year / harvest interval
+        return latestPriceIncrease * (BLOCKS_PER_YEAR / latestHarvestInterval);
     }
 
     /// @return rewardTokens tokens array of reward token addresses
@@ -417,6 +419,13 @@ abstract contract ConvexBaseStrategy is
         address _to
     ) external onlyOwner nonReentrant {
         IERC20Detailed(_token).safeTransfer(_to, value);
+    }
+
+    /// @notice This method can be used to change the value of BLOCKS_PER_YEAR
+    /// @param blocksPerYear the new blocks per year value
+    function setBlocksPerYear(uint256 blocksPerYear) public onlyOwner {
+        require(blocksPerYear != 0, "Blocks per year cannot be zero");
+        BLOCKS_PER_YEAR = blocksPerYear;
     }
 
     function setRouterForReward(address _reward, address _newRouter)

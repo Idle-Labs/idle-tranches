@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = 1;
-const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
+const WHALE_3CRV = '0x800cb8ba7c1fc8266e5e564078067eb5d7a2b730';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -85,6 +85,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     // Using half days is to simulate how we doHardwork in the real world
     let days = 15;
     let oneDay = 3600 * 24;
+    setBlocksPerYear(365 * 3);
     const initialSharePrice = await strategy.price();
     for(let i = 0; i < days; i++) {
       // distribute CRVs to reward pools, this is not an automatic
@@ -106,8 +107,12 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
     expect(finalSharePrice.gt(initialSharePrice)).to.be.true;
 
     const priceGain = ethers.utils.formatEther(finalSharePrice.sub(initialSharePrice));
-    
+    const aprFromContract = await strategy.getApr();
+    const latestPriceIncrease = await strategy.latestPriceIncrease();
+
     console.log('💵 Price gain (15 days): ', priceGain);
+    console.log('latestPriceIncrease: ', ethers.utils.formatEther(latestPriceIncrease.toString()))
+    console.log(`apr queried from contract: ${ethers.utils.formatEther(aprFromContract.mul(BN(100)))} %`);
 
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);
@@ -121,6 +126,10 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
   const deposit = async (addr, amount) => {
     await helpers.sudoCall(addr, erc20_3crv, 'approve', [strategy.address, MAX_UINT]);
     await helpers.sudoCall(addr, strategy, 'deposit', [amount]);
+  }
+
+  const setBlocksPerYear = async (blocks) => {
+    await helpers.sudoCall(owner.address, strategy, 'setBlocksPerYear', [blocks]);
   }
   
   const redeemRewards = async (addr) => {
