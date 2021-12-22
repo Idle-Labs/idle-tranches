@@ -511,7 +511,7 @@ describe("IdleCDOCardManager", () => {
       await tx.wait();
 
       blendTokenId =3;
-      cardTokenIds = await cards.idsFromBlend(blendTokenId);
+      cardTokenIds = await cards.contentIndexes(blendTokenId);
       
       expect(cardTokenIds.length).to.be.equal(2);
       expect(cardTokenIds[0]).to.be.equal(1);
@@ -593,8 +593,8 @@ describe("IdleCDOCardManager", () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
-      expect(await cards.cardGroup(1)).deep.to.equal([BN(1)]);
-      expect(await cards.cardGroup(2)).deep.to.equal([BN(2)]);
+      expect(await cards.contentIndexes(1)).deep.to.equal([BN(1)]);
+      expect(await cards.contentIndexes(2)).deep.to.equal([BN(2)]);
     });
 
     it("should be able to get combined card as combined group", async () => {
@@ -602,10 +602,10 @@ describe("IdleCDOCardManager", () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
       blendTokenId1 = 3;
-      expect(await cards.cardGroup(blendTokenId1)).deep.to.equal([BN(1), BN(2)]);
+      expect(await cards.contentIndexes(blendTokenId1)).deep.to.equal([BN(1), BN(2)]);
 
       blendTokenId2 =6;
-      expect(await cards.cardGroup(blendTokenId2)).deep.to.equal([BN(4), BN(5)]);
+      expect(await cards.contentIndexes(blendTokenId2)).deep.to.equal([BN(4), BN(5)]);
     });
 
     it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
@@ -646,7 +646,7 @@ describe("IdleCDOCardManager", () => {
       // let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
       // await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
 
-      tx = await cards.connect(AABuyer).uncombine(blendTokenId);
+      tx = await cards.connect(AABuyer).burn(blendTokenId);
       await tx.wait();
 
       //gain with fee: apr: 26.66% fee:10% = 1000*0.2666*0.9 = 240
@@ -675,7 +675,7 @@ describe("IdleCDOCardManager", () => {
       
       //burn
       const tokenIdCard = 2;
-      tx = await cards.connect(AABuyer).uncombine(tokenIdCard);
+      tx = await cards.connect(AABuyer).burn(tokenIdCard);
       await tx.wait();
       
       //gain with fee: apr: 26.66% fee:10% = 1000*0.2666*0.9 = 240
@@ -704,7 +704,7 @@ describe("IdleCDOCardManager", () => {
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
-      await expect(cards.connect(BBBuyer).uncombine(1)).to.be.revertedWith("burn of risk card that is not own");
+      await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
 
       const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(ONE_THOUSAND_TOKEN);
@@ -713,7 +713,7 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should not degenerate a non existing risk card", async () => {
-      await expect(cards.connect(AABuyer).uncombine(9)).to.be.revertedWith("Cannot burn an non existing token");
+      await expect(cards.connect(AABuyer).burn(9)).to.be.revertedWith("Cannot burn an non existing token");
     });
 
     it("should not degenerate a new blended NFT Idle CDO Card combining DAI and FEI if not the owner", async () => {
@@ -747,17 +747,10 @@ describe("IdleCDOCardManager", () => {
       // to update tranchePriceAA which will be 1.9
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      //TODO replace 
       blendTokenId = 5
-      // let bl3ndAddress = await cards.getBl3ndAddress();
-
-      // let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
-      // await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
-
-      await expect(cards.connect(BBBuyer).uncombine(blendTokenId)).to.be.revertedWith("Only owner can uncombine combined leafs");
+      await expect(cards.connect(BBBuyer).burn(blendTokenId)).to.be.revertedWith("Only owner can uncombine combined leafs");
 
     });
-
 
   });
 

@@ -55,16 +55,16 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     _combine(cardDAI, cardFEI);
   }
 
-  function uncombine(uint256 _tokenId) public returns (uint256 tokenId1, uint256 tokenId2) {
+  function burn(uint256 _tokenId) public{
     require(!isNotExist(_tokenId), "Cannot burn an non existing token");
     if (isLeaf(_tokenId)) {
-      burn(_tokenId);
-      return (_tokenId, 0);
+       internalBurn(_tokenId);
+       return;
     }
     (uint256 id0, uint256 id1) = _uncombine(_tokenId);
-    burn(id0);
-    burn(id1);
-    return (id0, id1);
+    internalBurn(id0);
+    internalBurn(id1);
+    return;
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount ) public returns (uint256) {
@@ -101,11 +101,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return _cards[_tokenId];
   }
 
-  function cardGroup(uint256 _tokenId) public view returns (uint256[] memory tokenCardIds) {
-    return contentIndexes(_tokenId);
-  }
-
-  function burn(uint256 _tokenId) public returns (uint256 toRedeem) {
+  function internalBurn(uint256 _tokenId) internal returns (uint256 toRedeem) {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
 
     _burn(_tokenId);
@@ -134,15 +130,11 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
   }
 
   function balance(uint256 _tokenId) public view returns (uint256 balanceAA, uint256 balanceBB) {
+    require(!isNotExist(_tokenId), "inexistent card");
+    require(isLeaf(_tokenId), "Cannot get balance of a non leaf token");
     Card memory pos = card(_tokenId);
-    require(pos.cardAddress != address(0), "inexistent card");
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     return _card.balance();
-  }
-
-  function idsFromBlend(uint256 _blendTokenId) public view returns (uint256 id0, uint256 id1) {
-    id0 = contentIndexes(_blendTokenId)[0];
-    id1 = contentIndexes(_blendTokenId)[1];
   }
 
   function percentage(uint256 _percentage, uint256 _amount) private pure returns (uint256) {
