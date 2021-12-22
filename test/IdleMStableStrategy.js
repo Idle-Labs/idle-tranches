@@ -16,13 +16,15 @@ const BN = (n) => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const MAX_UINT = BN("115792089237316195423570985008687907853269984665640564039457584007913129639935");
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const uniswapV3Factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
+const uniswapV2Factory = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
+const uniswapV2RouterV2 = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
 const imUSD_ADDRESS = "0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19";
 const mUSD_ADDRESS = "0xe2f2a5C287993345a840Db3B0845fbC70f5935a5";
 const META_ADDESS = "0xa3BeD4E1c75D00fa6f4E5E6922DB7261B5E9AcD2";
 const VAULT_ADDRESS = "0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B";
 
+const wrappedETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
 const USDTAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const musd_whale = "0xe008464f754e85e37bca41cce3fbd49340950b29";
 
@@ -65,7 +67,8 @@ describe.only("IdleMStableStrategy", function () {
       mUSD.address,
       vault.address,
       user.address, // assuming that user itself if the idle CDO.
-      uniswapV3Factory,
+      uniswapV2RouterV2,
+      [meta.address, wrappedETH, mUSD.address],
       owner.address
     );
   });

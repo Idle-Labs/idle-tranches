@@ -6,8 +6,8 @@ import "./interfaces/IMAsset.sol";
 import "./interfaces/ISavingsContractV2.sol";
 import "./interfaces/IERC20Detailed.sol";
 import "./interfaces/IVault.sol";
-import "./interfaces/IUniswapV3Interface.sol";
-import "./interfaces/IUniswapV3Pool.sol";
+
+import "./interfaces/IUniswapV2Router02.sol";
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -17,16 +17,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-import "./interfaces/IUniswapV3SwapCallback.sol";
-
-contract IdleMStableStrategy is
-    Initializable,
-    OwnableUpgradeable,
-    ERC20Upgradeable,
-    ReentrancyGuardUpgradeable,
-    IIdleCDOStrategy,
-    IUniswapV3SwapCallback
-{
+contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
     /// @notice underlying token address (eg mUSD)
@@ -52,7 +43,8 @@ contract IdleMStableStrategy is
     IVault public vault;
 
     address public idleCDO;
-    IUniswapV3Pool public uniswapPool;
+    address[] public uniswapRouterPath;
+    IUniswapV2Router02 public uniswapV2Router02;
 
     uint256 public lastIndexAmount;
     uint256 public lastIndexedTime;
@@ -68,7 +60,8 @@ contract IdleMStableStrategy is
         address _underlyingToken,
         address _vault,
         address _idleCDO,
-        address _uniswapV3Factory,
+        address _uniswapV2Router02,
+        address[] calldata routerPath,
         address _owner
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
@@ -85,9 +78,8 @@ contract IdleMStableStrategy is
         govToken = vault.getRewardToken();
         idleCDO = _idleCDO;
 
-        address _uniswapPool = IUniswapV3Factory(_uniswapV3Factory).getPool(_underlyingToken, govToken, 3000); //only pool for 3000 is available
-        require(_uniswapPool != address(0), "Cannot initialize if there is no uniswap pool available");
-        uniswapPool = IUniswapV3Pool(_uniswapPool);
+        uniswapRouterPath = routerPath;
+        uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02);
 
         ERC20Upgradeable.__ERC20_init("Idle MStable Strategy Token", string(abi.encodePacked("idleMS", underlyingToken.symbol())));
         lastIndexedTime = block.timestamp;
@@ -172,23 +164,6 @@ contract IdleMStableStrategy is
         return apr;
     }
 
-    function uniswapV3SwapCallback(
-        int256 amount0Delta,
-        int256 amount1Delta,
-        bytes calldata data
-    ) external override {
-        require(msg.sender == address(uniswapPool), "Only uniswap pool can call");
-        if (amount0Delta > 0) {
-            IERC20Detailed(govToken).transfer(address(uniswapPool), uint256(amount0Delta));
-            return;
-        }
-
-        if (amount1Delta > 0) {
-            IERC20Detailed(address(underlyingToken)).transfer(address(uniswapPool), uint256(amount1Delta));
-            return;
-        }
-    }
-
     /* -------- internal functions ------------- */
 
     // here _amount means credits, will redeem any governance token if there
@@ -203,16 +178,19 @@ contract IdleMStableStrategy is
         return massetReceived;
     }
 
-    // min tick math = 4295128739;
-    // max tick math = 1461446703485210103287273052203988822378723970342;
-    // decides slippage
     function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
-        IERC20Detailed(govToken).approve(address(uniswapPool), govTokensToSend);
 
-        bytes memory data;
+        IERC20Detailed(govToken).approve(address(uniswapV2Router02), govTokensToSend);
+
         uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
-        uniswapPool.swap(address(this), true, int256(govTokensToSend), 4295128740, data);
+        uniswapV2Router02.swapExactTokensForTokens(
+            govTokensToSend,
+            minLiquidityTokenToReceive,
+            uniswapRouterPath,
+            address(this),
+            9999999999
+        );
         uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
 
         require(
@@ -245,15 +223,8 @@ contract IdleMStableStrategy is
         idleCDO = _idleCDO;
     }
 
-    function changeUniswapPool(
-        address uniswapV3Factory,
-        address token1,
-        address token2,
-        uint24 rewardRate
-    ) external onlyOwner {
-        address _uniswapPool = IUniswapV3Factory(uniswapV3Factory).getPool(token1, token2, rewardRate);
-        require(_uniswapPool != address(0), "Should a pool that is already created");
-        uniswapPool = IUniswapV3Pool(_uniswapPool);
+    function changeUniswapRouterPath(address[] memory newPath) public onlyOwner {
+        uniswapRouterPath = newPath;
     }
 
     // modifiers
