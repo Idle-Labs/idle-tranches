@@ -58,7 +58,19 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     await _idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
   };
 
-  
+  const combineCDOs = async (signer,exposureDAI, amountDAI, exposureFEI, amountFEI) => {
+
+    await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+    await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+    
+    tx = await cards.connect(signer).combine(idleCDO.address, exposureDAI, amountDAI, idleCDOFEI.address,exposureFEI, amountFEI);
+    await tx.wait();
+
+    //harvest
+    await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+    await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+  };
+
   const initialIdleContractsDeploy = async () => {
         // deploy contracts
         addr0 = addresses.addr0;
@@ -254,6 +266,7 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     mintAABuyer,
     mint,
     mintCDO,
+    combineCDOs,
     initialIdleContractsDeploy,
     idleCDOCardsTestDeploy
   }

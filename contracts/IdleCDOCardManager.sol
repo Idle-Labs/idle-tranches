@@ -60,6 +60,10 @@ contract IdleCDOCardManager is ERC721Enumerable {
      this.approve(address(bl3nd), cardFEI);
       
      bl3nd.blend(this, cardDAI, this, cardFEI);
+     
+     uint256 _blendTokenId = blendTokenId(cardDAI, cardFEI);
+
+     bl3nd.transferFrom(address(this), msg.sender, _blendTokenId);
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
@@ -163,6 +167,18 @@ contract IdleCDOCardManager is ERC721Enumerable {
       }
     }
     return false;
+  }
+
+  function balanceOf(address owner) public view virtual override returns (uint256) {
+     return super.balanceOf(owner) + bl3nd.balanceOf(owner);
+  }
+
+  function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
+     if (super.balanceOf(owner) > 0) {
+        return super.tokenOfOwnerByIndex(owner,index);
+     }
+     
+     return  bl3nd.tokenOfOwnerByIndex(owner,index);
   }
 
 }
