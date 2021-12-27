@@ -26,7 +26,7 @@ describe("IdleCDOCardManager", () => {
     await cards.deployed();
   });
 
-  it("should be successfully initialized", async () => {
+ it("should be successfully initialized", async () => {
     expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
 
@@ -471,5 +471,63 @@ describe("IdleCDOCardManager", () => {
 
   it("should not able to get a balance of an inexistent card", async () => {
     await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
+  });
+
+  describe("when combine idleCDOs", async () => {
+    it("should only generate a card with IdleCdoDAI when is mint with O IdleCdoFEI amount ", async () => {
+      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), 0);
+      await tx.wait();
+
+      pos = await cards.card(1);
+      expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
+      expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDO.address);
+    });
+
+    it("should only generate a card with IdleCdoFEI when is mint with O IdleCdoDAI amount ", async () => {
+      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), 0,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
+      await tx.wait();
+
+      pos = await cards.card(1);
+      expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.50)));
+      expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDOFEI.address);
+    });
+
+    it("should revert minting card with 0 amount in DAI and FEI", async () => {
+      await expect(cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), 0,idleCDOFEI.address,EXPOSURE(0), 0)).to.be.revertedWith("Not possible to mint a card with 0 amounts");
+    });
+
+    it("should generate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+
+      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
+      await tx.wait();
+
+      blendTokenId =await cards.blendTokenId(1,2);
+      cardTokenIds = await cards.idsFromBlend(blendTokenId);
+      expect(cardTokenIds.length).to.be.equal(2);
+      expect(cardTokenIds[0]).to.be.equal(1);
+      expect(cardTokenIds[1]).to.be.equal(2);
+
+      pos = await cards.card(cardTokenIds[0]);
+      expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
+      expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDO.address);
+      
+      pos2 = await cards.card(cardTokenIds[1]);
+      expect(pos2.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos2.exposure).to.be.equal(BN(EXPOSURE(0.50)));
+      expect(pos2.cardAddress).to.be.not.undefined;
+      expect(pos2.idleCDOAddress).to.be.equal(idleCDOFEI.address);
+    });
+    
   });
 });

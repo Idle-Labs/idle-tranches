@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./IdleCDO.sol";
 import "./IdleCDOCard.sol";
+import "./IdleCDOCardBl3nd.sol";
 
 contract IdleCDOCardManager is ERC721Enumerable {
   using Counters for Counters.Counter;
@@ -23,6 +24,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   IdleCDO[] public idleCDOs;
+  IdleCDOCardBl3nd private bl3nd;
 
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
@@ -31,10 +33,33 @@ contract IdleCDOCardManager is ERC721Enumerable {
     for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
       idleCDOs.push(IdleCDO(_idleCDOAddress[i]));
     }
+    bl3nd = new IdleCDOCardBl3nd(address(this));
   }
 
   function getIdleCDOs() public view returns (IdleCDO[] memory) {
     return idleCDOs;
+  }
+
+  function combine(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI,address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public {
+     require(_amountDAI > 0 ||  _amountFEI > 0, "Not possible to mint a card with 0 amounts");
+     if(_amountDAI == 0) { 
+       mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+       return;
+     }
+     if(_amountFEI == 0) {
+       mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+       return;
+     }
+     uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+     uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+
+     transferFrom(msg.sender, address(this), cardDAI); 
+     transferFrom(msg.sender, address(this), cardFEI);
+
+     this.approve(address(bl3nd), cardDAI);
+     this.approve(address(bl3nd), cardFEI);
+      
+     bl3nd.blend(this, cardDAI, this, cardFEI);
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
@@ -105,6 +130,16 @@ contract IdleCDOCardManager is ERC721Enumerable {
     require(pos.cardAddress != address(0), "inexistent card");
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     return _card.balance();
+  }
+
+  function blendTokenId(uint256 id0,  uint256 id1) public view returns (uint256) {
+    return bl3nd.blendTokenId(this, id0, this, id1);
+  }
+  function idsFromBlend(uint256 _blendTokenId) public view returns (uint256 id0, uint256 id1) {
+    address deedAddress= bl3nd.getDeedAddress(_blendTokenId);
+    Bl3ndDeed deed = Bl3ndDeed(deedAddress);
+    id0 = deed.id0();
+    id1 = deed.id1();
   }
 
   function percentage(uint256 _percentage, uint256 _amount) private pure returns (uint256) {
