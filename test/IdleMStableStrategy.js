@@ -3,6 +3,8 @@ const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
 const vaultAbi = require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
+const masset = require("../artifacts/contracts/interfaces/IMAsset.sol/IMAsset.json");
+const savingsManagerAbi = require("../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
 
 const addresses = require("../lib/addresses");
 const { expect } = require("chai");
@@ -26,9 +28,16 @@ const VAULT_ADDRESS = "0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B";
 
 const wrappedETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
 const USDTAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const USDCAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+
+const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
 const musd_whale = "0xe008464f754e85e37bca41cce3fbd49340950b29";
 
 const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
+
+// const KEY_SAVINGS_MANAGER = "0x12fe936c77a1e196473c4314f3bed8eeac1d757b319abb85bdda70df35511bf1";
+const savingsManagerAddress = "0xBC3B550E0349D74bF5148D86114A48C3B4Aa856F";
 
 describe.only("IdleMStableStrategy", function () {
   let IdleMStableStrategy;
@@ -38,13 +47,17 @@ describe.only("IdleMStableStrategy", function () {
 
   let imUSD;
   let mUSD;
+  let DAI;
   let meta;
   let vault;
+  let savingsManager;
 
   let musd_signer;
+  let dai_signer;
 
   before(async () => {
     await ethers.provider.send("hardhat_impersonateAccount", [musd_whale]);
+    await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
   });
 
   beforeEach(async () => {
@@ -55,12 +68,15 @@ describe.only("IdleMStableStrategy", function () {
 
     imUSD = await ethers.getContractAt(erc20.abi, imUSD_ADDRESS);
     mUSD = await ethers.getContractAt(erc20.abi, mUSD_ADDRESS);
+    DAI = await ethers.getContractAt(erc20.abi, DAIAddress);
     meta = await ethers.getContractAt(erc20.abi, META_ADDESS);
     vault = await ethers.getContractAt(vaultAbi, VAULT_ADDRESS);
 
     musd_signer = await ethers.getSigner(musd_whale);
+    dai_signer = await ethers.getSigner(dai_whale);
 
     await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
+    savingsManager = await ethers.getContractAt(savingsManagerAbi, savingsManagerAddress);
 
     await IdleMStableStrategy.connect(owner).initialize(
       imUSD.address,
@@ -133,8 +149,20 @@ describe.only("IdleMStableStrategy", function () {
   });
 
   it("APR", async () => {
+    const musdSwapingContract = await ethers.getContractAt(masset.abi, mUSD.address);
+
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
-    console.log(await IdleMStableStrategy.getApr());
+
+    await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
+    await DAI.connect(dai_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
+
+    await DAI.connect(user).approve(musdSwapingContract.address, AMOUNT_TO_TRANSFER);
+
+    await musdSwapingContract.connect(user).swap(DAIAddress, USDCAddress, AMOUNT_TO_TRANSFER.div(2), 0, user.address);
+
+    await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
+    
+    console.log("APR", (await IdleMStableStrategy.getApr()).toString());
   });
 });
