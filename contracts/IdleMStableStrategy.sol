@@ -189,7 +189,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             minLiquidityTokenToReceive,
             uniswapRouterPath,
             address(this),
-            block.number
+            block.timestamp
         );
         uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
 

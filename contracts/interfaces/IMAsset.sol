@@ -20,14 +20,9 @@ interface IMAsset {
 
     function balanceOf(address account) external view returns (uint256);
 
-    function transfer(address recipient, uint256 amount)
-        external
-        returns (bool);
+    function transfer(address recipient, uint256 amount) external returns (bool);
 
-    function allowance(address owner, address spender)
-        external
-        view
-        returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
 
     function approve(address spender, uint256 amount) external returns (bool);
 
@@ -36,4 +31,12 @@ interface IMAsset {
         address recipient,
         uint256 amount
     ) external returns (bool);
+
+    function swap(
+        address _input,
+        address _output,
+        uint256 _inputQuantity,
+        uint256 _minOutputQuantity,
+        address _recipient
+    ) external returns (uint256 swapOutput);
 }
