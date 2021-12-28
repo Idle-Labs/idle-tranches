@@ -149,9 +149,10 @@ task("upgrade-rewards", "Upgrade IdleCDOTrancheRewards contract")
 task("upgrade-strategy", "Upgrade IdleCDO strategy")
   .addParam('cdoname')
   .setAction(async (args) => {
+    
     await run("upgrade-with-multisig", {
       cdoname: args.cdoname,
-      contractName: 'IdleStrategy',
+      contractName: addresses.deployTokens[args.cdoname].strategyName,
       contractKey: 'strategy' // check eg CDOs.idleDAI.*
     });
   });
@@ -208,10 +209,13 @@ task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
     await cdo.connect(signer).transferOwnership(to);
     console.log('New Owner', await cdo.owner());
 
-    console.log('Transfer owner of proxyAdmin for all');
     let admin = await ethers.getContractAt("IProxyAdmin", proxyAdminAddress);
-    await admin.connect(signer).transferOwnership(to);
-    console.log('New Owner', await admin.owner());
+    const currProxyOwner = await admin.owner();
+    if (currProxyOwner != to) {
+      console.log('Transfer owner of proxyAdmin for all');
+      await admin.connect(signer).transferOwnership(to);
+      console.log('New Owner', await admin.owner());
+    }
   });
 
 /**

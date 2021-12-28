@@ -81,6 +81,14 @@ abstract contract ConvexBaseStrategy is
 
     /// ###### End of storage V1
 
+    /// ###### Storage V2
+    /// @notice blocks per year
+    uint256 public BLOCKS_PER_YEAR;
+    /// @notice latest harvest price gain in LP tokens
+    uint256 public latestPriceIncrease;
+    /// @notice latest estimated harvest interval
+    uint256 public latestHarvestInterval;
+
     // ###################
     // Modifiers
     // ###################
@@ -100,7 +108,6 @@ abstract contract ConvexBaseStrategy is
     // ###################
     // Initializer
     // ###################
-
 
     // Struct used to set Curve deposits
     struct CurveArgs {
@@ -169,6 +176,7 @@ abstract contract ConvexBaseStrategy is
         depositor = _curveArgs.depositor;
         depositPosition = _curveArgs.depositPosition;
         releaseBlocksPeriod = _releasePeriod;
+        setBlocksPerYear(2465437); // given that blocks are mined at a 13.15s/block rate
 
         // set approval for curveLpToken
         IERC20Detailed(_crvLp).approve(BOOSTER, type(uint256).max);
@@ -188,7 +196,7 @@ abstract contract ConvexBaseStrategy is
     // Interface implementation
     // ###################
 
-    function strategyToken() external view override returns(address) {
+    function strategyToken() external view override returns (address) {
         return address(this);
     }
 
@@ -196,7 +204,7 @@ abstract contract ConvexBaseStrategy is
         return ONE_CURVE_LP_TOKEN;
     }
 
-    // @notice 
+    // @notice Underlying token
     function token() external view override returns (address) {
         return curveLpToken;
     }
@@ -245,13 +253,13 @@ abstract contract ConvexBaseStrategy is
     /// @return redeemed amount of underlyings redeemed
     function redeemUnderlying(uint256 _amount)
         external
-        onlyWhitelistedCDO
         override
+        onlyWhitelistedCDO
         returns (uint256 redeemed)
     {
-        if(_amount > 0) {
+        if (_amount > 0) {
             uint256 _cachedPrice = price();
-            uint256 _shares = _amount * ONE_CURVE_LP_TOKEN / _cachedPrice;
+            uint256 _shares = (_amount * ONE_CURVE_LP_TOKEN) / _cachedPrice;
             redeemed = _redeem(msg.sender, _shares, _cachedPrice);
         }
     }
@@ -332,21 +340,26 @@ abstract contract ConvexBaseStrategy is
             _balances[_convexRewards.length] = _res[_res.length - 1];
         }
 
-        _depositInCurve(_minLpToken);
-
         IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
-        uint256 _curveLpBalance = _curveLpToken.balanceOf(address(this));
+        uint256 _curveLpBalanceBefore = _curveLpToken.balanceOf(address(this));
+        _depositInCurve(_minLpToken);
+        uint256 _curveLpBalanceAfter = _curveLpToken.balanceOf(address(this));
+        uint256 _gainedLpTokens = (_curveLpBalanceAfter - _curveLpBalanceBefore);
 
         // save in _balances the amount of curveLpTokens received to use off-chain
-        _balances[_convexRewards.length + 1] = _curveLpBalance;
+        _balances[_convexRewards.length + 1] = _gainedLpTokens;
+        
+        if (_curveLpBalanceAfter > 0) {
+            // deposit in curve and stake on convex
+            _stakeConvex(_curveLpBalanceAfter);
 
-        if(_curveLpBalance > 0) {
-            // stake on convex
-            _stakeConvex(_curveLpBalance);
-
-            // update locked lp tokens to update price
+            // update locked lp tokens and apr computation variables
+            latestHarvestInterval = (block.number - latestHarvestBlock);
             latestHarvestBlock = block.number;
-            totalLpTokensLocked = _curveLpBalance;
+            totalLpTokensLocked = _gainedLpTokens;
+            
+            // inline price increase calculation
+            latestPriceIncrease = (_gainedLpTokens * ONE_CURVE_LP_TOKEN) / totalSupply();
         }
     }
 
@@ -358,16 +371,24 @@ abstract contract ConvexBaseStrategy is
     function price() public view override returns (uint256 _price) {
         uint256 _totalSupply = totalSupply();
 
-        if(_totalSupply == 0) {
+        if (_totalSupply == 0) {
             _price = ONE_CURVE_LP_TOKEN;
         } else {
-            _price = (totalLpTokensStaked - _lockedLpTokens()) * ONE_CURVE_LP_TOKEN / totalSupply();
+            _price =
+                ((totalLpTokensStaked - _lockedLpTokens()) *
+                    ONE_CURVE_LP_TOKEN) /
+                totalSupply();
         }
     }
 
-    /// @return returns 0, don't know if there are ways you can calculate APR on-chain for Convex
-    function getApr() external pure override returns (uint256) {
-        return 0;
+    /// @return returns an APR estimation.
+    /// @dev values returned by this method should be taken as an imprecise estimation.
+    ///      For client integration something more complex should be done to have a more precise
+    ///      estimate (eg. computing APR using historical APR data).
+    ///      Also it does not take into account compounding (APY).
+    function getApr() external view override returns (uint256) {
+        // apr = rate * blocks in a year / harvest interval
+        return latestPriceIncrease * (BLOCKS_PER_YEAR / latestHarvestInterval);
     }
 
     /// @return rewardTokens tokens array of reward token addresses
@@ -398,6 +419,13 @@ abstract contract ConvexBaseStrategy is
         address _to
     ) external onlyOwner nonReentrant {
         IERC20Detailed(_token).safeTransfer(_to, value);
+    }
+
+    /// @notice This method can be used to change the value of BLOCKS_PER_YEAR
+    /// @param blocksPerYear the new blocks per year value
+    function setBlocksPerYear(uint256 blocksPerYear) public onlyOwner {
+        require(blocksPerYear != 0, "Blocks per year cannot be zero");
+        BLOCKS_PER_YEAR = blocksPerYear;
     }
 
     function setRouterForReward(address _reward, address _newRouter)
@@ -476,7 +504,7 @@ abstract contract ConvexBaseStrategy is
     function _depositInCurve(uint256 _minLpTokens) internal virtual;
 
     /// @return address of pool from LP token
-    function _curvePool() internal returns (address) {        
+    function _curvePool() internal returns (address) {
         return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
     }
 
@@ -497,15 +525,16 @@ abstract contract ConvexBaseStrategy is
     /// @dev Used for deposit and during an harvest
     /// @param _lpTokens amount to mint
     /// @param _price we give the price as input to save on gas when calculating price
-    function _depositAndMint(address _account, uint256 _lpTokens, uint256 _price) 
-        internal 
-        returns (uint256 minted)
-    {
+    function _depositAndMint(
+        address _account,
+        uint256 _lpTokens,
+        uint256 _price
+    ) internal returns (uint256 minted) {
         // deposit in convex
         _stakeConvex(_lpTokens);
 
         // mint strategy tokens to msg.sender
-        minted = _lpTokens * ONE_CURVE_LP_TOKEN / _price;
+        minted = (_lpTokens * ONE_CURVE_LP_TOKEN) / _price;
         _mint(_account, minted);
     }
 
@@ -513,14 +542,15 @@ abstract contract ConvexBaseStrategy is
     /// @param _shares amount of strategyTokens to redeem
     /// @param _price we give the price as input to save on gas when calculating price
     /// @return redeemed amount of underlyings redeemed
-    function _redeem(address _account, uint256 _shares, uint256 _price)
-        internal
-        returns (uint256 redeemed)
-    {
+    function _redeem(
+        address _account,
+        uint256 _shares,
+        uint256 _price
+    ) internal returns (uint256 redeemed) {
         // update total staked lp tokens
         redeemed = (_shares * _price) / ONE_CURVE_LP_TOKEN;
         totalLpTokensStaked -= redeemed;
-        
+
         IERC20Detailed _curveLpToken = IERC20Detailed(curveLpToken);
 
         // burn strategy tokens for the msg.sender
@@ -534,7 +564,7 @@ abstract contract ConvexBaseStrategy is
         _curveLpToken.safeTransfer(_account, redeemed);
     }
 
-    function _lockedLpTokens() internal view returns(uint256 _locked) {
+    function _lockedLpTokens() internal view returns (uint256 _locked) {
         uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
         uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
         uint256 _totalLockedLpTokens = totalLpTokensLocked;
