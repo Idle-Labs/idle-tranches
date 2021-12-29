@@ -145,7 +145,11 @@ describe.only("IdleMStableStrategy", function () {
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
 
-    await IdleMStableStrategy.connect(user)["redeemRewards()"]();
+    let rawBalanceBefore = await vault.rawBalanceOf(IdleMStableStrategy.address);
+    await IdleMStableStrategy.connect(user)["redeemRewards()"](); // will get MTA token, convert to musd and deposit to vault
+    let rawBalanceAfter = await vault.rawBalanceOf(IdleMStableStrategy.address);
+
+    expect(rawBalanceAfter.sub(rawBalanceBefore)).gt(0);
   });
 
   it("APR", async () => {
@@ -162,7 +166,17 @@ describe.only("IdleMStableStrategy", function () {
     await musdSwapingContract.connect(user).swap(DAIAddress, USDCAddress, AMOUNT_TO_TRANSFER.div(2), 0, user.address);
 
     await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
-    
-    console.log("APR", (await IdleMStableStrategy.getApr()).toString());
+
+    await network.provider.request({
+      method: "evm_increaseTime",
+      params: [30 * 86400],
+    });
+
+    await network.provider.request({
+      method: "evm_mine",
+      params: [],
+    });
+
+    expect(await IdleMStableStrategy.getApr()).gt(0);
   });
 });

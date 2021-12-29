@@ -145,8 +145,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     // _amount in underlying token
     function redeemUnderlying(uint256 _amount) external override returns (uint256) {
         uint256 _underlyingAmount = (_amount * oneToken) / price();
-        lastIndexAmount = lastIndexAmount - _underlyingAmount;
-        lastIndexedTime = block.timestamp;
         return _redeem(_underlyingAmount);
     }
 
@@ -159,7 +157,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             return 0;
         }
         uint256 time = block.timestamp - lastIndexedTime;
-        uint256 gainPerc = ((gain * 10**18) / lastIndexAmount) * 100;
+        uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
         uint256 apr = (YEAR / time) * gainPerc;
         return apr;
     }
@@ -169,6 +167,10 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     // here _amount means credits, will redeem any governance token if there
     function _redeem(uint256 _amount) internal returns (uint256) {
         require(_amount != 0, "Amount shuld be greater than 0");
+        
+        lastIndexAmount = lastIndexAmount - _amount;
+        lastIndexedTime = block.timestamp;
+
         _burn(msg.sender, _amount);
         vault.withdraw(_amount);
 
