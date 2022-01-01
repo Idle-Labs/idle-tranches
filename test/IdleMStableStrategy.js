@@ -165,12 +165,12 @@ describe.only("IdleMStableStrategy", function () {
 
     await musdSwapingContract.connect(user).swap(DAIAddress, USDCAddress, AMOUNT_TO_TRANSFER.div(2), 0, user.address);
 
-    await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
-
     await network.provider.request({
       method: "evm_increaseTime",
       params: [30 * 86400],
     });
+    
+    await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
 
     await network.provider.request({
       method: "evm_mine",
