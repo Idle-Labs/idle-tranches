@@ -66,7 +66,6 @@ contract IdleMStableStrategyWrapper {
         tokenContract.transferFrom(msg.sender, address(this), _amount);
         tokenContract.approve(address(mUSD), _amount);
         uint256 mUSDReceived = mUSD.mint(token, _amount, _minOutputQuantity, address(this));
-
         mUSD.approve(address(idleCDO), mUSDReceived);
 
         uint256 tTokens;
