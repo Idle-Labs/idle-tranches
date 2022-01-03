@@ -2,9 +2,11 @@ require("hardhat/config");
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
-const vaultAbi = require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
+const vaultAbi =
+  require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
 const masset = require("../artifacts/contracts/interfaces/IMAsset.sol/IMAsset.json");
-const savingsManagerAbi = require("../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
+const savingsManagerAbi =
+  require("../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
 
 const addresses = require("../lib/addresses");
 const { expect } = require("chai");
@@ -16,7 +18,9 @@ require("chai").use(smock.matchers);
 
 const BN = (n) => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
-const MAX_UINT = BN("115792089237316195423570985008687907853269984665640564039457584007913129639935");
+const MAX_UINT = BN(
+  "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+);
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const uniswapV2Factory = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
 const uniswapV2RouterV2 = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
@@ -62,7 +66,9 @@ describe.only("IdleMStableStrategy", function () {
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
-    let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
+    let IdleMStableStrategyFactory = await ethers.getContractFactory(
+      "IdleMStableStrategy"
+    );
     IdleMStableStrategy = await IdleMStableStrategyFactory.deploy();
     await IdleMStableStrategy.deployed();
 
@@ -76,7 +82,10 @@ describe.only("IdleMStableStrategy", function () {
     dai_signer = await ethers.getSigner(dai_whale);
 
     await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
-    savingsManager = await ethers.getContractAt(savingsManagerAbi, savingsManagerAddress);
+    savingsManager = await ethers.getContractAt(
+      savingsManagerAbi,
+      savingsManagerAddress
+    );
 
     await IdleMStableStrategy.connect(owner).initialize(
       imUSD.address,
@@ -97,14 +106,18 @@ describe.only("IdleMStableStrategy", function () {
     expect(await imUSD.name()).to.eq("Interest bearing mUSD");
     expect(await mUSD.name()).to.eq("mStable USD");
     expect(await meta.name()).to.eq("Meta");
-    expect(await vault.boostDirector()).to.eq("0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592");
+    expect(await vault.boostDirector()).to.eq(
+      "0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592"
+    );
   });
 
   it("Deposit AMOUNT in Idle Tranche", async () => {
     let totalSharesBefore = await IdleMStableStrategy.totalSupply();
 
     // approve tokens to idle-mstable-strategy
-    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await mUSD
+      .connect(user)
+      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
     let totalSharesAfters = await IdleMStableStrategy.totalSupply();
@@ -121,7 +134,9 @@ describe.only("IdleMStableStrategy", function () {
   it("Redeem Tokens: redeem", async () => {
     let strategySharesBefore = await IdleMStableStrategy.totalSupply();
 
-    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await mUSD
+      .connect(user)
+      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
     let strategySharesAfter = await IdleMStableStrategy.totalSupply();
@@ -131,13 +146,22 @@ describe.only("IdleMStableStrategy", function () {
 
     let redeemAmount = sharesReceived.div(10); // claim back a fraction of shares received
 
+    const mUSDBalanceBefore = await mUSD.connect(user).balanceOf(user.address);
     await IdleMStableStrategy.connect(user).redeem(redeemAmount);
+    const mUSDBalanceAfter = await mUSD.connect(user).balanceOf(user.address);
+    expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(
+      AMOUNT_TO_TRANSFER.div(10),
+      "100000",
+      "Approximate check failed"
+    );
   });
 
   it("Redeem Rewards", async () => {
     let strategySharesBefore = await IdleMStableStrategy.totalSupply();
 
-    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await mUSD
+      .connect(user)
+      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
     let strategySharesAfter = await IdleMStableStrategy.totalSupply();
@@ -145,7 +169,9 @@ describe.only("IdleMStableStrategy", function () {
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
 
-    let rawBalanceBefore = await vault.rawBalanceOf(IdleMStableStrategy.address);
+    let rawBalanceBefore = await vault.rawBalanceOf(
+      IdleMStableStrategy.address
+    );
     await IdleMStableStrategy.connect(user)["redeemRewards()"](); // will get MTA token, convert to musd and deposit to vault
     let rawBalanceAfter = await vault.rawBalanceOf(IdleMStableStrategy.address);
 
@@ -153,23 +179,39 @@ describe.only("IdleMStableStrategy", function () {
   });
 
   it("APR", async () => {
-    const musdSwapingContract = await ethers.getContractAt(masset.abi, mUSD.address);
+    const musdSwapingContract = await ethers.getContractAt(
+      masset.abi,
+      mUSD.address
+    );
 
-    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await mUSD
+      .connect(user)
+      .approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
     await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
     await DAI.connect(dai_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
 
-    await DAI.connect(user).approve(musdSwapingContract.address, AMOUNT_TO_TRANSFER);
+    await DAI.connect(user).approve(
+      musdSwapingContract.address,
+      AMOUNT_TO_TRANSFER
+    );
 
-    await musdSwapingContract.connect(user).swap(DAIAddress, USDCAddress, AMOUNT_TO_TRANSFER.div(2), 0, user.address);
+    await musdSwapingContract
+      .connect(user)
+      .swap(
+        DAIAddress,
+        USDCAddress,
+        AMOUNT_TO_TRANSFER.div(2),
+        0,
+        user.address
+      );
 
     await network.provider.request({
       method: "evm_increaseTime",
       params: [30 * 86400],
     });
-    
+
     await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
 
     await network.provider.request({
