@@ -126,7 +126,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         underlyingToken.approve(address(imUSD), _amount);
         lastIndexAmount = lastIndexAmount + _amount;
         lastIndexedTime = block.timestamp;
-        uint256 interestTokensReceived = imUSD.depositSavings(_amount);
+        imUSD.depositSavings(_amount);
 
         uint256 interestTokenAvailable = imUSD.balanceOf(address(this));
         imUSD.approve(address(vault), interestTokenAvailable);
