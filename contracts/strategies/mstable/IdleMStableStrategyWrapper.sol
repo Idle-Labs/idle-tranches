@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
-import "./interfaces/IERC20Detailed.sol";
-import "./interfaces/IMAsset.sol";
-import "./interfaces/IIdleMStableStrategy.sol";
+import "../../interfaces/IERC20Detailed.sol";
+import "../../interfaces/IMAsset.sol";
+import "../../interfaces/IIdleMStableStrategy.sol";
 
-import "./IdleCDO.sol";
+import "../../IdleCDO.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
