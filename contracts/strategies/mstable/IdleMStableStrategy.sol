@@ -117,9 +117,10 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
-        require(_amount != 0, "Deposit amount should be greater than 0");
-        underlyingToken.transferFrom(msg.sender, address(this), _amount);
-        return _depositToVault(_amount);
+        if (_amount > 0) {
+            underlyingToken.transferFrom(msg.sender, address(this), _amount);
+            return _depositToVault(_amount);
+        }
     }
 
     function _depositToVault(uint256 _amount) internal returns (uint256) {
@@ -167,7 +168,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     // here _amount means credits, will redeem any governance token if there
     function _redeem(uint256 _amount) internal returns (uint256) {
         require(_amount != 0, "Amount shuld be greater than 0");
-        
+
         lastIndexAmount = lastIndexAmount - _amount;
         lastIndexedTime = block.timestamp;
 
