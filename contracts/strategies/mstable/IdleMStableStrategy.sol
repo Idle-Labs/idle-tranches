@@ -17,6 +17,10 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
+/// @author IdleHusbandry.
+/// @title IdleMStableStrategy
+/// @notice IIdleCDOStrategy to deploy funds in Idle Finance
+/// @dev This contract should not have any funds at the end of each tx.
 contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
@@ -39,29 +43,49 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     IERC20Detailed public underlyingToken;
 
     /* ------------Extra declarations ---------------- */
+    /// @notice address of the governance token. (Here META)
     address public govToken;
+
+    /// @notice vault
     IVault public vault;
 
+    /// @notice address of the IdleCDO
     address public idleCDO;
+
+    /// @notice uniswap router path that should be used to swap the tokens
     address[] public uniswapRouterPath;
+
+    /// @notice interface derived from uniswap router
     IUniswapV2Router02 public uniswapV2Router02;
 
+    /// @notice amount last indexed for calculating APR
     uint256 public lastIndexAmount;
+
+    /// @notice time when last deposit/redeem was made, used for calculating the APR
     uint256 public lastIndexedTime;
 
+    /// @notice one year, used to calculate the APR
     uint256 constant YEAR = 365 days;
 
     constructor() {
         token = address(1);
     }
 
+    /// @notice Can be called only once
+    /// @dev Initialize the upgradable contract
+    /// @param _strategyToken address of the strategy token. Here imUSD
+    /// @param _underlyingToken address of the token deposited. here mUSD
+    /// @param _vault address of the of the vault
+    /// @param _idleCDO address of the idleCDO contract
+    /// @param _uniswapV2Router02 address of the uniswap router
+    /// @param _routerPath path to swap the gov tokens
     function initialize(
         address _strategyToken,
         address _underlyingToken,
         address _vault,
         address _idleCDO,
         address _uniswapV2Router02,
-        address[] calldata routerPath,
+        address[] calldata _routerPath,
         address _owner
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
@@ -78,7 +102,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         govToken = vault.getRewardToken();
         idleCDO = _idleCDO;
 
-        uniswapRouterPath = routerPath;
+        uniswapRouterPath = _routerPath;
         uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02);
 
         ERC20Upgradeable.__ERC20_init("Idle MStable Strategy Token", string(abi.encodePacked("idleMS", underlyingToken.symbol())));
@@ -88,13 +112,17 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         transferOwnership(_owner);
     }
 
-    // only claim gov token rewards
+    /// @notice redeem the rewards. Claims all possible rewards
+    /// @return amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
 
+    /// @notice redeem the rewards. Claims reward as per the _extraData
+    /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
+    /// @return amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
         _claimGovernanceTokens(startRound, endRound);
@@ -102,27 +130,38 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
 
+    /// @notice unused in MStable Strategy
     function pullStkAAVE() external override returns (uint256) {
         return 0;
     }
 
+    /// @notice return the price from the imUSD contract
+    /// @return price
     function price() public view override returns (uint256) {
         return imUSD.exchangeRate();
     }
 
+    /// @notice Get the reward token
+    /// @return array of reward token
     function getRewardTokens() external view override returns (address[] memory) {
         address[] memory govTokens;
         govTokens[0] = govToken;
         return govTokens;
     }
 
+    /// @notice Deposit the underlying token to vault
+    /// @param _amount number of tokens to deposit
+    /// @return minted number of reward tokens minted
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         if (_amount > 0) {
             underlyingToken.transferFrom(msg.sender, address(this), _amount);
-            return _depositToVault(_amount);
+            minted = _depositToVault(_amount);
         }
     }
 
+    /// @notice Internal function to deposit the underlying tokens to the vault
+    /// @param _amount amount of tokens to deposit
+    /// @return number of reward tokens minted
     function _depositToVault(uint256 _amount) internal returns (uint256) {
         underlyingToken.approve(address(imUSD), _amount);
         lastIndexAmount = lastIndexAmount + _amount;
@@ -138,17 +177,23 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         return interestTokenAvailable;
     }
 
-    // _amount is strategy token
+    /// @notice Redeem Tokens
+    /// @param _amount amount of strategy tokens to redeem
+    /// @return Amount of underlying tokens received
     function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256) {
         return _redeem(_amount);
     }
 
-    // _amount in underlying token
+    /// @notice Redeem Tokens
+    /// @param _amount amount of underlying tokens to redeem
+    /// @return Amount of underlying tokens received
     function redeemUnderlying(uint256 _amount) external override returns (uint256) {
         uint256 _underlyingAmount = (_amount * oneToken) / price();
         return _redeem(_underlyingAmount);
     }
 
+    /// @notice Approximate APR
+    /// @return APR
     function getApr() external view override returns (uint256) {
         uint256 rawBalance = vault.rawBalanceOf(address(this));
         uint256 expectedUnderlyingAmount = imUSD.creditsToUnderlying(rawBalance);
@@ -165,7 +210,9 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /* -------- internal functions ------------- */
 
-    // here _amount means credits, will redeem any governance token if there
+    /// @notice Internal function to redeem the underlying tokens
+    /// @param _amount Amount of strategy tokens
+    /// @return Amount of underlying tokens received
     function _redeem(uint256 _amount) internal returns (uint256) {
         require(_amount != 0, "Amount shuld be greater than 0");
 
@@ -181,6 +228,9 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         return massetReceived;
     }
 
+    /// @notice Function to swap the governance tokens on uniswapV2
+    /// @param minLiquidityTokenToReceive minimun number of tokens to that need to be received
+    /// @return Number of new strategy tokens generated
     function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
 
@@ -207,11 +257,17 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         return newCredits;
     }
 
+    /// @notice Claim governance tokens
+    /// @param startRound Start Round from which the Governance tokens must be claimed
+    /// @param endRound End Round from which the Governance tokens must be claimed
     function claimGovernanceTokens(uint256 startRound, uint256 endRound) public onlyOwner {
         _claimGovernanceTokens(startRound, endRound);
     }
 
-    // pass (0,0) as paramsif you want to claim for all epochs
+    /// @notice Claim governance tokens
+    /// @param startRound Start Round from which the Governance tokens must be claimed
+    /// @param endRound End Round from which the Governance tokens must be claimed
+    /// @dev if startRound and endRound are both 0, then reward will be claimed for all rounds
     function _claimGovernanceTokens(uint256 startRound, uint256 endRound) internal {
         require(startRound >= endRound, "Start Round Cannot be more the end round");
 
@@ -222,15 +278,20 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         }
     }
 
+    /// @notice Change idleCDO address
+    /// @dev operation can be only done by the owner of the contract
     function changeIdleCDO(address _idleCDO) external onlyOwner {
         idleCDO = _idleCDO;
     }
 
+    /// @notice Change the uniswap router path
+    /// @param newPath New Path
+    /// @dev operation can be only done by the owner of the contract
     function changeUniswapRouterPath(address[] memory newPath) public onlyOwner {
         uniswapRouterPath = newPath;
     }
 
-    // modifiers
+    /// @notice Modifier to make sure that caller os only the idleCDO contract
     modifier onlyIdleCDO() {
         require(idleCDO == msg.sender, "Only IdleCDO can call");
         _;
