@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { BigNumber } = require("@ethersproject/bignumber");
 const addresses = require('../lib/addresses');
 const helpers = require('../scripts/helpers');
+const { ethers } = require("hardhat");
 const BN = v => BigNumber.from(v.toString());
 
 const waitBlocks = async (n) => {
@@ -30,7 +31,7 @@ const erc20Utils = (decimals) => {
   const one = BN("10").pow(BN(decimals));
   const toUnits = v => BN(v).div(one);
   const toUnitsS = v => toUnits(BN(v)).toString();
-  const fromUnits = u => BN(u).mul(one);
+  const fromUnits = u => ethers.utils.parseEther(u?.toString());
 
   return {
     toUnits,
@@ -265,7 +266,37 @@ describe('IdleCDOTrancheRewards', function() {
     await checkExpectedUserRewards(user2, "50");
   });
 
-  it ('owner can set the cooling period', async () => {
+  it('unstake while the cooling period', async () => {
+    const [user1, user2] = this.accounts;
+    await stake(user1, "10")
+    await stake(user2, "10")
+
+    await depositReward("100");
+    const depositBlockNumber = await ethers.provider.getBlockNumber();
+
+    await checkExpectedUserRewards(user1, "0");
+    await checkExpectedUserRewards(user2, "0");
+
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, "25");
+    await checkExpectedUserRewards(user2, "25");
+
+    await unstake(user2, "10")
+
+    const blocksMined = (await ethers.provider.getBlockNumber()) - depositBlockNumber;
+    const user2ExpectedReward = blocksMined * 100 / 2 / this.coolingPeriod;
+
+    await checkRewardBalance(user2, user2ExpectedReward);
+    await checkExpectedUserRewards(user2, "0");
+
+    // if a user redeems during the cooling period, the locked rewards not yet available to him, when unlocked, 
+    // should be distributed to all other users still in the pool and entered before the last depositReward method is called
+    await waitBlocks(this.coolingPeriod / 2);
+    await checkExpectedUserRewards(user1, (100 - user2ExpectedReward));
+    await checkExpectedUserRewards(user2, "0");
+  });
+
+  it('owner can set the cooling period', async () => {
     expect(await this.contract.coolingPeriod()).to.be.equal(this.coolingPeriod);
 
     await expect(
