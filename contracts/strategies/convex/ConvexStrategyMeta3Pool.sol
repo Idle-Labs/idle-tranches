@@ -26,7 +26,7 @@ contract ConvexStrategyMeta3Pool is ConvexBaseStrategy {
         IERC20Detailed _deposit = IERC20Detailed(curveDeposit);
         uint256 _balance = _deposit.balanceOf(address(this));
 
-        address _pool = _curvePool();
+        address _pool = _curvePool(curveLpToken);
 
         _deposit.safeApprove(CRV_3POOL_DEPOSIT_ZAP, 0);
         _deposit.safeApprove(CRV_3POOL_DEPOSIT_ZAP, _balance);

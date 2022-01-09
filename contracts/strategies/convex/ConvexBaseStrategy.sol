@@ -160,7 +160,7 @@ abstract contract ConvexBaseStrategy is
         address _deposit = _curveArgs.deposit == WETH ? ETH : _curveArgs.deposit;
 
         require(!shutdown, "Convex Pool is not active");
-        require(_deposit == _curveUnderlyingCoins(_curveArgs.depositPosition), "Deposit token invalid");
+        require(_deposit == _curveUnderlyingCoins(_crvLp, _curveArgs.depositPosition), "Deposit token invalid");
 
         ERC20Upgradeable.__ERC20_init(
             string(abi.encodePacked("Idle ", IERC20Detailed(_crvLp).name(), " Convex Strategy")),
@@ -497,19 +497,24 @@ abstract contract ConvexBaseStrategy is
     // Internal
     // ###################
 
+    /// @dev Virtual method to override in specific pool implementation.
     /// @return number of underlying coins depending on Curve pool
-    function _curveUnderlyingsSize() internal virtual returns (uint256);
+    function _curveUnderlyingsSize() internal pure virtual returns (uint256);
 
-    /// @notice Virtual method that implements deposit in Curve
+    /// @dev Virtual method to override in specific pool implementation.
+    ///      This method should implement the deposit in the curve pool.
     function _depositInCurve(uint256 _minLpTokens) internal virtual;
 
+    /// @dev Virtual method to override if needed (eg. pool address is equal to lp token address)
     /// @return address of pool from LP token
-    function _curvePool() internal returns (address) {
-        return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(curveLpToken);
+    function _curvePool(address _curveLpToken) internal view virtual returns (address) {
+        return IMainRegistry(MAIN_REGISTRY).get_pool_from_lp_token(_curveLpToken);
     }
 
-    function _curveUnderlyingCoins(uint256 _position) internal returns (address) {
-        address[8] memory _coins = IMainRegistry(MAIN_REGISTRY).get_underlying_coins(_curvePool());
+    /// @dev Virtual method to override if needed (eg. pool is not in the main registry)
+    /// @return address of the nth underlying coin for _curveLpToken
+    function _curveUnderlyingCoins(address _curveLpToken, uint256 _position) internal view virtual returns (address) {
+        address[8] memory _coins = IMainRegistry(MAIN_REGISTRY).get_underlying_coins(_curvePool(_curveLpToken));
         return _coins[_position];
     }
 

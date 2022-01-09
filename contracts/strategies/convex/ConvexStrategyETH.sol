@@ -29,7 +29,7 @@ contract ConvexStrategyETH is ConvexBaseStrategy {
         // we can accept 0 as minimum, this will be called only by trusted roles
         uint256[2] memory _depositArray;
         _depositArray[depositPosition] = _balance;
-        ICurveDeposit_2token(_curvePool()).add_liquidity{value: _balance}(_depositArray, _minLpTokens);
+        ICurveDeposit_2token(_curvePool(curveLpToken)).add_liquidity{value: _balance}(_depositArray, _minLpTokens);
     }
 
     receive() external payable {}
