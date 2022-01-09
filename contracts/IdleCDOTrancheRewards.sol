@@ -191,19 +191,19 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     uint256 _unClaimableRewards = _unClaimableRewards(_reward);
 
     // reduce the 'real' global index proportionally to the total amount staked
-    if (_totalStaked > 0 && _unClaimableRewards > 0 ) {
+    if (_totalStaked > 0 && _unClaimableRewards > 0) {
         _index -= _unClaimableRewards * ONE_TRANCHE_TOKEN / _totalStaked; 
     }
 
     // add locked rewards that users who `unstake` during the `coolingPeriod` to global index
-    if (rewardNotTransferred >0 ) {
+    if (rewardNotTransferred > 0) {
       _index += rewardNotTransferred * ONE_TRANCHE_TOKEN / _totalStaked;
     }
   }
 
-  function _unClaimableRewards(address reward) internal view returns (uint256){
+  function _unClaimableRewards(address reward) internal view returns (uint256) {
         uint256 distance = block.number - lockedRewardsLastBlock[reward];
-        if(distance < coolingPeriod) {
+        if (distance < coolingPeriod) {
           // if the cooling period has not passed, calculate the rewards that should
           // still be locked
           uint256 _lockedRewards = lockedRewards[reward];
