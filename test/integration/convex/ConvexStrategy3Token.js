@@ -112,7 +112,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
 
     console.log('💵 Price gain (15 days): ', priceGain);
     console.log('latestPriceIncrease: ', ethers.utils.formatEther(latestPriceIncrease.toString()))
-    console.log(`apr queried from contract: ${ethers.utils.formatEther(aprFromContract.mul(BN(100)))} %`);
+    console.log(`apr queried from contract: ${ethers.utils.formatEther(aprFromContract)} %`);
 
     // No token left in the contract
     expect(await erc20_3crv.balanceOf(strategy.address)).to.equal(0);

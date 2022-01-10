@@ -5,7 +5,7 @@
     "avoid-suicide": "error",
     "avoid-sha3": "error",
     "indent": "2",
-    "compiler-version": ["error", "0.8.7"],
+    "compiler-version": ["error", "0.8.10"],
     "mark-callable-contracts": ["off"],
     "quotes": ["off"]
   }
