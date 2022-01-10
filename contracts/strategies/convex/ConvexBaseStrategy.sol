@@ -388,7 +388,7 @@ abstract contract ConvexBaseStrategy is
     ///      Also it does not take into account compounding (APY).
     function getApr() external view override returns (uint256) {
         // apr = rate * blocks in a year / harvest interval
-        return latestPriceIncrease * (BLOCKS_PER_YEAR / latestHarvestInterval);
+        return latestPriceIncrease * (BLOCKS_PER_YEAR / latestHarvestInterval) * 100;
     }
 
     /// @return rewardTokens tokens array of reward token addresses
