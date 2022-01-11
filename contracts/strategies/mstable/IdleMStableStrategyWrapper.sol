@@ -6,11 +6,7 @@ import "../../interfaces/IMAsset.sol";
 
 import "../../IdleCDO.sol";
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
 contract IdleMStableStrategyWrapper {
-    using SafeMath for uint256;
-
     IMAsset public mUSD;
     IdleCDO public immutable idleCDO;
 

@@ -15,8 +15,6 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
 /// @author IdleHusbandry.
 /// @title IdleMStableStrategy
 /// @notice IIdleCDOStrategy to deploy funds in Idle Finance
@@ -90,6 +88,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
+        require(token == address(0), "Token is already initialized");
 
         //----- // -------//
         strategyToken = _strategyToken;
@@ -113,7 +112,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice redeem the rewards. Claims all possible rewards
-    /// @return amount of reward that is deposited to vault
+    /// @return rewards amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
@@ -122,7 +121,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
-    /// @return amount of reward that is deposited to vault
+    /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
         _claimGovernanceTokens(startRound, endRound);
@@ -131,7 +130,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice unused in MStable Strategy
-    function pullStkAAVE() external override returns (uint256) {
+    function pullStkAAVE() external pure override returns (uint256) {
         return 0;
     }
 
@@ -187,7 +186,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
     /// @return Amount of underlying tokens received
-    function redeemUnderlying(uint256 _amount) external override returns (uint256) {
+    function redeemUnderlying(uint256 _amount) external override onlyIdleCDO returns (uint256) {
         uint256 _underlyingAmount = (_amount * oneToken) / price();
         return _redeem(_underlyingAmount);
     }
@@ -214,8 +213,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _amount Amount of strategy tokens
     /// @return Amount of underlying tokens received
     function _redeem(uint256 _amount) internal returns (uint256) {
-        require(_amount != 0, "Amount shuld be greater than 0");
-
         lastIndexAmount = lastIndexAmount - _amount;
         lastIndexedTime = block.timestamp;
 
