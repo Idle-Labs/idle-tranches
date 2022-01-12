@@ -23,12 +23,6 @@ import "./IdleCDOTrancheRewardsStorage.sol";
 contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IIdleCDOTrancheRewards, IdleCDOTrancheRewardsStorage {
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  // ---- Extra Storages ----
-
-  /// @notice amount of reward that users who `unstake` will not receive. 
-  ///         These rewards  distributed to all other users still in the pool and entered before the last depositReward method is called.
-  mapping (uint256 => uint256) public indexToRewardNotTransferred;
-
   // Used to prevent initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -112,7 +106,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       for (uint256 i = 0; i < rewards.length; i++) {
         reward = rewards[i];
         // set the user index equal to the global one, which means 0 rewards
-        usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       }
     } else {
       // Claim all rewards accrued
@@ -128,7 +122,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Sends all the expected rewards to the msg.sender
   /// @dev User index is reset
-  function claim() whenNotPaused nonReentrant external {
+  function claim() external whenNotPaused nonReentrant {
     _claim();
   }
 
@@ -145,16 +139,12 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
         amount = balance;
       }
       // Set the user index equal to the global one, which means 0 rewards
-      usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
-      _addRewardNotTransferred(reward, usersStakes[msg.sender]);
+      usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      // Add rewards that a user who `unstake` will not receive to the `rewardToRewawrdsNotTracked` mapping
+      rewardToRewardsNotTransferred[reward] += _unClaimableRewards(reward) * usersStakes[msg.sender] / totalStaked;
       // transfer the reward to the user
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
-  }
-
-  function _addRewardNotTransferred(address reward, uint256 userStake) internal {
-    uint256 _unClaimableRewards = _unClaimableRewards(reward);
-    indexToRewardNotTransferred[rewardsIndexes[reward]] += _unClaimableRewards * userStake / totalStaked;
   }
 
   /// @notice Calculates the expected rewards for a user
@@ -185,38 +175,37 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     uint256 _totalStaked = totalStaked;
     // get current global index, which considers all rewards
     _index = rewardsIndexes[_reward];
-    uint256 rewardNotTransferred = indexToRewardNotTransferred[_index];
+    uint256 rewardsNotTransferred = rewardToRewardsNotTransferred[_reward];
 
     // get number of rewards deposited in the last `depositReward` call
-    uint256 _unClaimableRewards = _unClaimableRewards(_reward);
+    uint256 unClaimableRewards = _unClaimableRewards(_reward);
 
     // reduce the 'real' global index proportionally to the total amount staked
-    if (_totalStaked > 0 && _unClaimableRewards > 0) {
-        _index -= _unClaimableRewards * ONE_TRANCHE_TOKEN / _totalStaked; 
+    if (_totalStaked > 0 && unClaimableRewards > 0) {
+      _index -= unClaimableRewards * ONE_TRANCHE_TOKEN / _totalStaked; 
     }
 
     // add locked rewards that users who `unstake` during the `coolingPeriod` to global index
-    if (rewardNotTransferred > 0) {
-      _index += rewardNotTransferred * ONE_TRANCHE_TOKEN / _totalStaked;
+    if (rewardsNotTransferred > 0) {
+      _index += rewardsNotTransferred * ONE_TRANCHE_TOKEN / _totalStaked;
     }
   }
 
   function _unClaimableRewards(address reward) internal view returns (uint256) {
-        uint256 distance = block.number - lockedRewardsLastBlock[reward];
-        if (distance < coolingPeriod) {
-          // if the cooling period has not passed, calculate the rewards that should
-          // still be locked
-          uint256 _lockedRewards = lockedRewards[reward];
-          uint256 _unlockedRewards = _lockedRewards * distance / coolingPeriod;
-          return (_lockedRewards - _unlockedRewards);
-        } 
-        return 0;
+    uint256 distance = block.number - lockedRewardsLastBlock[reward];
+    if (distance < coolingPeriod) {
+      // if the cooling period has not passed, calculate the rewards that should
+      // still be locked
+      uint256 _lockedRewards = lockedRewards[reward];
+      uint256 _unlockedRewards = _lockedRewards * distance / coolingPeriod;
+      return (_lockedRewards - _unlockedRewards);
+    } 
+    return 0;
   }
 
   /// @notice Called by IdleCDO to deposit incentive rewards
   /// @param _reward The rewards token address
   /// @param _amount The amount to deposit
-  // @note Entrypoints
   function depositReward(address _reward, uint256 _amount) external override {
     require(msg.sender == idleCDO, "!AUTH");
     require(_includesAddress(rewards, _reward), "!SUPPORTED");
