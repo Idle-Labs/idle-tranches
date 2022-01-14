@@ -5,13 +5,15 @@ const { BigNumber } = require("@ethersproject/bignumber");
 
 const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
-const { initialIdleContractsDeploy, setAprs, balance, mint, mintAABuyer, approveNFT } = require("../scripts/card-helpers");
+const { initialIdleContractsDeploy, setAprs, setFEIAprs, balance, mint, mintAABuyer, approveNFT, mintCDO } = require("../scripts/card-helpers");
+const expectEvent = require("@openzeppelin/test-helpers/src/expectEvent");
 
 const BN = (n) => BigNumber.from(n.toString());
 const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
 
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
+const EXPOSURE = (exposure) =>  D18(exposure);
 
 describe("IdleCDOCardManager", () => {
   beforeEach(async () => {
@@ -20,7 +22,7 @@ describe("IdleCDOCardManager", () => {
 
     //deploy Idle CDO Cards contract
     const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCardManager");
-    cards = await IdleCDOCardManager.deploy(idleCDO.address);
+    cards = await IdleCDOCardManager.deploy([idleCDO.address, idleCDOFEI.address]);
     await cards.deployed();
   });
 
@@ -28,16 +30,24 @@ describe("IdleCDOCardManager", () => {
     expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
 
+  it("should return a not empty list of idleCDOs", async () => {
+    expect(await cards.getIdleCDOs()).not.to.be.empty;
+  });
+
+  it("should return a idleCDOS list with two items (DAI and FEI)", async () => {
+    expect(await cards.getIdleCDOs()).to.have.lengthOf(2);
+    expect(await cards.getIdleCDOs()).to.be.eql([idleCDO.address, idleCDOFEI.address]);
+  });
+
   describe("when mint an idle cdo card", async () => {
     it("should deposit all the amount in AA if the risk exposure is 0%", async () => {
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
@@ -45,14 +55,13 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should deposit all the amount in BB if the risk exposure is 100%", async () => {
-      const exposure = D18(1);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(1), ONE_THOUSAND_TOKEN);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(1)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const bbTrancheBal = await balance("BB", idleCDO, pos.cardAddress);
@@ -60,14 +69,13 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should deposit 50% in AA / 50% in BB of the amount if the risk exposure 50%", async () => {
-      const exposure = D18(0.5);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0.5), ONE_THOUSAND_TOKEN);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.5)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
@@ -78,15 +86,15 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should deposit 75% in AA / 25% in BB of the amount if the risk exposure 25%", async () => {
-      const exposure = D18(0.25);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDO.address);
 
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
@@ -97,9 +105,35 @@ describe("IdleCDOCardManager", () => {
       expect(bbTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
     });
 
+    it("should deposit 25% in AA / 75% in BB of the amount if the risk exposure 75% in IdleCDO FEI", async () => {
+
+      await mintCDO(idleCDOFEI,EXPOSURE(0.75), ONE_THOUSAND_TOKEN, AABuyer);
+
+      expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
+
+      pos = await cards.card(1);
+      expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.75)));
+      expect(pos.cardAddress).to.be.not.undefined;
+      expect(pos.idleCDOAddress).to.be.equal(idleCDOFEI.address);
+
+      expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
+
+      const aaTrancheBal = await balance("AA", idleCDOFEI, pos.cardAddress);
+      expect(aaTrancheBal).to.be.equal(BN("250").mul(ONE_TOKEN(18)));
+
+      const bbTrancheBal = await balance("BB", idleCDOFEI, pos.cardAddress);
+      expect(bbTrancheBal).to.be.equal(BN("750").mul(ONE_TOKEN(18)));
+    });
+
+    it("should revert the transaction if idleCDO selected is not listed", async () => {
+      const notListedAddress = "0x1000000000000000000000000000000000000001";
+      await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
+
+    });
+
     it("should revert the transaction if risk exposure is greater than 100%", async () => {
-      const exposure = D18(1.000000001);
-      await expect(mintAABuyer(exposure, ONE_THOUSAND_TOKEN)).to.be.revertedWith("percentage should be between 0 and 1");
+      await expect(mintAABuyer(EXPOSURE(1.000000001), ONE_THOUSAND_TOKEN)).to.be.revertedWith("percentage should be between 0 and 1");
     });
   });
 
@@ -119,8 +153,7 @@ describe("IdleCDOCardManager", () => {
       // APR AA=4 BB=16
       await setAprs();
 
-      const exposure = D18(0);
-      const apr = await cards.getApr(exposure);
+      const apr = await cards.getApr(idleCDO.address, EXPOSURE(0));
       expect(apr).to.be.equal(BN(4).mul(ONE_TOKEN(18)));
     });
 
@@ -128,8 +161,7 @@ describe("IdleCDOCardManager", () => {
       // APR AA=4 BB=16
       await setAprs();
 
-      const exposure = D18(1);
-      const apr = await cards.getApr(exposure);
+      const apr = await cards.getApr(idleCDO.address, EXPOSURE(1));
       expect(apr).to.be.equal(BN(16).mul(ONE_TOKEN(18)));
     });
 
@@ -137,8 +169,7 @@ describe("IdleCDOCardManager", () => {
       // APR AA=4 BB=16
       await setAprs();
 
-      const exposure = D18(0.5);
-      const apr = await cards.getApr(exposure);
+      const apr = await cards.getApr(idleCDO.address, EXPOSURE(0.5));
       const expected = 4 * 0.5 + 16 * 0.5;
       expect(apr).to.be.equal(BN(expected).mul(ONE_TOKEN(18)));
     });
@@ -147,9 +178,17 @@ describe("IdleCDOCardManager", () => {
       // APR AA=4 BB=16
       await setAprs();
 
-      const exposure = D18(0.25);
-      const apr = await cards.getApr(exposure);
+      const apr = await cards.getApr(idleCDO.address, EXPOSURE(0.25));
       const expected = 4 * 0.75 + 16 * 0.25;
+      expect(apr).to.be.equal(BN(expected).mul(ONE_TOKEN(18)));
+    });
+
+    it("should return the 0.75 APR BB and 0.25 APR AA tranche if exposure is 75% in IdleCDO FEI", async () => {
+      // APR AA=4 BB=16
+      await setFEIAprs();
+
+      const apr = await cards.getApr(idleCDOFEI.address, EXPOSURE(0.75));
+      const expected = 4 * 0.25 + 16 * 0.75;
       expect(apr).to.be.equal(BN(expected).mul(ONE_TOKEN(18)));
     });
   });
@@ -160,8 +199,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -170,7 +208,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
@@ -188,8 +226,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -199,7 +236,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
@@ -219,8 +256,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -230,7 +266,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
@@ -249,8 +285,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -260,7 +295,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
@@ -283,8 +318,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(1);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(1), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -294,7 +328,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(1)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
@@ -321,8 +355,7 @@ describe("IdleCDOCardManager", () => {
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
 
-      const exposure = D18(0.25);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
 
       const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
       expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
@@ -332,7 +365,7 @@ describe("IdleCDOCardManager", () => {
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
-      expect(pos.exposure).to.be.equal(BN(exposure));
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
 
       const aaTrancheBal = await balance("AA", idleCDO, pos.cardAddress);
@@ -363,8 +396,7 @@ describe("IdleCDOCardManager", () => {
       await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
 
       //mint
-      const exposure = D18(0);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       // deposit in the lending protocol
       await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
 
@@ -390,8 +422,7 @@ describe("IdleCDOCardManager", () => {
       await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
 
       //mint
-      const exposure = D18(0.25);
-      await mintAABuyer(exposure, ONE_THOUSAND_TOKEN);
+      await mintAABuyer(EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
       // deposit in the lending protocol
       await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
 
@@ -409,50 +440,36 @@ describe("IdleCDOCardManager", () => {
       //initialAmount - 1000 + 1696
       expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
     });
+
+    it("should withdraw and transfer all 25% BB + 75% AA (amount + period earnings) if exposure card is 25% in IdleCDO FEI", async () => {
+      // APR AA=4 BB=16
+      await idleTokenFEI.setFee(BN("0"));
+      await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+
+      //mint
+      await mintCDO(idleCDOFEI, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, AABuyer);
+
+      // deposit in the lending protocol
+      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+
+      // update lending protocol price which is now 2
+      await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      //burn
+      const tokenIdCard = 2;
+      tx = await cards.connect(AABuyer).burn(tokenIdCard);
+      await tx.wait();
+
+      //gain with fee: apr: 77.33% fee:10% = (750*32% + 250*213.33% )*0.9 = 1000*77.33% = 696
+      //initialAmount - 1000 + 1696
+      expect(await underlyingFEI.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
+    });
   });
 
   it("should not able to get a balance of an inexistent card", async () => {
     await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
-  });
-
-  describe("Inner IdleCDOCard", () => {
-    it("should not be deployed by a not IdleCDOCardManger", async () => {
-      const IdleCDOCardManager = await ethers.getContractFactory("IdleCDOCard");
-      await expect(IdleCDOCardManager.deploy(idleCDO.address)).to.be.revertedWith("function call to a non-contract account");
-    });
-
-    it("should not allow non manager owner minting", async () => {
-      // mint a card with exposure 0.5
-      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
-      // get a card address
-      const card = await cards.card(1);
-
-      //deploy the evil Idle CDO Cards contract
-      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
-      await evilManager.deployed();
-
-      //approve
-      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
-
-      await expect(evilManager.connect(BBBuyer).evilMint(card.cardAddress, ONE_THOUSAND_TOKEN, 0)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
-    });
-
-    it("should not allow non manager owner to burn", async () => {
-      // mint a card with exposure 0.5
-      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
-      // get a card address
-      const card = await cards.card(1);
-
-      //deploy the evil Idle CDO Cards contract
-      const IdleCDOCardManager = await ethers.getContractFactory("EvilIdleCdoCardManager");
-      const evilManager = await IdleCDOCardManager.deploy(idleCDO.address);
-      await evilManager.deployed();
-
-      //approve
-      await approveNFT(idleCDO, evilManager, BBBuyer.address, ONE_THOUSAND_TOKEN);
-
-      await expect(evilManager.connect(BBBuyer).evilBurn(card.cardAddress)).to.be.revertedWith("Ownable: card caller is not the card manager owner");
-    });
   });
 });

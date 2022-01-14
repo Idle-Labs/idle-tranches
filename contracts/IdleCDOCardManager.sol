@@ -19,24 +19,36 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 exposure;
     uint256 amount;
     address cardAddress;
+    address idleCDOAddress;
   }
 
-  IdleCDO public idleCDO;
+  IdleCDO[] public idleCDOs;
+
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
 
-  constructor(address _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
-    idleCDO = IdleCDO(_idleCDOAddress);
+  constructor(address[] memory _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
+    for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
+      idleCDOs.push(IdleCDO(_idleCDOAddress[i]));
+    }
   }
 
-  function mint(uint256 _risk, uint256 _amount) public returns (uint256) {
-    IdleCDOCard _card = new IdleCDOCard(address(idleCDO));
+  function getIdleCDOs() public view returns (IdleCDO[] memory) {
+    return idleCDOs;
+  }
+
+  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
+    // check if _idleCDOAddress exists in idleCDOAddress array
+    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
+
+    IdleCDOCard _card = new IdleCDOCard(_idleCDOAddress);
+    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
 
     // transfer amount to cards protocol
-    idleCDOToken().safeTransferFrom(msg.sender, address(this), _amount);
+    underlying.safeTransferFrom(msg.sender, address(this), _amount);
 
     // approve the amount to be spend on cdos tranches
-    idleCDOToken().approve(address(_card), _amount);
+    underlying.approve(address(_card), _amount);
 
     // calculate the amount to deposit in BB
     // proportional to risk
@@ -50,7 +62,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     // mint the Idle CDO card
     uint256 tokenId = _mint();
-    _cards[tokenId] = Card(_risk, _amount, address(_card));
+    _cards[tokenId] = Card(_risk, _amount, address(_card), _idleCDOAddress);
 
     return tokenId;
   }
@@ -66,18 +78,22 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     Card memory pos = card(_tokenId);
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
-    uint256 toRedeem = _card.burn();
+    toRedeem = _card.burn();
 
     // transfer to card owner
-    idleCDOToken().safeTransfer(msg.sender, toRedeem);
+    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+    underlying.safeTransfer(msg.sender, toRedeem);
   }
 
-  function getApr(uint256 _exposure) public view returns (uint256) {
+  function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
+
+    IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
+
     // ratioAA = ratio of 1 - _exposure of the AA apr
     uint256 aprAA = idleCDO.getApr(idleCDO.AATranche());
     uint256 ratioAA = percentage(RATIO_PRECISION.sub(_exposure), aprAA);
 
-    // ratioAA = ratio of _exposure of the AA apr
+    // ratioBB = ratio of _exposure of the BB apr
     uint256 aprBB = idleCDO.getApr(idleCDO.BBTranche());
     uint256 ratioBB = percentage(_exposure, aprBB);
 
@@ -105,7 +121,13 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return newItemId;
   }
 
-  function idleCDOToken() public view returns (IERC20Detailed) {
-    return IERC20Detailed(idleCDO.token());
+  function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
+    for (uint256 i = 0; i < idleCDOs.length; i++) {
+      if (address(idleCDOs[i]) == _idleCDOAddress) {
+        return true;
+      }
+    }
+    return false;
   }
+
 }

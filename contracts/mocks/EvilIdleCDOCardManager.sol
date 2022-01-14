@@ -6,7 +6,7 @@ import "../IdleCDOCardManager.sol";
 contract EvilIdleCdoCardManager is IdleCDOCardManager {
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  constructor(address _idleCDOAddress) IdleCDOCardManager(_idleCDOAddress) {}
+  constructor(address[] memory _idleCDOAddress) IdleCDOCardManager(_idleCDOAddress) {}
 
   function evilMint(address cardAddress, uint256 amountAA, uint256 amountBB) public returns (uint256) {
     uint256 _amount = amountAA + amountBB;
@@ -28,6 +28,6 @@ contract EvilIdleCdoCardManager is IdleCDOCardManager {
   }
 
   function erc20() private view returns (IERC20Detailed) {
-    return IERC20Detailed(this.idleCDO().token());
+    return IERC20Detailed(this.idleCDOs(0).token());
   }
 }
