@@ -659,9 +659,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
     // If there is a pending cooldown:
     if (_stakersCooldown > 0) {
-      // If it is over, redeem stkAave and begin new cooldown
-      if (_stakersCooldown + _stkAave.COOLDOWN_SECONDS() < block.timestamp) {
-        _stkAave.redeem(address(this), type(uint256).max);
+      uint256 _cooldownEnd = _stakersCooldown + _stkAave.COOLDOWN_SECONDS();
+      // If it is over
+      if (_cooldownEnd < block.timestamp) {
+        // If the unstake window is active
+        if (block.timestamp - _cooldownEnd <= _stkAave.UNSTAKE_WINDOW()) {
+          // redeem stkAave AND begin new cooldown
+          _stkAave.redeem(address(this), type(uint256).max);
+        }
       } else {
         // If it is not over, do nothing
         return;

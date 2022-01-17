@@ -17,7 +17,7 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
-const mainContactRuns = 110;
+const mainContactRuns = 90;
 
 module.exports = {
   solidity: {
