@@ -278,6 +278,41 @@ task("change-rewards", "Update rewards IdleCDO instance")
   });
 
 /**
+ * @name change-rewards
+ */
+task("change-reward-contract", "Update rewards IdleCDO instance")
+  .addParam('cdoname')
+  .addParam('reward')
+  .setAction(async (args) => {
+    const deployToken = addresses.deployTokens[args.cdoname];
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+
+    if (!deployToken.cdo.cdoAddr || !args.reward) {
+      console.log('Missing params');
+      return;
+    }
+    
+    const stakingRewards = await helpers.deployContract('StakingRewards', [
+      // address _rewardsDistribution,
+      deployToken.cdo.cdoAddr,
+      // address _rewardsToken,
+      args.reward,
+      // address _stakingToken
+      await cdo.AATranche()
+    ], signer);    
+    
+    // Upgrade reward contract with multisig
+    const multisig = await run('get-multisig-or-fake');
+    cdo = cdo.connect(multisig);
+    // Only Senior (AA) tranches will get IDLE rewards
+    await cdo.setStakingRewards(stakingRewards.address, addresses.addr0);
+    console.log('AA staking ', await cdo.AAStaking());
+    console.log('BB staking ', await cdo.BBStaking());
+  });
+
+/**
  * @name find-convex-params
  * find params for a convex strategy (convexPoolId, depositPosition)
  */
