@@ -28,17 +28,7 @@ contract StakingRewards is ReentrancyGuardInitialize, Ownable, Pausable {
   mapping(address => uint256) private _balances;
   bool public shouldTransfer;
 
-  /* ========== CONSTRUCTOR ========== */
-
-  constructor(
-    address _rewardsDistribution,
-    address _rewardsToken,
-    address _stakingToken,
-    address _owner,
-    bool _shouldTransfer
-  ) {
-    initialize(_rewardsDistribution, _rewardsToken, _stakingToken, _owner, _shouldTransfer);
-  }
+  /* ========== INITIALIZE ========== */
 
   function initialize(
     address _rewardsDistribution,
