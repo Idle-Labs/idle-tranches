@@ -80,12 +80,21 @@ contract StakingRewards is ReentrancyGuardInitialize, Ownable, Pausable {
 
   /* ========== MUTATIVE FUNCTIONS ========== */
 
-  function stake(uint256 amount) external nonReentrant whenNotPaused updateReward(msg.sender) {
+  // Add stakeFor to allow IdleCDO to stake tranche tokens received as fees for the feeReceiver
+  function stakeFor(address _user, uint256 amount) external {
+    require(msg.sender == rewardsDistribution, 'Only rewards distribution can stake for user');
+    _stake(_user, msg.sender, amount);
+  }
+
+  function stake(uint256 amount) external {
+    _stake(msg.sender, msg.sender, amount);
+  }
+  function _stake(address _user, address _payer, uint256 amount) internal nonReentrant whenNotPaused updateReward(_user) {
     require(amount > 0, "Cannot stake 0");
     _totalSupply += amount;
-    _balances[msg.sender] += amount;
-    stakingToken.safeTransferFrom(msg.sender, address(this), amount);
-    emit Staked(msg.sender, amount);
+    _balances[_user] += amount;
+    stakingToken.safeTransferFrom(_payer, address(this), amount);
+    emit Staked(_user, amount);
   }
 
   function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
