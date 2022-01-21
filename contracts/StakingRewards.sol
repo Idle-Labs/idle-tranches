@@ -1,13 +1,13 @@
 pragma solidity 0.8.10;
 
+import "./utils/ReentrancyGuardInitialize.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // https://docs.synthetix.io/contracts/source/contracts/stakingrewards
-contract StakingRewards is ReentrancyGuard, Ownable, Pausable {
+contract StakingRewards is ReentrancyGuardInitialize, Ownable, Pausable {
   using SafeERC20 for IERC20;
 
   /* ========== STATE VARIABLES ========== */
@@ -34,13 +34,29 @@ contract StakingRewards is ReentrancyGuard, Ownable, Pausable {
     address _rewardsDistribution,
     address _rewardsToken,
     address _stakingToken,
+    address _owner,
     bool _shouldTransfer
-  ) Ownable() Pausable() {
+  ) {
+    initialize(_rewardsDistribution, _rewardsToken, _stakingToken, _owner, _shouldTransfer);
+  }
+
+  function initialize(
+    address _rewardsDistribution,
+    address _rewardsToken,
+    address _stakingToken,
+    address _owner,
+    bool _shouldTransfer
+  ) public {
+    require(address(stakingToken) == address(0), 'Initialized');
+
     rewardsToken = IERC20(_rewardsToken);
     stakingToken = IERC20(_stakingToken);
     rewardsDistribution = _rewardsDistribution;
     shouldTransfer = _shouldTransfer;
     rewardsDuration = 7 days;
+    _transferOwnership(_owner);
+    // ReentrancyGuardInitialize initialization
+    _status = _NOT_ENTERED;
   }
 
   /* ========== VIEWS ========== */
