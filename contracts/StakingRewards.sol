@@ -14,9 +14,9 @@ contract StakingRewards is ReentrancyGuard, Ownable, Pausable {
 
   IERC20 public rewardsToken;
   IERC20 public stakingToken;
-  uint256 public periodFinish = 0;
-  uint256 public rewardRate = 0;
-  uint256 public rewardsDuration = 7 days;
+  uint256 public periodFinish;
+  uint256 public rewardRate;
+  uint256 public rewardsDuration;
   uint256 public lastUpdateTime;
   uint256 public rewardPerTokenStored;
   address public rewardsDistribution;
@@ -26,17 +26,21 @@ contract StakingRewards is ReentrancyGuard, Ownable, Pausable {
 
   uint256 private _totalSupply;
   mapping(address => uint256) private _balances;
+  bool public shouldTransfer;
 
   /* ========== CONSTRUCTOR ========== */
 
   constructor(
     address _rewardsDistribution,
     address _rewardsToken,
-    address _stakingToken
+    address _stakingToken,
+    bool _shouldTransfer
   ) Ownable() Pausable() {
     rewardsToken = IERC20(_rewardsToken);
     stakingToken = IERC20(_stakingToken);
     rewardsDistribution = _rewardsDistribution;
+    shouldTransfer = _shouldTransfer;
+    rewardsDuration = 7 days;
   }
 
   /* ========== VIEWS ========== */
@@ -108,7 +112,9 @@ contract StakingRewards is ReentrancyGuard, Ownable, Pausable {
   // function depositReward(address, uint256 reward)
   // for compatibility reason with IdleCDO. Added also a transferFrom to get the reward amount
   function depositReward(address, uint256 reward) external onlyRewardsDistribution updateReward(address(0)) {
-    rewardsToken.safeTransferFrom(msg.sender, address(this), reward);
+    if (shouldTransfer) {
+      rewardsToken.safeTransferFrom(msg.sender, address(this), reward);
+    }
 
     if (block.timestamp >= periodFinish) {
       rewardRate = reward / rewardsDuration;
