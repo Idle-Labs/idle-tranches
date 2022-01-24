@@ -2,9 +2,11 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../../../scripts/helpers");
 const addresses = require("../../../lib/addresses");
+const mainnetContracts = addresses.mainnetContracts;
 const { expect } = require("chai");
 const { FakeContract, smock } = require('@defi-wonderland/smock');
 const { solidityKeccak256 } = require("ethers/lib/utils");
+const { ethers } = require("hardhat");
 
 require('chai').use(smock.matchers);
 
@@ -49,8 +51,8 @@ describe("IdleLidoCDO", function () {
     weth = await WETH.attach('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2');
     wstETH = await MockWstETH.attach('0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0');
     oracle = await MockLidoOracle.attach('0x442af784A788A5bd6F42A01Ebe9F287a871243fb')
-    idle = await MockERC20.attach('0x875773784Af8135eA0ef43b5a374AaD105c5D39e') // IDLE
-    incentiveTokens = [idle.address]
+    // Incentive tokens are manually distributed directly in the staking contract for LDO
+    incentiveTokens = []
 
     strategy = await helpers.deployUpgradableContract(
       "IdleLidoStrategy",
@@ -65,7 +67,11 @@ describe("IdleLidoCDO", function () {
     await lido
       .connect(owner)
       .submit(ZERO_ADDRESS, { value: BN("100").mul(ONE_TOKEN(18)) });
-
+    
+    await weth
+      .connect(owner)
+      .deposit({ value: BN("100").mul(ONE_TOKEN(18)) });
+    
     idleCDO = await helpers.deployUpgradableContract(
       'IdleCDO',
       [
@@ -85,22 +91,20 @@ describe("IdleLidoCDO", function () {
     AA = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
     BB = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
 
-    const stakingRewardsParams = [
-      incentiveTokens,
-      owner.address, // owner / guardian
-      idleCDO.address,
-      owner.address, // recovery address
-      10, // cooling period
-    ];
-    stakingRewardsAA = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [AA.address, ...stakingRewardsParams], owner
-    );
-    stakingRewardsBB = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [BB.address, ...stakingRewardsParams], owner
+    stakingRewards = await helpers.deployContract('StakingRewards', [], owner);
+    await stakingRewards.connect(owner).initialize(
+      // address _rewardsDistribution,
+      owner.address,
+      // address _rewardsToken,
+      weth.address,
+      // address _stakingToken
+      AA.address,
+      // owner
+      owner.address,
+      // _shouldTransfer
+      false
     );
 
-    // await idleCDO.setUnlentPerc(BN('0'));
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
     await idleCDO.setIsStkAAVEActive(false);
     await idleCDO.setFeeReceiver(feeCollectorAddr);
 
@@ -181,7 +185,6 @@ describe("IdleLidoCDO", function () {
     expect(await idleCDO.feeReceiver()).to.equal(feeCollectorAddr);
     expect(await idleCDO.guardian()).to.equal(owner.address);
     expect(await idleCDO.weth()).to.equal(weth.address);
-    expect(await idleCDO.incentiveTokens(0)).to.equal(incentiveTokens[0]);
     // OwnableUpgradeable
     expect(await idleCDO.owner()).to.equal(owner.address);
     // GuardedLaunchUpgradable
@@ -211,38 +214,83 @@ describe("IdleLidoCDO", function () {
 
     // LidoTranche is no extra rewards such as COMP, LDO
     console.log('######## First real rebalance (with interest and rewards accrued)');
-    // let feeReceiverBBBal = await stakingRewardsBB.usersStakes(feeCollectorAddr);
-    // let stakingBBIdleBal = await helpers.getBalance(idle, stakingRewardsBB.address);
 
     // tranchePriceAA and tranchePriceBB have been updated just before the deposit
     // some gov token (IDLE but not COMP because it has been sold) should be present in the contract after the rebalance
-    await rebalanceFull(idleCDO, owner.address, false, false);
-    // so no IDLE in IdleCDO
-    await helpers.checkBalance(idle, idleCDO.address, BN('0'));
-
-    // feeReceiver should have received some BB tranches as fees and those should be staked
-    // let feeReceiverBBBalAfter = await stakingRewardsBB.usersStakes(feeCollectorAddr);
-    // await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches (staked)');
-    // BB Staking contract should have received only IDLE
-    // let stakingBBIdleBalAfter = await helpers.getBalance(idle, stakingRewardsBB.address);
-    // await helpers.checkIncreased(stakingBBIdleBal, stakingBBIdleBalAfter, 'BB Staking contract got some IDLE tokens');
-
-    // No rewards for AA staking contracts
-    // await helpers.checkBalance(idle, stakingRewardsAA.address, BN('0'));
+    await rebalanceFull(idleCDO, owner.address, true, false);
 
     console.log('######## Withdraws');
     // First user withdraw
     await helpers.withdrawWithGain('AA', idleCDO, AABuyerAddr, _amount);
-    // feeReceiverBBBal = await stakingRewardsBB.usersStakes(feeCollectorAddr);
-    await rebalanceFull(idleCDO, owner.address, false, false);
-    // Check that fee receiver got fees (in BB tranche tokens)
-    // feeReceiverBBBalAfter = await stakingRewardsBB.usersStakes(feeCollectorAddr);
-    // await helpers.checkIncreased(feeReceiverBBBal, feeReceiverBBBalAfter, 'Fee receiver got some BB tranches (staked)');
-
+    await rebalanceFull(idleCDO, owner.address, true, false);
     await helpers.withdrawWithGain('BB', idleCDO, BBBuyerAddr, _amount.div(BN('2')));
-    await rebalanceFull(idleCDO, owner.address, false, false);
-
+    await rebalanceFull(idleCDO, owner.address, true, false);
     await helpers.withdrawWithGain('AA', idleCDO, AABuyer2Addr, _amount);
+  });
+
+  it("distributes rewards via transfer", async () => {
+    const _amount = BN('10').mul(ONE_TOKEN(18));
+    // Buy AA tranche with `amount` underlying
+    const aaTrancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
+    // Stake AA tranche
+    const bal = await AA.balanceOf(AABuyerAddr);
+    await AA.connect(AABuyer).approve(stakingRewards.address, bal)
+    await stakingRewards.connect(AABuyer).stake(bal);
+    // Deposit WETH rewards in staking contract and check effects
+    const sevenDaysSec = 604800;
+    const rewardAmount = BN('100').mul(ONE_TOKEN(18));
+    await weth.connect(owner).transfer(stakingRewards.address, rewardAmount);
+    const block = await ethers.provider.getBlock(await ethers.provider.getBlockNumber());
+    const timestamp = block.timestamp;
+    await stakingRewards.connect(owner).depositReward(weth.address, rewardAmount);
+    // Check effects
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.equal(BN('0'));
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec / 2)]);
+    await ethers.provider.send("evm_mine");
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec * 1.5)]);
+    await ethers.provider.send("evm_mine");
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('100').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    await stakingRewards.connect(AABuyer).exit();
+    expect(await weth.balanceOf(AABuyerAddr)).to.be.closeTo(rewardAmount, ONE_TOKEN(18).div(BN('10')));
+  });
+
+  it("distributes rewards via transfer multiple users", async () => {
+    const _amount = BN('10').mul(ONE_TOKEN(18));
+    // Buy AA tranche with `amount` underlying
+    const aaTrancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
+    const aaTrancheBal2 = await helpers.deposit('AA', idleCDO, AABuyer2Addr, _amount);
+    // Stake AA tranche user1
+    const bal = await AA.balanceOf(AABuyerAddr);
+    await AA.connect(AABuyer).approve(stakingRewards.address, bal)
+    await stakingRewards.connect(AABuyer).stake(bal);
+
+    const bal2 = await AA.balanceOf(AABuyer2Addr);
+    await AA.connect(AABuyer2).approve(stakingRewards.address, bal)
+    await stakingRewards.connect(AABuyer2).stake(bal);
+
+    // Deposit WETH rewards in staking contract and check effects
+    const sevenDaysSec = 604800;
+    const rewardAmount = BN('100').mul(ONE_TOKEN(18));
+    await weth.connect(owner).transfer(stakingRewards.address, rewardAmount);
+    const block = await ethers.provider.getBlock(await ethers.provider.getBlockNumber());
+    const timestamp = block.timestamp;
+    await stakingRewards.connect(owner).depositReward(weth.address, rewardAmount);
+    // Check effects
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.equal(BN('0'));
+    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.equal(BN('0'));
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec / 2)]);
+    await ethers.provider.send("evm_mine");
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('25').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.closeTo(BN('25').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec * 1.5)]);
+    await ethers.provider.send("evm_mine");
+    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
+    await stakingRewards.connect(AABuyer).exit();
+    await stakingRewards.connect(AABuyer2).exit();
+    expect(await weth.balanceOf(AABuyerAddr)).to.be.closeTo(rewardAmount.div(BN('2')), ONE_TOKEN(18).div(BN('10')));
+    expect(await weth.balanceOf(AABuyer2Addr)).to.be.closeTo(rewardAmount.div(BN('2')), ONE_TOKEN(18).div(BN('10')));
   });
 
   const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDeposit) => {
@@ -258,7 +306,7 @@ describe("IdleLidoCDO", function () {
     let minAmounts = res[1];
     // Add some slippage tolerance
     minAmounts = minAmounts.map(m => BN(m).div(BN('100')).mul(BN('97'))); // 3 % slippage
-    await helpers.sudoCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false && skipIncentivesUpdate && skipFeeDeposit], rewardTokens.map(r => false), minAmounts, sellAmounts, '0x']);
+    await helpers.sudoCall(address, idleCDO, 'harvest', [[false, skipIncentivesUpdate, skipFeeDeposit, false], rewardTokens.map(r => false), minAmounts, sellAmounts, '0x']);
     await mineBlocks({ blocks: 500 })
 
     // Lido oracle updates the status

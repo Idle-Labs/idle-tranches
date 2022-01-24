@@ -278,6 +278,52 @@ task("change-rewards", "Update rewards IdleCDO instance")
   });
 
 /**
+ * @name change-rewards
+ */
+task("change-reward-contract", "Update rewards IdleCDO instance")
+  .addParam('cdoname')
+  .addParam('reward')
+  .setAction(async (args) => {
+    
+    const deployToken = addresses.deployTokens[args.cdoname];
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+
+    if (!deployToken.cdo.cdoAddr || !args.reward || !mainnetContracts.treasuryMultisig) {
+      console.log('Missing params');
+      return;
+    }
+    
+    const stakingRewards = await helpers.deployContract('StakingRewards', [], signer);
+    console.log('Staking rewards deployed at: ', stakingRewards.address);
+    await stakingRewards.initialize(
+      // address _rewardsDistribution,
+      // deployToken.cdo.cdoAddr,
+      mainnetContracts.treasuryMultisig,
+      // address _rewardsToken,
+      args.reward,
+      // address _stakingToken
+      await cdo.AATranche(),
+      // owner
+      creator,
+      // _shouldTransfer
+      false
+    );
+    console.log('Staking rewards initialized');
+
+    // Upgrade reward contract with multisig
+    const multisig = await run('get-multisig-or-fake');
+    cdo = cdo.connect(multisig);
+    // for LDO rewards is not needed as those will be distributed by the treasury multisig directly 
+    // to the rewards contract
+    // // Only Senior (AA) tranches will get IDLE rewards
+    // await cdo.setStakingRewards(stakingRewards.address, addresses.addr0);
+    console.log('AA staking ', await cdo.AAStaking());
+    console.log('BB staking ', await cdo.BBStaking());
+  });
+
+/**
  * @name find-convex-params
  * find params for a convex strategy (convexPoolId, depositPosition)
  */
