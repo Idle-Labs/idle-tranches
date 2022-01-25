@@ -76,7 +76,8 @@ module.exports = {
       //   // blockNumber: 13728440 // idleFEI upgraded
       //   // blockNumber: 13739407 // idleDAI upgraded
       //   // blockNumber: 13776718 // lido deploy
-      //   blockNumber: 13810230 // convex deploy
+      //   // blockNumber: 13810230 // convex deploy
+      //   blockNumber: 14075568 // StakingRewards deploy
       // }
     },
     coverage: {

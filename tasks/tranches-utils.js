@@ -278,47 +278,55 @@ task("change-rewards", "Update rewards IdleCDO instance")
   });
 
 /**
- * @name change-rewards
+ * @name deploy-reward-contract
  */
-task("change-reward-contract", "Update rewards IdleCDO instance")
+task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct for senior tranches of an IdleCDO instance")
   .addParam('cdoname')
   .addParam('reward')
   .setAction(async (args) => {
-    
     const deployToken = addresses.deployTokens[args.cdoname];
     let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
-
-    if (!deployToken.cdo.cdoAddr || !args.reward || !mainnetContracts.treasuryMultisig) {
+    
+    if (!deployToken.cdo.cdoAddr || !args.reward || !mainnetContracts.treasuryMultisig || !mainnetContracts.devLeagueMultisig) {
       console.log('Missing params');
       return;
     }
-    
-    const stakingRewards = await helpers.deployContract('StakingRewards', [], signer);
-    console.log('Staking rewards deployed at: ', stakingRewards.address);
-    await stakingRewards.initialize(
+
+    const initParams = [
       // address _rewardsDistribution,
-      // deployToken.cdo.cdoAddr,
-      mainnetContracts.treasuryMultisig,
+      deployToken.cdo.cdoAddr,
       // address _rewardsToken,
       args.reward,
       // address _stakingToken
       await cdo.AATranche(),
-      // owner
-      creator,
+      // address owner
+      mainnetContracts.devLeagueMultisig,
       // _shouldTransfer
-      false
-    );
-    console.log('Staking rewards initialized');
+      true
+    ];
 
+    const proxyFactory = await ethers.getContractAt("MinimalInitializableProxyFactory", mainnetContracts.minimalInitializableProxyFactory);
+    let res = await proxyFactory.connect(signer).create(mainnetContracts.snxStakingRewards);
+    res = await res.wait();
+    const newCloneAddr = res.events[0].args.proxy;
+    console.log('Staking rewards clone deployed at: ', newCloneAddr);
+
+    const newClone = await ethers.getContractAt("StakingRewards", newCloneAddr);
+    await newClone.connect(signer).initialize(...initParams);
+    console.log('Staking rewards clone owner: ', await newClone.owner());
+
+    if ((await newClone.owner()).toLowerCase() != mainnetContracts.devLeagueMultisig.toLowerCase()) {
+      console.error('Something is wrong with the new clone, owner is wrong');
+      return;
+    }
+    
     // Upgrade reward contract with multisig
     const multisig = await run('get-multisig-or-fake');
     cdo = cdo.connect(multisig);
-    // for LDO rewards is not needed as those will be distributed by the treasury multisig directly 
-    // to the rewards contract
-    // // Only Senior (AA) tranches will get IDLE rewards
-    // await cdo.setStakingRewards(stakingRewards.address, addresses.addr0);
+    // Only Senior (AA) tranches will get rewards
+    await cdo.setStakingRewards(newCloneAddr, addresses.addr0);
     console.log('AA staking ', await cdo.AAStaking());
     console.log('BB staking ', await cdo.BBStaking());
   });
