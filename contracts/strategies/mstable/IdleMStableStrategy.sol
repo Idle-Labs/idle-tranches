@@ -63,10 +63,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     uint256 public lastIndexedTime;
 
     /// @notice one year, used to calculate the APR
-    uint256 constant YEAR = 365 days;
-
-    /// @notice Round at which the reward is last claimed
-    uint256 public rewardLastRound;
+    uint256 public constant YEAR = 365 days;
 
     constructor() {
         token = address(1);
@@ -109,9 +106,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
         ERC20Upgradeable.__ERC20_init("Idle MStable Strategy Token", string(abi.encodePacked("idleMS", underlyingToken.symbol())));
         lastIndexedTime = block.timestamp;
-
-        (, uint256 startRound, ) = vault.unclaimedRewards(address(this));
-        rewardLastRound = startRound;
         //------//-------//
 
         transferOwnership(_owner);
@@ -120,9 +114,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice redeem the rewards. Claims all possible rewards
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        (, , uint256 endRound) = vault.unclaimedRewards(address(this));
-        _claimGovernanceTokens(rewardLastRound, endRound);
-        rewardLastRound = endRound;
+        _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
@@ -131,10 +123,8 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive, uint256 endRound) = abi.decode(_extraData, (uint256, uint256));
-        require(endRound > rewardLastRound, "End round should more than the last claimed round ");
-        _claimGovernanceTokens(rewardLastRound, endRound);
-        rewardLastRound = endRound;
+        (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
+        _claimGovernanceTokens(startRound, endRound);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
@@ -265,20 +255,24 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice Claim governance tokens
+    /// @param startRound Start Round from which the Governance tokens must be claimed
     /// @param endRound End Round from which the Governance tokens must be claimed
-    function claimGovernanceTokens(uint256 endRound) public onlyOwner {
-        (, , uint256 _endRound) = vault.unclaimedRewards(address(this));
-        require(endRound > rewardLastRound, "End round should more than the last claimed round ");
-        require(endRound <= _endRound, "Can't claim more than available rounds");
-        _claimGovernanceTokens(rewardLastRound, endRound);
-        rewardLastRound = endRound;
+    function claimGovernanceTokens(uint256 startRound, uint256 endRound) public onlyOwner {
+        _claimGovernanceTokens(startRound, endRound);
     }
 
     /// @notice Claim governance tokens
     /// @param startRound Start Round from which the Governance tokens must be claimed
     /// @param endRound End Round from which the Governance tokens must be claimed
+    /// @dev if startRound and endRound are both 0, then reward will be claimed for all rounds
     function _claimGovernanceTokens(uint256 startRound, uint256 endRound) internal {
-        vault.claimRewards(startRound, endRound);
+        require(startRound >= endRound, "Start Round Cannot be more the end round");
+
+        if (startRound == 0 && endRound == 0) {
+            vault.claimRewards(); // this be a infy gas call,
+        } else {
+            vault.claimRewards(startRound, endRound);
+        }
     }
 
     /// @notice Change idleCDO address
