@@ -123,8 +123,8 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive, uint256 startRound, uint256 endRound) = abi.decode(_extraData, (uint256, uint256, uint256));
-        _claimGovernanceTokens(startRound, endRound);
+        (uint256 minLiquidityTokenToReceive) = abi.decode(_extraData, (uint256));
+        _claimGovernanceTokens(0, 0);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
