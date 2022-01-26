@@ -257,7 +257,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice Claim governance tokens
     /// @param startRound Start Round from which the Governance tokens must be claimed
     /// @param endRound End Round from which the Governance tokens must be claimed
-    function claimGovernanceTokens(uint256 startRound, uint256 endRound) public onlyOwner {
+    function claimGovernanceTokens(uint256 startRound, uint256 endRound) external onlyOwner {
         _claimGovernanceTokens(startRound, endRound);
     }
 
