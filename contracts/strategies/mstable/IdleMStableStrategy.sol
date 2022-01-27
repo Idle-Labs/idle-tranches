@@ -271,7 +271,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         if (endRound == 0) {
             (, , endRound) = vault.unclaimedRewards(address(this));
         }
-        require(rewardLastRound <= endRound, "End Round should be more than or equal to lastRewardRound");
         vault.claimRewards(rewardLastRound, endRound);
         rewardLastRound = endRound;
     }
