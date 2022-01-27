@@ -118,9 +118,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice redeem the rewards. Claims all possible rewards
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        (, , uint256 endRound) = vault.unclaimedRewards(address(this));
-        _claimGovernanceTokens(rewardLastRound, endRound);
-        rewardLastRound = endRound;
+        _claimGovernanceTokens(0);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
@@ -130,10 +128,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 endRound) = abi.decode(_extraData, (uint256, uint256));
-        if (endRound == 0) {
-            (, , endRound) = vault.unclaimedRewards(address(this));
-        }
-        _claimGovernanceTokens(rewardLastRound, endRound);
+        _claimGovernanceTokens(endRound);
         rewardLastRound = endRound;
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
@@ -267,24 +262,18 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice Claim governance tokens
     /// @param endRound End Round from which the Governance tokens must be claimed
     function claimGovernanceTokens(uint256 endRound) external onlyOwner {
-        if (endRound == 0) {
-            (, , endRound) = vault.unclaimedRewards(address(this));
-        }
-        _claimGovernanceTokens(rewardLastRound, endRound);
+        _claimGovernanceTokens(endRound);
     }
 
     /// @notice Claim governance tokens
-    /// @param startRound Start Round from which the Governance tokens must be claimed
     /// @param endRound End Round from which the Governance tokens must be claimed
-    /// @dev if startRound and endRound are both 0, then reward will be claimed for all rounds
-    function _claimGovernanceTokens(uint256 startRound, uint256 endRound) internal {
-        require(startRound >= endRound, "Start Round Cannot be more the end round");
-
-        if (startRound == 0 && endRound == 0) {
-            vault.claimRewards(); // this be a infy gas call,
-        } else {
-            vault.claimRewards(startRound, endRound);
+    function _claimGovernanceTokens(uint256 endRound) internal {
+        if (endRound == 0) {
+            (, , endRound) = vault.unclaimedRewards(address(this));
         }
+        require(rewardLastRound <= endRound, "End Round should be more than or equal to lastRewardRound");
+        vault.claimRewards(rewardLastRound, endRound);
+        rewardLastRound = endRound;
     }
 
     /// @notice Change idleCDO address
