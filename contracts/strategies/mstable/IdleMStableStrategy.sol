@@ -65,6 +65,9 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice one year, used to calculate the APR
     uint256 public constant YEAR = 365 days;
 
+    /// @notice round for which the last reward is claimed
+    uint256 public rewardLastRound;
+
     constructor() {
         token = address(1);
     }
@@ -108,13 +111,16 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexedTime = block.timestamp;
         //------//-------//
 
+        (, , rewardLastRound) = vault.unclaimedRewards(address(this));
         transferOwnership(_owner);
     }
 
     /// @notice redeem the rewards. Claims all possible rewards
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        _claimGovernanceTokens(0, 0);
+        (, , uint256 endRound) = vault.unclaimedRewards(address(this));
+        _claimGovernanceTokens(rewardLastRound, endRound);
+        rewardLastRound = endRound;
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
@@ -123,8 +129,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive) = abi.decode(_extraData, (uint256));
-        _claimGovernanceTokens(0, 0);
+        (uint256 minLiquidityTokenToReceive, uint256 endRound) = abi.decode(_extraData, (uint256, uint256));
+        if (endRound == 0) {
+            (, , endRound) = vault.unclaimedRewards(address(this));
+        }
+        _claimGovernanceTokens(rewardLastRound, endRound);
+        rewardLastRound = endRound;
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
@@ -255,10 +265,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice Claim governance tokens
-    /// @param startRound Start Round from which the Governance tokens must be claimed
     /// @param endRound End Round from which the Governance tokens must be claimed
-    function claimGovernanceTokens(uint256 startRound, uint256 endRound) external onlyOwner {
-        _claimGovernanceTokens(startRound, endRound);
+    function claimGovernanceTokens(uint256 endRound) external onlyOwner {
+        if (endRound == 0) {
+            (, , endRound) = vault.unclaimedRewards(address(this));
+        }
+        _claimGovernanceTokens(rewardLastRound, endRound);
     }
 
     /// @notice Claim governance tokens
