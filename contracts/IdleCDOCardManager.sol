@@ -174,11 +174,17 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
-     if (super.balanceOf(owner) > 0) {
+     require(index < balanceOf(owner),"No Card found for index");
+
+     uint256 cardsBalance = super.balanceOf(owner);
+
+     if (cardsBalance > index) {
         return super.tokenOfOwnerByIndex(owner,index);
      }
-     
-     return  bl3nd.tokenOfOwnerByIndex(owner,index);
+
+     uint256 blendBalance = bl3nd.balanceOf(owner);
+     uint256 blendIndex = index - cardsBalance;
+     return bl3nd.tokenOfOwnerByIndex(owner,blendIndex);
   }
 
 }
