@@ -26,6 +26,7 @@ const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
 
 describe.only("IdleMStable Strategy Wrapper", function () {
   before(async () => {
+    await hre.ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
     await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
   });
 
@@ -58,7 +59,6 @@ describe.only("IdleMStable Strategy Wrapper", function () {
       BBBuyer.address,
       AMOUNT_TO_TRANSFER.mul(10)
     );
-
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
