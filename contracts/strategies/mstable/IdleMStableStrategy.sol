@@ -68,6 +68,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice round for which the last reward is claimed
     uint256 public rewardLastRound;
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         token = address(1);
     }
@@ -77,14 +78,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _strategyToken address of the strategy token. Here imUSD
     /// @param _underlyingToken address of the token deposited. here mUSD
     /// @param _vault address of the of the vault
-    /// @param _idleCDO address of the idleCDO contract
     /// @param _uniswapV2Router02 address of the uniswap router
     /// @param _routerPath path to swap the gov tokens
     function initialize(
         address _strategyToken,
         address _underlyingToken,
         address _vault,
-        address _idleCDO,
         address _uniswapV2Router02,
         address[] calldata _routerPath,
         address _owner
@@ -102,7 +101,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         imUSD = ISavingsContractV2(_strategyToken);
         vault = IVault(_vault);
         govToken = vault.getRewardToken();
-        idleCDO = _idleCDO;
 
         uniswapRouterPath = _routerPath;
         uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02);
@@ -235,7 +233,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @return Number of new strategy tokens generated
     function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
-
         IERC20Detailed(govToken).approve(address(uniswapV2Router02), govTokensToSend);
 
         uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
@@ -286,6 +283,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @dev operation can be only done by the owner of the contract
     function changeUniswapRouterPath(address[] memory newPath) public onlyOwner {
         uniswapRouterPath = newPath;
+    }
+
+       /// @notice allow to update whitelisted address
+    function setWhitelistedCDO(address _cdo) external onlyOwner {
+        require(_cdo != address(0), "IS_0");
+        idleCDO = _cdo;
     }
 
     /// @notice Modifier to make sure that caller os only the idleCDO contract

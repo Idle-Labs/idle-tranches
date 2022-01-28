@@ -21,6 +21,7 @@ interface IVault {
     function boostDirector() external view returns (address);
 
     function getRewardToken() external view returns (address);
+    function notifyRewardAmount(uint256 _reward) external;
 
     function unclaimedRewards(address _account)
         external
