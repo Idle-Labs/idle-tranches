@@ -25,7 +25,6 @@ describe("IdleCDOCardManager", () => {
     cards = await IdleCDOCardManager.deploy([idleCDO.address, idleCDOFEI.address]);
     await cards.deployed();
   });
-
  it("should be successfully initialized", async () => {
     expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
@@ -583,10 +582,30 @@ describe("IdleCDOCardManager", () => {
     it("should be able to get tokenID of the blended card for the owner address with 2 non-blended and 1 blended error", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
-      await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
+      await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
       await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 3)).to.be.revertedWith("No Card found for index");
     });
 
+    it("should be able to get not combined card as combined group", async () => {
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
+      await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
+
+      expect(await cards.cardGroup(1)).deep.to.equal([BN(1), BN(0)]);
+      expect(await cards.cardGroup(2)).deep.to.equal([BN(2), BN(0)]);
+    });
+
+    it("should be able to get combined card as combined group", async () => {
+      await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
+      await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
+
+      blendTokenId1 = await cards.blendTokenId(1, 2);
+      expect(await cards.cardGroup(blendTokenId1)).deep.to.equal([BN(1), BN(2)]);
+
+      blendTokenId2 = await cards.blendTokenId(3, 4);
+      expect(await cards.cardGroup(blendTokenId2)).deep.to.equal([BN(3), BN(4)]);
+    });
+
   });
+
 });

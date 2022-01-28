@@ -100,6 +100,26 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return _cards[_tokenId];
   }
 
+  function cardGroup(uint256 _tokenId) public view returns (uint256[]  memory tokenCardIds ) {
+    tokenCardIds = new uint256[](2);
+    if(_cards[_tokenId].cardAddress!=address(0)) {
+        tokenCardIds[0] = _tokenId;
+        return tokenCardIds;
+    }
+  
+    address deedAddress = bl3nd.getDeedAddress(_tokenId);
+    if(deedAddress == address(0)) {
+      return tokenCardIds;
+    }
+  
+    Bl3ndDeed deed = Bl3ndDeed(deedAddress);
+    tokenCardIds[0] = deed.id0();
+    tokenCardIds[1] = deed.id1();
+  
+    return tokenCardIds;
+  }
+  
+
   function burn(uint256 _tokenId) public returns (uint256 toRedeem) {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
 
@@ -182,7 +202,6 @@ contract IdleCDOCardManager is ERC721Enumerable {
         return super.tokenOfOwnerByIndex(owner,index);
      }
 
-     uint256 blendBalance = bl3nd.balanceOf(owner);
      uint256 blendIndex = index - cardsBalance;
      return bl3nd.tokenOfOwnerByIndex(owner,blendIndex);
   }
