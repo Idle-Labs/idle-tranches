@@ -32,7 +32,7 @@ const USDTAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const USDCAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
-const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
+const dai_whale = "0xE78388b4CE79068e89Bf8aA7f218eF6b9AB0e9d0";
 const musd_whale = "0xe008464f754e85e37bca41cce3fbd49340950b29";
 
 const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
@@ -91,6 +91,7 @@ describe.only("IdleMStableStrategy", function () {
     dai_signer = await ethers.getSigner(dai_whale);
 
     await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
+    await DAI.connect(dai_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
     savingsManager = await ethers.getContractAt(savingsManagerAbi, savingsManagerAddress);
 
     await IdleMStableStrategy.connect(owner).initialize(
