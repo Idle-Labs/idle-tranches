@@ -104,8 +104,8 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         //----- // -------//
         strategyToken = _strategyToken;
         token = _underlyingToken;
-        underlyingToken = IERC20Detailed(token);
-        tokenDecimals = underlyingToken.decimals();
+        underlyingToken = IERC20Detailed(_underlyingToken);
+        tokenDecimals = IERC20Detailed(_underlyingToken).decimals();
         oneToken = 10**(tokenDecimals);
         imUSD = ISavingsContractV2(_strategyToken);
         vault = IVault(_vault);
@@ -121,10 +121,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
         (, , rewardLastRound) = vault.unclaimedRewards(address(this));
         transferOwnership(_owner);
+        IERC20Detailed(_underlyingToken).approve(_strategyToken, type(uint256).max);
+        ISavingsContractV2(_strategyToken).approve(_vault, type(uint256).max);
     }
 
     /// @notice redeem the rewards. Claims all possible rewards
-    /// @return rewards amount of reward that is deposited to vault
+    /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0);
         rewards = new uint256[](1);
@@ -133,7 +135,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
-    /// @return rewards amount of reward that is deposited to vault
+    /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 endRound) = abi.decode(_extraData, (uint256, uint256));
         _claimGovernanceTokens(endRound);
@@ -159,7 +161,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             _price =
                 ((totalLpTokensStaked - _lockedLpTokens()) *
                     _oneToken) /
-                totalSupply();
+                _totalSupply;
         }
     }
 
@@ -185,13 +187,12 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _amount amount of tokens to deposit
     /// @return _minted number of reward tokens minted
     function _depositToVault(uint256 _amount) internal returns (uint256 _minted) {
-        underlyingToken.approve(address(imUSD), _amount);
+        ISavingsContractV2 _imUSD = imUSD;
         lastIndexAmount = lastIndexAmount + _amount;
         lastIndexedTime = block.timestamp;
-        imUSD.depositSavings(_amount);
+        _imUSD.depositSavings(_amount);
 
-        uint256 interestTokenAvailable = imUSD.balanceOf(address(this));
-        imUSD.approve(address(vault), interestTokenAvailable);
+        uint256 interestTokenAvailable = _imUSD.balanceOf(address(this));
 
         vault.stake(interestTokenAvailable);
 
@@ -254,7 +255,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice Function to swap the governance tokens on uniswapV2
     /// @param minLiquidityTokenToReceive minimun number of tokens to that need to be received
-    /// @return Number of new strategy tokens generated
+    /// @return amount of underlyings (mUSD) received
     function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         IERC20Detailed _govToken = IERC20Detailed(govToken);
         uint256 govTokensToSend = _govToken.balanceOf(address(this));
@@ -268,10 +269,13 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             block.timestamp
         );
 
-        uint256 _strategyTokens = _depositToVault(underlyingToken.balanceOf(address(this)));
+        uint256 _bal = underlyingToken.balanceOf(address(this));
+        _depositToVault(_bal);
+        // save the block in which rewards are swapped and the amount
         latestHarvestBlock = block.number;
-        totalLpTokensLocked = _strategyTokens;
-        return _strategyTokens;
+        totalLpTokensLocked = _bal;
+
+        return _bal;
     }
 
     /// @notice Claim governance tokens
