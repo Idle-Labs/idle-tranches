@@ -1,13 +1,13 @@
 require("hardhat/config");
 const { BigNumber } = require("@ethersproject/bignumber");
-const helpers = require("../scripts/helpers");
-const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
-const vaultAbi = require("../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
-const masset = require("../artifacts/contracts/interfaces/IMAsset.sol/IMAsset.json");
-const savingsManagerAbi = require("../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
-const idleMstableStrategyAbi = require("../artifacts/contracts/strategies/mstable/IdleMStableStrategy.sol/IdleMStableStrategy.json").abi;
+const helpers = require("../../../scripts/helpers");
+const erc20 = require("../../../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
+const vaultAbi = require("../../../artifacts/contracts/interfaces/IVault.sol/IVault.json").abi;
+const masset = require("../../../artifacts/contracts/interfaces/IMAsset.sol/IMAsset.json");
+const savingsManagerAbi = require("../../../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
+const idleMstableStrategyAbi = require("../../../artifacts/contracts/strategies/mstable/IdleMStableStrategy.sol/IdleMStableStrategy.json").abi;
 
-const addresses = require("../lib/addresses");
+const addresses = require("../../../lib/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require("@defi-wonderland/smock");
 const { ethers } = require("hardhat");
@@ -56,13 +56,20 @@ describe.only("IdleMStableStrategy", function () {
 
   let musd_signer;
   let dai_signer;
+  let musd_emission = '0xBa69e6FC7Df49a3b75b565068Fb91ff2d9d91780';
+  let musd_emission_signer;
 
   before(async () => {
     await ethers.provider.send("hardhat_impersonateAccount", [musd_whale]);
+    await ethers.provider.send("hardhat_impersonateAccount", [musd_whale]);
     await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
+    await ethers.provider.send("hardhat_impersonateAccount", [musd_emission]);
+    await hre.ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
+    await hre.ethers.provider.send("hardhat_setBalance", [musd_emission, '0xffffffffffffffff']);
   });
 
   beforeEach(async () => {
+    musd_emission_signer = await ethers.getSigner(musd_emission);
     [owner, user, , , proxyAdmin] = await ethers.getSigners();
     let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
     let IdleMStableStrategyLogic = await IdleMStableStrategyFactory.deploy();
@@ -90,11 +97,13 @@ describe.only("IdleMStableStrategy", function () {
       imUSD.address,
       mUSD.address,
       vault.address,
-      user.address, // assuming that user itself if the idle CDO.
       uniswapV2RouterV2,
       [meta.address, wrappedETH, mUSD.address],
       owner.address
     );
+
+    // assuming that user itself if the idle CDO.
+    await IdleMStableStrategy.connect(owner).setWhitelistedCDO(user.address);
   });
 
   it("Check contract address IdleMStableAddress", async () => {
@@ -155,6 +164,20 @@ describe.only("IdleMStableStrategy", function () {
 
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
+    
+    const amount = BN('100').mul(ONE_TOKEN(18));
+    await meta.connect(musd_emission_signer).transfer(VAULT_ADDRESS, amount);
+    await vault.connect(musd_emission_signer).notifyRewardAmount(amount);
+    
+    await network.provider.request({
+      method: "evm_increaseTime",
+      params: [5 * 86400],
+    });
+
+    await network.provider.request({
+      method: "evm_mine",
+      params: [],
+    });
 
     let rawBalanceBefore = await vault.rawBalanceOf(IdleMStableStrategy.address);
     await IdleMStableStrategy.connect(user)["redeemRewards()"](); // will get MTA token, convert to musd and deposit to vault
