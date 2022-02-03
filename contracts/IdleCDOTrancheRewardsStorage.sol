@@ -21,4 +21,7 @@ contract IdleCDOTrancheRewardsStorage {
   uint256 public totalStaked;
   // number of blocks during which rewards will be released for stakers
   uint256 public coolingPeriod;
+  // amount of reward that users who `unstake` will not receive. 
+  // These rewards  distributed to all other users still in the pool and entered before the last depositReward method is called.
+  mapping (address => uint256) public rewardToRewardsNotTransferred;
 }

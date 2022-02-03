@@ -106,7 +106,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
       for (uint256 i = 0; i < rewards.length; i++) {
         reward = rewards[i];
         // set the user index equal to the global one, which means 0 rewards
-        usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
+        usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
       }
     } else {
       // Claim all rewards accrued
@@ -122,7 +122,7 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
 
   /// @notice Sends all the expected rewards to the msg.sender
   /// @dev User index is reset
-  function claim() whenNotPaused nonReentrant external {
+  function claim() external whenNotPaused nonReentrant {
     _claim();
   }
 
@@ -139,7 +139,9 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
         amount = balance;
       }
       // Set the user index equal to the global one, which means 0 rewards
-      usersIndexes[msg.sender][reward] = adjustedRewardIndex(reward);
+      usersIndexes[msg.sender][reward] = rewardsIndexes[reward];
+      // Add rewards that a user who `unstake` will not receive to the `rewardToRewawrdsNotTracked` mapping
+      rewardToRewardsNotTransferred[reward] += _unClaimableRewards(reward) * usersStakes[msg.sender] / totalStaked;
       // transfer the reward to the user
       IERC20Detailed(reward).safeTransfer(msg.sender, amount);
     }
@@ -162,7 +164,6 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
     if (_userIdx > _globalIdx) {
       return 0;
     }
-
     return ((_globalIdx - _userIdx) * usersStakes[user]) / ONE_TRANCHE_TOKEN;
   }
 
@@ -172,23 +173,34 @@ contract IdleCDOTrancheRewards is Initializable, PausableUpgradeable, OwnableUpg
   /// @return _index The adjusted global index
   function adjustedRewardIndex(address _reward) public view returns (uint256 _index) {
     uint256 _totalStaked = totalStaked;
-    // get number of rewards deposited in the last `depositReward` call
-    uint256 _lockedRewards = lockedRewards[_reward];
     // get current global index, which considers all rewards
     _index = rewardsIndexes[_reward];
+    uint256 rewardsNotTransferred = rewardToRewardsNotTransferred[_reward];
 
-    if (_totalStaked > 0 && _lockedRewards > 0) {
-      // get blocks since last reward deposit
-      uint256 distance = block.number - lockedRewardsLastBlock[_reward];
-      if (distance < coolingPeriod) {
-        // if the cooling period has not passed, calculate the rewards that should
-        // still be locked
-        uint256 unlockedRewards = _lockedRewards * distance / coolingPeriod;
-        uint256 lockedRewards = _lockedRewards - unlockedRewards;
-        // and reduce the 'real' global index proportionally to the total amount staked
-        _index -= lockedRewards * ONE_TRANCHE_TOKEN / _totalStaked;
-      }
+    // get number of rewards deposited in the last `depositReward` call
+    uint256 unClaimableRewards = _unClaimableRewards(_reward);
+
+    // reduce the 'real' global index proportionally to the total amount staked
+    if (_totalStaked > 0 && unClaimableRewards > 0) {
+      _index -= unClaimableRewards * ONE_TRANCHE_TOKEN / _totalStaked; 
     }
+
+    // add locked rewards that users who `unstake` during the `coolingPeriod` to global index
+    if (rewardsNotTransferred > 0) {
+      _index += rewardsNotTransferred * ONE_TRANCHE_TOKEN / _totalStaked;
+    }
+  }
+
+  function _unClaimableRewards(address reward) internal view returns (uint256) {
+    uint256 distance = block.number - lockedRewardsLastBlock[reward];
+    if (distance < coolingPeriod) {
+      // if the cooling period has not passed, calculate the rewards that should
+      // still be locked
+      uint256 _lockedRewards = lockedRewards[reward];
+      uint256 _unlockedRewards = _lockedRewards * distance / coolingPeriod;
+      return (_lockedRewards - _unlockedRewards);
+    } 
+    return 0;
   }
 
   /// @notice Called by IdleCDO to deposit incentive rewards

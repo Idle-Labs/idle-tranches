@@ -158,7 +158,7 @@ describe("IdleCDO", function () {
     expect(await idleCDO.lastStrategyPrice()).to.be.equal(BN(10**18));
     expect(await idleCDO.fee()).to.be.equal(BN('10000'));
     expect(await idleCDO.releaseBlocksPeriod()).to.be.equal(BN('1500'));
-    expect(await idleCDO.feeReceiver()).to.equal('0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4');
+    expect(await idleCDO.feeReceiver()).to.equal('0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814');
     expect(await idleCDO.guardian()).to.equal(owner.address);
     expect(await idleCDO.weth()).to.equal(weth.address);
     expect(await idleCDO.incentiveTokens(0)).to.equal(incentiveTokens[0]);
@@ -1564,13 +1564,44 @@ describe("IdleCDO", function () {
     fakeStkAave.cooldown.should.be.calledOnce;
   });
 
+  it("claimStkAave cooldown ended and unstake window finished", async () => {
+    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+    await idleCDO.setIsStkAAVEActive(true);
+    await strategy.setWhitelistedCDO(idleCDO.address);
+    const blocknumber = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blocknumber);
+    const timestamp = block.timestamp;
+    await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 1000]);
+    // Mock response
+    fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
+    fakeStkAave.COOLDOWN_SECONDS.returns(10);
+    fakeStkAave.UNSTAKE_WINDOW.returns(100);
+    fakeStkAave.cooldown.returns();
+    // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
+    fakeStkAave.balanceOf.returns(0, 1);
+    fakeStkAave.balanceOf.returns(1, 1);
+    fakeStkAave.transfer.returns(0, true);
+    await idleCDO.connect(AABuyer).claimStkAave();
+    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+    fakeStkAave.cooldown.should.be.calledOnce;
+    fakeStkAave.redeem.should.not.be.calledOnce;
+    // 1 inside pullStkAAVE and 1 in idleCDO
+    fakeStkAave.balanceOf.should.be.calledTwice;
+  });
+
   it("claimStkAave cooldown ended", async () => {
     const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
     await idleCDO.setIsStkAAVEActive(true);
     await strategy.setWhitelistedCDO(idleCDO.address);
+    const blocknumber = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blocknumber);
+    const timestamp = block.timestamp;
+    await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 100]);
     // Mock response
-    fakeStkAave.stakersCooldowns.returnsAtCall(0, 100);
-    fakeStkAave.COOLDOWN_SECONDS.returns(100);
+    fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
+    fakeStkAave.COOLDOWN_SECONDS.returns(10);
+    fakeStkAave.UNSTAKE_WINDOW.returns(1000);
     fakeStkAave.redeem.returns();
     // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
     fakeStkAave.balanceOf.returns(0, 0);

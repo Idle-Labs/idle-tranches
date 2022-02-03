@@ -278,6 +278,60 @@ task("change-rewards", "Update rewards IdleCDO instance")
   });
 
 /**
+ * @name deploy-reward-contract
+ */
+task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct for senior tranches of an IdleCDO instance")
+  .addParam('cdoname')
+  .addParam('reward')
+  .setAction(async (args) => {
+    const deployToken = addresses.deployTokens[args.cdoname];
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+    
+    if (!deployToken.cdo.cdoAddr || !args.reward || !mainnetContracts.treasuryMultisig || !mainnetContracts.devLeagueMultisig) {
+      console.log('Missing params');
+      return;
+    }
+
+    const initParams = [
+      // address _rewardsDistribution,
+      deployToken.cdo.cdoAddr,
+      // address _rewardsToken,
+      args.reward,
+      // address _stakingToken
+      await cdo.AATranche(),
+      // address owner
+      mainnetContracts.devLeagueMultisig,
+      // _shouldTransfer
+      true
+    ];
+
+    const proxyFactory = await ethers.getContractAt("MinimalInitializableProxyFactory", mainnetContracts.minimalInitializableProxyFactory);
+    let res = await proxyFactory.connect(signer).create(mainnetContracts.snxStakingRewards);
+    res = await res.wait();
+    const newCloneAddr = res.events[0].args.proxy;
+    console.log('Staking rewards clone deployed at: ', newCloneAddr);
+
+    const newClone = await ethers.getContractAt("StakingRewards", newCloneAddr);
+    await newClone.connect(signer).initialize(...initParams);
+    console.log('Staking rewards clone owner: ', await newClone.owner());
+
+    if ((await newClone.owner()).toLowerCase() != mainnetContracts.devLeagueMultisig.toLowerCase()) {
+      console.error('Something is wrong with the new clone, owner is wrong');
+      return;
+    }
+    
+    // Upgrade reward contract with multisig
+    const multisig = await run('get-multisig-or-fake');
+    cdo = cdo.connect(multisig);
+    // Only Senior (AA) tranches will get rewards
+    await cdo.setStakingRewards(newCloneAddr, addresses.addr0);
+    console.log('AA staking ', await cdo.AAStaking());
+    console.log('BB staking ', await cdo.BBStaking());
+  });
+
+/**
  * @name find-convex-params
  * find params for a convex strategy (convexPoolId, depositPosition)
  */

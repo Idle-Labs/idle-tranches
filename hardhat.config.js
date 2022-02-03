@@ -17,7 +17,7 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
-const mainContactRuns = 110;
+const mainContactRuns = 90;
 
 module.exports = {
   solidity: {
@@ -76,8 +76,8 @@ module.exports = {
       //   // blockNumber: 13728440 // idleFEI upgraded
       //   // blockNumber: 13739407 // idleDAI upgraded
       //   // blockNumber: 13776718 // lido deploy
-      //   blockNumber: 13810230 // convex deploy
-      //   blockNumber: 13920387 // mstable integration
+      //   // blockNumber: 13810230 // convex deploy
+      //   blockNumber: 14075568 // StakingRewards deploy
       // }
     },
     coverage: {
