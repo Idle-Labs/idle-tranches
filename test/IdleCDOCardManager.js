@@ -606,6 +606,21 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.cardGroup(blendTokenId2)).deep.to.equal([BN(3), BN(4)]);
     });
 
+    it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+
+      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
+      await tx.wait();
+
+      blendTokenId =await cards.blendTokenId(1,2);
+      //cardTokenIds = await cards.idsFromBlend(blendTokenId);
+
+      cards.uncombine(blendTokenId);
+
+    });
+
   });
 
 });

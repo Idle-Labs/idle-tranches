@@ -66,6 +66,17 @@ contract IdleCDOCardManager is ERC721Enumerable {
      bl3nd.transferFrom(address(this), msg.sender, _blendTokenId);
   }
 
+  function uncombine(uint256 _blendTokenId) public {
+     uint256[] memory cardsTokenIds = cardGroup(_blendTokenId);
+     address deedAddress = bl3nd.getDeedAddress(_blendTokenId);
+     bl3nd.transferFrom(msg.sender,address(this), _blendTokenId);
+     Bl3ndDeed(deedAddress).unblend();
+     this.transferFrom(address(this),msg.sender,cardsTokenIds[0]);
+     this.transferFrom(address(this),msg.sender,cardsTokenIds[1]);
+     burn(cardsTokenIds[0]);
+     burn(cardsTokenIds[1]);
+  }
+
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
     // check if _idleCDOAddress exists in idleCDOAddress array
     require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
@@ -204,6 +215,10 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
      uint256 blendIndex = index - cardsBalance;
      return bl3nd.tokenOfOwnerByIndex(owner,blendIndex);
+  }
+
+  function getBl3ndAddress() public view returns(address) {
+    return address(bl3nd);
   }
 
 }
