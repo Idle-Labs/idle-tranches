@@ -14,9 +14,9 @@ const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18); // 18 decimals
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n)); // 1 token
 const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18)); // 1000 tokens
 
-describe("IdleCDOCardDouble", () => {
+describe("ERC721SimpleComposite", () => {
   beforeEach(async () => {
-    const Bl3nd = await ethers.getContractFactory("IdleCDOCardDouble");
+    const Bl3nd = await ethers.getContractFactory("MockERC721SimpleComposite");
     bl3nd = await Bl3nd.deploy();
     [owner,notOwner] = await ethers.getSigners();
   });

@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 
 import "../ERC721SimpleComposite.sol";
 
-contract IdleCDOCardDouble is ERC721SimpleComposite {
+contract MockERC721SimpleComposite is ERC721SimpleComposite {
   using Counters for Counters.Counter;
 
   Counters.Counter private _tokenIds;
