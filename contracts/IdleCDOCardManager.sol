@@ -66,15 +66,22 @@ contract IdleCDOCardManager is ERC721Enumerable {
      bl3nd.transferFrom(address(this), msg.sender, _blendTokenId);
   }
 
-  function uncombine(uint256 _blendTokenId) public {
-     uint256[] memory cardsTokenIds = cardGroup(_blendTokenId);
-     address deedAddress = bl3nd.getDeedAddress(_blendTokenId);
-     bl3nd.transferFrom(msg.sender,address(this), _blendTokenId);
-     Bl3ndDeed(deedAddress).unblend();
-     this.transferFrom(address(this),msg.sender,cardsTokenIds[0]);
-     this.transferFrom(address(this),msg.sender,cardsTokenIds[1]);
-     burn(cardsTokenIds[0]);
-     burn(cardsTokenIds[1]);
+  function uncombine(uint256 _tokenId) public {
+    address deedAddress = bl3nd.getDeedAddress(_tokenId);
+    if(deedAddress == address(0)) {
+        require(_cards[_tokenId].cardAddress != address(0), "Cannot burn an non existing token");
+        burn(_tokenId);
+        return;
+    }
+    require(msg.sender == bl3nd.ownerOf(_tokenId), "cannot uncombine a token that is not own");
+    uint256[] memory cardsTokenIds = cardGroup(_tokenId);
+    // is blend
+    bl3nd.transferFrom(msg.sender,address(this), _tokenId);
+    Bl3ndDeed(deedAddress).unblend();
+    this.transferFrom(address(this),msg.sender,cardsTokenIds[0]);
+    this.transferFrom(address(this),msg.sender,cardsTokenIds[1]);
+    burn(cardsTokenIds[0]);
+    burn(cardsTokenIds[1]);
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
@@ -129,7 +136,6 @@ contract IdleCDOCardManager is ERC721Enumerable {
   
     return tokenCardIds;
   }
-  
 
   function burn(uint256 _tokenId) public returns (uint256 toRedeem) {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
@@ -198,6 +204,15 @@ contract IdleCDOCardManager is ERC721Enumerable {
       }
     }
     return false;
+  }
+
+  function getTokenId(address _idleCDOAddress) private view returns (uint256) {
+    for (uint256 i = 0; i < idleCDOs.length; i++) {
+      if (address(idleCDOs[i]) == _idleCDOAddress) {
+        return i;
+      }
+    }
+    return 0;
   }
 
   function balanceOf(address owner) public view virtual override returns (uint256) {

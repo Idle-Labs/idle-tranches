@@ -7,6 +7,7 @@ const helpers = require("../scripts/helpers");
 const addresses = require("../lib/addresses");
 const { initialIdleContractsDeploy, setAprs, setFEIAprs, balance, mint, mintAABuyer, approveNFT, mintCDO, combineCDOs } = require("../scripts/card-helpers");
 const expectEvent = require("@openzeppelin/test-helpers/src/expectEvent");
+const { id } = require("ethers/lib/utils");
 
 const BN = (n) => BigNumber.from(n.toString());
 const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18);
@@ -607,19 +608,155 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+      // APR AA=4 BB=16
+      await idleToken.setFee(BN("0"));
+      await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+      // APR AA=4 BB=16
+      await idleTokenFEI.setFee(BN("0"));
+      await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
 
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-      
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
+
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
       await tx.wait();
 
-      blendTokenId =await cards.blendTokenId(1,2);
-      //cardTokenIds = await cards.idsFromBlend(blendTokenId);
+      // deposit in the lending protocol
+      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
 
-      cards.uncombine(blendTokenId);
+      // update lending protocol price which is now 2
+      await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      // deposit in the lending protocol
+      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      // update lending protocol price which is now 2
+      await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      //TODO replace 
+      blendTokenId = await cards.blendTokenId(3,4);
+      let bl3ndAddress = await cards.getBl3ndAddress();
+
+      let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
+      await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
+
+      tx = await cards.connect(AABuyer).uncombine(blendTokenId);
+      await tx.wait();
+
+      //gain with fee: apr: 26.66% fee:10% = 1000*0.2666*0.9 = 240
+      //initialAmount - 1000 + 1240
+      expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("240").mul(ONE_TOKEN(18))));
+      //gain with fee: apr: 77.33% fee:10% = (750*32% + 250*213.33% )*0.9 = 1000*77.33% = 696
+      //initialAmount - 1000 + 1696
+      expect(await underlyingFEI.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
+    });
+
+    it("should degenerate a non blended NFT Idle CDO Card with DAI", async () => {
+      // APR AA=4 BB=16
+      await idleToken.setFee(BN("0"));
+      await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+      
+      //mint
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
+      // deposit in the lending protocol
+      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      
+      // update lending protocol price which is now 2
+      await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      
+      //burn
+      const tokenIdCard = 2;
+      tx = await cards.connect(AABuyer).uncombine(tokenIdCard);
+      await tx.wait();
+      
+      //gain with fee: apr: 26.66% fee:10% = 1000*0.2666*0.9 = 240
+      //initialAmount - 1000 + 1240
+      expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("240").mul(ONE_TOKEN(18))));
+    });
+
+    it("should not degenerate a risk card if not the owner", async () => {
+      let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
+
+      const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
+
+      await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
+
+      const buyerBalanceBeforeMint = await underlyingContract.balanceOf(AABuyerAddr);
+      expect(buyerBalanceBeforeMint).to.be.equal(buyerBalanceAfterMint.sub(ONE_THOUSAND_TOKEN));
+
+      expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
+      expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
+
+      pos = await cards.card(1);
+      expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
+      expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
+      expect(pos.cardAddress).to.be.not.undefined;
+
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
+
+      await expect(cards.connect(BBBuyer).uncombine(1)).to.be.revertedWith("burn of risk card that is not own");
+
+      const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
+      expect(aaTrancheBalAfterBurn).to.be.equal(ONE_THOUSAND_TOKEN);
+
+      expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
+    });
+
+    it("should not degenerate a non existing risk card", async () => {
+      await expect(cards.connect(AABuyer).uncombine(9)).to.be.revertedWith("Cannot burn an non existing token");
+    });
+
+    it("should not degenerate a new blended NFT Idle CDO Card combining DAI and FEI if not the owner", async () => {
+      // APR AA=4 BB=16
+      await idleToken.setFee(BN("0"));
+      await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mint(D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+      // APR AA=4 BB=16
+      await idleTokenFEI.setFee(BN("0"));
+      await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
+      await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
+
+      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
+
+      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
+      await tx.wait();
+
+      // deposit in the lending protocol
+      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+
+      // update lending protocol price which is now 2
+      await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      // deposit in the lending protocol
+      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      // update lending protocol price which is now 2
+      await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
+      // to update tranchePriceAA which will be 1.9
+      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+
+      //TODO replace 
+      blendTokenId = await cards.blendTokenId(3,4);
+      let bl3ndAddress = await cards.getBl3ndAddress();
+
+      let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
+      await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
+
+      await expect(cards.connect(BBBuyer).uncombine(blendTokenId)).to.be.revertedWith("cannot uncombine a token that is not ow");
 
     });
+
 
   });
 
