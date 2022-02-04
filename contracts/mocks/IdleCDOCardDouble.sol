@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.7;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-import "./ERC721SimpleComposite.sol";
+import "../ERC721SimpleComposite.sol";
 
 contract IdleCDOCardDouble is ERC721SimpleComposite {
   using Counters for Counters.Counter;
