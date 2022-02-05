@@ -40,7 +40,7 @@ const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
 // const KEY_SAVINGS_MANAGER = "0x12fe936c77a1e196473c4314f3bed8eeac1d757b319abb85bdda70df35511bf1";
 const savingsManagerAddress = "0xBC3B550E0349D74bF5148D86114A48C3B4Aa856F";
 
-describe.only("IdleMStableStrategy", function () {
+describe("IdleMStableStrategy", function () {
   let IdleMStableStrategy;
 
   let owner;

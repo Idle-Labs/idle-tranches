@@ -1,0 +1,176 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.10;
+
+import "../../interfaces/IIdleCDOStrategy.sol";
+import "../../interfaces/IERC20Detailed.sol";
+import "../../interfaces/harvest/IHarvestVault.sol";
+import "../../interfaces/harvest/IRewardPool.sol";
+
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
+import "hardhat/console.sol";
+
+contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, ReentrancyGuardUpgradeable, IIdleCDOStrategy {
+    using SafeERC20Upgradeable for IERC20Detailed;
+
+    // ex: DAI
+    address public override token;
+
+    // ex: fDAI
+    address public override strategyToken;
+
+    uint256 public override tokenDecimals;
+
+    uint256 public override oneToken;
+
+    IERC20Detailed public underlyingToken;
+
+    address public rewardPool;
+
+    uint256 public lastIndexAmount;
+
+    uint256 public lastIndexedTime;
+
+    address public idleCDO;
+
+    uint256 public constant YEAR = 365 days;
+
+    address public govToken;
+
+    constructor() {
+        token = address(1);
+    }
+
+    function initialize(
+        address _strategyToken,
+        address _underlyingToken,
+        address _rewardPool,
+        address _owner
+    ) public initializer {
+        OwnableUpgradeable.__Ownable_init();
+        ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
+        require(token == address(0), "Token is already initialized");
+
+        //----- // -------//
+        strategyToken = _strategyToken;
+        rewardPool = _rewardPool;
+        token = _underlyingToken;
+        underlyingToken = IERC20Detailed(token);
+        tokenDecimals = underlyingToken.decimals();
+        oneToken = 10**(tokenDecimals);
+
+        govToken = IRewardPool(rewardPool).rewardToken();
+        console.log("gov token during init", govToken);
+        ERC20Upgradeable.__ERC20_init("Idle Harvest Strategy Token", string(abi.encodePacked("idleHS", underlyingToken.symbol())));
+        //------//-------//
+
+        transferOwnership(_owner);
+        lastIndexedTime = block.timestamp;
+    }
+
+    function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
+        rewards = _redeemRewards();
+    }
+
+    function redeemRewards(bytes calldata) external override onlyIdleCDO returns (uint256[] memory rewards) {
+        rewards = _redeemRewards();
+    }
+
+    function _redeemRewards() internal returns (uint256[] memory) {
+        uint256 rewardBalanceBefore = IRewardPool(rewardPool).balanceOf(address(this));
+        IRewardPool(rewardPool).getReward();
+        uint256 rewardBalanceAfter = IRewardPool(rewardPool).balanceOf(address(this));
+        uint256 balanceReceived = rewardBalanceAfter - rewardBalanceBefore;
+        uint256[] memory rewards = new uint256[](1);
+        rewards[0] = balanceReceived;
+        return rewards;
+    }
+
+    function pullStkAAVE() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function price() public view override returns (uint256) {
+        return IHarvestVault(strategyToken).getPricePerFullShare();
+    }
+
+    function getRewardTokens() external view override returns (address[] memory) {
+        address[] memory govTokens = new address[](1);
+        govTokens[0] = govToken;
+        return govTokens;
+    }
+
+    function getApr() external view returns (uint256) {
+        uint256 rawBalance = IRewardPool(rewardPool).balanceOf(address(this));
+        uint256 expectedUnderlyingAmount = (price() * rawBalance) / oneToken;
+
+        uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
+        if (gain == 0) {
+            return 0;
+        }
+        uint256 time = block.timestamp - lastIndexedTime;
+        uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
+        uint256 apr = (YEAR / time) * gainPerc;
+        return apr;
+    }
+
+    function redeem(uint256 _amount) external returns (uint256) {
+        return _redeem(_amount);
+    }
+
+    function redeemUnderlying(uint256 _amount) external returns (uint256) {
+        uint256 _underlyingAmount = (_amount * oneToken) / price();
+        return _redeem(_underlyingAmount);
+    }
+
+    function _redeem(uint256 _amount) internal returns (uint256) {
+        lastIndexAmount = lastIndexAmount - _amount;
+        lastIndexedTime = block.timestamp;
+        _burn(msg.sender, _amount);
+        console.log("amount in reward pool", IRewardPool(rewardPool).balanceOf(address(this)));
+        IRewardPool(rewardPool).withdraw(_amount);
+        uint256 balanceBefore = underlyingToken.balanceOf(address(this));
+        IHarvestVault(strategyToken).withdraw(_amount);
+        uint256 balanceAfter = underlyingToken.balanceOf(address(this));
+        uint256 balanceReceived = balanceAfter - balanceBefore;
+        underlyingToken.transfer(msg.sender, balanceReceived);
+        return balanceReceived;
+    }
+
+    function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
+        if (_amount > 0) {
+            underlyingToken.transferFrom(msg.sender, address(this), _amount);
+            minted = _depositToVault(_amount);
+        }
+    }
+
+    function _depositToVault(uint256 _amount) internal returns (uint256) {
+        underlyingToken.approve(strategyToken, _amount);
+        lastIndexAmount = lastIndexAmount + _amount;
+        lastIndexedTime = block.timestamp;
+        IHarvestVault(strategyToken).deposit(_amount);
+
+        uint256 interestTokenAvailable = IERC20Detailed(strategyToken).balanceOf(address(this));
+        IERC20Detailed(strategyToken).approve(rewardPool, interestTokenAvailable);
+
+        IRewardPool(rewardPool).stake(interestTokenAvailable);
+
+        _mint(msg.sender, interestTokenAvailable);
+        return interestTokenAvailable;
+    }
+
+    /// @notice allow to update whitelisted address
+    function setWhitelistedCDO(address _cdo) external onlyOwner {
+        require(_cdo != address(0), "IS_0");
+        idleCDO = _cdo;
+    }
+
+    /// @notice Modifier to make sure that caller os only the idleCDO contract
+    modifier onlyIdleCDO() {
+        require(idleCDO == msg.sender, "Only IdleCDO can call");
+        _;
+    }
+}

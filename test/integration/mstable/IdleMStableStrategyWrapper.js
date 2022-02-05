@@ -24,16 +24,11 @@ const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
 const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
 
-describe.only("IdleMStable Strategy Wrapper", function () {
+describe("IdleMStable Strategy Wrapper", function () {
   before(async () => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
     await hre.ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
->>>>>>> dc76f4816012d34d576dec86f03ce8dc6315cea6
-=======
     await hre.ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
->>>>>>> 3235f0cb8477a6e92b5041cd45d9427ccf11c0fa
+
     await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
   });
 
@@ -66,13 +61,7 @@ describe.only("IdleMStable Strategy Wrapper", function () {
       BBBuyer.address,
       AMOUNT_TO_TRANSFER.mul(10)
     );
-<<<<<<< HEAD
-<<<<<<< HEAD
 
-=======
->>>>>>> dc76f4816012d34d576dec86f03ce8dc6315cea6
-=======
->>>>>>> 3235f0cb8477a6e92b5041cd45d9427ccf11c0fa
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
