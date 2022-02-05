@@ -7,9 +7,9 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./IdleCDO.sol";
 import "./IdleCDOCard.sol";
-import "./IdleCDOCardBl3nd.sol";
+import "./ERC721SimpleComposite.sol";
 
-contract IdleCDOCardManager is ERC721Enumerable {
+contract IdleCDOCardManager is ERC721SimpleComposite {
   using Counters for Counters.Counter;
   using SafeERC20Upgradeable for IERC20Detailed;
   using SafeMath for uint256;
@@ -24,7 +24,6 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   IdleCDO[] public idleCDOs;
-  IdleCDOCardBl3nd private bl3nd;
 
   Counters.Counter private _tokenIds;
   mapping(uint256 => Card) private _cards;
@@ -33,63 +32,47 @@ contract IdleCDOCardManager is ERC721Enumerable {
     for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
       idleCDOs.push(IdleCDO(_idleCDOAddress[i]));
     }
-    bl3nd = new IdleCDOCardBl3nd(address(this));
   }
 
   function getIdleCDOs() public view returns (IdleCDO[] memory) {
     return idleCDOs;
   }
 
-  function combine(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI,address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public {
-     require(_amountDAI > 0 ||  _amountFEI > 0, "Not possible to mint a card with 0 amounts");
-     if(_amountDAI == 0) { 
-       mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
-       return;
-     }
-     if(_amountFEI == 0) {
-       mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-       return;
-     }
-     uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-     uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
-
-     transferFrom(msg.sender, address(this), cardDAI); 
-     transferFrom(msg.sender, address(this), cardFEI);
-
-     this.approve(address(bl3nd), cardDAI);
-     this.approve(address(bl3nd), cardFEI);
-      
-     bl3nd.blend(this, cardDAI, this, cardFEI);
-     
-     uint256 _blendTokenId = blendTokenId(cardDAI, cardFEI);
-
-     bl3nd.transferFrom(address(this), msg.sender, _blendTokenId);
-  }
-
-  function uncombine(uint256 _tokenId) public {
-    address deedAddress = bl3nd.getDeedAddress(_tokenId);
-    if(deedAddress == address(0)) {
-        require(_cards[_tokenId].cardAddress != address(0), "Cannot burn an non existing token");
-        burn(_tokenId);
-        return;
+  function combine(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public {
+    require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
+    if (_amountDAI == 0) {
+      mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+      return;
     }
-    require(msg.sender == bl3nd.ownerOf(_tokenId), "cannot uncombine a token that is not own");
-    uint256[] memory cardsTokenIds = cardGroup(_tokenId);
-    // is blend
-    bl3nd.transferFrom(msg.sender,address(this), _tokenId);
-    Bl3ndDeed(deedAddress).unblend();
-    this.transferFrom(address(this),msg.sender,cardsTokenIds[0]);
-    this.transferFrom(address(this),msg.sender,cardsTokenIds[1]);
-    burn(cardsTokenIds[0]);
-    burn(cardsTokenIds[1]);
+    if (_amountFEI == 0) {
+      mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+      return;
+    }
+
+    uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+    uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+
+    _combine(cardDAI, cardFEI);
   }
 
-  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
+  function uncombine(uint256 _tokenId) public returns (uint256 tokenId1, uint256 tokenId2) {
+    require(!isNotExist(_tokenId), "Cannot burn an non existing token");
+    if (isLeaf(_tokenId)) {
+      burn(_tokenId);
+      return (_tokenId, 0);
+    }
+    (uint256 id0, uint256 id1) = _uncombine(_tokenId);
+    burn(id0);
+    burn(id1);
+    return (id0, id1);
+  }
+
+  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount ) public returns (uint256) {
     // check if _idleCDOAddress exists in idleCDOAddress array
     require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
 
     IdleCDOCard _card = new IdleCDOCard(_idleCDOAddress);
-    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
+    IERC20Detailed underlying = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
 
     // transfer amount to cards protocol
     underlying.safeTransferFrom(msg.sender, address(this), _amount);
@@ -118,23 +101,8 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return _cards[_tokenId];
   }
 
-  function cardGroup(uint256 _tokenId) public view returns (uint256[]  memory tokenCardIds ) {
-    tokenCardIds = new uint256[](2);
-    if(_cards[_tokenId].cardAddress!=address(0)) {
-        tokenCardIds[0] = _tokenId;
-        return tokenCardIds;
-    }
-  
-    address deedAddress = bl3nd.getDeedAddress(_tokenId);
-    if(deedAddress == address(0)) {
-      return tokenCardIds;
-    }
-  
-    Bl3ndDeed deed = Bl3ndDeed(deedAddress);
-    tokenCardIds[0] = deed.id0();
-    tokenCardIds[1] = deed.id1();
-  
-    return tokenCardIds;
+  function cardGroup(uint256 _tokenId) public view returns (uint256[] memory tokenCardIds) {
+    return contentIndexes(_tokenId);
   }
 
   function burn(uint256 _tokenId) public returns (uint256 toRedeem) {
@@ -147,12 +115,11 @@ contract IdleCDOCardManager is ERC721Enumerable {
     toRedeem = _card.burn();
 
     // transfer to card owner
-    IERC20Detailed underlying  = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+    IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
     underlying.safeTransfer(msg.sender, toRedeem);
   }
 
   function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
-
     IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
 
     // ratioAA = ratio of 1 - _exposure of the AA apr
@@ -173,14 +140,9 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return _card.balance();
   }
 
-  function blendTokenId(uint256 id0,  uint256 id1) public view returns (uint256) {
-    return bl3nd.blendTokenId(this, id0, this, id1);
-  }
   function idsFromBlend(uint256 _blendTokenId) public view returns (uint256 id0, uint256 id1) {
-    address deedAddress= bl3nd.getDeedAddress(_blendTokenId);
-    Bl3ndDeed deed = Bl3ndDeed(deedAddress);
-    id0 = deed.id0();
-    id1 = deed.id1();
+    id0 = contentIndexes(_blendTokenId)[0];
+    id1 = contentIndexes(_blendTokenId)[1];
   }
 
   function percentage(uint256 _percentage, uint256 _amount) private pure returns (uint256) {
@@ -188,7 +150,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return _amount.mul(_percentage).div(RATIO_PRECISION);
   }
 
-  function _mint() private returns (uint256) {
+  function _mint() internal override returns (uint256) {
     _tokenIds.increment();
 
     uint256 newItemId = _tokenIds.current();
@@ -215,25 +177,14 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return 0;
   }
 
-  function balanceOf(address owner) public view virtual override returns (uint256) {
-     return super.balanceOf(owner) + bl3nd.balanceOf(owner);
-  }
 
   function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
-     require(index < balanceOf(owner),"No Card found for index");
-
-     uint256 cardsBalance = super.balanceOf(owner);
-
-     if (cardsBalance > index) {
-        return super.tokenOfOwnerByIndex(owner,index);
-     }
-
-     uint256 blendIndex = index - cardsBalance;
-     return bl3nd.tokenOfOwnerByIndex(owner,blendIndex);
+    require(index < balanceOf(owner), "No Card found for index");
+    return super.tokenOfOwnerByIndex(owner, index);
   }
 
-  function getBl3ndAddress() public view returns(address) {
-    return address(bl3nd);
-  }
 
+  function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
+    return _cards[_tokenId].cardAddress != address(0);
+  }
 }

@@ -510,8 +510,9 @@ describe("IdleCDOCardManager", () => {
       tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
       await tx.wait();
 
-      blendTokenId =await cards.blendTokenId(1,2);
+      blendTokenId =3;
       cardTokenIds = await cards.idsFromBlend(blendTokenId);
+      
       expect(cardTokenIds.length).to.be.equal(2);
       expect(cardTokenIds[0]).to.be.equal(1);
       expect(cardTokenIds[1]).to.be.equal(2);
@@ -565,7 +566,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(1);
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
 
-      blendTokenId =await cards.blendTokenId(3,4);
+      blendTokenId =5;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 2)).to.be.equal(blendTokenId);
     });
 
@@ -573,10 +574,10 @@ describe("IdleCDOCardManager", () => {
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      blendTokenId1 =await cards.blendTokenId(1,2);
+      blendTokenId1 = 3;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(blendTokenId1);
       
-      blendTokenId2 =await cards.blendTokenId(3,4);
+      blendTokenId2 =6;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(blendTokenId2);
     });
 
@@ -592,19 +593,19 @@ describe("IdleCDOCardManager", () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
-      expect(await cards.cardGroup(1)).deep.to.equal([BN(1), BN(0)]);
-      expect(await cards.cardGroup(2)).deep.to.equal([BN(2), BN(0)]);
+      expect(await cards.cardGroup(1)).deep.to.equal([BN(1)]);
+      expect(await cards.cardGroup(2)).deep.to.equal([BN(2)]);
     });
 
     it("should be able to get combined card as combined group", async () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      blendTokenId1 = await cards.blendTokenId(1, 2);
+      blendTokenId1 = 3;
       expect(await cards.cardGroup(blendTokenId1)).deep.to.equal([BN(1), BN(2)]);
 
-      blendTokenId2 = await cards.blendTokenId(3, 4);
-      expect(await cards.cardGroup(blendTokenId2)).deep.to.equal([BN(3), BN(4)]);
+      blendTokenId2 =6;
+      expect(await cards.cardGroup(blendTokenId2)).deep.to.equal([BN(4), BN(5)]);
     });
 
     it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
@@ -639,11 +640,11 @@ describe("IdleCDOCardManager", () => {
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
       //TODO replace 
-      blendTokenId = await cards.blendTokenId(3,4);
-      let bl3ndAddress = await cards.getBl3ndAddress();
+      blendTokenId = 5;
+      // let bl3ndAddress = await cards.getBl3ndAddress();
 
-      let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
-      await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
+      // let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
+      // await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
 
       tx = await cards.connect(AABuyer).uncombine(blendTokenId);
       await tx.wait();
@@ -747,13 +748,13 @@ describe("IdleCDOCardManager", () => {
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
       //TODO replace 
-      blendTokenId = await cards.blendTokenId(3,4);
-      let bl3ndAddress = await cards.getBl3ndAddress();
+      blendTokenId = 5
+      // let bl3ndAddress = await cards.getBl3ndAddress();
 
-      let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
-      await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
+      // let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
+      // await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
 
-      await expect(cards.connect(BBBuyer).uncombine(blendTokenId)).to.be.revertedWith("cannot uncombine a token that is not ow");
+      await expect(cards.connect(BBBuyer).uncombine(blendTokenId)).to.be.revertedWith("Only owner can uncombine combined leafs");
 
     });
 
