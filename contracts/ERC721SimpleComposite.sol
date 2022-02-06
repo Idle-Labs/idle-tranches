@@ -15,7 +15,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
 
   function _mint() internal virtual returns (uint256);
 
-  function _combine(uint256 _tokenId1, uint256 _tokenId2) public virtual returns (uint256) {
+  function _combine(uint256 _tokenId1, uint256 _tokenId2) internal virtual returns (uint256) {
     require(isLeaf(_tokenId1) && isLeaf(_tokenId2), "Only leafs can be combined");
     require(!isCombined[_tokenId1] && !isCombined[_tokenId2], "Leafs were already combined");
     require(isContentExists(_tokenId1) && isContentExists(_tokenId2), "There are inexistent leafs");
@@ -32,7 +32,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
     return tokenId;
   }
 
-  function _uncombine(uint256 _tokenId) public virtual returns (uint256 tokenId1, uint256 tokenId2) {
+  function _uncombine(uint256 _tokenId) internal virtual returns (uint256 tokenId1, uint256 tokenId2) {
     require(!isNotExist(_tokenId), "The token does not exist");
     require(!isLeaf(_tokenId), "Can not uncombine a non-combined token");
     require(msg.sender == ownerOf(_tokenId), "Only owner can uncombine combined leafs");

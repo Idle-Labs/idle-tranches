@@ -11,7 +11,7 @@ contract MockERC721SimpleComposite is ERC721SimpleComposite {
   Counters.Counter private _tokenIds;
   mapping(uint256 => uint256) private _content;
 
-  constructor() ERC721("IdleCDOCardManager", "ICC") {}
+  constructor() ERC721("MockERC721", "MCK") {}
 
   function content(uint256 _tokenId) public view returns (uint256) {
     return _content[_tokenId];
@@ -34,5 +34,13 @@ contract MockERC721SimpleComposite is ERC721SimpleComposite {
 
   function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
     return _content[_tokenId] != 0;
+  }
+
+  function combine(uint256 _tokenId1, uint256 _tokenId2) public returns (uint256) {
+    return _combine(_tokenId1, _tokenId2);
+  }
+
+  function uncombine(uint256 _tokenId) public returns (uint256 tokenId1, uint256 tokenId2) {
+    return _uncombine(_tokenId);
   }
 }
