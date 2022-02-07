@@ -26,7 +26,7 @@ describe("IdleCDOCardManager", () => {
     cards = await IdleCDOCardManager.deploy([idleCDO.address, idleCDOFEI.address]);
     await cards.deployed();
   });
- it("should be successfully initialized", async () => {
+  it("should be successfully initialized", async () => {
     expect(await cards.name()).to.be.equal("IdleCDOCardManager");
   });
 
@@ -37,6 +37,22 @@ describe("IdleCDOCardManager", () => {
   it("should return a idleCDOS list with two items (DAI and FEI)", async () => {
     expect(await cards.getIdleCDOs()).to.have.lengthOf(2);
     expect(await cards.getIdleCDOs()).to.be.eql([idleCDO.address, idleCDOFEI.address]);
+  });
+
+
+  it("should allow to list tokens by owner", async () => {
+    await mintAABuyer(D18(0.25), ONE_THOUSAND_TOKEN);
+    await mintAABuyer(D18(0.3), ONE_THOUSAND_TOKEN);
+
+    const balance = await cards.balanceOf(AABuyerAddr);
+    expect(balance).to.be.equal(2);
+
+    expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(1);
+    expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
+  });
+
+  it("should not able to get a balance of an inexistent card", async () => {
+    await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
   });
 
   describe("when mint an idle cdo card", async () => {
@@ -135,17 +151,6 @@ describe("IdleCDOCardManager", () => {
     it("should revert the transaction if risk exposure is greater than 100%", async () => {
       await expect(mintAABuyer(EXPOSURE(1.000000001), ONE_THOUSAND_TOKEN)).to.be.revertedWith("percentage should be between 0 and 1");
     });
-  });
-
-  it("should allow to list tokens by owner", async () => {
-    await mintAABuyer(D18(0.25), ONE_THOUSAND_TOKEN);
-    await mintAABuyer(D18(0.3), ONE_THOUSAND_TOKEN);
-
-    const balance = await cards.balanceOf(AABuyerAddr);
-    expect(balance).to.be.equal(2);
-
-    expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(1);
-    expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
   });
 
   describe("when returns APRs", async () => {
@@ -469,15 +474,11 @@ describe("IdleCDOCardManager", () => {
     });
   });
 
-  it("should not able to get a balance of an inexistent card", async () => {
-    await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
-  });
-
   describe("when combine idleCDOs", async () => {
+
     it("should only generate a card with IdleCdoDAI when is mint with O IdleCdoFEI amount ", async () => {
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), 0);
-      await tx.wait();
+      await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, EXPOSURE(0.25), 0);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
@@ -488,8 +489,7 @@ describe("IdleCDOCardManager", () => {
 
     it("should only generate a card with IdleCdoFEI when is mint with O IdleCdoDAI amount ", async () => {
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), 0,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
-      await tx.wait();
+      await combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
 
       pos = await cards.card(1);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
@@ -499,7 +499,7 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should revert minting card with 0 amount in DAI and FEI", async () => {
-      await expect(cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), 0,idleCDOFEI.address,EXPOSURE(0), 0)).to.be.revertedWith("Not possible to mint a card with 0 amounts");
+      await expect(combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0), 0)).to.be.revertedWith("Not possible to mint a card with 0 amounts");
     });
 
     it("should generate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
@@ -507,8 +507,7 @@ describe("IdleCDOCardManager", () => {
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
-      await tx.wait();
+      await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
 
       blendTokenId =3;
       cardTokenIds = await cards.contentIndexes(blendTokenId);
@@ -608,7 +607,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.contentIndexes(blendTokenId2)).deep.to.equal([BN(4), BN(5)]);
     });
 
-    it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+    xit("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
@@ -621,8 +620,7 @@ describe("IdleCDOCardManager", () => {
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
 
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
-      await tx.wait();
+      await combineCDOs(AABuyer, EXPOSURE(0), ONE_THOUSAND_TOKEN,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
 
       // deposit in the lending protocol
       await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
@@ -639,13 +637,7 @@ describe("IdleCDOCardManager", () => {
       // to update tranchePriceAA which will be 1.9
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      //TODO replace 
       blendTokenId = 5;
-      // let bl3ndAddress = await cards.getBl3ndAddress();
-
-      // let bl3ndContract = await ethers.getContractAt("ERC721", bl3ndAddress);
-      // await helpers.sudoCall(AABuyerAddr, bl3ndContract, "approve", [cards.address, blendTokenId]);
-
       tx = await cards.connect(AABuyer).burn(blendTokenId);
       await tx.wait();
 
@@ -729,8 +721,7 @@ describe("IdleCDOCardManager", () => {
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
 
-      tx = await cards.connect(AABuyer).combine(idleCDO.address, EXPOSURE(0), ONE_THOUSAND_TOKEN,idleCDOFEI.address,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
-      await tx.wait();
+      await combineCDOs(AABuyer, EXPOSURE(0), ONE_THOUSAND_TOKEN,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
 
       // deposit in the lending protocol
       await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);

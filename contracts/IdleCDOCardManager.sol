@@ -55,7 +55,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     _combine(cardDAI, cardFEI);
   }
 
-  function burn(uint256 _tokenId) public{
+  function burn(uint256 _tokenId) public {
     require(!isNotExist(_tokenId), "Cannot burn an non existing token");
     if (isLeaf(_tokenId)) {
        internalBurn(_tokenId);
