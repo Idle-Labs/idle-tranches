@@ -1,18 +1,6 @@
 require("hardhat/config");
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { BigNumber } = require("@ethersproject/bignumber");
-
-const helpers = require("../scripts/helpers");
-const addresses = require("../lib/addresses");
-const { initialIdleContractsDeploy,  mint, approveNFT } = require("../scripts/card-helpers");
-const { isBigNumberish } = require("@ethersproject/bignumber/lib/bignumber");
-
-const BN = (n) => BigNumber.from(n.toString()); // BigNumber
-const D18 = (n) => ethers.utils.parseUnits(n.toString(), 18); // 18 decimals
-
-const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n)); // 1 token
-const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18)); // 1000 tokens
 
 describe("ERC721SimpleComposite", () => {
   beforeEach(async () => {
