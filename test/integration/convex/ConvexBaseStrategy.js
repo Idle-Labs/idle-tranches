@@ -53,7 +53,7 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     curve_args = [USDC, addresses.addr0, DEPOSIT_POSITION_3CRV]
     reward_cvx = [CVX, SUSHI_ROUTER, CVXWETH];
     reward_crv = [CRV, SUSHI_ROUTER, CRVWETH];
-    reward_spell = [SPELL, SUSHI_ROUTER, CRVWETH];
+    reward_spell = [SPELL, SUSHI_ROUTER, SPELLWETH];
     weth2deposit = [SUSHI_ROUTER, WETHUSDC];
   });
   

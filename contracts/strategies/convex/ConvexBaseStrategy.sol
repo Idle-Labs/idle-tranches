@@ -287,18 +287,23 @@ abstract contract ConvexBaseStrategy is
 
         IBaseRewardPool(rewardPool).getReward();
 
+        address _reward;
+        IERC20Detailed _rewardToken;
+        uint256 _rewardBalance;
+        IUniswapV2Router02 _router;
+
         for (uint256 i = 0; i < _convexRewards.length; i++) {
             if (_skipSell[i]) continue;
 
-            address _reward = _convexRewards[i];
+            _reward = _convexRewards[i];
 
             // get reward balance and safety check
-            IERC20Detailed _rewardToken = IERC20Detailed(_reward);
-            uint256 _rewardBalance = _rewardToken.balanceOf(address(this));
+            _rewardToken = IERC20Detailed(_reward);
+            _rewardBalance = _rewardToken.balanceOf(address(this));
 
             if (_rewardBalance == 0) continue;
 
-            IUniswapV2Router02 _router = IUniswapV2Router02(
+            _router = IUniswapV2Router02(
                 rewardRouter[_reward]
             );
 
@@ -306,7 +311,6 @@ abstract contract ConvexBaseStrategy is
             _rewardToken.safeApprove(address(_router), 0);
             _rewardToken.safeApprove(address(_router), _rewardBalance);
 
-            // we accept 1 as minimum because this is executed by a trusted CDO
             address[] memory _reward2WethPath = reward2WethPath[_reward];
             uint256[] memory _res = new uint256[](_reward2WethPath.length);
             _res = _router.swapExactTokensForTokens(
