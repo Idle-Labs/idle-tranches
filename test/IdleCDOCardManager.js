@@ -144,7 +144,7 @@ describe("IdleCDOCardManager", () => {
 
     it("should revert the transaction if idleCDO selected is not listed", async () => {
       const notListedAddress = "0x1000000000000000000000000000000000000001";
-      await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
+      await expect(cards.connect(AABuyer)["mint(address,uint256,uint256)"](notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
 
     });
 
@@ -585,7 +585,7 @@ describe("IdleCDOCardManager", () => {
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 3)).to.be.revertedWith("No Card found for index");
+      await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 3)).to.be.revertedWith("ERC721Enumerable: owner index out of bounds");
     });
 
     it("should be able to get not combined card as combined group", async () => {
@@ -600,14 +600,11 @@ describe("IdleCDOCardManager", () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      blendTokenId1 = 3;
-      expect(await cards.contentIndexes(blendTokenId1)).deep.to.equal([BN(1), BN(2)]);
-
-      blendTokenId2 =6;
-      expect(await cards.contentIndexes(blendTokenId2)).deep.to.equal([BN(4), BN(5)]);
+      expect(await cards.contentIndexes(3)).deep.to.equal([BN(1), BN(2)]);
+      expect(await cards.contentIndexes(6)).deep.to.equal([BN(4), BN(5)]);
     });
 
-    xit("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+    it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
@@ -617,21 +614,13 @@ describe("IdleCDOCardManager", () => {
       await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
 
-      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-
       await combineCDOs(AABuyer, EXPOSURE(0), ONE_THOUSAND_TOKEN,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
-
-      // deposit in the lending protocol
-      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
 
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
       await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      // deposit in the lending protocol
-      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
       // update lending protocol price which is now 2
       await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
@@ -718,28 +707,19 @@ describe("IdleCDOCardManager", () => {
       await idleTokenFEI.setApr(BN("10").mul(ONE_TOKEN(18)));
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, BBBuyer);
 
-      await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-      await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
-
       await combineCDOs(AABuyer, EXPOSURE(0), ONE_THOUSAND_TOKEN,EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
-
-      // deposit in the lending protocol
-      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
 
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
       await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      // deposit in the lending protocol
-      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
       // update lending protocol price which is now 2
       await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      blendTokenId = 5
-      await expect(cards.connect(BBBuyer).burn(blendTokenId)).to.be.revertedWith("Only owner can uncombine combined leafs");
+      await expect(cards.connect(BBBuyer).burn(5)).to.be.revertedWith("Only owner can uncombine combined leafs");
 
     });
 

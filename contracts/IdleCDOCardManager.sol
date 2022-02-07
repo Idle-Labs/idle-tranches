@@ -38,36 +38,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return idleCDOs;
   }
 
-  function combine(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public {
-    require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
-    if (_amountDAI == 0) {
-      mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
-      return;
-    }
-    if (_amountFEI == 0) {
-      mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-      return;
-    }
-
-    uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-    uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
-
-    _combine(cardDAI, cardFEI);
-  }
-
-  function burn(uint256 _tokenId) public {
-    require(!isNotExist(_tokenId), "Cannot burn an non existing token");
-    if (isLeaf(_tokenId)) {
-       internalBurn(_tokenId);
-       return;
-    }
-    (uint256 id0, uint256 id1) = _uncombine(_tokenId);
-    internalBurn(id0);
-    internalBurn(id1);
-    return;
-  }
-
-  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount ) public returns (uint256) {
+  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
     // check if _idleCDOAddress exists in idleCDOAddress array
     require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
 
@@ -97,22 +68,39 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return tokenId;
   }
 
-  function card(uint256 _tokenId) public view returns (Card memory) {
-    return _cards[_tokenId];
+  function mint(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public returns (uint256) {
+    require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
+    
+    if (_amountDAI == 0) {
+      return mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+    }
+
+    if (_amountFEI == 0) {
+      return mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+    }
+
+    uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
+    uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+
+    return _combine(cardDAI, cardFEI);
   }
 
-  function internalBurn(uint256 _tokenId) internal returns (uint256 toRedeem) {
-    require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
+  function burn(uint256 _tokenId) public {
+    require(!isNotExist(_tokenId), "Cannot burn an non existing token");
+    
+    if (isLeaf(_tokenId)) {
+      internalBurn(_tokenId);
+      return;
+    }
+    
+    (uint256 id0, uint256 id1) = _uncombine(_tokenId);
+    internalBurn(id0);
+    internalBurn(id1);
+    return;
+  }
 
-    _burn(_tokenId);
-
-    Card memory pos = card(_tokenId);
-    IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
-    toRedeem = _card.burn();
-
-    // transfer to card owner
-    IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
-    underlying.safeTransfer(msg.sender, toRedeem);
+  function card(uint256 _tokenId) public view returns (Card memory) {
+    return _cards[_tokenId];
   }
 
   function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
@@ -151,6 +139,24 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return newItemId;
   }
 
+  function internalBurn(uint256 _tokenId) internal returns (uint256 toRedeem) {
+    require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
+
+    _burn(_tokenId);
+
+    Card memory pos = card(_tokenId);
+    IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
+    toRedeem = _card.burn();
+
+    // transfer to card owner
+    IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+    underlying.safeTransfer(msg.sender, toRedeem);
+  }
+
+  function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
+    return _cards[_tokenId].cardAddress != address(0);
+  }
+
   function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
     for (uint256 i = 0; i < idleCDOs.length; i++) {
       if (address(idleCDOs[i]) == _idleCDOAddress) {
@@ -158,25 +164,5 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
       }
     }
     return false;
-  }
-
-  function getTokenId(address _idleCDOAddress) private view returns (uint256) {
-    for (uint256 i = 0; i < idleCDOs.length; i++) {
-      if (address(idleCDOs[i]) == _idleCDOAddress) {
-        return i;
-      }
-    }
-    return 0;
-  }
-
-
-  function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
-    require(index < balanceOf(owner), "No Card found for index");
-    return super.tokenOfOwnerByIndex(owner, index);
-  }
-
-
-  function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
-    return _cards[_tokenId].cardAddress != address(0);
   }
 }
