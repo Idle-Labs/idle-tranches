@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_IBCRV = 29;
 const DEPOSIT_POSITION_IBCRV = 0;
-const WHALE_IBCRV = '0xc037f78075b256af8405f37658ed1ebc162d0231';
+const WHALE_IBCRV = '0xd4dfbde97c93e56d1e41325bb428c18299db203f';
 const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const TOKEN_IBCRV = '0x5282a4eF67D9C33135340fB3289cc1711c13638C'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -65,7 +65,7 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
 
   it("should redeemRewards (simulate 7 days)", async () => {
     const addr = RandomAddr;
-    const _amount = BN('10000').mul(one);
+    const _amount = BN('100').mul(one);
 
     await helpers.fundWallets(TOKEN_IBCRV, [RandomAddr], WHALE_IBCRV, _amount);
 
@@ -126,13 +126,14 @@ describe("ConvexStrategy3Token (using 3pool for tests)", async () => {
   }
   
   const redeemRewards = async (addr) => {
-    // encode params for redeemRewards: uint256[], uint256, uint256
+    // encode params for redeemRewards: uint256[], bool[], uint256, uint256
     const params = [
-      [5, 5],
+      [5, 5, 5],
+      [false, false, false],
       3,
       4
     ];
-    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const extraData = helpers.encodeParams(['uint256[]', 'bool[]', 'uint256', 'uint256'], params);
     const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }

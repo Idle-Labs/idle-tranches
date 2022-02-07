@@ -15,7 +15,7 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = BN(0);
-const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
+const WHALE_3CRV = '0x7acaed42fd79aaf0cdec641a2c59e06d996b96a0';
 const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -251,13 +251,14 @@ describe("IdleConvexCDO", function () {
     // wait 15 days
     await mineBlocks({ increaseOf: oneDay })
 
-    // encode params for redeemRewards: uint256[], uint256, uint256
+    // encode params for redeemRewards: uint256[], bool[], uint256, uint256
     const params = [
-      [5, 5],
+      [5, 5, 5],
+      [false, false, false],
       3,
       4
     ];
-    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const extraData = helpers.encodeParams(['uint256[]', 'bool[]', 'uint256', 'uint256'], params);
     await helpers.sudoCall(address, idleCDO, 'harvest', [
       [skipRedeem, skipIncentivesUpdate, skipFeeDeposit, skipRedeem && skipIncentivesUpdate && skipFeeDeposit], 
       [], 

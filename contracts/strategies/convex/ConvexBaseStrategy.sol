@@ -280,22 +280,30 @@ abstract contract ConvexBaseStrategy is
         _balances = new uint256[](_convexRewards.length + 2); 
         // decode params from _extraData to get the min amount for each convexRewards
         uint256[] memory _minAmountsWETH = new uint256[](_convexRewards.length);
+        bool[] memory _skipSell = new bool[](_convexRewards.length);
         uint256 _minDepositToken;
         uint256 _minLpToken;
-        (_minAmountsWETH, _minDepositToken, _minLpToken) = abi.decode(_extraData, (uint256[], uint256, uint256));
+        (_minAmountsWETH, _skipSell, _minDepositToken, _minLpToken) = abi.decode(_extraData, (uint256[], bool[], uint256, uint256));
 
         IBaseRewardPool(rewardPool).getReward();
 
+        address _reward;
+        IERC20Detailed _rewardToken;
+        uint256 _rewardBalance;
+        IUniswapV2Router02 _router;
+
         for (uint256 i = 0; i < _convexRewards.length; i++) {
-            address _reward = _convexRewards[i];
+            if (_skipSell[i]) continue;
+
+            _reward = _convexRewards[i];
 
             // get reward balance and safety check
-            IERC20Detailed _rewardToken = IERC20Detailed(_reward);
-            uint256 _rewardBalance = _rewardToken.balanceOf(address(this));
+            _rewardToken = IERC20Detailed(_reward);
+            _rewardBalance = _rewardToken.balanceOf(address(this));
 
             if (_rewardBalance == 0) continue;
 
-            IUniswapV2Router02 _router = IUniswapV2Router02(
+            _router = IUniswapV2Router02(
                 rewardRouter[_reward]
             );
 
@@ -303,7 +311,6 @@ abstract contract ConvexBaseStrategy is
             _rewardToken.safeApprove(address(_router), 0);
             _rewardToken.safeApprove(address(_router), _rewardBalance);
 
-            // we accept 1 as minimum because this is executed by a trusted CDO
             address[] memory _reward2WethPath = reward2WethPath[_reward];
             uint256[] memory _res = new uint256[](_reward2WethPath.length);
             _res = _router.swapExactTokensForTokens(
@@ -377,7 +384,7 @@ abstract contract ConvexBaseStrategy is
             _price =
                 ((totalLpTokensStaked - _lockedLpTokens()) *
                     ONE_CURVE_LP_TOKEN) /
-                totalSupply();
+                _totalSupply;
         }
     }
 
