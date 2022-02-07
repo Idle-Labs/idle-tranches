@@ -102,7 +102,8 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         require(token == address(0), "Token is already initialized");
 
         //----- // -------//
-        strategyToken = _strategyToken;
+        // this contract tokenizes the staked imUSD position
+        strategyToken = address(this); 
         token = _underlyingToken;
         underlyingToken = IERC20Detailed(_underlyingToken);
         tokenDecimals = IERC20Detailed(_underlyingToken).decimals();
@@ -119,7 +120,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexedTime = block.timestamp;
         //------//-------//
 
-        (, , rewardLastRound) = vault.unclaimedRewards(address(this));
         transferOwnership(_owner);
         IERC20Detailed(_underlyingToken).approve(_strategyToken, type(uint256).max);
         ISavingsContractV2(_strategyToken).approve(_vault, type(uint256).max);
@@ -127,7 +127,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice redeem the rewards. Claims all possible rewards
     /// @return rewards amount of underlyings (mUSD) received after selling rewards
-    function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
+    function redeemRewards() external onlyOwner returns (uint256[] memory rewards) {
         _claimGovernanceTokens(0);
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
@@ -139,7 +139,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 endRound) = abi.decode(_extraData, (uint256, uint256));
         _claimGovernanceTokens(endRound);
-        rewardLastRound = endRound;
         rewards = new uint256[](1);
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
@@ -153,24 +152,19 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @return _price
     function price() public view override returns (uint256 _price) {
         uint256 _totalSupply = totalSupply();
-        uint256 _oneToken = oneToken;
 
         if (_totalSupply == 0) {
-            _price = _oneToken;
+            _price = oneToken;
         } else {
             _price =
-                ((totalLpTokensStaked - _lockedLpTokens()) *
-                    _oneToken) /
-                _totalSupply;
+                (totalLpTokensStaked - _lockedLpTokens()) * oneToken / _totalSupply;
         }
     }
 
     /// @notice Get the reward token
-    /// @return array of reward token
-    function getRewardTokens() external view override returns (address[] memory) {
-        address[] memory govTokens;
-        govTokens[0] = govToken;
-        return govTokens;
+    /// @return _rewards array of reward token (empty as rewards are handled in this strategy)
+    function getRewardTokens() external pure override returns (address[] memory _rewards) {
+        return _rewards;
     }
 
     /// @notice Deposit the underlying token to vault
@@ -179,27 +173,28 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         if (_amount > 0) {
             underlyingToken.transferFrom(msg.sender, address(this), _amount);
-            minted = _depositToVault(_amount);
+            minted = _depositToVault(_amount, true);
         }
     }
 
     /// @notice Internal function to deposit the underlying tokens to the vault
     /// @param _amount amount of tokens to deposit
+    /// @param _shouldMint amount of tokens to deposit
     /// @return _minted number of reward tokens minted
-    function _depositToVault(uint256 _amount) internal returns (uint256 _minted) {
+    function _depositToVault(uint256 _amount, bool _shouldMint) internal returns (uint256 _minted) {
         ISavingsContractV2 _imUSD = imUSD;
         lastIndexAmount = lastIndexAmount + _amount;
         lastIndexedTime = block.timestamp;
+        // mint imUSD with mUSD
         _imUSD.depositSavings(_amount);
-
-        uint256 interestTokenAvailable = _imUSD.balanceOf(address(this));
-
-        vault.stake(interestTokenAvailable);
-
-        totalLpTokensStaked += interestTokenAvailable;
-
-        _minted = interestTokenAvailable * oneToken / price();
-        _mint(msg.sender, _minted);
+        // stake imUSD in Meta vault
+        uint256 _imUSDBal = _imUSD.balanceOf(address(this));
+        vault.stake(_imUSDBal);
+        if (_shouldMint) {
+            _minted = _amount * oneToken / price();
+            _mint(msg.sender, _minted);
+        }
+        totalLpTokensStaked += _amount;
     }
 
     /// @notice Redeem Tokens
@@ -255,13 +250,14 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice Function to swap the governance tokens on uniswapV2
     /// @param minLiquidityTokenToReceive minimun number of tokens to that need to be received
-    /// @return amount of underlyings (mUSD) received
-    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
+    /// @return _bal amount of underlyings (mUSD) received
+    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256 _bal) {
         IERC20Detailed _govToken = IERC20Detailed(govToken);
         uint256 govTokensToSend = _govToken.balanceOf(address(this));
+        IUniswapV2Router02 _uniswapV2Router02 = uniswapV2Router02;
 
-        _govToken.approve(address(uniswapV2Router02), govTokensToSend);
-        uniswapV2Router02.swapExactTokensForTokens(
+        _govToken.approve(address(_uniswapV2Router02), govTokensToSend);
+        _uniswapV2Router02.swapExactTokensForTokens(
             govTokensToSend,
             minLiquidityTokenToReceive,
             uniswapRouterPath,
@@ -269,13 +265,11 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             block.timestamp
         );
 
-        uint256 _bal = underlyingToken.balanceOf(address(this));
-        _depositToVault(_bal);
+        _bal = underlyingToken.balanceOf(address(this));
+        _depositToVault(_bal, false);
         // save the block in which rewards are swapped and the amount
         latestHarvestBlock = block.number;
         totalLpTokensLocked = _bal;
-
-        return _bal;
     }
 
     /// @notice Claim governance tokens
@@ -307,10 +301,15 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         uniswapRouterPath = newPath;
     }
 
-       /// @notice allow to update whitelisted address
+    /// @notice allow to update whitelisted address
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
         idleCDO = _cdo;
+    }
+
+    /// @notice allow to update whitelisted address
+    function setReleaseBlocksPeriod(uint256 _period) external onlyOwner {
+        releaseBlocksPeriod = _period;
     }
 
     /// @notice 
