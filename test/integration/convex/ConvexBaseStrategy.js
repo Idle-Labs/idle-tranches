@@ -13,16 +13,18 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_3CRV = 9;
 const DEPOSIT_POSITION_3CRV = 1;
-const WHALE_3CRV = '0x0b096d1f0ba7ef2b3c7ecb8d4a5848043cdebd50';
+const WHALE_3CRV = '0x7acaed42fd79aaf0cdec641a2c59e06d996b96a0';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const TOKEN_3CRV = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
+const SPELL = '0x090185f2135308bad17527004364ebcc2d37e5f6';
 const CRV = '0xD533a949740bb3306d119CC777fa900bA034cd52';
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const SUSHI_ROUTER = '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F';
 
 const CVXWETH = [CVX, WETH]
 const CRVWETH = [CRV, WETH]
+const SPELLWETH = [SPELL, WETH]
 const WETHUSDC = [WETH, USDC]
 
 
@@ -51,11 +53,12 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     curve_args = [USDC, addresses.addr0, DEPOSIT_POSITION_3CRV]
     reward_cvx = [CVX, SUSHI_ROUTER, CVXWETH];
     reward_crv = [CRV, SUSHI_ROUTER, CRVWETH];
+    reward_spell = [SPELL, SUSHI_ROUTER, CRVWETH];
     weth2deposit = [SUSHI_ROUTER, WETHUSDC];
   });
   
   beforeEach(async () => {
-    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, 1500, curve_args, [reward_crv, reward_cvx], weth2deposit]);
+    strategy = await helpers.deployUpgradableContract('ConvexStrategy3Token', [POOL_ID_3CRV, owner.address, 1500, curve_args, [reward_crv, reward_cvx, reward_spell], weth2deposit]);
   });
 
   afterEach(async () => {
@@ -326,11 +329,13 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
     await network.provider.send("evm_mine", []);
     
     const res = await redeemRewards(addr, true);
-    expect(res.length).to.be.equal(4);
+    expect(res.length).to.be.equal(5);
     expect(res[0].gt(0)).to.be.true;
     expect(res[1].gt(0)).to.be.true;
-    expect(res[2].gt(0)).to.be.true;
+    // additional rewards are not distributed each time
+    expect(res[2].eq(0)).to.be.true;
     expect(res[3].gt(0)).to.be.true;
+    expect(res[4].gt(0)).to.be.true;
   });
   
   const setWhitelistedCDO = async (addr) => {
@@ -351,13 +356,14 @@ describe("ConvexBaseStrategy (using 3pool for tests)", async () => {
   }
   
   const redeemRewards = async (addr, static = false) => {
-    // encode params for redeemRewards: uint256[], uint256, uint256
+    // encode params for redeemRewards: uint256[], bool[], uint256, uint256
     const params = [
-      [5,5],
+      [5,5,5],
+      [false, false, false],
       3,
       4
     ];
-    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const extraData = helpers.encodeParams(['uint256[]', 'bool[]', 'uint256', 'uint256'], params);
     if (static) {
       return await helpers.sudoStaticCall(addr, strategy, 'redeemRewards', [extraData]);
     }
