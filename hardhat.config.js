@@ -78,7 +78,7 @@ module.exports = {
       //   // blockNumber: 13776718 // lido deploy
       //   // blockNumber: 13810230 // convex deploy
       //   // blockNumber: 14075568 // StakingRewards deploy
-      //   blockNumber: 14158578 // upgrade convex strategy
+      //   blockNumber: 14164982 // upgrade convex strategy
       // }
     },
     coverage: {
