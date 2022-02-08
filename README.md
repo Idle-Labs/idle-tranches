@@ -89,27 +89,3 @@ npx hardhat coverage
 ```
 
 ## Technical Notes
-
-### Import B3nd contracts
-
-```
- git clone https://github.com/wakeupdao/bl3nd-smart-contracts.git
-```
-
-```
-cd bl3nd-smart-contracts/
-```
-
-```
-npm install
-```
-
-```
-npm link
-```
-
-in idle-tranches project
-
-```
-npm link bl3nd-smart-contracts
-```

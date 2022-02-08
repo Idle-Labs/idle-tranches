@@ -502,7 +502,7 @@ describe("IdleCDOCardManager", () => {
       await expect(combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0), 0)).to.be.revertedWith("Not possible to mint a card with 0 amounts");
     });
 
-    it("should generate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+    it("should generate a new NFT Idle CDO Card combining DAI and FEI", async () => {
 
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
@@ -531,7 +531,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
     });
 
-    it("should the owner balance include only uncombined cards (NFT) when are not combined cards (bl3nd nft)", async () => {
+    it("should the owner balance include only uncombined cards (NFT) when are not combined cards", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(2);
@@ -540,7 +540,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.balanceOf(BBBuyerAddr)).to.be.equal(1);
     });
 
-    it("should the owner balance including combined cards (bl3nd nft)", async () => {
+    it("should the owner balance including combined cards", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
@@ -558,7 +558,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.tokenOfOwnerByIndex(BBBuyerAddr, 0)).to.be.equal(3);
     });
 
-    it("should be able to get tokenID of the blended card for the owner address with 2 non-blended and 1 blended", async () => {
+    it("should be able to get the tokenID of the combined card for the owner address with 2 non-combined and 1 combined", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
@@ -569,7 +569,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 2)).to.be.equal(blendTokenId);
     });
 
-    it("should be able to get tokenID of the blended card for the owner address with only 2 blended", async () => {
+    it("should be able to get the tokenID of the combined card for the owner address with only 2 combined", async () => {
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
@@ -580,7 +580,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(blendTokenId2);
     });
 
-    it("should be able to get tokenID of the blended card for the owner address with 2 non-blended and 1 blended error", async () => {
+    it("should be able to get the tokenID of the blended card for the owner address with 2 non-combined and 1 error", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
@@ -588,7 +588,7 @@ describe("IdleCDOCardManager", () => {
       await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 3)).to.be.revertedWith("ERC721Enumerable: owner index out of bounds");
     });
 
-    it("should be able to get not combined card as combined group", async () => {
+    it("should be able to get a not combined card as combined group", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
@@ -596,7 +596,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.contentIndexes(2)).deep.to.equal([BN(2)]);
     });
 
-    it("should be able to get combined card as combined group", async () => {
+    it("should be able to get a combined card as combined group", async () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
@@ -604,7 +604,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.contentIndexes(6)).deep.to.equal([BN(4), BN(5)]);
     });
 
-    it("should degenerate a new blended NFT Idle CDO Card combining DAI and FEI", async () => {
+    it("should burn a new NFT Idle CDO Card combining DAI and FEI", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
@@ -638,7 +638,7 @@ describe("IdleCDOCardManager", () => {
       expect(await underlyingFEI.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("696").mul(ONE_TOKEN(18))));
     });
 
-    it("should degenerate a non blended NFT Idle CDO Card with DAI", async () => {
+    it("should burn a non combined NFT Idle CDO Card with DAI (only)", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
@@ -664,7 +664,7 @@ describe("IdleCDOCardManager", () => {
       expect(await underlying.balanceOf(AABuyerAddr)).to.be.equal(initialAmount.add(BN("240").mul(ONE_TOKEN(18))));
     });
 
-    it("should not degenerate a risk card if not the owner", async () => {
+    it("should not burn a risk card if not the owner", async () => {
       let underlyingContract = await ethers.getContractAt("IERC20Detailed", await idleCDO.token());
 
       const buyerBalanceAfterMint = await underlyingContract.balanceOf(AABuyerAddr);
@@ -693,11 +693,11 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
     });
 
-    it("should not degenerate a non existing risk card", async () => {
+    it("should not burn a non existing risk card", async () => {
       await expect(cards.connect(AABuyer).burn(9)).to.be.revertedWith("Cannot burn an non existing token");
     });
 
-    it("should not degenerate a new blended NFT Idle CDO Card combining DAI and FEI if not the owner", async () => {
+    it("should not burn a new NFT Idle CDO Card combining DAI and FEI if not the owner", async () => {
       // APR AA=4 BB=16
       await idleToken.setFee(BN("0"));
       await idleToken.setApr(BN("10").mul(ONE_TOKEN(18)));
