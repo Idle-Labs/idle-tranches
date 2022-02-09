@@ -208,7 +208,7 @@ describe.only("IdleMStableStrategy", function () {
     const pricePost3 = await IdleMStableStrategy.price();
     expect(pricePost3.sub(pricePost2)).gt(0);
     await waitBlocks(BN(1));
-    // price is not increasing anymore
+    // price is not increasing anymore as release period is over
     const pricePost4 = await IdleMStableStrategy.price();
     expect(pricePost4.sub(pricePost3)).eq(0);
     
@@ -220,7 +220,22 @@ describe.only("IdleMStableStrategy", function () {
     // check return value of redeemRewards call
     expect(staticRes.length).eq(1);
     expect(staticRes[0]).gt(0);
-    // TODO check that rewardLastRound is updated and > 0
+    // check that rewardLastRound is updated and > 0
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+    // 2 days later
+    await network.provider.request({
+      method: "evm_increaseTime",
+      params: [2 * 86400],
+    });
+    await network.provider.request({
+      method: "evm_mine",
+      params: [],
+    });
+    // await vault.connect(user).pokeBoost(IdleMStableStrategy.address);
+    await IdleMStableStrategy.connect(owner)["redeemRewards()"]();
+    // It saves endRound in rewardLastRound
+    expect(await IdleMStableStrategy.rewardLastRound()).gt(0);
   });
 
   it("APR", async () => {
