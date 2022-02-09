@@ -238,13 +238,15 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexAmount = lastIndexAmount - _amount;
         lastIndexedTime = block.timestamp;
 
+        ISavingsContractV2 _imUSD = imUSD;
+        // mUSD we want back
         uint256 redeemed = (_amount * _price) / oneToken;
+        uint256 imUSDToRedeem = _imUSD.underlyingToCredits(redeemed);
         totalLpTokensStaked -= redeemed;
 
         _burn(msg.sender, _amount);
-        vault.withdraw(redeemed);
-
-        massetReceived = imUSD.redeem(redeemed);
+        vault.withdraw(imUSDToRedeem);
+        massetReceived = _imUSD.redeemCredits(imUSDToRedeem);
         underlyingToken.transfer(msg.sender, massetReceived);
     }
 

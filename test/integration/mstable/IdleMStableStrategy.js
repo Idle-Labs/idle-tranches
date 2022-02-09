@@ -152,26 +152,20 @@ describe.only("IdleMStableStrategy", function () {
   it("Redeem Tokens: redeem", async () => {
     let strategySharesBefore = await IdleMStableStrategy.totalSupply();
 
-    console.log('price', (await IdleMStableStrategy.totalSupply()).toString());
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
-    console.log('price', (await IdleMStableStrategy.totalSupply()).toString());
-
     let strategySharesAfter = await IdleMStableStrategy.totalSupply();
 
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
-    console.log(sharesReceived.toString());
     expect(sharesReceived).gt(0);
     
     let redeemAmount = sharesReceived.div(10); // claim back a fraction of shares received
-    console.log('redeemAmount', redeemAmount.toString());
 
     const mUSDBalanceBefore = await mUSD.connect(user).balanceOf(user.address);
-    console.log('mUSDBalanceBefore', mUSDBalanceBefore.toString());
     await IdleMStableStrategy.connect(user).redeem(redeemAmount);
     const mUSDBalanceAfter = await mUSD.connect(user).balanceOf(user.address);
-    console.log('mUSDBalanceAfter', mUSDBalanceAfter.toString());
-    expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(AMOUNT_TO_TRANSFER.div(10), "100000", "Approximate check failed");
+    // +- 0.01 
+    expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(AMOUNT_TO_TRANSFER.div(10), BN(1e16), "Approximate check failed");
   });
   
   it("Redeem Rewards", async () => {
