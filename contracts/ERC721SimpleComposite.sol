@@ -15,7 +15,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
   /**
   * @dev Returns a leaf token IDs at a given `_tokenId` of the root or leafs token ids.
   */
-  function leafTokenIds(uint256 _tokenId) public view returns (uint256[] memory leafTokenIds) {
+  function leafTokenIds(uint256 _tokenId) public view returns (uint256[] memory _leafTokenIds) {
     //if leaf and not exist returns 0
     if (_isLeaf(_tokenId) && !_isLeafExists(_tokenId)) {
       return new uint256[](0); //undefined
@@ -23,16 +23,16 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
 
     //if leaf returns the first
     if (_isLeaf(_tokenId)) {
-      leafTokenIds = new uint256[](1);
-      leafTokenIds[0] = _tokenId;
-      return leafTokenIds;
+      _leafTokenIds = new uint256[](1);
+      _leafTokenIds[0] = _tokenId;
+      return _leafTokenIds;
     }
 
     //composite content
-    leafTokenIds = new uint256[](2);
-    leafTokenIds[0] = composites[_tokenId][0];
-    leafTokenIds[1] = composites[_tokenId][1];
-    return leafTokenIds;
+    _leafTokenIds = new uint256[](2);
+    _leafTokenIds[0] = composites[_tokenId][0];
+    _leafTokenIds[1] = composites[_tokenId][1];
+    return _leafTokenIds;
   }
 
 
@@ -61,7 +61,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
   }
 
   function _uncombine(uint256 _tokenId) internal virtual returns (uint256 tokenId1, uint256 tokenId2) {
-    require(!isNotExist(_tokenId), "The token does not exist");
+    require(_isTokenExists(_tokenId), "The token does not exist");
     require(!_isLeaf(_tokenId), "Can not uncombine a non-combined token");
     require(msg.sender == ownerOf(_tokenId), "Only owner can uncombine combined leafs");
 
@@ -81,7 +81,14 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
     return composites[_tokenId].length == 0;
   }
 
-  function isNotExist(uint256 _tokenId) internal view returns (bool) {
-    return _isLeaf(_tokenId) && !_isLeafExists(_tokenId);
+  function _isTokenExists(uint256 _tokenId) internal view returns (bool) {
+    if(_isLeaf(_tokenId)) {
+      return _isLeafExists(_tokenId);
+    }
+    return _isRoot(_tokenId);
+  }
+
+  function _isRoot(uint256 _tokenId) private view returns (bool) {
+    return composites[_tokenId].length != 0;
   }
 }
