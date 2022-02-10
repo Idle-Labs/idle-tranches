@@ -6,6 +6,8 @@ import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/harvest/IHarvestVault.sol";
 import "../../interfaces/harvest/IRewardPool.sol";
 
+import "../../interfaces/IUniswapV2Router02.sol";
+
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -40,6 +42,10 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     address public govToken;
 
+    address[] public uniswapRouterPath;
+
+    IUniswapV2Router02 public uniswapV2Router02;
+
     constructor() {
         token = address(1);
     }
@@ -48,6 +54,8 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         address _strategyToken,
         address _underlyingToken,
         address _rewardPool,
+        address _uniswapV2Router02,
+        address[] calldata _routerPath,
         address _owner
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
@@ -63,30 +71,52 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         oneToken = 10**(tokenDecimals);
 
         govToken = IRewardPool(rewardPool).rewardToken();
-        console.log("gov token during init", govToken);
+
         ERC20Upgradeable.__ERC20_init("Idle Harvest Strategy Token", string(abi.encodePacked("idleHS", underlyingToken.symbol())));
         //------//-------//
+
+        uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02);
+        uniswapRouterPath = _routerPath;
 
         transferOwnership(_owner);
         lastIndexedTime = block.timestamp;
     }
 
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards = _redeemRewards();
+        rewards = _redeemRewards(0);
     }
 
-    function redeemRewards(bytes calldata) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards = _redeemRewards();
+    function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
+        uint256 minLiquidityTokenToReceive = abi.decode(_extraData, (uint256));
+        rewards = _redeemRewards(minLiquidityTokenToReceive);
     }
 
-    function _redeemRewards() internal returns (uint256[] memory) {
-        uint256 rewardBalanceBefore = IRewardPool(rewardPool).balanceOf(address(this));
+    function _redeemRewards(uint256 minLiquidityTokenToReceive) internal returns (uint256[] memory) {
         IRewardPool(rewardPool).getReward();
-        uint256 rewardBalanceAfter = IRewardPool(rewardPool).balanceOf(address(this));
-        uint256 balanceReceived = rewardBalanceAfter - rewardBalanceBefore;
         uint256[] memory rewards = new uint256[](1);
-        rewards[0] = balanceReceived;
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
         return rewards;
+    }
+
+    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
+        uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
+        IERC20Detailed(govToken).approve(address(uniswapV2Router02), govTokensToSend);
+
+        uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
+        uniswapV2Router02.swapExactTokensForTokens(
+            govTokensToSend,
+            minLiquidityTokenToReceive,
+            uniswapRouterPath,
+            address(this),
+            block.timestamp
+        );
+        uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
+
+        require(
+            underlyingTokenBalanceAfter - underlyingTokenBalanceBefore >= minLiquidityTokenToReceive,
+            "Should received more reward from uniswap than minLiquidityTokenToReceive"
+        );
+        return _depositToVault(underlyingTokenBalanceAfter);
     }
 
     function pullStkAAVE() external pure override returns (uint256) {
@@ -107,17 +137,18 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         uint256 rawBalance = IRewardPool(rewardPool).balanceOf(address(this));
         uint256 expectedUnderlyingAmount = (price() * rawBalance) / oneToken;
 
-        uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
-        if (gain == 0) {
+        if (expectedUnderlyingAmount <= lastIndexAmount) {
             return 0;
         }
+
+        uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
         uint256 time = block.timestamp - lastIndexedTime;
         uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
         uint256 apr = (YEAR / time) * gainPerc;
         return apr;
     }
 
-    function redeem(uint256 _amount) external returns (uint256) {
+    function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256) {
         return _redeem(_amount);
     }
 
@@ -130,7 +161,6 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexAmount = lastIndexAmount - _amount;
         lastIndexedTime = block.timestamp;
         _burn(msg.sender, _amount);
-        console.log("amount in reward pool", IRewardPool(rewardPool).balanceOf(address(this)));
         IRewardPool(rewardPool).withdraw(_amount);
         uint256 balanceBefore = underlyingToken.balanceOf(address(this));
         IHarvestVault(strategyToken).withdraw(_amount);
@@ -162,10 +192,18 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         return interestTokenAvailable;
     }
 
+    function changeIdleCDO(address _idleCDO) external onlyOwner {
+        idleCDO = _idleCDO;
+    }
+
     /// @notice allow to update whitelisted address
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
         idleCDO = _cdo;
+    }
+
+    function changeUniswapRouterPath(address[] memory newPath) public onlyOwner {
+        uniswapRouterPath = newPath;
     }
 
     /// @notice Modifier to make sure that caller os only the idleCDO contract

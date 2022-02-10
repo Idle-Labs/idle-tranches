@@ -250,8 +250,7 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             "Should received more reward from uniswap than minLiquidityTokenToReceive"
         );
 
-        uint256 underlyingBalanceAfter = underlyingToken.balanceOf(address(this));
-        uint256 newCredits = _depositToVault(underlyingBalanceAfter);
+        uint256 newCredits = _depositToVault(underlyingTokenBalanceAfter);
         _mint(msg.sender, newCredits);
         return newCredits;
     }
