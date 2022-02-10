@@ -22,7 +22,7 @@ const mUSD_ADDRESS = "0xe2f2a5C287993345a840Db3B0845fbC70f5935a5";
 
 const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
-const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
+const dai_whale = "0xE78388b4CE79068e89Bf8aA7f218eF6b9AB0e9d0";
 
 describe.only("IdleMStable Strategy Wrapper", function () {
   before(async () => {

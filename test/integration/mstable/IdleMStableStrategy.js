@@ -15,6 +15,14 @@ const { isAddress } = require("@ethersproject/address");
 
 require("chai").use(smock.matchers);
 
+
+const waitBlocks = async (n) => {
+  console.log(`mining ${n} blocks...`);
+  for (var i = 0; i < n; i++) {
+    await ethers.provider.send("evm_mine");
+  };
+}
+
 const BN = (n) => BigNumber.from(n.toString());
 const ONE_TOKEN = (n, decimals) => BigNumber.from("10").pow(BigNumber.from(n));
 const MAX_UINT = BN("115792089237316195423570985008687907853269984665640564039457584007913129639935");
@@ -32,10 +40,11 @@ const USDTAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const USDCAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
-const dai_whale = "0x45fD5AF82A8af6d3f7117eBB8b2cfaD72B27342b";
+const dai_whale = "0xE78388b4CE79068e89Bf8aA7f218eF6b9AB0e9d0";
 const musd_whale = "0xe008464f754e85e37bca41cce3fbd49340950b29";
 
-const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
+// const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
+const AMOUNT_TO_TRANSFER = BN("10000000000000000000000"); // 10k
 
 // const KEY_SAVINGS_MANAGER = "0x12fe936c77a1e196473c4314f3bed8eeac1d757b319abb85bdda70df35511bf1";
 const savingsManagerAddress = "0xBC3B550E0349D74bF5148D86114A48C3B4Aa856F";
@@ -70,7 +79,7 @@ describe.only("IdleMStableStrategy", function () {
 
   beforeEach(async () => {
     musd_emission_signer = await ethers.getSigner(musd_emission);
-    [owner, user, , , proxyAdmin] = await ethers.getSigners();
+    [owner, user, user2, , proxyAdmin] = await ethers.getSigners();
     let IdleMStableStrategyFactory = await ethers.getContractFactory("IdleMStableStrategy");
     let IdleMStableStrategyLogic = await IdleMStableStrategyFactory.deploy();
     let TransparentUpgradableProxyFactory = await ethers.getContractFactory("TransparentUpgradeableProxy");
@@ -90,7 +99,8 @@ describe.only("IdleMStableStrategy", function () {
     musd_signer = await ethers.getSigner(musd_whale);
     dai_signer = await ethers.getSigner(dai_whale);
 
-    await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
+    await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER.mul(BN(2)));
+    await DAI.connect(dai_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
     savingsManager = await ethers.getContractAt(savingsManagerAbi, savingsManagerAddress);
 
     await IdleMStableStrategy.connect(owner).initialize(
@@ -104,6 +114,7 @@ describe.only("IdleMStableStrategy", function () {
 
     // assuming that user itself if the idle CDO.
     await IdleMStableStrategy.connect(owner).setWhitelistedCDO(user.address);
+    await IdleMStableStrategy.connect(owner).setReleaseBlocksPeriod(100);
   });
 
   it("Check contract address IdleMStableAddress", async () => {
@@ -115,6 +126,9 @@ describe.only("IdleMStableStrategy", function () {
     expect(await mUSD.name()).to.eq("mStable USD");
     expect(await meta.name()).to.eq("Meta");
     expect(await vault.boostDirector()).to.eq("0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592");
+    expect(await IdleMStableStrategy.rewardLastRound()).eq(0);
+    expect(await IdleMStableStrategy.latestHarvestBlock()).eq(0);
+    expect(await IdleMStableStrategy.totalLpTokensLocked()).eq(0);
   });
 
   it("Deposit AMOUNT in Idle Tranche", async () => {
@@ -140,50 +154,88 @@ describe.only("IdleMStableStrategy", function () {
 
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
-
     let strategySharesAfter = await IdleMStableStrategy.totalSupply();
 
     let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
     expect(sharesReceived).gt(0);
-
+    
     let redeemAmount = sharesReceived.div(10); // claim back a fraction of shares received
 
     const mUSDBalanceBefore = await mUSD.connect(user).balanceOf(user.address);
     await IdleMStableStrategy.connect(user).redeem(redeemAmount);
     const mUSDBalanceAfter = await mUSD.connect(user).balanceOf(user.address);
-    expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(AMOUNT_TO_TRANSFER.div(10), "100000", "Approximate check failed");
+    // +- 0.01 
+    expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(AMOUNT_TO_TRANSFER.div(10), BN(1e16), "Approximate check failed");
   });
-
+  
   it("Redeem Rewards", async () => {
-    let strategySharesBefore = await IdleMStableStrategy.totalSupply();
-
+    const oneDayInSec = 86400;
+    const releaseBlocksPeriod = await IdleMStableStrategy.releaseBlocksPeriod();
+    
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
-
-    let strategySharesAfter = await IdleMStableStrategy.totalSupply();
-
-    let sharesReceived = strategySharesAfter.sub(strategySharesBefore);
-    expect(sharesReceived).gt(0);
     
-    const amount = BN('100').mul(ONE_TOKEN(18));
+    // send some rewards to the vault contract
+    const amount = BN('10000').mul(ONE_TOKEN(18));
     await meta.connect(musd_emission_signer).transfer(VAULT_ADDRESS, amount);
     await vault.connect(musd_emission_signer).notifyRewardAmount(amount);
     
-    await network.provider.request({
-      method: "evm_increaseTime",
-      params: [5 * 86400],
-    });
-
-    await network.provider.request({
-      method: "evm_mine",
-      params: [],
-    });
-
+    // check price 
+    const initialStaked = await IdleMStableStrategy.totalLpTokensStaked();
+    const pricePre = await IdleMStableStrategy.price();
     let rawBalanceBefore = await vault.rawBalanceOf(IdleMStableStrategy.address);
-    await IdleMStableStrategy.connect(user)["redeemRewards()"](); // will get MTA token, convert to musd and deposit to vault
-    let rawBalanceAfter = await vault.rawBalanceOf(IdleMStableStrategy.address);
+    let strategySharesBefore = await IdleMStableStrategy.totalSupply();
 
+    const staticRes = await helpers.sudoStaticCall(owner.address, IdleMStableStrategy, 'redeemRewards()', []);
+    await IdleMStableStrategy.connect(owner)["redeemRewards()"](); // will get MTA token, convert to musd and deposit to vault
+
+    let strategySharesAfter = await IdleMStableStrategy.totalSupply();
+    let rawBalanceAfter = await vault.rawBalanceOf(IdleMStableStrategy.address);
+    const pricePost = await IdleMStableStrategy.price();
+    
+    // check that price is not changed
+    expect(pricePost).eq(pricePre);
+    // check that totalSupply is not changed after redeeming rewards
+    expect(strategySharesAfter.sub(strategySharesBefore)).eq(0);
+    // rewards sold have been staked
     expect(rawBalanceAfter.sub(rawBalanceBefore)).gt(0);
+    
+    await waitBlocks(BN(releaseBlocksPeriod).div(2));
+    const pricePost2 = await IdleMStableStrategy.price();
+    expect(pricePost2.sub(pricePost)).gt(0);
+    
+    await waitBlocks(BN(releaseBlocksPeriod).div(2).add(1));
+    const pricePost3 = await IdleMStableStrategy.price();
+    expect(pricePost3.sub(pricePost2)).gt(0);
+    await waitBlocks(BN(1));
+    // price is not increasing anymore as release period is over
+    const pricePost4 = await IdleMStableStrategy.price();
+    expect(pricePost4.sub(pricePost3)).eq(0);
+    
+    expect(await IdleMStableStrategy.latestHarvestBlock()).gt(0);
+    const lockedRewards = await IdleMStableStrategy.totalLpTokensLocked();
+    const totStaked = await IdleMStableStrategy.totalLpTokensStaked();
+    expect(lockedRewards).gt(0);
+    expect(totStaked.sub(initialStaked)).eq(lockedRewards);
+    // check return value of redeemRewards call
+    expect(staticRes.length).eq(1);
+    expect(staticRes[0]).gt(0);
+    // // check that rewardLastRound is updated and > 0
+    // await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    // await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+    // // // 2 days later
+    // // await network.provider.request({
+    // //   method: "evm_increaseTime",
+    // //   params: [2 * 86400],
+    // // });
+    // // await network.provider.request({
+    // //   method: "evm_mine",
+    // //   params: [],
+    // // });
+    // // await vault.connect(user).pokeBoost(IdleMStableStrategy.address);
+    // await IdleMStableStrategy.connect(owner)["redeemRewards()"]();
+    // // It saves endRound in rewardLastRound
+    // expect(await IdleMStableStrategy.rewardLastRound()).gt(0);
   });
 
   it("APR", async () => {
