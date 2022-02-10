@@ -15,7 +15,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
   /**
   * @dev Returns a leaf token IDs at a given `_tokenId` of the root or leafs token ids.
   */
-  function leafTokenIds(uint256 _tokenId) public view returns (uint256[] memory _leafTokenIds) {
+  function leafTokenIds(uint256 _tokenId) public virtual view returns (uint256[] memory _leafTokenIds) {
     //if leaf and not exist returns 0
     if (_isLeaf(_tokenId) && !_isLeafExists(_tokenId)) {
       return new uint256[](0); //undefined

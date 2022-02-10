@@ -7,9 +7,8 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./IdleCDO.sol";
 import "./IdleCDOCard.sol";
-import "./ERC721SimpleComposite.sol";
 
-contract IdleCDOCardManager is ERC721SimpleComposite {
+contract IdleCDOCardManager is ERC721Enumerable {
   using Counters for Counters.Counter;
   using SafeERC20Upgradeable for IERC20Detailed;
   using SafeMath for uint256;
@@ -26,7 +25,8 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
   IdleCDO[] public idleCDOs;
 
   Counters.Counter private _tokenIds;
-  mapping(uint256 => Card) private _cards;
+  Card[] private _cardSet;
+  mapping(uint256 => uint256[]) private _cards;
 
   constructor(address[] memory _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
     for (uint256 i = 0; i < _idleCDOAddress.length; i++) {
@@ -63,7 +63,9 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
 
     // mint the Idle CDO card
     uint256 tokenId = _mint();
-    _cards[tokenId] = Card(_risk, _amount, address(_card), _idleCDOAddress);
+    
+    _cardSet.push(Card(_risk, _amount, address(_card), _idleCDOAddress));
+    _cards[tokenId]= [_cardSet.length -1];
 
     return tokenId;
   }
@@ -79,28 +81,91 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
       return mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
     }
 
-    uint256 cardDAI = mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-    uint256 cardFEI = mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
+    //////////////////////////// DAI CARD////////////////////////////
+    // check if _idleCDOAddress exists in idleCDOAddress array
+    require(isIdleCDOListed(_idleCDODAIAddress), "IdleCDODAI address is not listed in the contract");
 
-    return _combine(cardDAI, cardFEI);
+    IdleCDOCard _cardDAI = new IdleCDOCard(_idleCDODAIAddress);
+
+    // transfer amount to cards protocol
+    IERC20Detailed(IdleCDO(_idleCDODAIAddress).token()).safeTransferFrom(msg.sender, address(this), _amountDAI);
+
+    // approve the amount to be spend on cdos tranches
+    IERC20Detailed(IdleCDO(_idleCDODAIAddress).token()).approve(address(_cardDAI), _amountDAI);
+
+    // calculate the amount to deposit in BB
+    // proportional to risk
+    uint256 depositBBDAI = percentage(_riskDAI, _amountDAI);
+
+    _cardDAI.mint(_amountDAI.sub(depositBBDAI), depositBBDAI);
+
+
+    //////////////////////////// FEI CARD ////////////////////////////
+    // check if _idleCDOAddress exists in idleCDOAddress array
+    require(isIdleCDOListed(_idleCDOFEIAddress), "IdleCDOFEI address is not listed in the contract");
+
+    IdleCDOCard _cardFEI = new IdleCDOCard(_idleCDOFEIAddress);
+
+    // transfer amount to cards protocol
+    IERC20Detailed(IdleCDO(_idleCDOFEIAddress).token()).safeTransferFrom(msg.sender, address(this), _amountFEI);
+
+    // approve the amount to be spend on cdos tranches
+    IERC20Detailed(IdleCDO(_idleCDOFEIAddress).token()).approve(address(_cardFEI), _amountFEI);
+
+    // calculate the amount to deposit in BB
+    // proportional to risk
+    uint256 depositBBFEI = percentage(_riskFEI, _amountFEI);
+
+    _cardFEI.mint(_amountFEI.sub(depositBBFEI), depositBBFEI);
+
+
+    // mint the Idle CDO card
+    uint256 tokenId = _mint();
+
+    _cardSet.push(Card(_riskDAI, _amountDAI, address(_cardDAI), _idleCDODAIAddress));
+    _cardSet.push(Card(_riskFEI, _amountFEI, address(_cardFEI), _idleCDOFEIAddress));
+    _cards[tokenId]= [_cardSet.length -2, _cardSet.length -1];
+    return tokenId;
   }
 
-  function burn(uint256 _tokenId) public {
-    require(_isTokenExists(_tokenId), "Cannot burn an non existing token");
-    
-    if (_isLeaf(_tokenId)) {
-      internalBurn(_tokenId);
+    function burn(uint256 _tokenId) public {
+    require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
+
+    _burn(_tokenId);
+
+    //////////////////////////// DAI CARD ////////////////////////////
+    // get the card
+    Card memory posDAI = card(_tokenId,0);
+    if (posDAI.cardAddress != address(0)) {
+      IdleCDOCard _cardDAI = IdleCDOCard(posDAI.cardAddress);
+      // burn the card
+      uint256 toRedeemDAI = _cardDAI.burn();
+      // transfer to card owner
+      IERC20Detailed underlying = IERC20Detailed(IdleCDO(posDAI.idleCDOAddress).token());
+      underlying.safeTransfer(msg.sender, toRedeemDAI);
+    }
+
+    //////////////////////////// FEI CARD ////////////////////////////
+    // get the card
+
+    if(_cards[_tokenId].length<2){
       return;
     }
-    
-    (uint256 id0, uint256 id1) = _uncombine(_tokenId);
-    internalBurn(id0);
-    internalBurn(id1);
-    return;
+
+    Card memory posFEI = card(_tokenId,1);
+    if (posFEI.cardAddress != address(0)) {
+      IdleCDOCard _cardFEI = IdleCDOCard(posFEI.cardAddress);
+      // burn the card
+       uint256 toRedeemFEI = _cardFEI.burn();
+      // transfer to card owner
+      IERC20Detailed underlying = IERC20Detailed(IdleCDO(posFEI.idleCDOAddress).token());
+      underlying.safeTransfer(msg.sender, toRedeemFEI);
+    }
+
   }
 
-  function card(uint256 _tokenId) public view returns (Card memory) {
-    return _cards[_tokenId];
+  function card(uint256 _tokenId, uint256 _index) public view returns (Card memory) {
+    return _cardSet[_cards[_tokenId][_index]];
   }
 
   function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
@@ -117,10 +182,13 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return ratioAA.add(ratioBB);
   }
 
-  function balance(uint256 _tokenId) public view returns (uint256 balanceAA, uint256 balanceBB) {
-    require(_isTokenExists(_tokenId), "inexistent card");
-    require(_isLeaf(_tokenId), "Cannot get balance of a non leaf token");
-    Card memory pos = card(_tokenId);
+  function cardIndexes(uint256 _tokenId) public view  returns (uint256[] memory _cardIndexes) {
+      return _cards[_tokenId]; 
+   }
+
+  function balance(uint256 _tokenId, uint256 _index) public view returns (uint256 balanceAA, uint256 balanceBB) {
+    require(_isCardExists(_tokenId, _index), "inexistent card");
+    Card memory pos = card(_tokenId,_index);
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     return _card.balance();
   }
@@ -130,7 +198,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return _amount.mul(_percentage).div(RATIO_PRECISION);
   }
 
-  function _mint() internal override returns (uint256) {
+  function _mint() internal returns (uint256) {
     _tokenIds.increment();
 
     uint256 newItemId = _tokenIds.current();
@@ -139,22 +207,8 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     return newItemId;
   }
 
-  function internalBurn(uint256 _tokenId) internal returns (uint256 toRedeem) {
-    require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
-
-    _burn(_tokenId);
-
-    Card memory pos = card(_tokenId);
-    IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
-    toRedeem = _card.burn();
-
-    // transfer to card owner
-    IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
-    underlying.safeTransfer(msg.sender, toRedeem);
-  }
-
-  function _isLeafExists(uint256 _tokenId) internal view virtual override returns (bool) {
-    return _cards[_tokenId].cardAddress != address(0);
+  function _isCardExists(uint256 _tokenId, uint256 _index) internal view virtual  returns (bool) {
+    return _cards[_tokenId].length != 0 && _cards[_tokenId].length > _index;
   }
 
   function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {

@@ -52,12 +52,20 @@ describe("IdleCDOCardManager", () => {
   });
 
   it("should not able to get a balance of an inexistent card", async () => {
-    await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
+    await expect(cards.balance(1,0)).to.be.revertedWith("inexistent card");
   });
 
-  it("should not able to get a balance of a combined card", async () => {
-    await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
-    await expect(cards.balance(3)).to.be.revertedWith("Cannot get balance of a non leaf token");
+  it("should be able to get a balance of a combined card", async () => {
+    await combineCDOs(AABuyer, EXPOSURE(0), ONE_THOUSAND_TOKEN, EXPOSURE(1), ONE_THOUSAND_TOKEN);
+
+    const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
+    expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
+    expect(balanceBB).to.be.equal(BN(0));
+
+    const { 0: balanceAAFEI, 1: balanceBBFEI } = await cards.balance(1,1);
+    expect(balanceAAFEI).to.be.equal(BN(0));
+    expect(balanceBBFEI).to.be.equal(ONE_THOUSAND_TOKEN);
+
   });
 
   describe("when mint an idle cdo card", async () => {
@@ -66,7 +74,7 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -80,7 +88,7 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(1)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -94,7 +102,7 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.5)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -111,7 +119,7 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -132,7 +140,7 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.75)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -216,12 +224,12 @@ describe("IdleCDOCardManager", () => {
 
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
@@ -244,12 +252,12 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
@@ -274,12 +282,12 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
@@ -303,12 +311,12 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       tx = await cards.connect(AABuyer).burn(1);
@@ -336,12 +344,12 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(1)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(0);
       expect(balanceBB).to.be.equal(ONE_THOUSAND_TOKEN);
 
@@ -373,7 +381,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -485,7 +493,7 @@ describe("IdleCDOCardManager", () => {
       await approveNFT(idleCDO, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, EXPOSURE(0.25), 0);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -496,7 +504,7 @@ describe("IdleCDOCardManager", () => {
       await approveNFT(idleCDOFEI, cards, AABuyerAddr, ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.50)));
       expect(pos.cardAddress).to.be.not.undefined;
@@ -514,20 +522,20 @@ describe("IdleCDOCardManager", () => {
       
       await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
 
-      blendTokenId =3;
-      cardTokenIds = await cards.leafTokenIds(blendTokenId);
+      blendTokenId =1;
+      cardTokenIds = await cards.cardIndexes(blendTokenId);
       
       expect(cardTokenIds.length).to.be.equal(2);
-      expect(cardTokenIds[0]).to.be.equal(1);
-      expect(cardTokenIds[1]).to.be.equal(2);
+      expect(cardTokenIds[0]).to.be.equal(0);
+      expect(cardTokenIds[1]).to.be.equal(1);
 
-      pos = await cards.card(cardTokenIds[0]);
+      pos = await cards.card(blendTokenId,cardTokenIds[0]);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0.25)));
       expect(pos.cardAddress).to.be.not.undefined;
       expect(pos.idleCDOAddress).to.be.equal(idleCDO.address);
       
-      pos2 = await cards.card(cardTokenIds[1]);
+      pos2 = await cards.card(blendTokenId,cardTokenIds[1]);
       expect(pos2.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos2.exposure).to.be.equal(BN(EXPOSURE(0.50)));
       expect(pos2.cardAddress).to.be.not.undefined;
@@ -570,7 +578,7 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(1);
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(2);
 
-      blendTokenId =5;
+      blendTokenId =3;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 2)).to.be.equal(blendTokenId);
     });
 
@@ -578,10 +586,10 @@ describe("IdleCDOCardManager", () => {
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer,EXPOSURE(0.3), ONE_THOUSAND_TOKEN,EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      blendTokenId1 = 3;
+      blendTokenId1 = 1;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 0)).to.be.equal(blendTokenId1);
       
-      blendTokenId2 =6;
+      blendTokenId2 =2;
       expect(await cards.tokenOfOwnerByIndex(AABuyerAddr, 1)).to.be.equal(blendTokenId2);
     });
 
@@ -590,23 +598,23 @@ describe("IdleCDOCardManager", () => {
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 3)).to.be.revertedWith("ERC721Enumerable: owner index out of bounds");
+      await expect(cards.tokenOfOwnerByIndex(AABuyerAddr, 4)).to.be.revertedWith("ERC721Enumerable: owner index out of bounds");
     });
 
     it("should be able to get a not combined card as combined group", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
-      expect(await cards.leafTokenIds(1)).deep.to.equal([BN(1)]);
-      expect(await cards.leafTokenIds(2)).deep.to.equal([BN(2)]);
+      expect(await cards.cardIndexes(1)).deep.to.equal([BN(0)]);
+      expect(await cards.cardIndexes(2)).deep.to.equal([BN(1)]);
     });
 
     it("should be able to get a combined card as combined group", async () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      expect(await cards.leafTokenIds(3)).deep.to.equal([BN(1), BN(2)]);
-      expect(await cards.leafTokenIds(6)).deep.to.equal([BN(4), BN(5)]);
+      expect(await cards.cardIndexes(1)).deep.to.equal([BN(0), BN(1)]);
+      expect(await cards.cardIndexes(2)).deep.to.equal([BN(2), BN(3)]);
     });
 
     it("should burn a new NFT Idle CDO Card combining DAI and FEI", async () => {
@@ -631,7 +639,7 @@ describe("IdleCDOCardManager", () => {
       // to update tranchePriceAA which will be 1.9
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      blendTokenId = 5;
+      blendTokenId = 3;
       tx = await cards.connect(AABuyer).burn(blendTokenId);
       await tx.wait();
 
@@ -682,12 +690,12 @@ describe("IdleCDOCardManager", () => {
       expect(await cards.ownerOf(1)).to.be.equal(AABuyerAddr);
       expect(await cards.balanceOf(AABuyerAddr)).to.be.equal(1);
 
-      pos = await cards.card(1);
+      pos = await cards.card(1,0);
       expect(pos.amount).to.be.equal(ONE_THOUSAND_TOKEN);
       expect(pos.exposure).to.be.equal(BN(EXPOSURE(0)));
       expect(pos.cardAddress).to.be.not.undefined;
 
-      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1);
+      const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
       await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
@@ -699,7 +707,7 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should not burn a non existing risk card", async () => {
-      await expect(cards.connect(AABuyer).burn(9)).to.be.revertedWith("Cannot burn an non existing token");
+      await expect(cards.connect(AABuyer).burn(9)).to.be.revertedWith("ERC721: owner query for nonexistent token");
     });
 
     it("should not burn a new NFT Idle CDO Card combining DAI and FEI if not the owner", async () => {
@@ -724,7 +732,7 @@ describe("IdleCDOCardManager", () => {
       // to update tranchePriceAA which will be 1.9
       await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
 
-      await expect(cards.connect(BBBuyer).burn(5)).to.be.revertedWith("Only owner can uncombine combined leafs");
+      await expect(cards.connect(BBBuyer).burn(3)).to.be.revertedWith("burn of risk card that is not own");
 
     });
 
