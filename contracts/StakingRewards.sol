@@ -172,6 +172,15 @@ contract StakingRewards is ReentrancyGuardInitialize, Ownable, Pausable {
     rewardsDistribution = _rewardsDistribution;
   }
 
+  function pause() external onlyOwner {
+    _pause();
+  }
+
+  function unpause() external onlyOwner {
+    _unpause();
+  }
+
+
   /* ========== MODIFIERS ========== */
 
   modifier updateReward(address account) {
