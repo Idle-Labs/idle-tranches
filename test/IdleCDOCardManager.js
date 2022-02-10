@@ -55,6 +55,11 @@ describe("IdleCDOCardManager", () => {
     await expect(cards.balance(1)).to.be.revertedWith("inexistent card");
   });
 
+  it("should not able to get a balance of a combined card", async () => {
+    await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
+    await expect(cards.balance(3)).to.be.revertedWith("Cannot get balance of a non leaf token");
+  });
+
   describe("when mint an idle cdo card", async () => {
     it("should deposit all the amount in AA if the risk exposure is 0%", async () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
