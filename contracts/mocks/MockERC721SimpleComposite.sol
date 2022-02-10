@@ -32,7 +32,7 @@ contract MockERC721SimpleComposite is ERC721SimpleComposite {
     return newItemId;
   }
 
-  function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
+  function _isLeafExists(uint256 _tokenId) internal view virtual override returns (bool) {
     return _content[_tokenId] != 0;
   }
 

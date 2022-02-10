@@ -88,7 +88,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
   function burn(uint256 _tokenId) public {
     require(!isNotExist(_tokenId), "Cannot burn an non existing token");
     
-    if (isLeaf(_tokenId)) {
+    if (_isLeaf(_tokenId)) {
       internalBurn(_tokenId);
       return;
     }
@@ -119,7 +119,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
 
   function balance(uint256 _tokenId) public view returns (uint256 balanceAA, uint256 balanceBB) {
     require(!isNotExist(_tokenId), "inexistent card");
-    require(isLeaf(_tokenId), "Cannot get balance of a non leaf token");
+    require(_isLeaf(_tokenId), "Cannot get balance of a non leaf token");
     Card memory pos = card(_tokenId);
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     return _card.balance();
@@ -153,7 +153,7 @@ contract IdleCDOCardManager is ERC721SimpleComposite {
     underlying.safeTransfer(msg.sender, toRedeem);
   }
 
-  function isContentExists(uint256 _tokenId) internal view virtual override returns (bool) {
+  function _isLeafExists(uint256 _tokenId) internal view virtual override returns (bool) {
     return _cards[_tokenId].cardAddress != address(0);
   }
 

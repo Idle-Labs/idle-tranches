@@ -17,12 +17,12 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
   */
   function leafTokenIds(uint256 _tokenId) public view returns (uint256[] memory leafTokenIds) {
     //if leaf and not exist returns 0
-    if (isLeaf(_tokenId) && !isContentExists(_tokenId)) {
+    if (_isLeaf(_tokenId) && !_isLeafExists(_tokenId)) {
       return new uint256[](0); //undefined
     }
 
     //if leaf returns the first
-    if (isLeaf(_tokenId)) {
+    if (_isLeaf(_tokenId)) {
       leafTokenIds = new uint256[](1);
       leafTokenIds[0] = _tokenId;
       return leafTokenIds;
@@ -35,14 +35,18 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
     return leafTokenIds;
   }
 
-  function isContentExists(uint256 _tokenId) internal view virtual returns (bool);
+
+  /**
+   * @dev Returns true if the given token is a leaf token and exists. 
+  */
+  function _isLeafExists(uint256 _tokenId) internal view virtual returns (bool);
 
   function _mint() internal virtual returns (uint256);
 
   function _combine(uint256 _tokenId1, uint256 _tokenId2) internal virtual returns (uint256) {
-    require(isLeaf(_tokenId1) && isLeaf(_tokenId2), "Only leafs can be combined");
+    require(_isLeaf(_tokenId1) && _isLeaf(_tokenId2), "Only leafs can be combined");
     require(!isCombined[_tokenId1] && !isCombined[_tokenId2], "Leafs were already combined");
-    require(isContentExists(_tokenId1) && isContentExists(_tokenId2), "There are inexistent leafs");
+    require(_isLeafExists(_tokenId1) && _isLeafExists(_tokenId2), "There are inexistent leafs");
     require(_tokenId1 != _tokenId2, "Can't combine same leafs");
     require(msg.sender == ownerOf(_tokenId1) && msg.sender == ownerOf(_tokenId2), "Only owner can combine leafs");
 
@@ -58,7 +62,7 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
 
   function _uncombine(uint256 _tokenId) internal virtual returns (uint256 tokenId1, uint256 tokenId2) {
     require(!isNotExist(_tokenId), "The token does not exist");
-    require(!isLeaf(_tokenId), "Can not uncombine a non-combined token");
+    require(!_isLeaf(_tokenId), "Can not uncombine a non-combined token");
     require(msg.sender == ownerOf(_tokenId), "Only owner can uncombine combined leafs");
 
     tokenId1 = composites[_tokenId][0];
@@ -73,11 +77,11 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
     this.transferFrom(address(this), msg.sender, tokenId2);
   }
 
-  function isLeaf(uint256 _tokenId) internal view returns (bool) {
+  function _isLeaf(uint256 _tokenId) internal view returns (bool) {
     return composites[_tokenId].length == 0;
   }
 
   function isNotExist(uint256 _tokenId) internal view returns (bool) {
-    return isLeaf(_tokenId) && !isContentExists(_tokenId);
+    return _isLeaf(_tokenId) && !_isLeafExists(_tokenId);
   }
 }
