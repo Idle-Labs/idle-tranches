@@ -515,7 +515,7 @@ describe("IdleCDOCardManager", () => {
       await combineCDOs(AABuyer, EXPOSURE(0.25), ONE_THOUSAND_TOKEN,EXPOSURE(0.50), ONE_THOUSAND_TOKEN);
 
       blendTokenId =3;
-      cardTokenIds = await cards.contentIndexes(blendTokenId);
+      cardTokenIds = await cards.leafTokenIds(blendTokenId);
       
       expect(cardTokenIds.length).to.be.equal(2);
       expect(cardTokenIds[0]).to.be.equal(1);
@@ -597,16 +597,16 @@ describe("IdleCDOCardManager", () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
-      expect(await cards.contentIndexes(1)).deep.to.equal([BN(1)]);
-      expect(await cards.contentIndexes(2)).deep.to.equal([BN(2)]);
+      expect(await cards.leafTokenIds(1)).deep.to.equal([BN(1)]);
+      expect(await cards.leafTokenIds(2)).deep.to.equal([BN(2)]);
     });
 
     it("should be able to get a combined card as combined group", async () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      expect(await cards.contentIndexes(3)).deep.to.equal([BN(1), BN(2)]);
-      expect(await cards.contentIndexes(6)).deep.to.equal([BN(4), BN(5)]);
+      expect(await cards.leafTokenIds(3)).deep.to.equal([BN(1), BN(2)]);
+      expect(await cards.leafTokenIds(6)).deep.to.equal([BN(4), BN(5)]);
     });
 
     it("should burn a new NFT Idle CDO Card combining DAI and FEI", async () => {

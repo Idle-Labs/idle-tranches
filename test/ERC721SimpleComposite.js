@@ -23,7 +23,7 @@ describe("ERC721SimpleComposite", () => {
     tx = await bl3nd.mint(); //mint a new token left
     await tx.wait(); //wait for the tx to be mined
 
-    [index] = await bl3nd.contentIndexes(1);
+    [index] = await bl3nd.leafTokenIds(1);
     expect(index).to.equal(1);
     
     expect(await bl3nd.content(index)).to.equal(1*2);
@@ -55,13 +55,13 @@ describe("ERC721SimpleComposite", () => {
     tx = await bl3nd.combine(1, 2); //combine the two tokens
     await tx.wait();
 
-    [first,second] = await bl3nd.contentIndexes(3);
+    [first,second] = await bl3nd.leafTokenIds(3);
     expect(await bl3nd.content(first)).to.equal(1*2);
     expect(await bl3nd.content(second)).to.equal(2*2);
   });
 
   it("should indexes be empty if leaf token does not exist", async () => {
-    expect(await bl3nd.contentIndexes(1)).to.be.empty;
+    expect(await bl3nd.leafTokenIds(1)).to.be.empty;
   });
 
   it("should be revert if combine a leafs and a combined tokens", async () => {

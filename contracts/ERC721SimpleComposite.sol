@@ -6,11 +6,34 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
  * @dev This implements a simple composite of enumerable ERC721 token. It allows to combine two leafs in a single token.
  */
 abstract contract ERC721SimpleComposite is ERC721Enumerable {
-  // binary tree structure with a root and two children
+  // binary tree structure with a root and two leafs
   mapping(uint256 => uint256[]) internal composites;
 
   //combined tokens are marked as true
   mapping(uint256 => bool) internal isCombined;
+
+  /**
+  * @dev Returns a leaf token IDs at a given `_tokenId` of the root or leafs token ids.
+  */
+  function leafTokenIds(uint256 _tokenId) public view returns (uint256[] memory leafTokenIds) {
+    //if leaf and not exist returns 0
+    if (isLeaf(_tokenId) && !isContentExists(_tokenId)) {
+      return new uint256[](0); //undefined
+    }
+
+    //if leaf returns the first
+    if (isLeaf(_tokenId)) {
+      leafTokenIds = new uint256[](1);
+      leafTokenIds[0] = _tokenId;
+      return leafTokenIds;
+    }
+
+    //composite content
+    leafTokenIds = new uint256[](2);
+    leafTokenIds[0] = composites[_tokenId][0];
+    leafTokenIds[1] = composites[_tokenId][1];
+    return leafTokenIds;
+  }
 
   function isContentExists(uint256 _tokenId) internal view virtual returns (bool);
 
@@ -48,26 +71,6 @@ abstract contract ERC721SimpleComposite is ERC721Enumerable {
 
     this.transferFrom(address(this), msg.sender, tokenId1);
     this.transferFrom(address(this), msg.sender, tokenId2);
-  }
-
-  function contentIndexes(uint256 _tokenId) public view returns (uint256[] memory indexes) {
-    //if leaf and not exist returns 0
-    if (isLeaf(_tokenId) && !isContentExists(_tokenId)) {
-      return new uint256[](0); //undefined
-    }
-
-    //if leaf returns the first
-    if (isLeaf(_tokenId)) {
-      indexes = new uint256[](1);
-      indexes[0] = _tokenId;
-      return indexes;
-    }
-
-    //composite content
-    indexes = new uint256[](2);
-    indexes[0] = composites[_tokenId][0];
-    indexes[1] = composites[_tokenId][1];
-    return indexes;
   }
 
   function isLeaf(uint256 _tokenId) internal view returns (bool) {
