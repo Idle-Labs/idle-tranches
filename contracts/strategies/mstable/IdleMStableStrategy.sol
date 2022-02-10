@@ -290,12 +290,6 @@ contract IdleMStableStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         rewardLastRound = endRound;
     }
 
-    /// @notice Change idleCDO address
-    /// @dev operation can be only done by the owner of the contract
-    function changeIdleCDO(address _idleCDO) external onlyOwner {
-        idleCDO = _idleCDO;
-    }
-
     /// @notice Change the uniswap router path
     /// @param newPath New Path
     /// @dev operation can be only done by the owner of the contract
