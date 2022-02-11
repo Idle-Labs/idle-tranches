@@ -350,8 +350,8 @@ task("find-convex-params", "Find depositPosition for depositToken of a convex po
 
     const curveWETHAddr = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
     // if a coin is equal to curveWETHAddr then replace the value with the real WETH address
-    coins = coins.map(coin => coin == curveWETHAddr ? mainnetContracts.WETH : coin);
-    uCoins = uCoins.map(coin => coin == curveWETHAddr ? mainnetContracts.WETH : coin);
+    coins = coins.map(coin => (coin == curveWETHAddr ? mainnetContracts.WETH : coin).toLowerCase());
+    uCoins = uCoins.map(coin => (coin == curveWETHAddr ? mainnetContracts.WETH : coin).toLowerCase());
 
     console.log({ poolName, poolAddr, lpToken, depositToken, coins, uCoins });
 

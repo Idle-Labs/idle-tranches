@@ -127,12 +127,12 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     ]);
     
     console.log("deploying with factory...");
-    const res = await cdoFactory.deployCDO(cdoImplementationAddress, proxyAdminAddress, initMethodCall);
+    let res = await cdoFactory.deployCDO(cdoImplementationAddress, proxyAdminAddress, initMethodCall);
+    res = await res.wait();
     const cdoDeployFilter = cdoFactory.filters.CDODeployed;
     const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
     const proxyAddress = events[0].args.proxy;
-    const receipt = await res.wait();
-    helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${receipt.cumulativeGasUsed.toString()})`);
+    helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${res.cumulativeGasUsed.toString()})`);
     return proxyAddress;
   });
   
@@ -204,7 +204,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       creator, // owner / guardian
       idleCDO.address,
       mainnetContracts.devLeagueMultisig, // recovery address
-      BN(1500) // 1500 blocks
+      BN(6400) // 6400 blocks
     ];
 
     let stakingRewardsAA = {address: addresses.addr0};
