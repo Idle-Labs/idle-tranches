@@ -103,6 +103,7 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         IERC20Detailed(govToken).approve(address(uniswapV2Router02), govTokensToSend);
 
         uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
+        console.log("before::swapping on unswap::underlyingTokenBalanceBefore", underlyingTokenBalanceBefore);
         uniswapV2Router02.swapExactTokensForTokens(
             govTokensToSend,
             minLiquidityTokenToReceive,
@@ -111,12 +112,16 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             block.timestamp
         );
         uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
+        console.log("before::swapping on unswap::underlyingTokenBalanceAfter", underlyingTokenBalanceAfter);
 
+        console.log("amount received from uniswap", underlyingTokenBalanceAfter - underlyingTokenBalanceBefore);
         require(
             underlyingTokenBalanceAfter - underlyingTokenBalanceBefore >= minLiquidityTokenToReceive,
             "Should received more reward from uniswap than minLiquidityTokenToReceive"
         );
-        return _depositToVault(underlyingTokenBalanceAfter);
+        uint256 uniswapAmountToVault = _depositToVault(underlyingTokenBalanceAfter);
+        console.log("interest tokens received from uniswap", uniswapAmountToVault);
+        return uniswapAmountToVault;
     }
 
     function pullStkAAVE() external pure override returns (uint256) {
@@ -142,8 +147,11 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         }
 
         uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
+        console.log("gain", gain);
         uint256 time = block.timestamp - lastIndexedTime;
+        console.log("time", time);
         uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
+        console.log("gainPerc", gainPerc);
         uint256 apr = (YEAR / time) * gainPerc;
         return apr;
     }
@@ -172,16 +180,21 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         if (_amount > 0) {
+            console.log("amount being deposited", _amount);
+            console.log("underlying token", address(underlyingToken));
+            console.log("msg.sender", msg.sender);
+            console.log("Check allowance", underlyingToken.allowance(msg.sender, address(this)));
             underlyingToken.transferFrom(msg.sender, address(this), _amount);
+            console.log("Transfer complete");
+            lastIndexAmount = lastIndexAmount + _amount;
             minted = _depositToVault(_amount);
         }
     }
 
     function _depositToVault(uint256 _amount) internal returns (uint256) {
         underlyingToken.approve(strategyToken, _amount);
-        lastIndexAmount = lastIndexAmount + _amount;
-        lastIndexedTime = block.timestamp;
         IHarvestVault(strategyToken).deposit(_amount);
+        lastIndexedTime = block.timestamp;
 
         uint256 interestTokenAvailable = IERC20Detailed(strategyToken).balanceOf(address(this));
         IERC20Detailed(strategyToken).approve(rewardPool, interestTokenAvailable);

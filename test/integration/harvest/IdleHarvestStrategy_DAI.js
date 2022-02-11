@@ -17,14 +17,14 @@ const strategyToken = "0xab7FA2B2985BCcfC13c6D86b1D5A17486ab1e04C"; // fDAI
 const rewardPool = "0x15d3A64B2d5ab9E152F16593Cdebc4bB165B5B4A"; // NoMintRewardPool
 
 const dai_whale = "0x075e72a5eDf65F0A5f44699c7654C1a76941Ddc8";
-const AMOUNT_TO_TRANSFER = BN("1000000000000000000");
+const AMOUNT_TO_TRANSFER = BN("1000000000000000000"); // 1 DAI
 
 const harvestControllerAddress = "0x3cC47874dC50D98425ec79e647d83495637C55e3";
 const harvestGovernanceAddress = "0xf00dD244228F51547f0563e60bCa65a30FBF5f7f";
 
 const uniswapV2RouterV2 = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe.only("Idle Harvest Strategy", async () => {
+describe("Idle Harvest Strategy (DAI)", async () => {
   let IdleHarvestStrategy;
   let harvestController;
   let rewardPoolContract;
@@ -39,15 +39,15 @@ describe.only("Idle Harvest Strategy", async () => {
   let dai_signer;
   let harvestGovernanceSigner;
 
+  let snapshotId;
+
   before(async () => {
     await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
     await ethers.provider.send("hardhat_setBalance", [dai_whale, "0xffffffffffffffff"]);
 
     await ethers.provider.send("hardhat_impersonateAccount", [harvestGovernanceAddress]);
     await ethers.provider.send("hardhat_setBalance", [harvestGovernanceAddress, "0xffffffffffffffff"]);
-  });
 
-  beforeEach(async () => {
     [owner, user, , , proxyAdmin] = await ethers.getSigners();
     DAI = await ethers.getContractAt(erc20.abi, DAIAddress);
     dai_signer = await ethers.getSigner(dai_whale);
@@ -82,6 +82,20 @@ describe.only("Idle Harvest Strategy", async () => {
 
     harvestController = await ethers.getContractAt(harvestControllerAbi, harvestControllerAddress);
     await harvestController.connect(harvestGovernanceSigner).addMultipleToWhitelist([IdleHarvestStrategy.address]);
+  });
+
+  beforeEach(async () => {
+    snapshotId = await hre.network.provider.request({
+      method: "evm_snapshot",
+      params: [],
+    });
+  });
+
+  afterEach(async () => {
+    await hre.network.provider.request({
+      method: "evm_revert",
+      params: [snapshotId],
+    });
   });
 
   it("Deposit", async () => {
@@ -130,5 +144,37 @@ describe.only("Idle Harvest Strategy", async () => {
     });
 
     console.log("Apr After Some redeem", (await IdleHarvestStrategy.connect(user).getApr()).toString());
+  });
+
+  it("Redeem Rewards", async () => {
+    let AMOUNT_TO_REDEEM = BN("100000000000000");
+    await DAI.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
+    await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+
+    await network.provider.request({
+      method: "evm_increaseTime",
+      params: [30 * 86400],
+    });
+
+    await network.provider.request({
+      method: "evm_mine",
+      params: [],
+    });
+
+    console.log("Apr Before", (await IdleHarvestStrategy.connect(user).getApr()).toString());
+
+    await IdleHarvestStrategy.connect(user)["redeemRewards()"]();
+
+    await network.provider.request({
+      method: "evm_increaseTime",
+      params: [30 * 86400],
+    });
+
+    await network.provider.request({
+      method: "evm_mine",
+      params: [],
+    });
+
+    console.log("Apr After", (await IdleHarvestStrategy.connect(user).getApr()).toString());
   });
 });
