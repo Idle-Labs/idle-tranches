@@ -11,22 +11,22 @@ contract IdleCDOCard {
   using SafeMath for uint256;
 
   IdleCDOCardManager internal manager;
-  IdleCDO internal idleCDO;
-  IERC20Detailed internal underlying;
 
   modifier onlyOwner() {
     require(msg.sender == address(manager), "Ownable: card caller is not the card manager owner");
     _;
   }
 
-  constructor(address _idleCDOAddress) {
+  constructor() {
     manager = IdleCDOCardManager(msg.sender);
     require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCardManager")), "creator is not an IdleCDOCardManager contract");
-    idleCDO = IdleCDO(_idleCDOAddress);
-    underlying = IERC20Detailed(idleCDO.token());
   }
 
-  function mint(uint256 _amountAA, uint256 _amountBB) public onlyOwner returns (uint256) {
+  function mint(address _idleCDOAddress, uint256 _amountAA, uint256 _amountBB) public onlyOwner returns (uint256) {
+
+    IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
+    IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
+
     uint256 amount = _amountAA.add(_amountBB);
 
     // transfer amount to cards protocol
@@ -42,8 +42,11 @@ contract IdleCDOCard {
     return amount;
   }
 
-  function burn() public onlyOwner returns (uint256 toRedeem) {
-    (uint256 balanceAA, uint256 balanceBB) = balance();
+  function burn(address _idleCDOAddress) public onlyOwner returns (uint256 toRedeem) {
+    IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
+    IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
+
+    (uint256 balanceAA, uint256 balanceBB) = balance(_idleCDOAddress);
 
     uint256 toRedeemAA = balanceAA > 0 ? idleCDO.withdrawAA(0) : 0;
     uint256 toRedeemBB = balanceBB > 0 ? idleCDO.withdrawBB(0) : 0;
@@ -53,7 +56,10 @@ contract IdleCDOCard {
     underlying.safeTransfer(address(manager), toRedeem);
   }
 
-  function balance() public view returns (uint256 balanceAA, uint256 balanceBB) {
+  function balance(address _idleCDOAddress) public view returns (uint256 balanceAA, uint256 balanceBB) {
+    IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
+    IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
+
     balanceAA = IERC20Detailed(idleCDO.AATranche()).balanceOf(address(this));
     balanceBB = IERC20Detailed(idleCDO.BBTranche()).balanceOf(address(this));
   }
