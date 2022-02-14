@@ -40,28 +40,28 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
     // assume only mint _idleCDOAddress if _amountPos2 is 0
-    return mint(_idleCDOAddress, _risk, _amount, address(0),0,0);
+    return mint(_idleCDOAddress, _risk, _amount, address(0), 0, 0);
   }
 
   function mint(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public returns (uint256) {
     require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
-    
+
     // mint the Idle CDO card
     uint256 tokenId = _mint();
     IdleCDOCard _card = new IdleCDOCard();
 
     if (_amountDAI > 0) {
-       // deposit DAI
+      // deposit DAI
       _depositToCard(_card, _idleCDODAIAddress, _riskDAI, _amountDAI);
       _cardSet.push(Card(_riskDAI, _amountDAI, address(_card), _idleCDODAIAddress));
-      _cards[tokenId].push(_cardSet.length -1);
+      _cards[tokenId].push(_cardSet.length - 1);
     }
 
     if (_amountFEI > 0) {
       // deposit FEI
       _depositToCard(_card, _idleCDOFEIAddress, _riskFEI, _amountFEI);
       _cardSet.push(Card(_riskFEI, _amountFEI, address(_card), _idleCDOFEIAddress));
-      _cards[tokenId].push(_cardSet.length -1);
+      _cards[tokenId].push(_cardSet.length - 1);
     }
 
     return tokenId;
@@ -71,12 +71,11 @@ contract IdleCDOCardManager is ERC721Enumerable {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
 
     _burn(_tokenId);
-    
-     // withdraw all positions
-     for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
-       _withdrawFromCard(_tokenId, i);
-     }
 
+    // withdraw all positions
+    for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
+      _withdrawFromCard(_tokenId, i);
+    }
   }
 
   function card(uint256 _tokenId, uint256 _index) public view returns (Card memory) {
@@ -97,13 +96,13 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return ratioAA.add(ratioBB);
   }
 
-  function cardIndexes(uint256 _tokenId) public view  returns (uint256[] memory _cardIndexes) {
-      return _cards[_tokenId]; 
-   }
+  function cardIndexes(uint256 _tokenId) public view returns (uint256[] memory _cardIndexes) {
+    return _cards[_tokenId];
+  }
 
   function balance(uint256 _tokenId, uint256 _index) public view returns (uint256 balanceAA, uint256 balanceBB) {
     require(_isCardExists(_tokenId, _index), "inexistent card");
-    Card memory pos = card(_tokenId,_index);
+    Card memory pos = card(_tokenId, _index);
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     return _card.balance(pos.idleCDOAddress);
   }
@@ -122,7 +121,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return newItemId;
   }
 
-  function _isCardExists(uint256 _tokenId, uint256 _index) internal view virtual  returns (bool) {
+  function _isCardExists(uint256 _tokenId, uint256 _index) internal view virtual returns (bool) {
     return _cards[_tokenId].length != 0 && _cards[_tokenId].length > _index;
   }
 
@@ -148,23 +147,20 @@ contract IdleCDOCardManager is ERC721Enumerable {
     // inversely proportional to risk
     uint256 depositAA = _amount.sub(depositBB);
 
-    _card.mint(_idleCDOAddress,depositAA, depositBB);
+    _card.mint(_idleCDOAddress, depositAA, depositBB);
   }
 
-
   function _withdrawFromCard(uint256 _tokenId, uint256 _index) private {
-    Card memory pos = card(_tokenId,_index);
+    Card memory pos = card(_tokenId, _index);
     if (pos.cardAddress != address(0)) {
       IdleCDOCard _cardFEI = IdleCDOCard(pos.cardAddress);
       // burn the card
-       uint256 toRedeemFEI = _cardFEI.burn(pos.idleCDOAddress);
+      uint256 toRedeemFEI = _cardFEI.burn(pos.idleCDOAddress);
       // transfer to card owner
       IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
       underlying.safeTransfer(msg.sender, toRedeemFEI);
     }
-
   }
-
 
   function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
     for (uint256 i = 0; i < idleCDOs.length; i++) {
