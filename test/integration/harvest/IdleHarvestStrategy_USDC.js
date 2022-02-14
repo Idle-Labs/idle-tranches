@@ -14,7 +14,7 @@ const uniswapV2RouterV2Abi = require("../../../artifacts/contracts/interfaces/IU
 const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
 const USDCAddress = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"; // USDC
-const strategyToken = "0xc3F7ffb5d5869B3ade9448D094d81B0521e8326f"; // fUSDC
+const strategyToken = "0xf0358e8c3CD5Fa238a29301d0bEa3D63A17bEdBE"; // fUSDC
 
 const wrappedETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
 
@@ -29,7 +29,7 @@ const harvestGovernanceAddress = "0xf00dD244228F51547f0563e60bCa65a30FBF5f7f";
 
 const uniswapV2RouterV2Address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe("Idle Harvest Strategy (USDC)", async () => {
+describe.only("Idle Harvest Strategy (USDC)", async () => {
   let IdleHarvestStrategy;
   let harvestController;
   let rewardPoolContract;
@@ -121,7 +121,7 @@ describe("Idle Harvest Strategy (USDC)", async () => {
   });
 
   it("Redeem", async () => {
-    let AMOUNT_TO_REDEEM = BN("100000000000000");
+    let AMOUNT_TO_REDEEM = BN("99000000");
     await USDC.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
@@ -129,14 +129,16 @@ describe("Idle Harvest Strategy (USDC)", async () => {
   });
 
   it("Redeem Underlying", async () => {
+    let toRedeem = BN("90000000");
+
     await USDC.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    await IdleHarvestStrategy.connect(user).redeemUnderlying(AMOUNT_TO_TRANSFER);
+    await IdleHarvestStrategy.connect(user).redeemUnderlying(toRedeem);
   });
 
   it("Price, apr and rewardTokens", async () => {
-    let AMOUNT_TO_REDEEM = BN("100000000000000");
+    let AMOUNT_TO_REDEEM = BN("99000000");
     await USDC.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
