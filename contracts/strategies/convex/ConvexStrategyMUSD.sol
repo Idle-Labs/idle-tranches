@@ -29,8 +29,6 @@ contract ConvexStrategyMUSD is ConvexBaseStrategy {
         _deposit.safeApprove(CURVE_MUSD_DEPOSIT, 0);
         _deposit.safeApprove(CURVE_MUSD_DEPOSIT, _balance);
 
-        // we can accept 0 as minimum, this will be called only by trusted roles
-        // we also use the zap to deploy funds into a meta pool
         uint256[4] memory _depositArray;
         _depositArray[depositPosition] = _balance;
         IDepositZap(CURVE_MUSD_DEPOSIT).add_liquidity(_depositArray, _minLpTokens);
