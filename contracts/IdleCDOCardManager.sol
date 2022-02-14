@@ -39,7 +39,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
-    // assume only mint _idleCDOAddress if _amountFEI is 0
+    // assume only mint _idleCDOAddress if _amountPos2 is 0
     return mint(_idleCDOAddress, _risk, _amount, address(0),0,0);
   }
 
@@ -67,39 +67,15 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return tokenId;
   }
 
-    function burn(uint256 _tokenId) public {
+  function burn(uint256 _tokenId) public {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
 
     _burn(_tokenId);
-
-    //////////////////////////// DAI CARD ////////////////////////////
-    // get the card
-    Card memory posDAI = card(_tokenId,0);
-    if (posDAI.cardAddress != address(0)) {
-      IdleCDOCard _cardDAI = IdleCDOCard(posDAI.cardAddress);
-      // burn the card
-      uint256 toRedeemDAI = _cardDAI.burn(posDAI.idleCDOAddress);
-      // transfer to card owner
-      IERC20Detailed underlying = IERC20Detailed(IdleCDO(posDAI.idleCDOAddress).token());
-      underlying.safeTransfer(msg.sender, toRedeemDAI);
-    }
-
-    //////////////////////////// FEI CARD ////////////////////////////
-    // get the card
-
-    if(_cards[_tokenId].length<2){
-      return;
-    }
-
-    Card memory posFEI = card(_tokenId,1);
-    if (posFEI.cardAddress != address(0)) {
-      IdleCDOCard _cardFEI = IdleCDOCard(posFEI.cardAddress);
-      // burn the card
-       uint256 toRedeemFEI = _cardFEI.burn(posFEI.idleCDOAddress);
-      // transfer to card owner
-      IERC20Detailed underlying = IERC20Detailed(IdleCDO(posFEI.idleCDOAddress).token());
-      underlying.safeTransfer(msg.sender, toRedeemFEI);
-    }
+    
+     // withdraw all positions
+     for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
+       _withdrawFromCard(_tokenId, i);
+     }
 
   }
 
@@ -173,6 +149,20 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 depositAA = _amount.sub(depositBB);
 
     _card.mint(_idleCDOAddress,depositAA, depositBB);
+  }
+
+
+  function _withdrawFromCard(uint256 _tokenId, uint256 _index) private {
+    Card memory pos = card(_tokenId,_index);
+    if (pos.cardAddress != address(0)) {
+      IdleCDOCard _cardFEI = IdleCDOCard(pos.cardAddress);
+      // burn the card
+       uint256 toRedeemFEI = _cardFEI.burn(pos.idleCDOAddress);
+      // transfer to card owner
+      IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+      underlying.safeTransfer(msg.sender, toRedeemFEI);
+    }
+
   }
 
 
