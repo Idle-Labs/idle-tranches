@@ -500,6 +500,10 @@ abstract contract ConvexBaseStrategy is
         whitelistedCDO = _cdo;
     }
 
+    function setReleaseBlocksPeriod(uint256 _period) external onlyOwner {
+        releaseBlocksPeriod = _period;
+    }
+
     // ###################
     // Internal
     // ###################
