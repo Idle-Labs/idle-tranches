@@ -24,7 +24,7 @@ const harvestGovernanceAddress = "0xf00dD244228F51547f0563e60bCa65a30FBF5f7f";
 
 const uniswapV2RouterV2 = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe("Idle Harvest Strategy (DAI)", async () => {
+describe.only("Idle Harvest Strategy (DAI)", async () => {
   let IdleHarvestStrategy;
   let harvestController;
   let rewardPoolContract;

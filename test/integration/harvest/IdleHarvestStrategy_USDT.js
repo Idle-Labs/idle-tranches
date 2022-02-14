@@ -29,7 +29,7 @@ const harvestGovernanceAddress = "0xf00dD244228F51547f0563e60bCa65a30FBF5f7f";
 
 const uniswapV2RouterV2Address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe("Idle Harvest Strategy (USDT)", async () => {
+describe.only("Idle Harvest Strategy (USDT)", async () => {
   let IdleHarvestStrategy;
   let harvestController;
   let rewardPoolContract;
@@ -84,7 +84,7 @@ describe("Idle Harvest Strategy (USDT)", async () => {
 
     rewardPoolContract = await ethers.getContractAt(rewardPoolAbi, rewardPool);
     let govToken = await rewardPoolContract.connect(owner).rewardToken();
-    
+
     await IdleHarvestStrategy.connect(owner).initialize(
       strategyToken,
       USDTAddress,
@@ -121,7 +121,7 @@ describe("Idle Harvest Strategy (USDT)", async () => {
   });
 
   it("Redeem", async () => {
-    let AMOUNT_TO_REDEEM = BN("100000000000000");
+    let AMOUNT_TO_REDEEM = BN("99000000");
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
@@ -129,14 +129,15 @@ describe("Idle Harvest Strategy (USDT)", async () => {
   });
 
   it("Redeem Underlying", async () => {
+    let toRedeem = BN("90000000");
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    await IdleHarvestStrategy.connect(user).redeemUnderlying(AMOUNT_TO_TRANSFER);
+    await IdleHarvestStrategy.connect(user).redeemUnderlying(toRedeem);
   });
 
   it("Price, apr and rewardTokens", async () => {
-    let AMOUNT_TO_REDEEM = BN("100000000000000");
+    let AMOUNT_TO_REDEEM = BN("99000000");
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
@@ -163,7 +164,7 @@ describe("Idle Harvest Strategy (USDT)", async () => {
   });
 
   it("Redeem Rewards", async () => {
-    console.log({user: user.address});
+    console.log({ user: user.address });
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 

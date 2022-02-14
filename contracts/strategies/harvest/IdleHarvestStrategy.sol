@@ -100,10 +100,10 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
         uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
-        IERC20Detailed(govToken).approve(address(uniswapV2Router02), govTokensToSend);
+        IERC20Detailed(govToken).safeApprove(address(uniswapV2Router02), govTokensToSend);
 
         uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
-        console.log("before::swapping on unswap::underlyingTokenBalanceBefore", underlyingTokenBalanceBefore);
+        // console.log("before::swapping on unswap::underlyingTokenBalanceBefore", underlyingTokenBalanceBefore);
         uniswapV2Router02.swapExactTokensForTokens(
             govTokensToSend,
             minLiquidityTokenToReceive,
@@ -112,15 +112,15 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
             block.timestamp
         );
         uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
-        console.log("before::swapping on unswap::underlyingTokenBalanceAfter", underlyingTokenBalanceAfter);
+        // console.log("before::swapping on unswap::underlyingTokenBalanceAfter", underlyingTokenBalanceAfter);
 
-        console.log("amount received from uniswap", underlyingTokenBalanceAfter - underlyingTokenBalanceBefore);
+        // console.log("amount received from uniswap", underlyingTokenBalanceAfter - underlyingTokenBalanceBefore);
         require(
             underlyingTokenBalanceAfter - underlyingTokenBalanceBefore >= minLiquidityTokenToReceive,
             "Should received more reward from uniswap than minLiquidityTokenToReceive"
         );
         uint256 uniswapAmountToVault = _depositToVault(underlyingTokenBalanceAfter);
-        console.log("interest tokens received from uniswap", uniswapAmountToVault);
+        // console.log("interest tokens received from uniswap", uniswapAmountToVault);
         return uniswapAmountToVault;
     }
 
@@ -147,11 +147,11 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         }
 
         uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
-        console.log("gain", gain);
+        // console.log("gain", gain);
         uint256 time = block.timestamp - lastIndexedTime;
-        console.log("time", time);
+        // console.log("time", time);
         uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
-        console.log("gainPerc", gainPerc);
+        // console.log("gainPerc", gainPerc);
         uint256 apr = (YEAR / time) * gainPerc;
         return apr;
     }
@@ -166,6 +166,8 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     function _redeem(uint256 _amount) internal returns (uint256) {
+        console.log("_redeem:lastIndexAmount", lastIndexAmount);
+        console.log("_redeem:_amount", _amount);
         lastIndexAmount = lastIndexAmount - _amount;
         lastIndexedTime = block.timestamp;
         _burn(msg.sender, _amount);
@@ -174,30 +176,30 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         IHarvestVault(strategyToken).withdraw(_amount);
         uint256 balanceAfter = underlyingToken.balanceOf(address(this));
         uint256 balanceReceived = balanceAfter - balanceBefore;
-        underlyingToken.transfer(msg.sender, balanceReceived);
+        underlyingToken.safeTransfer(msg.sender, balanceReceived);
         return balanceReceived;
     }
 
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         if (_amount > 0) {
-            console.log("amount being deposited", _amount);
-            console.log("underlying token", address(underlyingToken));
-            console.log("msg.sender", msg.sender);
-            console.log("Check allowance", underlyingToken.allowance(msg.sender, address(this)));
-            underlyingToken.transferFrom(msg.sender, address(this), _amount);
-            console.log("Transfer complete");
+            // console.log("amount being deposited", _amount);
+            // console.log("underlying token", address(underlyingToken));
+            // console.log("msg.sender", msg.sender);
+            // console.log("Check allowance", underlyingToken.allowance(msg.sender, address(this)));
+            underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
+            // console.log("Transfer complete");
             lastIndexAmount = lastIndexAmount + _amount;
             minted = _depositToVault(_amount);
         }
     }
 
     function _depositToVault(uint256 _amount) internal returns (uint256) {
-        underlyingToken.approve(strategyToken, _amount);
+        underlyingToken.safeApprove(strategyToken, _amount);
         IHarvestVault(strategyToken).deposit(_amount);
         lastIndexedTime = block.timestamp;
 
         uint256 interestTokenAvailable = IERC20Detailed(strategyToken).balanceOf(address(this));
-        IERC20Detailed(strategyToken).approve(rewardPool, interestTokenAvailable);
+        IERC20Detailed(strategyToken).safeApprove(rewardPool, interestTokenAvailable);
 
         IRewardPool(rewardPool).stake(interestTokenAvailable);
 
