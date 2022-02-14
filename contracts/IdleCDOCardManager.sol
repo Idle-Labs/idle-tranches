@@ -153,14 +153,14 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
   function _withdrawFromCard(uint256 _tokenId, uint256 _index) private {
     Card memory pos = card(_tokenId, _index);
-    if (pos.cardAddress != address(0)) {
-      IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
-      // burn the card
-      uint256 toRedeem = _card.burn(pos.idleCDOAddress);
-      // transfer to card owner
-      IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
-      underlying.safeTransfer(msg.sender, toRedeem);
-    }
+
+    // burn the card
+    IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
+    uint256 toRedeem = _card.burn(pos.idleCDOAddress);
+    
+    // transfer to card owner
+    IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
+    underlying.safeTransfer(msg.sender, toRedeem);
   }
 
   function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
