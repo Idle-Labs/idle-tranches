@@ -39,91 +39,31 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
-    // check if _idleCDOAddress exists in idleCDOAddress array
-    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
-
-    IdleCDOCard _card = new IdleCDOCard();
-    IERC20Detailed underlying = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
-
-    // transfer amount to cards protocol
-    underlying.safeTransferFrom(msg.sender, address(this), _amount);
-
-    // approve the amount to be spend on cdos tranches
-    underlying.approve(address(_card), _amount);
-
-    // calculate the amount to deposit in BB
-    // proportional to risk
-    uint256 depositBB = percentage(_risk, _amount);
-
-    // calculate the amount to deposit in AA
-    // inversely proportional to risk
-    uint256 depositAA = _amount.sub(depositBB);
-
-    _card.mint(_idleCDOAddress,depositAA, depositBB);
-
-    // mint the Idle CDO card
-    uint256 tokenId = _mint();
-    
-    _cardSet.push(Card(_risk, _amount, address(_card), _idleCDOAddress));
-    _cards[tokenId]= [_cardSet.length -1];
-
-    return tokenId;
+    // assume only mint _idleCDOAddress if _amountFEI is 0
+    return mint(_idleCDOAddress, _risk, _amount, address(0),0,0);
   }
 
   function mint(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public returns (uint256) {
     require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
     
-    if (_amountDAI == 0) {
-      return mint(_idleCDOFEIAddress, _riskFEI, _amountFEI);
-    }
-
-    if (_amountFEI == 0) {
-      return mint(_idleCDODAIAddress, _riskDAI, _amountDAI);
-    }
-
-    IdleCDOCard _card = new IdleCDOCard();
-
-    //////////////////////////// DAI CARD////////////////////////////
-    // check if _idleCDOAddress exists in idleCDOAddress array
-    require(isIdleCDOListed(_idleCDODAIAddress), "IdleCDODAI address is not listed in the contract");
-
-
-    // transfer amount to cards protocol
-    IERC20Detailed(IdleCDO(_idleCDODAIAddress).token()).safeTransferFrom(msg.sender, address(this), _amountDAI);
-
-    // approve the amount to be spend on cdos tranches
-    IERC20Detailed(IdleCDO(_idleCDODAIAddress).token()).approve(address(_card), _amountDAI);
-
-    // calculate the amount to deposit in BB
-    // proportional to risk
-    uint256 depositBBDAI = percentage(_riskDAI, _amountDAI);
-
-    _card.mint(_idleCDODAIAddress, _amountDAI.sub(depositBBDAI), depositBBDAI);
-
-
-    //////////////////////////// FEI CARD ////////////////////////////
-    // check if _idleCDOAddress exists in idleCDOAddress array
-    require(isIdleCDOListed(_idleCDOFEIAddress), "IdleCDOFEI address is not listed in the contract");
-
-    // transfer amount to cards protocol
-    IERC20Detailed(IdleCDO(_idleCDOFEIAddress).token()).safeTransferFrom(msg.sender, address(this), _amountFEI);
-
-    // approve the amount to be spend on cdos tranches
-    IERC20Detailed(IdleCDO(_idleCDOFEIAddress).token()).approve(address(_card), _amountFEI);
-
-    // calculate the amount to deposit in BB
-    // proportional to risk
-    uint256 depositBBFEI = percentage(_riskFEI, _amountFEI);
-
-    _card.mint(_idleCDOFEIAddress, _amountFEI.sub(depositBBFEI), depositBBFEI);
-
-
     // mint the Idle CDO card
     uint256 tokenId = _mint();
+    IdleCDOCard _card = new IdleCDOCard();
 
-    _cardSet.push(Card(_riskDAI, _amountDAI, address(_card), _idleCDODAIAddress));
-    _cardSet.push(Card(_riskFEI, _amountFEI, address(_card), _idleCDOFEIAddress));
-    _cards[tokenId]= [_cardSet.length -2, _cardSet.length -1];
+    if (_amountDAI > 0) {
+       // deposit DAI
+      _depositToCard(_card, _idleCDODAIAddress, _riskDAI, _amountDAI);
+      _cardSet.push(Card(_riskDAI, _amountDAI, address(_card), _idleCDODAIAddress));
+      _cards[tokenId].push(_cardSet.length -1);
+    }
+
+    if (_amountFEI > 0) {
+      // deposit FEI
+      _depositToCard(_card, _idleCDOFEIAddress, _riskFEI, _amountFEI);
+      _cardSet.push(Card(_riskFEI, _amountFEI, address(_card), _idleCDOFEIAddress));
+      _cards[tokenId].push(_cardSet.length -1);
+    }
+
     return tokenId;
   }
 
@@ -209,6 +149,32 @@ contract IdleCDOCardManager is ERC721Enumerable {
   function _isCardExists(uint256 _tokenId, uint256 _index) internal view virtual  returns (bool) {
     return _cards[_tokenId].length != 0 && _cards[_tokenId].length > _index;
   }
+
+
+  function _depositToCard(IdleCDOCard _card, address _idleCDOAddress, uint256 _risk, uint256 _amount) private {
+
+    // check if _idleCDOAddress exists in idleCDOAddress array
+    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
+
+    IERC20Detailed underlying = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
+
+    // transfer amount to cards protocol
+    underlying.safeTransferFrom(msg.sender, address(this), _amount);
+
+    // approve the amount to be spend on cdos tranches
+    underlying.approve(address(_card), _amount);
+
+    // calculate the amount to deposit in BB
+    // proportional to risk
+    uint256 depositBB = percentage(_risk, _amount);
+
+    // calculate the amount to deposit in AA
+    // inversely proportional to risk
+    uint256 depositAA = _amount.sub(depositBB);
+
+    _card.mint(_idleCDOAddress,depositAA, depositBB);
+  }
+
 
   function isIdleCDOListed(address _idleCDOAddress) private view returns (bool) {
     for (uint256 i = 0; i < idleCDOs.length; i++) {

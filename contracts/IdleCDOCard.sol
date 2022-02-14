@@ -58,7 +58,6 @@ contract IdleCDOCard {
 
   function balance(address _idleCDOAddress) public view returns (uint256 balanceAA, uint256 balanceBB) {
     IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
-    IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
 
     balanceAA = IERC20Detailed(idleCDO.AATranche()).balanceOf(address(this));
     balanceBB = IERC20Detailed(idleCDO.BBTranche()).balanceOf(address(this));
