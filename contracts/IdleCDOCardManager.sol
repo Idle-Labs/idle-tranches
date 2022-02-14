@@ -25,6 +25,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   IdleCDO[] public idleCDOs;
 
   Counters.Counter private _tokenIds;
+  
   Card[] private _cardSet;
   mapping(uint256 => uint256[]) private _cards;
 
@@ -43,24 +44,24 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return mint(_idleCDOAddress, _risk, _amount, address(0), 0, 0);
   }
 
-  function mint(address _idleCDODAIAddress, uint256 _riskDAI, uint256 _amountDAI, address _idleCDOFEIAddress, uint256 _riskFEI, uint256 _amountFEI) public returns (uint256) {
-    require(_amountDAI > 0 || _amountFEI > 0, "Not possible to mint a card with 0 amounts");
+  function mint(address _idleCDOPos1Address, uint256 _riskPos1, uint256 _amountPos1, address _idleCDOPos2Address, uint256 _riskPos2, uint256 _amountPos2) public returns (uint256) {
+    require(_amountPos1 > 0 || _amountPos2 > 0, "Not possible to mint a card with 0 amounts");
 
     // mint the Idle CDO card
     uint256 tokenId = _mint();
     IdleCDOCard _card = new IdleCDOCard();
 
-    if (_amountDAI > 0) {
-      // deposit DAI
-      _depositToCard(_card, _idleCDODAIAddress, _riskDAI, _amountDAI);
-      _cardSet.push(Card(_riskDAI, _amountDAI, address(_card), _idleCDODAIAddress));
+    if (_amountPos1 > 0) {
+      // deposit position 1
+      _depositToCard(_card, _idleCDOPos1Address, _riskPos1, _amountPos1);
+      _cardSet.push(Card(_riskPos1, _amountPos1, address(_card), _idleCDOPos1Address));
       _cards[tokenId].push(_cardSet.length - 1);
     }
 
-    if (_amountFEI > 0) {
-      // deposit FEI
-      _depositToCard(_card, _idleCDOFEIAddress, _riskFEI, _amountFEI);
-      _cardSet.push(Card(_riskFEI, _amountFEI, address(_card), _idleCDOFEIAddress));
+    if (_amountPos2 > 0) {
+      // deposit position 2
+      _depositToCard(_card, _idleCDOPos2Address, _riskPos2, _amountPos2);
+      _cardSet.push(Card(_riskPos2, _amountPos2, address(_card), _idleCDOPos2Address));
       _cards[tokenId].push(_cardSet.length - 1);
     }
 
@@ -153,12 +154,12 @@ contract IdleCDOCardManager is ERC721Enumerable {
   function _withdrawFromCard(uint256 _tokenId, uint256 _index) private {
     Card memory pos = card(_tokenId, _index);
     if (pos.cardAddress != address(0)) {
-      IdleCDOCard _cardFEI = IdleCDOCard(pos.cardAddress);
+      IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
       // burn the card
-      uint256 toRedeemFEI = _cardFEI.burn(pos.idleCDOAddress);
+      uint256 toRedeem = _card.burn(pos.idleCDOAddress);
       // transfer to card owner
       IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
-      underlying.safeTransfer(msg.sender, toRedeemFEI);
+      underlying.safeTransfer(msg.sender, toRedeem);
     }
   }
 
