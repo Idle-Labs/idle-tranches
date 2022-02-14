@@ -10,4 +10,9 @@ interface IDepositZap {
         uint256[4] memory _deposit_amounts,
         uint256 _min_mint_amount
     ) external returns (uint256);
+
+    function add_liquidity(
+        uint256[4] memory _deposit_amounts,
+        uint256 _min_mint_amount
+    ) external returns (uint256);
 }
