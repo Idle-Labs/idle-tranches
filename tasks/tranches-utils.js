@@ -7,6 +7,7 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const ICurveRegistryAbi = require("../abi/ICurveRegistry.json");
+
 /**
  * @name deploy
  * eg `npx hardhat deploy --cdoname idledai`
@@ -249,6 +250,30 @@ task("emergency-shutdown-cdo-multisig", "Upgrade IdleCDO instance")
   });
 
 /**
+ * @name test-convex-tranche
+ */
+task("test-convex-harvest", "Test harvest on convex tranche")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const signer = await run('get-multisig-or-fake', {fakeAddress: addresses.idleDeployer});
+    const deployToken = addresses.deployTokens[args.cdoname];
+    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
+    let strategy = await ethers.getContractAt(deployToken.strategyName, deployToken.cdo.strategy);
+    cdo = cdo.connect(signer);
+    strategy = strategy.connect(signer);
+
+    let bal = await helpers.getTokenBalance(await cdo.strategyToken(), cdo.address);
+    console.log('StrategyTokens', BN(bal).toString());
+
+    const newSigner = await helpers.getSigner();
+    await helpers.fundAndDeposit('AA', cdo, newSigner.address, ONE_TOKEN(18));
+    
+    await run('increase-time-mine', {time: (60 * 60 * 24 * 3).toString()});
+    await harvest(cdo, {isFirst: true, paramsType: ['uint256', 'uint256'], params: [1,0]});
+    console.log('Apr: ', (await strategy.getApr()).toString());
+  });
+
+/**
  * @name change-rewards
  */
 task("change-rewards", "Update rewards IdleCDO instance")
@@ -446,3 +471,32 @@ subtask("get-multisig-or-fake", "Get multisig signer")
     console.log('Using signer with address: ', await signer.getAddress());
     return signer;
   });
+
+const harvest = async (cdo, { isFirst, params, paramsType } = {isFirst: false, params: [], paramsType: []}) => {
+  // encode params for redeemRewards: uint256[], bool[], uint256, uint256
+  if (!params || !params.length) {
+    params = [
+      [1, 1],
+      [false, false],
+      1,
+      1
+    ];
+    paramsType = ['uint256[]', 'bool[]', 'uint256', 'uint256'];
+  }
+  const extraData = helpers.encodeParams(paramsType, params);
+
+  const res = await helpers.sudoCall(mainnetContracts.rebalancer, cdo, 'harvest', [
+    [isFirst, isFirst, isFirst, isFirst], 
+    [], [], [],
+    extraData
+  ]);
+  
+  console.log('Harvest Gas: ', res[2].cumulativeGasUsed.toString());
+};
+
+const waitBlocks = async (n) => {
+  console.log(`mining ${n} blocks...`);
+  for (var i = 0; i < n; i++) {
+    await ethers.provider.send("evm_mine");
+  };
+}
