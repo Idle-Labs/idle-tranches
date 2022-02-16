@@ -4426,6 +4426,250 @@
           }
         }
       }
+    },
+    "c68cb8e0b5cfaaa06d1b9d8c09e2edaaa1d17995bd1675bb926b9231b802cb7d": {
+      "address": "0x7b8c3Ee1BAFb4aF5826D41137cD5cAF878083619",
+      "txHash": "0xb420ee16c7e4c8d56f333870835aed726ca2a96993029f792cda6083d9a92332",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_balances",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:34"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_allowances",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:36"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_totalSupply",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:38"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_name",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_symbol",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:41"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)45_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:309"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "token",
+            "type": "t_address",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:26"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:29"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "tokenDecimals",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:32"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:35"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "imUSD",
+            "type": "t_contract(ISavingsContractV2)10233",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:38"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "underlyingToken",
+            "type": "t_contract(IERC20Detailed)9720",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:41"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "govToken",
+            "type": "t_address",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:45"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "vault",
+            "type": "t_contract(IVault)10775",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:48"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "idleCDO",
+            "type": "t_address",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:51"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "uniswapRouterPath",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:54"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "uniswapV2Router02",
+            "type": "t_contract(IUniswapV2Router02)10702",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:57"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "lastIndexAmount",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:60"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "lastIndexedTime",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:63"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "rewardLastRound",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:69"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "totalLpTokensStaked",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:72"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "totalLpTokensLocked",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:74"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "releaseBlocksPeriod",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:76"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "latestHarvestBlock",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:78"
+          },
+          {
+            "contract": "IdleMStableStrategy",
+            "label": "lastApr",
+            "type": "t_uint256",
+            "src": "contracts/strategies/mstable/IdleMStableStrategy.sol:80"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_contract(ISavingsContractV2)10233": {
+            "label": "contract ISavingsContractV2"
+          },
+          "t_contract(IERC20Detailed)9720": {
+            "label": "contract IERC20Detailed"
+          },
+          "t_contract(IVault)10775": {
+            "label": "contract IVault"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_contract(IUniswapV2Router02)10702": {
+            "label": "contract IUniswapV2Router02"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))"
+          },
+          "t_string_storage": {
+            "label": "string"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
     }
   }
 }

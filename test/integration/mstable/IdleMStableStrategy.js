@@ -218,8 +218,9 @@ describe.only("IdleMStableStrategy", function () {
     expect(lockedRewards).gt(0);
     expect(totStaked.sub(initialStaked)).eq(lockedRewards);
     // check return value of redeemRewards call
-    expect(staticRes.length).eq(1);
+    expect(staticRes.length).eq(2);
     expect(staticRes[0]).gt(0);
+    expect(staticRes[1]).gte(0);
     // // check that rewardLastRound is updated and > 0
     // await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     // await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
@@ -239,30 +240,37 @@ describe.only("IdleMStableStrategy", function () {
   });
 
   it("APR", async () => {
-    const musdSwapingContract = await ethers.getContractAt(masset.abi, mUSD.address);
+    // initial apr is 0
+    let apr = await IdleMStableStrategy.getApr();
+    expect(apr).eq(0);
 
     await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    await mUSD.connect(musd_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
-    await DAI.connect(dai_signer).transfer(user.address, AMOUNT_TO_TRANSFER);
-
-    await DAI.connect(user).approve(musdSwapingContract.address, AMOUNT_TO_TRANSFER);
-
-    await musdSwapingContract.connect(user).swap(DAIAddress, USDCAddress, AMOUNT_TO_TRANSFER.div(2), 0, user.address);
-
-    await network.provider.request({
-      method: "evm_increaseTime",
-      params: [30 * 86400],
-    });
-
+    apr = await IdleMStableStrategy.getApr();
+    expect(apr).eq(0);
     await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
-
-    await network.provider.request({
-      method: "evm_mine",
-      params: [],
-    });
-
-    expect(await IdleMStableStrategy.getApr()).gt(0);
+    // apr is updated only on deposit and redeem
+    apr = await IdleMStableStrategy.getApr();
+    expect(apr).eq(0);
+    await network.provider.request({method: "evm_increaseTime",  params: [4 * 86400]});
+    await network.provider.request({method: "evm_mine", params: []});
+    
+    await mUSD.connect(user).approve(IdleMStableStrategy.address, AMOUNT_TO_TRANSFER);
+    await IdleMStableStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+    
+    apr = await IdleMStableStrategy.getApr();
+    expect(apr).gt(0);
+    await network.provider.request({method: "evm_increaseTime",  params: [4 * 86400]});
+    await network.provider.request({method: "evm_mine", params: []});
+    
+    await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
+    expect(apr).eq(await IdleMStableStrategy.getApr());
+    
+    await IdleMStableStrategy.connect(user).redeem(BN(await IdleMStableStrategy.balanceOf(user.address)).div(2));
+    await network.provider.request({method: "evm_increaseTime",  params: [4 * 86400]});
+    await network.provider.request({method: "evm_mine", params: []});
+    await savingsManager.connect(user).collectAndStreamInterest(mUSD.address);
+    expect(apr).lt(await IdleMStableStrategy.getApr());
   });
 });
