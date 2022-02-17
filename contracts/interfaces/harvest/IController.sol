@@ -14,6 +14,7 @@ interface IHarvestController {
 
     function addVaultAndStrategy(address _vault, address _strategy) external;
 
+    /// @notice claim the reward tokens
     function doHardWork(address _vault) external;
 
     function salvage(address _token, uint256 amount) external;

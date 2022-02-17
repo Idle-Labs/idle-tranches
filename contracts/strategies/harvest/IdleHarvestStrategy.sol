@@ -186,15 +186,19 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @param _amount amount of strategy tokens to redeem
     /// @return Amount of underlying tokens received
     function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256) {
-        return _redeem(_amount);
+        if (_amount > 0) {
+            return _redeem(_amount);
+        }
     }
 
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
     /// @return Amount of underlying tokens received
     function redeemUnderlying(uint256 _amount) external returns (uint256) {
-        uint256 _underlyingAmount = (_amount * oneToken) / price();
-        return _redeem(_underlyingAmount);
+        if (_amount > 0) {
+            uint256 _underlyingAmount = (_amount * oneToken) / price();
+            return _redeem(_underlyingAmount);
+        }
     }
 
     /// @notice Internal function to redeem the underlying tokens
@@ -205,11 +209,12 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexedTime = block.timestamp;
         _burn(msg.sender, _amount);
         IRewardPool(rewardPool).withdraw(_amount);
-        uint256 balanceBefore = underlyingToken.balanceOf(address(this));
+        IERC20Detailed _underlyingToken = underlyingToken;
+        uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
         IHarvestVault(strategyToken).withdraw(_amount);
-        uint256 balanceAfter = underlyingToken.balanceOf(address(this));
+        uint256 balanceAfter = _underlyingToken.balanceOf(address(this));
         uint256 balanceReceived = balanceAfter - balanceBefore;
-        underlyingToken.safeTransfer(msg.sender, balanceReceived);
+        _underlyingToken.safeTransfer(msg.sender, balanceReceived);
         return balanceReceived;
     }
 
@@ -231,8 +236,9 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         IHarvestVault(strategyToken).deposit(_amount);
         lastIndexedTime = block.timestamp;
 
-        uint256 interestTokenAvailable = IERC20Detailed(strategyToken).balanceOf(address(this));
-        IERC20Detailed(strategyToken).safeApprove(rewardPool, interestTokenAvailable);
+        IERC20Detailed _strategyToken = IERC20Detailed(strategyToken);
+        uint256 interestTokenAvailable = _strategyToken.balanceOf(address(this));
+        _strategyToken.safeApprove(rewardPool, interestTokenAvailable);
 
         IRewardPool(rewardPool).stake(interestTokenAvailable);
 
