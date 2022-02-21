@@ -15,7 +15,7 @@ const log = (...arguments) => {
   console.log(...arguments);
 }
 
-async function advanceNBlock(n) {
+const advanceNBlock = async (n) => {
   let startingBlock = await time.latestBlock();
   await time.increase(15 * Math.round(n));
   let endBlock = startingBlock.addn(n);
@@ -222,6 +222,72 @@ const deposit = async (type, idleCDO, addr, amount) => {
   return aaTrancheBal;
 }
 
+const fundAndDeposit = async (type, idleCDO, user, amount) => {
+  const underlyingAddr = await idleCDO.token();
+  await fundAccount(underlyingAddr, user, amount);
+  const underlying = await ethers.getContractAt('IERC20Detailed', underlyingAddr);
+  console.log('balance ', (await underlying.balanceOf(user)).toString())
+  return deposit(type, idleCDO, user, amount);
+}
+
+// fund a random address with tokens
+// from https://blog.euler.finance/brute-force-storage-layout-discovery-in-erc20-contracts-with-hardhat-7ff9342143ed
+const fundAccount = async (tokenAddress, accountToSet, amount) => {
+  const encode = (types, values) => ethers.utils.defaultAbiCoder.encode(types, values);
+  const probeA = encode(['uint'], [1]);
+  const probeB = encode(['uint'], [2]);
+  const token = await ethers.getContractAt('IERC20Detailed', tokenAddress);
+  const account = addresses.addr0;
+  let balanceSlot;
+
+  for (let i = 0; i < 100; i++) {
+    let probedSlot = ethers.utils.keccak256(
+      encode(['address', 'uint'], [account, i])
+    );
+    // remove padding for JSON RPC
+    while (probedSlot.startsWith('0x0'))
+      probedSlot = '0x' + probedSlot.slice(3);
+    const prev = await network.provider.send(
+      'eth_getStorageAt',
+      [tokenAddress, probedSlot, 'latest']
+    );
+    // make sure the probe will change the slot value
+    const probe = prev === probeA ? probeB : probeA;
+
+    await network.provider.send("hardhat_setStorageAt", [
+      tokenAddress,
+      probedSlot,
+      probe
+    ]);
+
+    const balance = await token.balanceOf(account);
+    // reset to previous value
+    await network.provider.send("hardhat_setStorageAt", [
+      tokenAddress,
+      probedSlot,
+      prev
+    ]);
+
+    if (balance.eq(ethers.BigNumber.from(probe))) {
+      balanceSlot = i;
+      break;
+    }
+  }
+
+  if (!balanceSlot) {
+    throw 'Balances slot not found!';
+  }
+  
+  // Replaced this:
+  //   let valueSlot = encode(['address', 'uint'], [accountToSet, balanceSlot]).replace(/0x0+/, "0x");
+  // with (following https://github.com/element-fi/elf-frontend-testnet/blob/c929e4a1385e49e3728611e3db73f02a7ed35595/src/scripts/manipulateTokenBalances.ts#L113)
+  let valueSlot = ethers.utils.solidityKeccak256(['uint256', 'uint256'], [accountToSet, balanceSlot]);
+  let encodedAmount = encode(['uint'], [amount]);
+  await network.provider.send('hardhat_setStorageAt', [
+    tokenAddress, valueSlot, encodedAmount
+  ]);
+}
+
 const depositAndStake = async (type, idleCDO, addr, amount) => {
   const trancheBal = await deposit(type, idleCDO, addr, amount);
   const stakingRewardsAddr = await idleCDO[type == 'AA' ? 'AAStaking' : 'BBStaking']();
@@ -334,6 +400,8 @@ module.exports = {
   resetFork,
   oneToken,
   deposit,
+  fundAndDeposit,
+  fundAccount,
   withdraw,
   withdrawWithGain,
   getBalance,
