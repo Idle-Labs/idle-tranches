@@ -13,7 +13,7 @@ const ONE_TOKEN = (n, decimals) => BigNumber.from('10').pow(BigNumber.from(n));
 const MAX_UINT = BN('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 const POOL_ID_LUSD3CRV = 33;
 const DEPOSIT_POSITION_LUSD3CRV = 1;
-const WHALE_LUSD3CRV = '0x3631401a11ba7004d1311e24d177b05ece39b4b3';
+const WHALE_LUSD3CRV = '0xea2ddc0f28d799b01ec9cccee89487e0917eb353';
 const DAI = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const TOKEN_LUSD3CRV = '0xEd279fDD11cA84bEef15AF5D39BB4d4bEE23F0cA'
 const CVX = '0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B';
@@ -126,13 +126,14 @@ describe("ConvexStrategy3Token (using lusd3crv for tests)", async () => {
   }
   
   const redeemRewards = async (addr) => {
-    // encode params for redeemRewards: uint256[], uint256, uint256
+    // encode params for redeemRewards: uint256[], bool[], uint256, uint256
     const params = [
-      [5, 5],
+      [5, 5, 5],
+      [false, false, false],
       3,
       4
     ];
-    const extraData = helpers.encodeParams(['uint256[]', 'uint256', 'uint256'], params);
+    const extraData = helpers.encodeParams(['uint256[]', 'bool[]', 'uint256', 'uint256'], params);
     const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
     return res;
   }
