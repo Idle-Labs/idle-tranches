@@ -55,6 +55,9 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice interface derived from uniswap router
     IUniswapV2Router02 public uniswapV2Router02;
 
+    /// @notice latest saved apr
+    uint256 public lastApr;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         token = address(1);
@@ -168,18 +171,21 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     function getApr() external view returns (uint256) {
+        return lastApr;
+    }
+
+    /// @notice update last saved apr
+    /// @param _amount amount of underlying tokens to mint/redeem
+    function _updateApr(int256 _amount) internal {
         uint256 rawBalance = IRewardPool(rewardPool).balanceOf(address(this));
         uint256 expectedUnderlyingAmount = (price() * rawBalance) / oneToken;
-
-        if (expectedUnderlyingAmount <= lastIndexAmount) {
-            return 0;
+        uint256 _lastIndexAmount = lastIndexAmount;
+        if (lastIndexAmount > 0) {
+            uint256 gainPerc = ((expectedUnderlyingAmount - _lastIndexAmount) * 10**20) / _lastIndexAmount;
+            lastApr = (YEAR / (block.timestamp - lastIndexedTime)) * gainPerc;
         }
-
-        uint256 gain = expectedUnderlyingAmount - lastIndexAmount;
-        uint256 time = block.timestamp - lastIndexedTime;
-        uint256 gainPerc = (gain * 10**20) / lastIndexAmount;
-        uint256 apr = (YEAR / time) * gainPerc;
-        return apr;
+        lastIndexedTime = block.timestamp;
+        lastIndexAmount = uint256(int256(expectedUnderlyingAmount) + _amount);
     }
 
     /// @notice Redeem Tokens
