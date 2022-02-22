@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Apache 2.0
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -51,19 +51,26 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     require(getContractValue() + _amount <= _limit, '2');
   }
 
+  /// @dev Check that the second function is not called in the same tx from the same tx.origin
+  function _checkOnlyOwner() internal view {
+    require(owner() == msg.sender, '6');
+  }
+
   /// @notice abstract method, should return the TVL in underlyings
   function getContractValue() public virtual view returns (uint256);
 
   /// @notice set contract TVL limit
   /// @param _limit limit in underlying value, 0 means no limit
-  function _setLimit(uint256 _limit) external onlyOwner {
+  function _setLimit(uint256 _limit) external {
+    _checkOnlyOwner();
     limit = _limit;
   }
 
   /// @notice Emergency method, tokens gets transferred to the governanceRecoveryFund address
   /// @param _token address of the token to transfer
   /// @param _value amount to transfer
-  function transferToken(address _token, uint256 _value) external onlyOwner {
+  function transferToken(address _token, uint256 _value) external {
+    _checkOnlyOwner();
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
   }
 }

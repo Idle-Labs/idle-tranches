@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.7;
+pragma solidity 0.8.10;
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 
@@ -90,4 +90,8 @@ contract IdleCDOStorage {
   address internal constant AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
   // if the cdo receive stkAAVE
   bool internal isStkAAVEActive;
+  // referral address of the strategy developer
+  address public referral;
+  // amount of fee for feeReceiver. Max is FULL_ALLOC
+  uint256 public feeSplit;
 }
