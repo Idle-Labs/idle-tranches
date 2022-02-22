@@ -9,6 +9,7 @@ require("@nomiclabs/hardhat-solhint");
 require("hardhat-etherscan-abi");
 // require('hardhat-docgen');
 require("solidity-coverage");
+require("hardhat-gas-reporter");
 
 // Tasks
 require("./tasks/tests");
@@ -131,5 +132,9 @@ module.exports = {
   },
   mocha: {
     timeout: 1000000
+  },
+  gasReporter: {
+     enabled: (process.env.REPORT_GAS) ? true : false,
+     outputFile: 'gas-report.json'
   }
 };
