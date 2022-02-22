@@ -416,12 +416,12 @@ describe("IdleCDOCardManager", () => {
       //mint
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       // deposit in the lending protocol
-      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       //burn
       const tokenIdCard = 2;
@@ -442,12 +442,12 @@ describe("IdleCDOCardManager", () => {
       //mint
       await mintAABuyer(EXPOSURE(0.25), ONE_THOUSAND_TOKEN);
       // deposit in the lending protocol
-      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       //burn
       const tokenIdCard = 2;
@@ -469,12 +469,12 @@ describe("IdleCDOCardManager", () => {
       await mintCDO(idleCDOFEI, EXPOSURE(0.25), ONE_THOUSAND_TOKEN, AABuyer);
 
       // deposit in the lending protocol
-      await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       // update lending protocol price which is now 2
       await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       //burn
       const tokenIdCard = 2;
@@ -606,12 +606,12 @@ describe("IdleCDOCardManager", () => {
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       // update lending protocol price which is now 2
       await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([false, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       blendTokenId = 3;
       tx = await cards.connect(AABuyer).burn(blendTokenId);
@@ -634,12 +634,12 @@ describe("IdleCDOCardManager", () => {
       //mint
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       // deposit in the lending protocol
-      await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
       
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
       
       //burn
       const tokenIdCard = 2;
@@ -699,12 +699,12 @@ describe("IdleCDOCardManager", () => {
       // update lending protocol price which is now 2
       await idleToken.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDO.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       // update lending protocol price which is now 2
       await idleTokenFEI.setTokenPriceWithFee(BN("2").mul(ONE_TOKEN(18)));
       // to update tranchePriceAA which will be 1.9
-      await idleCDOFEI.harvest(false, true, false, [true], [BN("0")], [BN("0")]);
+      await idleCDO.harvest([false, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
       await expect(cards.connect(BBBuyer).burn(3)).to.be.revertedWith("burn of risk card that is not own");
 

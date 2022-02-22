@@ -26,7 +26,7 @@ describe("IdleCDOCard", () => {
 
   it("should not be deployed by a not IdleCDOCardManger", async () => {
     const IdleCDOCard = await ethers.getContractFactory("IdleCDOCard");
-    await expect(IdleCDOCard.deploy()).to.be.revertedWith("function call to a non-contract account");
+    await expect(IdleCDOCard.deploy()).to.be.revertedWith("Transaction reverted: function returned an unexpected amount of data");
   });
 
   it("should not allow non manager owner minting", async () => {
