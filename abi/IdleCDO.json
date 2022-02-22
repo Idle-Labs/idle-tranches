@@ -251,6 +251,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "feeSplit",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -356,19 +369,9 @@
   {
     "inputs": [
       {
-        "internalType": "bool",
-        "name": "_skipRedeem",
-        "type": "bool"
-      },
-      {
-        "internalType": "bool",
-        "name": "_skipIncentivesUpdate",
-        "type": "bool"
-      },
-      {
-        "internalType": "bool",
-        "name": "_skipFeeDeposit",
-        "type": "bool"
+        "internalType": "bool[]",
+        "name": "_skipFlags",
+        "type": "bool[]"
       },
       {
         "internalType": "bool[]",
@@ -384,24 +387,19 @@
         "internalType": "uint256[]",
         "name": "_sellAmounts",
         "type": "uint256[]"
+      },
+      {
+        "internalType": "bytes",
+        "name": "_extraData",
+        "type": "bytes"
       }
     ],
     "name": "harvest",
     "outputs": [
       {
-        "internalType": "uint256[]",
-        "name": "_soldAmounts",
-        "type": "uint256[]"
-      },
-      {
-        "internalType": "uint256[]",
-        "name": "_swappedAmounts",
-        "type": "uint256[]"
-      },
-      {
-        "internalType": "uint256[]",
-        "name": "_redeemedRewards",
-        "type": "uint256[]"
+        "internalType": "uint256[][]",
+        "name": "_res",
+        "type": "uint256[][]"
       }
     ],
     "stateMutability": "nonpayable",
@@ -655,6 +653,19 @@
   },
   {
     "inputs": [],
+    "name": "referral",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "releaseBlocksPeriod",
     "outputs": [
       {
@@ -741,6 +752,19 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "_feeSplit",
+        "type": "uint256"
+      }
+    ],
+    "name": "setFeeSplit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_guardian",
         "type": "address"
@@ -799,6 +823,19 @@
       }
     ],
     "name": "setRebalancer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_referral",
+        "type": "address"
+      }
+    ],
+    "name": "setReferral",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -874,6 +911,32 @@
       }
     ],
     "name": "setStrategy",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_trancheAPRSplitRatio",
+        "type": "uint256"
+      }
+    ],
+    "name": "setTrancheAPRSplitRatio",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_trancheIdealWeightRatio",
+        "type": "uint256"
+      }
+    ],
+    "name": "setTrancheIdealWeightRatio",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

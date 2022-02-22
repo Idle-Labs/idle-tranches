@@ -15,6 +15,17 @@ task("blocknumber").setAction(async function ({ time }) {
 });
 
 /**
+ * @name blockinfo
+ */
+task("blockinfo").setAction(async function ({ time }) {
+  const blocknumber = await ethers.provider.getBlockNumber();
+  const block = await ethers.provider.getBlock(blocknumber);
+  console.log("Latest block: ", block);
+  console.log("Timestamp: ", block.timestamp);
+  console.log("Number: ", blocknumber);
+});
+
+/**
  * @name accounts
  */
 task("accounts", "Prints the list of accounts", async () => {
