@@ -22,7 +22,7 @@ contract IdleCDOCard {
     require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCardManager")), "creator is not an IdleCDOCardManager contract");
   }
 
-  function mint(address _idleCDOAddress, uint256 _amountAA, uint256 _amountBB) public onlyOwner returns (uint256) {
+  function mint(address _idleCDOAddress, uint256 _amountAA, uint256 _amountBB) external onlyOwner returns (uint256) {
 
     IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
     IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
@@ -42,7 +42,7 @@ contract IdleCDOCard {
     return amount;
   }
 
-  function burn(address _idleCDOAddress) public onlyOwner returns (uint256 toRedeem) {
+  function burn(address _idleCDOAddress) external onlyOwner returns (uint256 toRedeem) {
     IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
     IERC20Detailed underlying = IERC20Detailed(idleCDO.token());
 

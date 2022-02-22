@@ -157,8 +157,7 @@ describe("IdleCDOCardManager", () => {
 
     it("should revert the transaction if idleCDO selected is not listed", async () => {
       const notListedAddress = "0x1000000000000000000000000000000000000001";
-      await expect(cards.connect(AABuyer)["mint(address,uint256,uint256)"](notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN)).to.be.revertedWith("IdleCDO address is not listed in the contract");
-
+      await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN, ethers.constants.AddressZero, 0, 0)).to.be.revertedWith("IdleCDO address is not listed in the contract");
     });
 
     it("should revert the transaction if risk exposure is greater than 100%", async () => {

@@ -39,12 +39,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return idleCDOs;
   }
 
-  function mint(address _idleCDOAddress, uint256 _risk, uint256 _amount) public returns (uint256) {
-    // assume only mint _idleCDOAddress if _amountPos2 is 0
-    return mint(_idleCDOAddress, _risk, _amount, address(0), 0, 0);
-  }
-
-  function mint(address _idleCDOPos1Address, uint256 _riskPos1, uint256 _amountPos1, address _idleCDOPos2Address, uint256 _riskPos2, uint256 _amountPos2) public returns (uint256) {
+  function mint(address _idleCDOPos1Address, uint256 _riskPos1, uint256 _amountPos1, address _idleCDOPos2Address, uint256 _riskPos2, uint256 _amountPos2) external returns (uint256) {
     require(_amountPos1 > 0 || _amountPos2 > 0, "Not possible to mint a card with 0 amounts");
 
     // mint the Idle CDO card
@@ -68,7 +63,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return tokenId;
   }
 
-  function burn(uint256 _tokenId) public {
+  function burn(uint256 _tokenId) external {
     require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
 
     _burn(_tokenId);

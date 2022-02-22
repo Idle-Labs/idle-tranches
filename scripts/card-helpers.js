@@ -52,7 +52,8 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     //approve
     await approveNFT(_idleCDO, cards, signer.address, _amount);
     //mint
-    tx = await cards.connect(signer)["mint(address,uint256,uint256)"](_idleCDO.address, exposure, _amount);
+    tx = await cards.connect(signer)["mint(address,uint256,uint256,address,uint256,uint256)"](_idleCDO.address, exposure, _amount, ethers.constants.AddressZero ,0,0);
+  
     await tx.wait();
     //harvest
     await _idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
