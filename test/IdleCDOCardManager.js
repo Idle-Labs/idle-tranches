@@ -579,16 +579,30 @@ describe("IdleCDOCardManager", () => {
       await mintAABuyer(EXPOSURE(0), ONE_THOUSAND_TOKEN);
       await mintCDO(idleCDOFEI, D18(0.5), ONE_THOUSAND_TOKEN, AABuyer);
 
-      expect(await cards.cardIndexes(1)).deep.to.equal([BN(0)]);
-      expect(await cards.cardIndexes(2)).deep.to.equal([BN(1)]);
+      let firstCard = await cards.cardIndexes(1);
+      let secondCard = await cards.cardIndexes(2);
+
+      expect(firstCard.length).to.be.equal(1);
+      expect(firstCard[0]).to.be.equal(BN(0));
+
+      expect(secondCard.length).to.be.equal(1);
+      expect(secondCard[0]).to.be.equal(BN(1));
     });
 
     it("should be able to get indexes of combined cards", async () => {
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
       await combineCDOs(AABuyer, EXPOSURE(0.3), ONE_THOUSAND_TOKEN, EXPOSURE(0.7), ONE_THOUSAND_TOKEN);
 
-      expect(await cards.cardIndexes(1)).deep.to.equal([BN(0), BN(1)]);
-      expect(await cards.cardIndexes(2)).deep.to.equal([BN(2), BN(3)]);
+      let firstCard = await cards.cardIndexes(1);
+      let secondCard = await cards.cardIndexes(2);
+
+      expect(firstCard.length).to.be.equal(2);
+      expect(firstCard[0]).to.be.equal(BN(0));
+      expect(firstCard[1]).to.be.equal(BN(1));
+
+      expect(secondCard.length).to.be.equal(2);
+      expect(secondCard[0]).to.be.equal(BN(2));
+      expect(secondCard[1]).to.be.equal(BN(3));
     });
 
     it("should be able to burn combining DAI and FEI cards", async () => {
