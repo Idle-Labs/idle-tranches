@@ -55,7 +55,7 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     tx = await cards.connect(signer)["mint(address,uint256,uint256)"](_idleCDO.address, exposure, _amount);
     await tx.wait();
     //harvest
-    await _idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+    await _idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
   };
 
   const combineCDOs = async (signer,exposureDAI, amountDAI, exposureFEI, amountFEI) => {
@@ -67,8 +67,8 @@ const ONE_THOUSAND_TOKEN = BN("1000").mul(ONE_TOKEN(18));
     await tx.wait();
 
     //harvest
-    await idleCDO.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
-    await idleCDOFEI.harvest(true, true, false, [true], [BN("0")], [BN("0")]);
+    await idleCDO.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
+    await idleCDOFEI.harvest([true, true, false, false], [true], [BN("0")], [BN("0")], 0);
   };
 
   const initialIdleContractsDeploy = async () => {
