@@ -26,7 +26,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
   Counters.Counter private _tokenIds;
   Counters.Counter private _cardIds;
-  
+
   mapping(uint256 => Card) private _cardMap;
   mapping(uint256 => uint256[]) private _cards;
 
@@ -40,7 +40,14 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return idleCDOs;
   }
 
-  function mint(address _idleCDOPos1Address, uint256 _riskPos1, uint256 _amountPos1, address _idleCDOPos2Address, uint256 _riskPos2, uint256 _amountPos2) external returns (uint256) {
+  function mint(
+    address _idleCDOPos1Address,
+    uint256 _riskPos1,
+    uint256 _amountPos1,
+    address _idleCDOPos2Address,
+    uint256 _riskPos2,
+    uint256 _amountPos2
+  ) external returns (uint256) {
     require(_amountPos1 > 0 || _amountPos2 > 0, "Not possible to mint a card with 0 amounts");
 
     // mint the Idle CDO card
@@ -50,7 +57,14 @@ contract IdleCDOCardManager is ERC721Enumerable {
     if (_amountPos1 > 0) {
       // deposit position 1
       _depositToCard(_card, _idleCDOPos1Address, _riskPos1, _amountPos1);
-      _cardMap[_cardIds.current()] = Card(_riskPos1, _amountPos1, address(_card), _idleCDOPos1Address);
+
+      Card memory newCard;
+      newCard.exposure = _riskPos1;
+      newCard.amount = _amountPos1;
+      newCard.cardAddress = address(_card);
+      newCard.idleCDOAddress = _idleCDOPos1Address;
+      _cardMap[_cardIds.current()] = newCard;
+
       _cards[tokenId].push(_cardIds.current());
       _cardIds.increment();
     }
@@ -58,10 +72,16 @@ contract IdleCDOCardManager is ERC721Enumerable {
     if (_amountPos2 > 0) {
       // deposit position 2
       _depositToCard(_card, _idleCDOPos2Address, _riskPos2, _amountPos2);
-      _cardMap[_cardIds.current()] = Card(_riskPos2, _amountPos2, address(_card), _idleCDOPos2Address);
+
+      Card memory newCard;
+      newCard.exposure = _riskPos2;
+      newCard.amount = _amountPos2;
+      newCard.cardAddress = address(_card);
+      newCard.idleCDOAddress = _idleCDOPos2Address;
+      _cardMap[_cardIds.current()] = newCard;
+
       _cards[tokenId].push(_cardIds.current());
       _cardIds.increment();
-
     }
 
     return tokenId;
@@ -72,7 +92,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     _burn(_tokenId);
 
-    address cardAddress = card(_tokenId,0).cardAddress;
+    address cardAddress = card(_tokenId, 0).cardAddress;
 
     // withdraw all positions
     for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
@@ -80,8 +100,8 @@ contract IdleCDOCardManager is ERC721Enumerable {
       delete _cardMap[_cards[_tokenId][i]];
       delete _cards[_tokenId][i];
     }
-     delete _cards[_tokenId];
-     IdleCDOCard(cardAddress).destroy();
+    delete _cards[_tokenId];
+    IdleCDOCard(cardAddress).destroy();
   }
 
   function card(uint256 _tokenId, uint256 _index) public view returns (Card memory) {
@@ -131,9 +151,12 @@ contract IdleCDOCardManager is ERC721Enumerable {
     return _cards[_tokenId].length != 0 && _cards[_tokenId].length > _index;
   }
 
-
-  function _depositToCard(IdleCDOCard _card, address _idleCDOAddress, uint256 _risk, uint256 _amount) private {
-
+  function _depositToCard(
+    IdleCDOCard _card,
+    address _idleCDOAddress,
+    uint256 _risk,
+    uint256 _amount
+  ) private {
     // check if _idleCDOAddress exists in idleCDOAddress array
     require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
 
@@ -162,7 +185,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     // burn the card
     IdleCDOCard _card = IdleCDOCard(pos.cardAddress);
     uint256 toRedeem = _card.burn(pos.idleCDOAddress);
-    
+
     // transfer to card owner
     IERC20Detailed underlying = IERC20Detailed(IdleCDO(pos.idleCDOAddress).token());
     underlying.safeTransfer(msg.sender, toRedeem);
