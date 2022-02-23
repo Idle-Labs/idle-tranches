@@ -104,51 +104,22 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice redeem the rewards. Claims all possible rewards
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards = _redeemRewards(0);
+        rewards = _redeemRewards();
     }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
-    /// @param _extraData must contain the minimum liquidity to receive, start round and end round round for which the reward is being claimed
     /// @return rewards amount of reward that is deposited to vault
-    function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        uint256 minLiquidityTokenToReceive = abi.decode(_extraData, (uint256));
-        rewards = _redeemRewards(minLiquidityTokenToReceive);
+    function redeemRewards(bytes calldata) external override onlyIdleCDO returns (uint256[] memory rewards) {
+        rewards = _redeemRewards();
     }
 
     /// @notice internal function to claim the rewards
-    /// @param minLiquidityTokenToReceive minimum number of liquidity tokens to receive after the uniswap swap
-    function _redeemRewards(uint256 minLiquidityTokenToReceive) internal returns (uint256[] memory) {
+    function _redeemRewards() internal returns (uint256[] memory) {
         IRewardPool(rewardPool).getReward();
         uint256[] memory rewards = new uint256[](1);
-        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
+        rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
+        IERC20Detailed(govToken).safeTransfer(msg.sender, rewards[0]);
         return rewards;
-    }
-
-    /// @notice Function to swap the governance tokens on uniswapV2
-    /// @param minLiquidityTokenToReceive minimun number of tokens to that need to be received
-    /// @return Number of new strategy tokens generated
-    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256) {
-        uint256 govTokensToSend = IERC20Detailed(govToken).balanceOf(address(this));
-        IERC20Detailed(govToken).safeApprove(address(uniswapV2Router02), govTokensToSend);
-
-        uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(address(this));
-
-        uniswapV2Router02.swapExactTokensForTokens(
-            govTokensToSend,
-            minLiquidityTokenToReceive,
-            uniswapRouterPath,
-            address(this),
-            block.timestamp
-        );
-        uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(address(this));
-
-        require(
-            underlyingTokenBalanceAfter - underlyingTokenBalanceBefore >= minLiquidityTokenToReceive,
-            "Should received more reward from uniswap than minLiquidityTokenToReceive"
-        );
-        uint256 uniswapAmountToVault = _depositToVault(underlyingTokenBalanceAfter);
-
-        return uniswapAmountToVault;
     }
 
     /// @notice unused in harvest strategy
