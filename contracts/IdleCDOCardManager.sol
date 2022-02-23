@@ -68,10 +68,16 @@ contract IdleCDOCardManager is ERC721Enumerable {
 
     _burn(_tokenId);
 
+    address cardAddress = card(_tokenId,0).cardAddress;
+
     // withdraw all positions
     for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
       _withdrawFromCard(_tokenId, i);
+      delete _cardSet[_cards[_tokenId][i]];
+      delete _cards[_tokenId][i];
     }
+     delete _cards[_tokenId];
+     IdleCDOCard(cardAddress).destroy();
   }
 
   function card(uint256 _tokenId, uint256 _index) public view returns (Card memory) {

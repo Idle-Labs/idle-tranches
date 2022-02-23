@@ -56,6 +56,11 @@ contract IdleCDOCard {
     underlying.safeTransfer(address(manager), toRedeem);
   }
 
+  // This function allows you to clean up / delete contract
+  function destroy() public onlyOwner {
+      selfdestruct(payable(address(manager)));
+  }
+
   function balance(address _idleCDOAddress) public view returns (uint256 balanceAA, uint256 balanceBB) {
     IdleCDO idleCDO = IdleCDO(_idleCDOAddress);
 
