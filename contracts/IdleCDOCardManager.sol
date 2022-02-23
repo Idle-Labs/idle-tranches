@@ -25,8 +25,9 @@ contract IdleCDOCardManager is ERC721Enumerable {
   IdleCDO[] public idleCDOs;
 
   Counters.Counter private _tokenIds;
+  Counters.Counter private _cardIds;
   
-  Card[] private _cardSet;
+  mapping(uint256 => Card) private _cardMap;
   mapping(uint256 => uint256[]) private _cards;
 
   constructor(address[] memory _idleCDOAddress) ERC721("IdleCDOCardManager", "ICC") {
@@ -49,15 +50,18 @@ contract IdleCDOCardManager is ERC721Enumerable {
     if (_amountPos1 > 0) {
       // deposit position 1
       _depositToCard(_card, _idleCDOPos1Address, _riskPos1, _amountPos1);
-      _cardSet.push(Card(_riskPos1, _amountPos1, address(_card), _idleCDOPos1Address));
-      _cards[tokenId].push(_cardSet.length - 1);
+      _cardMap[_cardIds.current()] = Card(_riskPos1, _amountPos1, address(_card), _idleCDOPos1Address);
+      _cards[tokenId].push(_cardIds.current());
+      _cardIds.increment();
     }
 
     if (_amountPos2 > 0) {
       // deposit position 2
       _depositToCard(_card, _idleCDOPos2Address, _riskPos2, _amountPos2);
-      _cardSet.push(Card(_riskPos2, _amountPos2, address(_card), _idleCDOPos2Address));
-      _cards[tokenId].push(_cardSet.length - 1);
+      _cardMap[_cardIds.current()] = Card(_riskPos2, _amountPos2, address(_card), _idleCDOPos2Address);
+      _cards[tokenId].push(_cardIds.current());
+      _cardIds.increment();
+
     }
 
     return tokenId;
@@ -73,7 +77,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     // withdraw all positions
     for (uint256 i = 0; i < _cards[_tokenId].length; i++) {
       _withdrawFromCard(_tokenId, i);
-      delete _cardSet[_cards[_tokenId][i]];
+      delete _cardMap[_cards[_tokenId][i]];
       delete _cards[_tokenId][i];
     }
      delete _cards[_tokenId];
@@ -81,7 +85,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function card(uint256 _tokenId, uint256 _index) public view returns (Card memory) {
-    return _cardSet[_cards[_tokenId][_index]];
+    return _cardMap[_cards[_tokenId][_index]];
   }
 
   function getApr(address _idleCDOAddress, uint256 _exposure) public view returns (uint256) {
