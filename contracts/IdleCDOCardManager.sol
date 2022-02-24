@@ -48,7 +48,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 _riskPos2,
     uint256 _amountPos2
   ) external returns (uint256) {
-    require(_amountPos1 > 0 || _amountPos2 > 0, "Not possible to mint a card with 0 amounts");
+    require(_amountPos1 > 0 || _amountPos2 > 0, "cannot mint with no amount");
 
     // mint the Idle CDO card
     uint256 tokenId = _mint();
@@ -88,7 +88,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function burn(uint256 _tokenId) external {
-    require(msg.sender == ownerOf(_tokenId), "burn of risk card that is not own");
+    require(msg.sender == ownerOf(_tokenId), "burn of card that is not own");
 
     _burn(_tokenId);
 
@@ -134,7 +134,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
   }
 
   function percentage(uint256 _percentage, uint256 _amount) private pure returns (uint256) {
-    require(_percentage < RATIO_PRECISION.add(1), "percentage should be between 0 and 1");
+    require(_percentage < RATIO_PRECISION.add(1), "% should be between 0 and 1");
     return _amount.mul(_percentage).div(RATIO_PRECISION);
   }
 
@@ -158,7 +158,7 @@ contract IdleCDOCardManager is ERC721Enumerable {
     uint256 _amount
   ) private {
     // check if _idleCDOAddress exists in idleCDOAddress array
-    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed in the contract");
+    require(isIdleCDOListed(_idleCDOAddress), "IdleCDO address is not listed");
 
     IERC20Detailed underlying = IERC20Detailed(IdleCDO(_idleCDOAddress).token());
 

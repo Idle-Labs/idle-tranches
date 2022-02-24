@@ -157,11 +157,11 @@ describe("IdleCDOCardManager", () => {
 
     it("should revert the transaction if idleCDO selected is not listed", async () => {
       const notListedAddress = "0x1000000000000000000000000000000000000001";
-      await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN, ethers.constants.AddressZero, 0, 0)).to.be.revertedWith("IdleCDO address is not listed in the contract");
+      await expect(cards.connect(AABuyer).mint(notListedAddress, EXPOSURE(0.75), ONE_THOUSAND_TOKEN, ethers.constants.AddressZero, 0, 0)).to.be.revertedWith("IdleCDO address is not listed");
     });
 
     it("should revert the transaction if risk exposure is greater than 100%", async () => {
-      await expect(mintAABuyer(EXPOSURE(1.000000001), ONE_THOUSAND_TOKEN)).to.be.revertedWith("percentage should be between 0 and 1");
+      await expect(mintAABuyer(EXPOSURE(1.000000001), ONE_THOUSAND_TOKEN)).to.be.revertedWith("% should be between 0 and 1");
     });
   });
 
@@ -289,7 +289,7 @@ describe("IdleCDOCardManager", () => {
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
-      await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
+      await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of card that is not own");
 
       const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(ONE_THOUSAND_TOKEN);
@@ -511,7 +511,7 @@ describe("IdleCDOCardManager", () => {
     });
 
     it("should revert minting card with 0 amount in DAI and FEI", async () => {
-      await expect(combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0), 0)).to.be.revertedWith("Not possible to mint a card with 0 amounts");
+      await expect(combineCDOs(AABuyer, EXPOSURE(0.25), 0,EXPOSURE(0), 0)).to.be.revertedWith("cannot mint with no amount");
     });
 
     it("should generate a new NFT Idle CDO Card combining DAI and FEI", async () => {
@@ -685,7 +685,7 @@ describe("IdleCDOCardManager", () => {
       const { 0: balanceAA, 1: balanceBB } = await cards.balance(1,0);
       expect(balanceAA).to.be.equal(ONE_THOUSAND_TOKEN);
 
-      await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of risk card that is not own");
+      await expect(cards.connect(BBBuyer).burn(1)).to.be.revertedWith("burn of card that is not own");
 
       const aaTrancheBalAfterBurn = await balance("AA", idleCDO, pos.cardAddress);
       expect(aaTrancheBalAfterBurn).to.be.equal(ONE_THOUSAND_TOKEN);
@@ -719,7 +719,7 @@ describe("IdleCDOCardManager", () => {
       // to update tranchePriceAA which will be 1.9
       await idleCDO.harvest([false, true, false, false], [true], [BN("0")], [BN("0")], 0);
 
-      await expect(cards.connect(BBBuyer).burn(3)).to.be.revertedWith("burn of risk card that is not own");
+      await expect(cards.connect(BBBuyer).burn(3)).to.be.revertedWith("burn of card that is not own");
 
     });
 

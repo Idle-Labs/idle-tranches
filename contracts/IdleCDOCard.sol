@@ -13,13 +13,13 @@ contract IdleCDOCard {
   IdleCDOCardManager internal manager;
 
   modifier onlyOwner() {
-    require(msg.sender == address(manager), "Ownable: card caller is not the card manager owner");
+    require(msg.sender == address(manager), "not the card manager owner");
     _;
   }
 
   constructor() {
     manager = IdleCDOCardManager(msg.sender);
-    require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCardManager")), "creator is not an IdleCDOCardManager contract");
+    require(keccak256(bytes(manager.name())) == keccak256(bytes("IdleCDOCardManager")), "not an IdleCDOCardManager");
   }
 
   function mint(address _idleCDOAddress, uint256 _amountAA, uint256 _amountBB) external onlyOwner returns (uint256) {
