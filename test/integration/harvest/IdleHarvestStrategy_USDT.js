@@ -4,6 +4,7 @@ const { BigNumber } = require("@ethersproject/bignumber");
 const BN = (n) => BigNumber.from(n.toString());
 
 const erc20 = require("../../../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
+const { expect } = require("chai");
 const idleHarvestStrategyAbi =
   require("../../../artifacts/contracts/strategies/harvest/IdleHarvestStrategy.sol/IdleHarvestStrategy.json").abi;
 const harvestControllerAbi = require("../../../artifacts/contracts/interfaces/harvest/IController.sol/IHarvestController.json").abi;
@@ -116,8 +117,11 @@ describe.only("Idle Harvest Strategy (USDT)", async () => {
 
   it("Deposit", async () => {
     console.log("Idle Harvest Strategy", IdleHarvestStrategy.address);
+    let balanceBefore = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
+    let balanceAfter = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    expect(balanceAfter).gt(balanceBefore);
   });
 
   it("Redeem", async () => {
@@ -125,7 +129,10 @@ describe.only("Idle Harvest Strategy (USDT)", async () => {
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
+    let balanceBefore = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
     await IdleHarvestStrategy.connect(user).redeem(AMOUNT_TO_REDEEM);
+    let balanceAfter = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    expect(balanceBefore).gt(balanceAfter);
   });
 
   it("Redeem Underlying", async () => {
@@ -133,7 +140,10 @@ describe.only("Idle Harvest Strategy (USDT)", async () => {
     await USDT.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
+    let balanceBefore = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
     await IdleHarvestStrategy.connect(user).redeemUnderlying(toRedeem);
+    let balanceAfter = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    expect(balanceBefore).gt(balanceAfter);
   });
 
   it("Price, apr and rewardTokens", async () => {
