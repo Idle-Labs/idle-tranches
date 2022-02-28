@@ -140,7 +140,8 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         uint256 expectedUnderlyingAmount = (price() * rawBalance) / oneToken;
         uint256 _lastIndexAmount = lastIndexAmount;
         if (lastIndexAmount > 0) {
-            uint256 gainPerc = ((expectedUnderlyingAmount - _lastIndexAmount) * 10**20) / _lastIndexAmount;
+            uint256 diff = expectedUnderlyingAmount > _lastIndexAmount ? expectedUnderlyingAmount - _lastIndexAmount : 0;
+            uint256 gainPerc = ((diff) * 10**20) / _lastIndexAmount;
             lastApr = (YEAR / (block.timestamp - lastIndexedTime)) * gainPerc;
         }
         lastIndexedTime = block.timestamp;
@@ -152,7 +153,7 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @return Amount of underlying tokens received
     function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256) {
         if (_amount > 0) {
-            return _redeem(_amount);
+            return _redeem(_amount, price());
         }
     }
 
@@ -162,15 +163,17 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     function redeemUnderlying(uint256 _amount) external returns (uint256) {
         if (_amount > 0) {
             uint256 _underlyingAmount = (_amount * oneToken) / price();
-            return _redeem(_underlyingAmount);
+            return _redeem(_underlyingAmount, price());
         }
     }
 
     /// @notice Internal function to redeem the underlying tokens
     /// @param _amount Amount of strategy tokens
     /// @return Amount of underlying tokens received
-    function _redeem(uint256 _amount) internal returns (uint256) {
-        lastIndexAmount = lastIndexAmount - _amount;
+    function _redeem(uint256 _amount, uint256 _price) internal returns (uint256) {
+        uint256 redeemed = (_amount * _price) / oneToken;
+        _updateApr(-int256(redeemed));
+
         lastIndexedTime = block.timestamp;
         _burn(msg.sender, _amount);
         IRewardPool(rewardPool).withdraw(_amount);
@@ -189,7 +192,6 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 minted) {
         if (_amount > 0) {
             underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
-            lastIndexAmount = lastIndexAmount + _amount;
             minted = _depositToVault(_amount);
         }
     }
@@ -197,6 +199,7 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice internal function to deposit the funds to the vault
     /// @param _amount Amount of tokens to deposit
     function _depositToVault(uint256 _amount) internal returns (uint256) {
+        _updateApr(int256(_amount));
         address _strategyToken = strategyToken;
         underlyingToken.safeApprove(_strategyToken, _amount);
         IHarvestVault(_strategyToken).deposit(_amount);

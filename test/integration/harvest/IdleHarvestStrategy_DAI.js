@@ -102,10 +102,14 @@ describe.only("Idle Harvest Strategy (DAI)", async () => {
   it("Deposit", async () => {
     console.log("Idle Harvest Strategy", IdleHarvestStrategy.address);
     let balanceBefore = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    let strategyTokenBalanceBefore = await IdleHarvestStrategy.balanceOf(user.address);
     await DAI.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
     let balanceAfter = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    let strategyTokenBalanceAfter = await IdleHarvestStrategy.balanceOf(user.address);
     expect(balanceAfter).gt(balanceBefore);
+    expect(strategyTokenBalanceAfter).gt(strategyTokenBalanceBefore);
+    expect(strategyTokenBalanceAfter.sub(strategyTokenBalanceBefore)).eq(balanceAfter.sub(balanceBefore));
   });
 
   it("Redeem", async () => {
@@ -114,9 +118,13 @@ describe.only("Idle Harvest Strategy (DAI)", async () => {
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
     let balanceBefore = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    let strategyTokenBalanceBefore = await IdleHarvestStrategy.balanceOf(user.address);
     await IdleHarvestStrategy.connect(user).redeem(AMOUNT_TO_REDEEM);
     let balanceAfter = await rewardPoolContract.balanceOf(IdleHarvestStrategy.address);
+    let strategyTokenBalanceAfter = await IdleHarvestStrategy.balanceOf(user.address);
     expect(balanceBefore).gt(balanceAfter);
+    expect(strategyTokenBalanceBefore).gt(strategyTokenBalanceAfter);
+    expect(strategyTokenBalanceBefore.sub(strategyTokenBalanceAfter)).eq(balanceBefore.sub(balanceAfter));
   });
 
   it("Redeem Underlying", async () => {
@@ -134,13 +142,12 @@ describe.only("Idle Harvest Strategy (DAI)", async () => {
     await DAI.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
-    console.log("price before hard work", (await IdleHarvestStrategy.connect(user).price()).toString());
-    console.log("reward tokens", await IdleHarvestStrategy.connect(user).getRewardTokens());
-    console.log("Apr Before", (await IdleHarvestStrategy.connect(user).getApr()).toString());
-
+    const priceBeforeHardWork = await IdleHarvestStrategy.connect(user).price();
     await harvestVault.connect(harvestGovernanceSigner).doHardWork();
-    console.log("price after hardhwork", (await IdleHarvestStrategy.connect(user).price()).toString());
-    console.log("Apr After", (await IdleHarvestStrategy.connect(user).getApr()).toString());
+    const priceAfterHardWork = await IdleHarvestStrategy.connect(user).price();
+
+    expect(priceAfterHardWork).gt(priceBeforeHardWork);
+
     await IdleHarvestStrategy.connect(user).redeem(AMOUNT_TO_REDEEM);
 
     await network.provider.request({
@@ -153,11 +160,10 @@ describe.only("Idle Harvest Strategy (DAI)", async () => {
       params: [],
     });
 
-    console.log("Apr After Some redeem", (await IdleHarvestStrategy.connect(user).getApr()).toString());
+    expect(await IdleHarvestStrategy.connect(user).getApr()).gt(0);
   });
 
   it("Redeem Rewards", async () => {
-    let AMOUNT_TO_REDEEM = BN("100000000000000");
     await DAI.connect(user).approve(IdleHarvestStrategy.address, AMOUNT_TO_TRANSFER);
     await IdleHarvestStrategy.connect(user).deposit(AMOUNT_TO_TRANSFER);
 
@@ -171,20 +177,12 @@ describe.only("Idle Harvest Strategy (DAI)", async () => {
       params: [],
     });
 
-    console.log("Apr Before", (await IdleHarvestStrategy.connect(user).getApr()).toString());
-
+    let govToken = await rewardPoolContract.connect(owner).rewardToken();
+    let govTokenContract = await ethers.getContractAt(erc20.abi, govToken);
+    let rewardTokenBefore = await govTokenContract.balanceOf(user.address);
+    await harvestVault.connect(harvestGovernanceSigner).doHardWork();
     await IdleHarvestStrategy.connect(user).redeemRewards("0x");
-
-    await network.provider.request({
-      method: "evm_increaseTime",
-      params: [30 * 86400],
-    });
-
-    await network.provider.request({
-      method: "evm_mine",
-      params: [],
-    });
-
-    console.log("Apr After", (await IdleHarvestStrategy.connect(user).getApr()).toString());
+    let rewardTokenAfter = await govTokenContract.balanceOf(user.address);
+    expect(rewardTokenAfter).gt(rewardTokenBefore);
   });
 });
