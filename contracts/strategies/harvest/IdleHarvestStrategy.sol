@@ -101,12 +101,6 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
         lastIndexedTime = block.timestamp;
     }
 
-    /// @notice redeem the rewards. Claims all possible rewards
-    /// @return rewards amount of reward that is deposited to vault
-    function redeemRewards() external onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards = _redeemRewards();
-    }
-
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata) external override onlyIdleCDO returns (uint256[] memory rewards) {
@@ -114,12 +108,11 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice internal function to claim the rewards
-    function _redeemRewards() internal returns (uint256[] memory) {
+    function _redeemRewards() internal returns (uint256[] memory rewards) {
         IRewardPool(rewardPool).getReward();
-        uint256[] memory rewards = new uint256[](1);
+        rewards = new uint256[](1);
         rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
         IERC20Detailed(govToken).safeTransfer(msg.sender, rewards[0]);
-        return rewards;
     }
 
     /// @notice unused in harvest strategy

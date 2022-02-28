@@ -180,7 +180,7 @@ describe.only("Idle Harvest Strategy (USDT)", async () => {
 
     console.log("Apr Before", (await IdleHarvestStrategy.connect(user).getApr()).toString());
 
-    await IdleHarvestStrategy.connect(user)["redeemRewards()"]();
+    await IdleHarvestStrategy.connect(user).redeemRewards("0x");
 
     await network.provider.request({
       method: "evm_increaseTime",
