@@ -24,10 +24,9 @@ const DAIAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 
 const dai_whale = "0xE78388b4CE79068e89Bf8aA7f218eF6b9AB0e9d0";
 
-describe("IdleMStable Strategy Wrapper", function () {
+describe.only("IdleMStable Strategy Wrapper", function () {
   before(async () => {
-    await ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
-    await ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
+    await hre.ethers.provider.send("hardhat_setBalance", [dai_whale, '0xffffffffffffffff']);
     await ethers.provider.send("hardhat_impersonateAccount", [dai_whale]);
   });
 
@@ -60,7 +59,6 @@ describe("IdleMStable Strategy Wrapper", function () {
       BBBuyer.address,
       AMOUNT_TO_TRANSFER.mul(10)
     );
-
     one = ONE_TOKEN(18);
     const IdleCDOTranche = await ethers.getContractFactory("IdleCDOTranche");
     const MockERC20 = await ethers.getContractFactory("MockERC20");
