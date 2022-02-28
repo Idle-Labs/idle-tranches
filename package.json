@@ -25,7 +25,7 @@
   },
   "homepage": "https://idle.finance",
   "scripts": {
-    "test": "npx hardhat test",
+    "test": "npx hardhat test test/*.js",
     "test-integration": "npx hardhat test test/integration/**/*.js"
   },
   "devDependencies": {

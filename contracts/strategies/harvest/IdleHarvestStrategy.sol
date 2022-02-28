@@ -104,11 +104,6 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @return rewards amount of reward that is deposited to vault
     function redeemRewards(bytes calldata) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        rewards = _redeemRewards();
-    }
-
-    /// @notice internal function to claim the rewards
-    function _redeemRewards() internal returns (uint256[] memory rewards) {
         IRewardPool(rewardPool).getReward();
         rewards = new uint256[](1);
         rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
@@ -202,13 +197,14 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     /// @notice internal function to deposit the funds to the vault
     /// @param _amount Amount of tokens to deposit
     function _depositToVault(uint256 _amount) internal returns (uint256) {
-        underlyingToken.safeApprove(strategyToken, _amount);
-        IHarvestVault(strategyToken).deposit(_amount);
+        address _strategyToken = strategyToken;
+        underlyingToken.safeApprove(_strategyToken, _amount);
+        IHarvestVault(_strategyToken).deposit(_amount);
         lastIndexedTime = block.timestamp;
 
-        IERC20Detailed _strategyToken = IERC20Detailed(strategyToken);
-        uint256 interestTokenAvailable = _strategyToken.balanceOf(address(this));
-        _strategyToken.safeApprove(rewardPool, interestTokenAvailable);
+        IERC20Detailed _strategyTokenContract = IERC20Detailed(_strategyToken);
+        uint256 interestTokenAvailable = _strategyTokenContract.balanceOf(address(this));
+        _strategyTokenContract.safeApprove(rewardPool, interestTokenAvailable);
 
         IRewardPool(rewardPool).stake(interestTokenAvailable);
 
