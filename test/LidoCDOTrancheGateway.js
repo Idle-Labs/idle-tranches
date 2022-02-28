@@ -160,7 +160,7 @@ describe("LidoCDOTrancheGateway", function () {
     expect(await idleCDO.lastStrategyPrice()).to.be.equal(await wstETH.stEthPerToken());
     expect(await idleCDO.fee()).to.be.equal(BN('10000'));
     expect(await idleCDO.releaseBlocksPeriod()).to.be.equal(BN('1500'));
-    expect(await idleCDO.feeReceiver()).to.equal('0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4');
+    expect(await idleCDO.feeReceiver()).to.equal('0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814');
     expect(await idleCDO.guardian()).to.equal(owner.address);
     expect(await idleCDO.weth()).to.equal(weth.address);
     // OwnableUpgradeable
