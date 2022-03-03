@@ -12,4 +12,3 @@ coverage
 bin/**
 soljson-v*
 audit*
-hardhat.config.js
