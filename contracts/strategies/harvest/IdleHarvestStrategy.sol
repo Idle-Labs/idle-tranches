@@ -198,7 +198,7 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
     }
 
     /// @notice internal function to deposit the funds to the vault
-    /// @param _amount Amount of tokens to deposit
+    /// @param _amount Amount of underlying tokens to deposit
     function _depositToVault(uint256 _amount) internal returns (uint256) {
         _updateApr(int256(_amount));
         address _strategyToken = strategyToken;
