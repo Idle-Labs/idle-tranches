@@ -81,7 +81,8 @@ module.exports = {
       //   // blockNumber: 14164982 // upgrade convex strategy
       //   // blockNumber: 14184625 //  deploy tranche battle winners + mstable completed
       //   // blockNumber: 14204103 //  deploy tranche battle winners + mstable completed
-      //   blockNumber: 14217710 //  upgrade mstable tranche
+      //   // blockNumber: 14217710 //  upgrade mstable tranche
+      //   blockNumber: 14141000 // harvest strategy
       // }
     },
     coverage: {
