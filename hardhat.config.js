@@ -82,7 +82,9 @@ module.exports = {
       //   // blockNumber: 14184625 //  deploy tranche battle winners + mstable completed
       //   // blockNumber: 14204103 //  deploy tranche battle winners + mstable completed
       //   // blockNumber: 14217710 //  upgrade mstable tranche
-      //   blockNumber: 14141000 // harvest strategy
+      //   // blockNumber: 14141000 // harvest strategy
+      //   // blockNumber: 14345651 // upgrade strat with missing setReleaseBlock
+      //   blockNumber: 14366435 // deploy stakingRewards for musd3crv
       // }
     },
     coverage: {
