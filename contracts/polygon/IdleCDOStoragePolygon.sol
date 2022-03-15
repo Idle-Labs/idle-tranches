@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity 0.8.10;
+
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
+contract IdleCDOStoragePolygon {
+    // constant to represent 100%
+    uint256 public constant FULL_ALLOC = 100000;
+    // max fee, relative to FULL_ALLOC
+    uint256 public constant MAX_FEE = 20000;
+    // one token
+    uint256 public constant ONE_TRANCHE_TOKEN = 10**18;
+    // variable used to save the last tx.origin and block.number
+    bytes32 internal _lastCallerBlock;
+    // variable used to save the block of the latest harvest
+    uint256 internal latestHarvestBlock;
+    // WETH address //0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
+    address public immutable weth;
+    // tokens used to incentivize the idle tranche ideal ratio
+    address[] public incentiveTokens;
+    // underlying token (eg DAI)
+    address public token;
+    // address that can only pause/unpause the contract in case of emergency
+    address public guardian;
+    // one `token` (eg for DAI 10**18)
+    uint256 public oneToken;
+    // address that can call the 'harvest' method and lend pool assets
+    address public rebalancer;
+    // address of the uniswap v2 router //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+    IUniswapV2Router02 internal immutable uniswapRouterV2;
+
+    // Flag for allowing AA withdraws
+    bool public allowAAWithdraw;
+    // Flag for allowing BB withdraws
+    bool public allowBBWithdraw;
+    // Flag for allowing to enable reverting in case the strategy gives back less
+    // amount than the requested one
+    bool public revertIfTooLow;
+    // Flag to enable the `Default Check` (related to the emergency shutdown)
+    bool public skipDefaultCheck;
+
+    // address of the strategy used to lend funds
+    address public strategy;
+    // address of the strategy token which represent the position in the lending provider
+    address public strategyToken;
+    // address of AA Tranche token contract
+    address public AATranche;
+    // address of BB Tranche token contract
+    address public BBTranche;
+    // address of AA Staking reward token contract
+    address public AAStaking;
+    // address of BB Staking reward token contract
+    address public BBStaking;
+
+    // Apr split ratio for AA tranches
+    // (relative to FULL_ALLOC so 50% => 50000 => 50% of the interest to tranche AA)
+    uint256 public trancheAPRSplitRatio; //
+    // Ideal tranche split ratio in `token` value
+    // (relative to FULL_ALLOC so 50% => 50000 means 50% of tranches (in value) should be AA)
+    uint256 public trancheIdealWeightRatio;
+    // Price for minting AA tranche, in underlyings
+    uint256 public priceAA;
+    // Price for minting BB tranche, in underlyings
+    uint256 public priceBB;
+    // last saved net asset value (in `token`) for AA tranches
+    uint256 public lastNAVAA;
+    // last saved net asset value (in `token`) for BB tranches
+    uint256 public lastNAVBB;
+    // last saved lending provider price
+    uint256 public lastStrategyPrice;
+    // Keeps track of unclaimed fees for feeReceiver
+    uint256 public unclaimedFees;
+    // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
+    uint256 public unlentPerc;
+
+    // Fee amount (relative to FULL_ALLOC)
+    uint256 public fee;
+    // address of the fee receiver //0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814
+    address public feeReceiver;
+
+    // trancheIdealWeightRatio ± idealRanges, used in updateIncentives
+    uint256 public idealRange;
+    // period, in blocks, for progressively releasing harvested rewards to users
+    uint256 public releaseBlocksPeriod;
+    // amount of rewards sold in the last harvest (in `token`)
+    uint256 internal harvestedRewards;
+    // stkAave address
+    // address(0x4da27a545c0c5B758a6BA100e3a049001de870f5); // previous address
+    address internal immutable stkAave;
+    // aave address
+    // address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9) // previous address
+    address internal immutable AAVE;
+    // if the cdo receive stkAAVE
+    bool internal isStkAAVEActive;
+    // referral address of the strategy developer
+    address public referral;
+    // amount of fee for feeReceiver. Max is FULL_ALLOC
+    uint256 public feeSplit;
+
+    constructor(
+        address _stkAave,
+        address _AAVE,
+        address _weth,
+        IUniswapV2Router02 _uniswapV2Router02,
+        address _feeReceiver
+    ) {
+        stkAave = _stkAave;
+        AAVE = _AAVE;
+        weth = _weth;
+        uniswapRouterV2 = _uniswapV2Router02;
+        feeReceiver = _feeReceiver;
+    }
+}
