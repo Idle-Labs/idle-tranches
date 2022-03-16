@@ -7,7 +7,8 @@ const masset = require("../../../artifacts/contracts/interfaces/IMAsset.sol/IMAs
 const savingsManagerAbi = require("../../../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
 const idleMstableStrategyAbi =
   require("../../../artifacts/contracts/polygon/strategies/mstable/IdleMStableStrategyPolygon.sol/IdleMStableStrategyPolygon.json").abi;
-const rewardDistributorAbi = require("../../../artifacts/contracts/polygon/strategies/mstable/IL2EmissionController.sol/IL2EmissionController.json").abi;
+const rewardDistributorAbi =
+  require("../../../artifacts/contracts/polygon/strategies/mstable/IL2EmissionController.sol/IL2EmissionController.json").abi;
 
 const addresses = require("../../../lib/addresses");
 const { expect } = require("chai");
@@ -113,7 +114,7 @@ describe.only("IdleMStableStrategyPolygon", function () {
       mUSD.address,
       vault.address,
       uniswapV2RouterV2,
-      [meta.address, mUSD.address],
+      [META_ADDESS, DAIAddress],
       owner.address
     );
 
@@ -144,8 +145,7 @@ describe.only("IdleMStableStrategyPolygon", function () {
     expect(await imUSD.name()).to.eq("Interest bearing mStable USD (Polygon PoS)");
     expect(await mUSD.name()).to.eq("mUSD");
     expect(await meta.name()).to.eq("Meta (PoS)");
-    // expect(await vault.boostDirector()).to.eq("0xBa05FD2f20AE15B0D3f20DDc6870FeCa6ACd3592");
-    expect(await IdleMStableStrategy.rewardLastRound()).eq(0);
+
     expect(await IdleMStableStrategy.latestHarvestBlock()).eq(0);
     expect(await IdleMStableStrategy.totalLpTokensLocked()).eq(0);
   });
@@ -187,7 +187,7 @@ describe.only("IdleMStableStrategyPolygon", function () {
     expect(mUSDBalanceAfter.sub(mUSDBalanceBefore)).closeTo(AMOUNT_TO_TRANSFER.div(10), BN(1e16), "Approximate check failed");
   });
 
-  it.only("Redeem Rewards", async () => {
+  it("Redeem Rewards", async () => {
     const oneDayInSec = 86400;
     const releaseBlocksPeriod = await IdleMStableStrategy.releaseBlocksPeriod();
 

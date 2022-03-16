@@ -4,6 +4,7 @@ pragma solidity 0.8.10;
 import "../../../interfaces/IIdleCDOStrategy.sol";
 import "../../../interfaces/ISavingsContractV2.sol";
 import "../../../interfaces/IERC20Detailed.sol";
+import "../../../interfaces/IMAsset.sol";
 import "./IVaultPolygon.sol";
 
 import "../../../interfaces/IUniswapV2Router02.sol";
@@ -132,7 +133,7 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
     }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
-    /// @param _extraData must contain the minimum liquidity to receive, and minTokenToClaim 
+    /// @param _extraData must contain the minimum liquidity to receive, and minTokenToClaim
     /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
         (uint256 minLiquidityTokenToReceive, uint256 minTokenToClaim) = abi.decode(_extraData, (uint256, uint256));
@@ -257,15 +258,18 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
         IUniswapV2Router02 _uniswapV2Router02 = uniswapV2Router02;
 
         _govToken.approve(address(_uniswapV2Router02), govTokensToSend);
-        _uniswapV2Router02.swapExactTokensForTokens(
+        uint256[] memory amounts = _uniswapV2Router02.swapExactTokensForTokens(
             govTokensToSend,
             minLiquidityTokenToReceive,
             uniswapRouterPath,
             address(this),
             block.timestamp
         );
+        uint256 amountReceived = amounts[amounts.length - 1];
 
-        _bal = underlyingToken.balanceOf(address(this));
+        address lastToken = uniswapRouterPath[uniswapRouterPath.length - 1];
+        IERC20Detailed(lastToken).safeApprove(address(underlyingToken), amountReceived);
+        _bal = IMAsset(address(underlyingToken)).mint(lastToken, amountReceived, 0, address(this));
         _depositToVault(_bal, false);
         // save the block in which rewards are swapped and the amount
         latestHarvestBlock = block.number;
