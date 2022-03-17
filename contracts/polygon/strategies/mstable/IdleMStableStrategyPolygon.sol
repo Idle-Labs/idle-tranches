@@ -311,7 +311,7 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
         releaseBlocksPeriod = _period;
     }
 
-    /// @notice
+    /// @notice Lock Lp Tokens
     function _lockedLpTokens() internal view returns (uint256 _locked) {
         uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
         uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
