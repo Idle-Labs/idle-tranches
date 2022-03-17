@@ -308,6 +308,7 @@ task("change-rewards", "Update rewards IdleCDO instance")
 task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct for senior tranches of an IdleCDO instance")
   .addParam('cdoname')
   .addParam('reward')
+  .addOptionalParam('shouldTransfer')
   .setAction(async (args) => {
     const deployToken = addresses.deployTokens[args.cdoname];
     let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
@@ -319,9 +320,13 @@ task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct fo
       return;
     }
 
+    const shouldTransfer = !!args.shouldTransfer;
+    console.log('Should transfer rewards from reward distributor: ', shouldTransfer);
+
     const initParams = [
       // address _rewardsDistribution,
-      deployToken.cdo.cdoAddr,
+      // deployToken.cdo.cdoAddr,
+      mainnetContracts.treasuryMultisig,
       // address _rewardsToken,
       args.reward,
       // address _stakingToken
@@ -329,11 +334,20 @@ task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct fo
       // address owner
       mainnetContracts.devLeagueMultisig,
       // _shouldTransfer
-      true
+      shouldTransfer
     ];
 
+    let stakingRewardsInstance = mainnetContracts.snxStakingRewards;
+    if (!stakingRewardsInstance) {
+      let stakingRewards = await helpers.deployContract('StakingRewards', [], signer);
+      await stakingRewards.connect(signer).initialize(...initParams);
+      console.log('StakingRewards deployed and initialized at', stakingRewards.address);
+      stakingRewardsInstance = stakingRewards.addresses;
+      return;
+    }
+
     const proxyFactory = await ethers.getContractAt("MinimalInitializableProxyFactory", mainnetContracts.minimalInitializableProxyFactory);
-    let res = await proxyFactory.connect(signer).create(mainnetContracts.snxStakingRewards);
+    let res = await proxyFactory.connect(signer).create(stakingRewardsInstance);
     res = await res.wait();
     const newCloneAddr = res.events[0].args.proxy;
     console.log('Staking rewards clone deployed at: ', newCloneAddr);
@@ -347,13 +361,16 @@ task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct fo
       return;
     }
     
-    // Upgrade reward contract with multisig
-    const multisig = await run('get-multisig-or-fake');
-    cdo = cdo.connect(multisig);
-    // Only Senior (AA) tranches will get rewards
-    await cdo.setStakingRewards(newCloneAddr, addresses.addr0);
-    console.log('AA staking ', await cdo.AAStaking());
-    console.log('BB staking ', await cdo.BBStaking());
+    if (shouldTransfer) {
+      console.log('Setting staking rewards on IdleCDO contract');
+      // Upgrade reward contract with multisig
+      const multisig = await run('get-multisig-or-fake');
+      cdo = cdo.connect(multisig);
+      // Only Senior (AA) tranches will get rewards
+      await cdo.setStakingRewards(newCloneAddr, addresses.addr0);
+      console.log('AA staking ', await cdo.AAStaking());
+      console.log('BB staking ', await cdo.BBStaking());
+    }
   });
 
 /**
@@ -472,7 +489,7 @@ subtask("get-multisig-or-fake", "Get multisig signer")
     return signer;
   });
 
-const harvest = async (cdo, { isFirst, params, paramsType } = {isFirst: false, params: [], paramsType: []}) => {
+const harvest = async (cdo, { isFirst, params, paramsType, static, flags } = {isFirst: false, params: [], paramsType: [], static: false, flags: []}) => {
   // encode params for redeemRewards: uint256[], bool[], uint256, uint256
   if (!params || !params.length) {
     params = [
@@ -485,8 +502,16 @@ const harvest = async (cdo, { isFirst, params, paramsType } = {isFirst: false, p
   }
   const extraData = helpers.encodeParams(paramsType, params);
 
+  if (static) {
+    return await helpers.sudoStaticCall(mainnetContracts.rebalancer, cdo, 'harvest', [
+      flags.length ? flags : [isFirst, isFirst, isFirst, isFirst], 
+      [], [], [],
+      extraData
+    ]);
+  }
+
   const res = await helpers.sudoCall(mainnetContracts.rebalancer, cdo, 'harvest', [
-    [isFirst, isFirst, isFirst, isFirst], 
+    flags.length ? flags : [isFirst, isFirst, isFirst, isFirst], 
     [], [], [],
     extraData
   ]);
