@@ -216,7 +216,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       );
     }
     
-    if (args.aaStaking) {
+    if (args.bbStaking) {
       stakingRewardsBB = await helpers.deployUpgradableContract(
         'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
       );
