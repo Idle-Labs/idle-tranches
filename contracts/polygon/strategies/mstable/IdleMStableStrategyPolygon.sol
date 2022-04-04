@@ -129,17 +129,17 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
     function redeemRewards() external onlyOwner returns (uint256[] memory rewards) {
         rewards = new uint256[](2);
         rewards[1] = _claimGovernanceTokens();
-        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0, 0); // will redeem whatever possible reward is available
     }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
-    /// @param _extraData must contain the minimum liquidity to receive
+    /// @param _extraData must contain the minimum liquidity to receive and minimum amount from mstable output
     /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive) = abi.decode(_extraData, (uint256));
+        (uint256 minLiquidityTokenToReceive, uint256 minOutFromMstable) = abi.decode(_extraData, (uint256, uint256));
         rewards = new uint256[](2);
         rewards[1] = _claimGovernanceTokens();
-        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
+        rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive, minOutFromMstable);
     }
 
     /// @notice unused in MStable Strategy
@@ -252,8 +252,12 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
 
     /// @notice Function to swap the governance tokens on uniswapV2
     /// @param minLiquidityTokenToReceive minimun number of tokens to that need to be received
+    /// @param minOutFromMstable minimum token to receive from mstable minting
     /// @return _bal amount of underlyings (mUSD) received
-    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive) internal returns (uint256 _bal) {
+    function _swapGovTokenOnUniswapAndDepositToVault(uint256 minLiquidityTokenToReceive, uint256 minOutFromMstable)
+        internal
+        returns (uint256 _bal)
+    {
         IERC20Detailed _govToken = IERC20Detailed(govToken);
         uint256 govTokensToSend = _govToken.balanceOf(address(this));
         IUniswapV2Router02 _uniswapV2Router02 = uniswapV2Router02;
@@ -270,7 +274,7 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
 
         address lastToken = uniswapRouterPath[uniswapRouterPath.length - 1];
         IERC20Detailed(lastToken).safeApprove(address(underlyingToken), amountReceived);
-        _bal = IMAsset(address(underlyingToken)).mint(lastToken, amountReceived, 0, address(this));
+        _bal = IMAsset(address(underlyingToken)).mint(lastToken, amountReceived, minOutFromMstable, address(this));
         _depositToVault(_bal, false);
         // save the block in which rewards are swapped and the amount
         latestHarvestBlock = block.number;
