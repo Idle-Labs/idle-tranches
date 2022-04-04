@@ -84,7 +84,7 @@ module.exports = {
         // blockNumber: 14204103 //  deploy tranche battle winners + mstable completed
         // blockNumber: 14217710 //  upgrade mstable tranche
         // blockNumber: 14141000 // harvest strategy
-        blockNumber: 25972226 // polygon
+        // blockNumber: 25972226 // polygon
       }
     },
     coverage: {

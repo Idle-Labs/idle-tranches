@@ -5,7 +5,7 @@ import "../../../interfaces/IIdleCDOStrategy.sol";
 import "../../../interfaces/ISavingsContractV2.sol";
 import "../../../interfaces/IERC20Detailed.sol";
 import "../../../interfaces/IMAsset.sol";
-import "./IVaultPolygon.sol";
+import "../../interfaces/mstable/IVaultPolygon.sol";
 
 import "../../../interfaces/IUniswapV2Router02.sol";
 
@@ -128,17 +128,17 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
     /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards() external onlyOwner returns (uint256[] memory rewards) {
         rewards = new uint256[](2);
-        rewards[1] = _claimGovernanceTokens(0);
+        rewards[1] = _claimGovernanceTokens();
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(0); // will redeem whatever possible reward is available
     }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
-    /// @param _extraData must contain the minimum liquidity to receive, and minTokenToClaim
+    /// @param _extraData must contain the minimum liquidity to receive
     /// @return rewards amount of underlyings (mUSD) received after selling rewards
     function redeemRewards(bytes calldata _extraData) external override onlyIdleCDO returns (uint256[] memory rewards) {
-        (uint256 minLiquidityTokenToReceive, uint256 minTokenToClaim) = abi.decode(_extraData, (uint256, uint256));
+        (uint256 minLiquidityTokenToReceive) = abi.decode(_extraData, (uint256));
         rewards = new uint256[](2);
-        rewards[1] = _claimGovernanceTokens(minTokenToClaim);
+        rewards[1] = _claimGovernanceTokens();
         rewards[0] = _swapGovTokenOnUniswapAndDepositToVault(minLiquidityTokenToReceive);
     }
 
@@ -223,11 +223,12 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
     function _updateApr(int256 _amount) internal {
         uint256 mUSDStaked = imUSD.creditsToUnderlying(vault.balanceOf(address(this)));
         uint256 _lastIndexAmount = lastIndexAmount;
+        uint256 blockTimestamp = block.timestamp;
         if (lastIndexAmount > 0) {
             uint256 gainPerc = ((mUSDStaked - _lastIndexAmount) * 10**20) / _lastIndexAmount;
-            lastApr = (YEAR / (block.timestamp - lastIndexedTime)) * gainPerc;
+            lastApr = (YEAR / (blockTimestamp - lastIndexedTime)) * gainPerc;
         }
-        lastIndexedTime = block.timestamp;
+        lastIndexedTime = blockTimestamp;
         lastIndexAmount = uint256(int256(mUSDStaked) + _amount);
     }
 
@@ -277,20 +278,15 @@ contract IdleMStableStrategyPolygon is Initializable, OwnableUpgradeable, ERC20U
     }
 
     /// @notice Claim governance tokens
-    /// @param minTokenToClaim min token to be claimed
-    function claimGovernanceTokens(uint256 minTokenToClaim) external onlyOwner {
-        _claimGovernanceTokens(minTokenToClaim);
+    function claimGovernanceTokens() external onlyOwner {
+        _claimGovernanceTokens();
     }
 
     /// @notice Claim governance tokens
-    /// @param minTokenToClaim min token to be claimed
-    function _claimGovernanceTokens(uint256 minTokenToClaim) internal returns (uint256) {
+    function _claimGovernanceTokens() internal returns (uint256) {
         (uint256 rewards, uint256 platformRewards) = vault.earned(address(this));
-        if (rewards + platformRewards > minTokenToClaim) {
-            vault.claimReward();
-            return rewards + platformRewards;
-        }
-        return 0;
+        vault.claimReward();
+        return rewards + platformRewards;
     }
 
     /// @notice Change the uniswap router path
