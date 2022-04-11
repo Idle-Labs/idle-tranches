@@ -52,7 +52,7 @@ describe("ConvexStrategyMetaBTC (using pbtc for tests)", async () => {
     curve_args = [WBTC, addresses.addr0, DEPOSIT_POSITION_CRVPBTC]
     reward_cvx = [CVX, SUSHI_ROUTER, CVXWETH];
     reward_crv = [CRV, SUSHI_ROUTER, CRVWETH];
-    weth2deposit = [UNI_ROUTER, WETHWBTC];
+    weth2deposit = [SUSHI_ROUTER, WETHWBTC];
   });
   
   beforeEach(async () => {
@@ -66,7 +66,7 @@ describe("ConvexStrategyMetaBTC (using pbtc for tests)", async () => {
 
   it("should redeemRewards (simulate 7 days)", async () => {
     const addr = RandomAddr;
-    const _amount = BN('1').mul(one);
+    const _amount = BN('2').mul(one);
 
     await helpers.fundWallets(TOKEN_CRVPBTC, [RandomAddr], WHALE_CRVPBTC, _amount);
 
@@ -94,12 +94,14 @@ describe("ConvexStrategyMetaBTC (using pbtc for tests)", async () => {
       await network.provider.send("evm_increaseTime", [oneDay]);
       await network.provider.send("evm_mine", []);
 
-      const roundInitialPrice = await strategy.price();
-      await redeemRewards(addr);
-      const roundFinalPrice = await strategy.price();
-
-      // basic expectation
-      expect(roundFinalPrice.gt(roundInitialPrice)).to.be.true;
+      if(i == 14) {
+        const roundInitialPrice = await strategy.price();
+        await redeemRewards(addr);
+        const roundFinalPrice = await strategy.price();
+  
+        // basic expectation
+        expect(roundFinalPrice.gt(roundInitialPrice)).to.be.true;  
+      }
     }
     const finalSharePrice = await strategy.price();
 
@@ -129,10 +131,10 @@ describe("ConvexStrategyMetaBTC (using pbtc for tests)", async () => {
   const redeemRewards = async (addr) => {
     // encode params for redeemRewards: uint256[], bool[], uint256, uint256
     const params = [
-      [5, 5, 5],
-      [false, false, false],
-      3,
-      4
+      [1, 1],
+      [false, false],
+      0,
+      0
     ];
     const extraData = helpers.encodeParams(['uint256[]', 'bool[]', 'uint256', 'uint256'], params);
     const [a, b, res] = await helpers.sudoCall(addr, strategy, 'redeemRewards', [extraData]);
