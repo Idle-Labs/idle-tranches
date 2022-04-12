@@ -97,6 +97,11 @@
       "address": "0x854b5b0f86Bd1B53492736245a728e0a384252A2",
       "txHash": "0x6b37be8d6a667e93eb9ac6fc552438c690c275bfde68230a4fb96a7d6be15815",
       "kind": "transparent"
+    },
+    {
+      "address": "0x0198792f2849397908C092b6B57654e1a57a4CDC",
+      "txHash": "0x5fde38f68030691be5cc827a785c01bd0219d4610918c544909859c46de3facf",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -4924,6 +4929,256 @@
     "31146d3dff8a940b81172af742db86ea141ba1ee54485f9fc7f1840cf0971cd7": {
       "address": "0x8F889dc453750c91C921BD6Fb9a33a8A579b1BaA",
       "txHash": "0xfd7e72163a481a79bdf4dbe004ef0d9acfa6b74237402c15f6d885596bcbcd51",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_balances",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:34"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_allowances",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:36"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_totalSupply",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:38"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_name",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_symbol",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:41"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)45_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:309"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "ONE_CURVE_LP_TOKEN",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:33"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "poolID",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:35"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "curveLpToken",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:37"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "curveDeposit",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:39"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "depositor",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:41"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "depositPosition",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:43"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "rewardPool",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:45"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "curveLpDecimals",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:47"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "whitelistedCDO",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:60"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "convexRewards",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:63"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "weth2DepositPath",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:65"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "weth2DepositRouter",
+            "type": "t_address",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:67"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "reward2WethPath",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:69"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "rewardRouter",
+            "type": "t_mapping(t_address,t_address)",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:71"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "totalLpTokensStaked",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:74"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "totalLpTokensLocked",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:76"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "releaseBlocksPeriod",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:78"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "latestHarvestBlock",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:80"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "BLOCKS_PER_YEAR",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:86"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "latestPriceIncrease",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:88"
+          },
+          {
+            "contract": "ConvexBaseStrategy",
+            "label": "latestHarvestInterval",
+            "type": "t_uint256",
+            "src": "contracts/strategies/convex/ConvexBaseStrategy.sol:90"
+          }
+        ],
+        "types": {
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])"
+          },
+          "t_mapping(t_address,t_address)": {
+            "label": "mapping(address => address)"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))"
+          },
+          "t_string_storage": {
+            "label": "string"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
+    },
+    "aef2904551d25327b8abc52c793827429358dc56dd7cdc363e89333ad80279ef": {
+      "address": "0xb73D51af8Fc15423664F7ECd759179aD4e6a26ee",
+      "txHash": "0x77c70e05d17c4e500bb3a6f1321a7b9338ef10b11019955ec3b1eca6dfb3e585",
       "layout": {
         "storage": [
           {
