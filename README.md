@@ -1,4 +1,7 @@
 # Idle Perpetual Yield Tranches
+
+Official doc: https://docs.idle.finance/developers/perpetual-yield-tranches
+
 The aim of Idle Perpetual Yield Tranches is to pool capital of users (eg DAI), deposit it into a lending provider (eg Idle Finance) and split the interest received between 2 classes of users with different risk profiles.
 
 One will gain more interest and will be more risky (BB or junior tranche) and the other will have a lower APR but more safety (AA or senior tranche). In the case of an hack or a loss of funds of the lending provider integrated (or any other protocol integrated by this provider), all funds still available will be used to refund senior tranche holders first with the aim of making them whole, and with remaining funds, if any, junior holders after.
