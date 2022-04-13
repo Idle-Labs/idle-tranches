@@ -2,13 +2,13 @@ require("hardhat/config");
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../../../scripts/helpers");
 const erc20 = require("../../../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
-const vaultAbi = require("../../../artifacts/contracts/polygon/strategies/mstable/IVaultPolygon.sol/IVaultPolygon.json").abi;
+const vaultAbi = require("../../../artifacts/contracts/polygon/interfaces/mstable/IVaultPolygon.sol/IVaultPolygon.json").abi;
 const masset = require("../../../artifacts/contracts/interfaces/IMAsset.sol/IMAsset.json");
 const savingsManagerAbi = require("../../../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
 const idleMstableStrategyAbi =
   require("../../../artifacts/contracts/polygon/strategies/mstable/IdleMStableStrategyPolygon.sol/IdleMStableStrategyPolygon.json").abi;
 const rewardDistributorAbi =
-  require("../../../artifacts/contracts/polygon/strategies/mstable/IL2EmissionController.sol/IL2EmissionController.json").abi;
+  require("../../../artifacts/contracts/polygon/interfaces/mstable/IL2EmissionController.sol/IL2EmissionController.json").abi;
 
 const addresses = require("../../../lib/addresses");
 const { expect } = require("chai");
