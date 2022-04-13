@@ -26,7 +26,8 @@
   "homepage": "https://idle.finance",
   "scripts": {
     "test": "npx hardhat test test/*.js",
-    "test-integration": "npx hardhat test test/integration/**/*.js"
+    "test-integration": "npx hardhat test test/integration/**/*.js",
+    "test:polygon": "npx hardhat test test/polygon/**/*.js"
   },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
