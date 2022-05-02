@@ -106,9 +106,19 @@ module.exports = {
       gasMultiplier: 1.1,
       timeout: 1200000
     },
+    matic: {
+      url: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      timeout: 1200000,
+      chainId: 137
+    },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    apiKey: {
+      mainnet: process.env.ETHERSCAN_API_KEY,
+      polygon: process.env.POLYGON_ETHERSCAN_API_KEY
+    }
   },
   abiExporter: {
     // path: './abis',

@@ -34,8 +34,8 @@
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "chai": "^4.2.0",
     "ethereum-waffle": "^3.3.0",
-    "ethers": "^5.5.0",
-    "hardhat": "^2.7.0",
+    "ethers": "^5.6.4",
+    "hardhat": "^2.9.3",
     "hardhat-abi-exporter": "^2.2.1",
     "hardhat-contract-sizer": "^2.0.3",
     "hardhat-docgen": "^1.1.2",
@@ -47,10 +47,10 @@
   },
   "dependencies": {
     "@defi-wonderland/smock": "^2.0.1",
-    "@ethersproject/hardware-wallets": "^5.5.0",
+    "@ethersproject/hardware-wallets": "^5.6.0",
     "@gnosis.pm/safe-ethers-adapters": "^0.1.0-alpha.3",
     "@nomiclabs/ethereumjs-vm": "^4",
-    "@nomiclabs/hardhat-etherscan": "^2.1.6",
+    "@nomiclabs/hardhat-etherscan": "^3.0.3",
     "@nomiclabs/hardhat-solhint": "^2.0.0",
     "@openzeppelin/contracts": "^4.4.2",
     "@openzeppelin/contracts-upgradeable": "^4.0.0",
@@ -62,5 +62,10 @@
     "bignumber.js": "^9.0.1",
     "dotenv": "^9.0.2",
     "hardhat-gas-reporter": "^1.0.4"
+  },
+  "resolutions": {
+    "@ledgerhq/hw-app-eth": "5.47.1",
+    "@ledgerhq/hw-transport": "5.46.0",
+    "@ledgerhq/hw-transport-u2f": "5.36.0-deprecated"
   }
 }
