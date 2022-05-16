@@ -102,6 +102,11 @@
       "address": "0x0198792f2849397908C092b6B57654e1a57a4CDC",
       "txHash": "0x5fde38f68030691be5cc827a785c01bd0219d4610918c544909859c46de3facf",
       "kind": "transparent"
+    },
+    {
+      "address": "0x5DaD2eEF80a8cdFD930aB8f0353cA13Bd48c4346",
+      "txHash": "0x2cb54d7e666cbdbf89b44ab3f36ef847414e8be3fdf5bf5ad0ef70ee72619bcd",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -5413,6 +5418,121 @@
           },
           "t_array(t_uint256)45_storage": {
             "label": "uint256[45]"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
+    },
+    "ca488f70ea4c446445390be1f33fc001fa4a5a80748371bf2eaefdbdf37a1805": {
+      "address": "0xAcDF8fDDc5031b11ECd2EcC46898E059989A8cD5",
+      "txHash": "0xecffe234d6496978b3795218c9900f2914259a057ec5bab6d2a689d322fac8cc",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:29"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "token",
+            "type": "t_address",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:31"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:33"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "tokenDecimals",
+            "type": "t_uint256",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:35"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "underlyingToken",
+            "type": "t_contract(IERC20Detailed)23611",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:37"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "eToken",
+            "type": "t_contract(IEToken)23678",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:39"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "whitelistedCDO",
+            "type": "t_address",
+            "src": "deps/euler/contracts/idle/IdleEulerStrategy.sol:49"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_contract(IERC20Detailed)23611": {
+            "label": "contract IERC20Detailed"
+          },
+          "t_contract(IEToken)23678": {
+            "label": "contract IEToken"
           },
           "t_array(t_uint256)49_storage": {
             "label": "uint256[49]"
