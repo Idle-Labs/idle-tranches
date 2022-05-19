@@ -124,7 +124,7 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// @param _amount amount of `token` to deposit
   /// @return AA tranche tokens minted
   function depositAA(uint256 _amount) external returns (uint256) {
-    return _deposit(_amount, AATranche);
+    return _deposit(_amount, AATranche, address(0));
   }
 
   /// @notice pausable in _deposit
@@ -132,7 +132,25 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// @param _amount amount of `token` to deposit
   /// @return BB tranche tokens minted
   function depositBB(uint256 _amount) external returns (uint256) {
-    return _deposit(_amount, BBTranche);
+    return _deposit(_amount, BBTranche, address(0));
+  }
+
+  /// @notice pausable
+  /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
+  /// @param _amount amount of `token` to deposit
+  /// @param _referral address of the referral
+  /// @return AA tranche tokens minted
+  function depositAA(uint256 _amount, address _referral) external returns (uint256) {
+    return _deposit(_amount, AATranche, _referral);
+  }
+
+  /// @notice pausable in _deposit
+  /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
+  /// @param _amount amount of `token` to deposit
+  /// @param _referral address of the referral
+  /// @return BB tranche tokens minted
+  function depositBB(uint256 _amount, address _referral) external returns (uint256) {
+    return _deposit(_amount, BBTranche, _referral);
   }
 
   /// @notice pausable in _deposit
@@ -240,8 +258,9 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// automatically reverts on lending provider default (_strategyPrice decreased)
   /// @param _amount amount of underlyings (`token`) to deposit
   /// @param _tranche tranche address
+  /// @param _referral referral address
   /// @return _minted number of tranche tokens minted
-  function _deposit(uint256 _amount, address _tranche) internal whenNotPaused returns (uint256 _minted) {
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal whenNotPaused returns (uint256 _minted) {
     if (_amount == 0) {
       return _minted;
     }
@@ -259,6 +278,9 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_amount, msg.sender, _tranche);
+    if (_referral != address(0)) {
+      emit Referral(_amount, _referral);
+    }
   }
 
   /// @notice this method is called on depositXX/withdrawXX/harvest and

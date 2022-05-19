@@ -49,7 +49,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
     let proxyAdminAddress = args.proxyAdmin;
-    const isMatic = hre.network.name == 'matic';
+    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const networkContracts = isMatic ? polygonContracts : mainnetContracts;
 
     if (!proxyAdminAddress) {
@@ -156,8 +156,12 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const cdoname = args.cdoname;
     let cdoProxyAddressToClone = args.proxyCdoAddress;
     const strategyAddress = args.strategyAddress;
-    const deployToken = addresses.deployTokens[cdoname];
-    const isMatic = hre.network.name == 'matic';
+    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
+    const deployToken = (
+      isMatic ?
+        addresses.deployTokensPolygon :
+        addresses.deployTokens
+    )[args.cdoname];
     const networkContracts = isMatic ? polygonContracts : mainnetContracts;
 
     if (deployToken === undefined) {
@@ -176,7 +180,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       const contractName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
       await helpers.prompt(`Deploy a new instance of ${contractName}? [y/n]`, true);
 
-      idleCDOAddress = await helpers.deployUpgradableContract(
+      const newCDO = await helpers.deployUpgradableContract(
         contractName,
         [
           BN(args.limit).mul(ONE_TOKEN(deployToken.decimals)), // limit
@@ -191,6 +195,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         ],
         signer
       );
+      idleCDOAddress = newCDO.address;
     } else {
       await helpers.prompt("continue? [y/n]", true);
   
@@ -233,14 +238,16 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     let stakingRewardsBB = {address: addresses.addr0};
 
     if (args.aaStaking) {
-      stakingRewardsAA = await helpers.deployUpgradableContract(
-        'StakingRewards', [...stakingRewardsParams.map(e => e == 'stakingToken' ? AAaddr : e)], signer
+      stakingRewardsAA = await helpers.deployContract('StakingRewards', [], signer);
+      await stakingRewardsAA.connect(signer).initialize(
+        ...stakingRewardsParams.map(e => e == 'stakingToken' ? AAaddr : e)
       );
     }
     
     if (args.bbStaking) {
-      stakingRewardsBB = await helpers.deployUpgradableContract(
-        'StakingRewards', [...stakingRewardsParams.map(e => e == 'stakingToken' ? BBaddr : e)], signer
+      stakingRewardsBB = await helpers.deployContract('StakingRewards', [], signer);
+      await stakingRewardsBB.connect(signer).initialize(
+        ...stakingRewardsParams.map(e => e == 'stakingToken' ? BBaddr : e)
       );
     }
 
@@ -267,6 +274,14 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log('Setting fee receiver to Treasury Multisig')
       await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
     }
+
+    // // adding CDO to IdleCDO registry (TODO multisig)
+    // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
+    // const isValid = await reg.isValidCdo(idleCDO.address);
+    // if (!isValid) {
+    //   console.log("Adding CDO to IdleCDO registry");
+    //   await reg.connect(signer).toggleCDO(idleCDO.address, true);
+    // }
     
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
@@ -280,6 +295,8 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
+    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
+    const networkContracts = isMatic ? polygonContracts : mainnetContracts;
 
     // Check that cdoname is passed
     if (!args.cdoname) {
@@ -288,7 +305,11 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
     }
     
     // Get config params
-    const deployToken = addresses.deployTokens[args.cdoname];
+    const deployToken = (
+      isMatic ? 
+      addresses.deployTokensPolygon : 
+      addresses.deployTokens
+    )[args.cdoname];
     
     // Check that args has strategyName and strategyParams
     if (!deployToken.strategyName || !deployToken.strategyParams) {
@@ -333,4 +354,3 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       aaRatio: deployToken.AARatio
     });
 });
-      
