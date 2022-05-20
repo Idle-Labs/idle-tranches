@@ -42,6 +42,15 @@ module.exports = {
           }
         }
       },
+      "contracts/polygon/IdleCDOPolygon.sol": {
+        version: "0.8.10",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: mainContactRuns
+          }
+        }
+      },
       "contracts/GuardedLaunchUpgradable.sol": {
         version: "0.8.10",
         settings: {
@@ -84,8 +93,11 @@ module.exports = {
       //   // blockNumber: 14204103 //  deploy tranche battle winners + mstable completed
       //   // blockNumber: 14217710 //  upgrade mstable tranche
       //   // blockNumber: 14141000 // harvest strategy
-      //   // blockNumber: 25972226 // polygon
-      // }
+      //   // blockNumber: 14705834 // euler strategy
+      //   // blockNumber: 14748963 // pbtc test
+      //   blockNumber: 28479157 // polygon
+      // },
+      // chainId: 137
     },
     coverage: {
       url: "http://127.0.0.1:8545/",

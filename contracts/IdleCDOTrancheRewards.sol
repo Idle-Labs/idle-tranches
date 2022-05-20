@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
+// [DEPRECATED] in favor of StakingRewards.sol
+
 pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -15,7 +17,7 @@ import "./interfaces/IIdleCDO.sol";
 import "./IdleCDOTrancheRewardsStorage.sol";
 
 /// @author Idle Labs Inc.
-/// @title IdleCDOTrancheRewards
+/// @title IdleCDOTrancheRewards [DEPRECATED]
 /// @notice Contract used for staking specific tranche tokens and getting incentive rewards
 /// This contract keeps the accounting of how many rewards each user is entitled to using 2 indexs:
 /// a per-user index (`usersIndexes[user][reward]`) and a global index (`rewardsIndexes[reward]`)

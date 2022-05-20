@@ -7,11 +7,11 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 import "../interfaces/IIdleCDOStrategy.sol";
 import "../interfaces/IERC20Detailed.sol";
-import "../interfaces/IIdleCDOTrancheRewards.sol";
 import "../interfaces/IStakedAave.sol";
 
 import "../GuardedLaunchUpgradable.sol";
 import "../IdleCDOTranche.sol";
+import "../StakingRewards.sol";
 import "./IdleCDOStoragePolygon.sol";
 
 /// @title A perpetual tranche implementation
@@ -108,11 +108,11 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
     lastStrategyPrice = _strategyPrice();
     // Fee params
     fee = 10000; // 10% performance fee
-    feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
+    feeReceiver = address(0x1d60E17723f8Ca1F76F09126242AcD37a278b514); // treasury multisig
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver as default
     // StkAAVE unwrapping is active
-    isStkAAVEActive = true;
+    isStkAAVEActive = false;
   }
 
   // ###############
@@ -124,7 +124,7 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// @param _amount amount of `token` to deposit
   /// @return AA tranche tokens minted
   function depositAA(uint256 _amount) external returns (uint256) {
-    return _deposit(_amount, AATranche);
+    return _deposit(_amount, AATranche, address(0));
   }
 
   /// @notice pausable in _deposit
@@ -132,7 +132,25 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// @param _amount amount of `token` to deposit
   /// @return BB tranche tokens minted
   function depositBB(uint256 _amount) external returns (uint256) {
-    return _deposit(_amount, BBTranche);
+    return _deposit(_amount, BBTranche, address(0));
+  }
+
+  /// @notice pausable
+  /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
+  /// @param _amount amount of `token` to deposit
+  /// @param _referral address of the referral
+  /// @return AA tranche tokens minted
+  function depositAA(uint256 _amount, address _referral) external returns (uint256) {
+    return _deposit(_amount, AATranche, _referral);
+  }
+
+  /// @notice pausable in _deposit
+  /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
+  /// @param _amount amount of `token` to deposit
+  /// @param _referral address of the referral
+  /// @return BB tranche tokens minted
+  function depositBB(uint256 _amount, address _referral) external returns (uint256) {
+    return _deposit(_amount, BBTranche, _referral);
   }
 
   /// @notice pausable in _deposit
@@ -224,7 +242,7 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
     );
   }
 
-  /// @notice returns an array of tokens used to incentive tranches via IIdleCDOTrancheRewards
+  /// @notice returns an array of tokens used to incentive tranches via StakingRewards
   /// @return array with addresses of incentiveTokens (can be empty)
   function getIncentiveTokens() external view returns (address[] memory) {
     return incentiveTokens;
@@ -240,8 +258,9 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// automatically reverts on lending provider default (_strategyPrice decreased)
   /// @param _amount amount of underlyings (`token`) to deposit
   /// @param _tranche tranche address
+  /// @param _referral referral address
   /// @return _minted number of tranche tokens minted
-  function _deposit(uint256 _amount, address _tranche) internal whenNotPaused returns (uint256 _minted) {
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal whenNotPaused returns (uint256 _minted) {
     if (_amount == 0) {
       return _minted;
     }
@@ -259,6 +278,9 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_amount, msg.sender, _tranche);
+    if (_referral != address(0)) {
+      emit Referral(_amount, _referral);
+    }
   }
 
   /// @notice this method is called on depositXX/withdrawXX/harvest and
@@ -395,7 +417,7 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
 
       // auto stake fees in staking contract for feeReceiver
       if (isStakingRewardsActive) {
-        IIdleCDOTrancheRewards(stakingRewards).stakeFor(_feeReceiver, _minted);
+        StakingRewards(stakingRewards).stakeFor(_feeReceiver, _minted);
       }
     }
   }
@@ -474,9 +496,7 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
     // Read state variables only once to save gas
-    uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
-    uint256 _idealRange = idealRange;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
     bool _isBBStakingActive = _BBStaking != address(0);
@@ -487,46 +507,34 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
       currAARatio = getCurrentAARatio();
     }
 
-    // Check if BB tranches should be rewarded (if AA ratio is too high)
-    if (_isBBStakingActive && (!_isAAStakingActive || (currAARatio > (_trancheIdealWeightRatio + _idealRange)))) {
-      // give more rewards to BB holders, ie send some rewards to BB Staking contract
-      return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-    }
-    // Check if AA tranches should be rewarded (id AA ratio is too low)
-    if (_isAAStakingActive && (!_isBBStakingActive || (currAARatio < (_trancheIdealWeightRatio - _idealRange)))) {
-      // give more rewards to AA holders, ie send some rewards to AA Staking contract
-      return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
-    }
-
-    // Split rewards according to trancheAPRSplitRatio in case the ratio between
-    // AA and BB is already ideal
-    if (_isAAStakingActive) {
-      // NOTE: the order is important here, first there must be the deposit for AA rewards,
-      // if staking contract for AA is present
-      _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
-    }
-
-    if (_isBBStakingActive) {
-      // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
-      // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
-      // and the balance for AA is already transferred
-      _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-    }
-  }
-
-  /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
-  /// @param _stakingContract address which will receive incentive Rewards
-  /// @param _ratio ratio of the incentive token balance to send
-  function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
     address[] memory _incentiveTokens = incentiveTokens;
+    uint256 _fee = fee;
+    address _feeReceiver = feeReceiver;
+    address _incentiveToken;
+    uint256 _reward;
+    uint256 _feeToTransfer;
+    uint256 _aaRewards;
+
     for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-      address _incentiveToken = _incentiveTokens[i];
+      _incentiveToken = _incentiveTokens[i];
       // calculates the requested _ratio of the current contract balance of
-      // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
-      uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
+      // _incentiveToken to be sent to the StakingRewards contract
+      _reward = _contractTokenBalance(_incentiveToken);
       if (_reward > 0) {
-        // call depositReward to actually let the IdleCDOTrancheRewards get the reward
-        IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
+        // get fees
+        _feeToTransfer = _reward * _fee / FULL_ALLOC;
+        IERC20Detailed(_incentiveToken).safeTransfer(_feeReceiver, _feeToTransfer);
+        _reward -= _feeToTransfer;
+        // Split rewards according to trancheAPRSplitRatio by calling
+        // depositReward to actually let the StakingRewards get the reward
+        _aaRewards = 0;
+        if (_isAAStakingActive) {
+          _aaRewards = _isBBStakingActive ? _reward * _trancheAPRSplitRatio / FULL_ALLOC : _reward;
+          StakingRewards(_AAStaking).depositReward(_incentiveToken, _aaRewards);
+        }
+        if (_isBBStakingActive) {
+          StakingRewards(_BBStaking).depositReward(_incentiveToken, _reward - _aaRewards);
+        }
       }
     }
   }
@@ -655,33 +663,8 @@ contract IdleCDOPolygon is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDO
       return;
     }
 
-    IStakedAave _stkAave = IStakedAave(stkAave);
-    uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
-    // If there is a pending cooldown:
-    if (_stakersCooldown > 0) {
-      uint256 _cooldownEnd = _stakersCooldown + _stkAave.COOLDOWN_SECONDS();
-      // If it is over
-      if (_cooldownEnd < block.timestamp) {
-        // If the unstake window is active
-        if (block.timestamp - _cooldownEnd <= _stkAave.UNSTAKE_WINDOW()) {
-          // redeem stkAave AND begin new cooldown
-          _stkAave.redeem(address(this), type(uint256).max);
-        }
-      } else {
-        // If it is not over, do nothing
-        return;
-      }
-    }
-
     // Pull new stkAAVE rewards
     IIdleCDOStrategy(strategy).pullStkAAVE();
-
-    // If there's no pending cooldown or we just redeem the prev locked rewards,
-    // then begin a new cooldown
-    if (_stkAave.balanceOf(address(this)) > 0) {
-      // start a new cooldown
-      _stkAave.cooldown();
-    }
   }
 
   // ###################

@@ -61,7 +61,8 @@
     "@uniswap/v3-periphery": "^1.3.0",
     "bignumber.js": "^9.0.1",
     "dotenv": "^9.0.2",
-    "hardhat-gas-reporter": "^1.0.4"
+    "hardhat-gas-reporter": "^1.0.4",
+    "quickswap-PYT": "Idle-Finance/quickswap-PYT"
   },
   "resolutions": {
     "@ledgerhq/hw-app-eth": "5.47.1",

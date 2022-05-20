@@ -94,4 +94,7 @@ contract IdleCDOStoragePolygon {
   address public referral;
   // amount of fee for feeReceiver. Max is FULL_ALLOC
   uint256 public feeSplit;
+
+  // Events
+  event Referral(uint256 _amount, address _ref);
 }
