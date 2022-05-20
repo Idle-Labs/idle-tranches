@@ -43,7 +43,7 @@ contract StakingRewards is ReentrancyGuardInitialize, Ownable, Pausable {
     stakingToken = IERC20(_stakingToken);
     rewardsDistribution = _rewardsDistribution;
     shouldTransfer = _shouldTransfer;
-    rewardsDuration = 7 days;
+    rewardsDuration = 1 days;
     _transferOwnership(_owner);
     // ReentrancyGuardInitialize initialization
     _status = _NOT_ENTERED;
