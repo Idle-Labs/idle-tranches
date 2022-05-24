@@ -36,15 +36,14 @@ These are the main contracts used:
 - **IdleCDO.sol**: contract which holds all the users pooled assets (both underlyings, eg DAI, and interest bearing tokens, eg idleDAI) and entry point for the user to mint tranche tokens and burn them to redeem principal + interest.
 When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their choosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 1500) blocks, to increase the value of all tranche holders, and part of the gov tokens will be sent to IdleCDOTrancheRewards contracts, if those are set, to incentivize the ideal ratio `trancheIdealWeightRatio`. On redeem users will burn their tranche tokens and get underlyings using a checkpointed price (set at last harvest to avoid potential theft of interest, updated when dumping gov tokens to increase the tranche price)
 
-- **IdleCDOTrancheRewards.sol**: contract for staking tranche tokens and getting rewards (for incentivizing the `trancheIdealWeightRatio`). During harvest `depositReward` can be called to transfer rewards that will be released linearly over x (currently set a 1500) blocks
+- **StakingRewards.sol**: A forked version of the Synthetix staking rewards contract for staking tranche tokens and getting rewards (for incentivizing the `trancheIdealWeightRatio`). During harvest depositReward can be called to transfer rewards that will be released linearly over x (currently set a 6400) blocks.
+
+- **IdleCDOTrancheRewards.sol**: [Used only for DAI and FEI IdleCDOs] contract for staking tranche tokens and getting rewards (for incentivizing the `trancheIdealWeightRatio`). During harvest `depositReward` can be called to transfer rewards that will be released linearly over x (currently set a 1500) blocks
+
 - **IdleCDOTranche.sol**: ERC20 representing a specific (either AA or BB) tranche token. Only IdleCDO contract can mint and burn tranche tokens.
+
 - **IdleStrategy.sol**: IdleCDO strategy for lending assets in Idle Finance. This contract it's just a proxy for interacting with Idle Finance and should have no funds at end of each transaction, but it can have stkAAVE if those are redistributed by the lending provider (this is made to let the IdleCDO properly convert stkAAVE to AAVE) and can be claimed only by the IdleCDO contract or the strategy owner. More info on how idleTokens works can be found [here](https://developers.idle.finance). The tldr of the Idle Finance protocol is this (using DAI as an example):
 In Idle Finance you deposit DAI to earn interest, on deposits you get back idleDAI, an interest bearing token that always increase in price and represent your position in Idle + the interest earned by that position (similar to Compound's cTokens). Idle lend those funds to other protocols such as Compound and Aave and continously rebalance the pooled user funds in order to achieve the highest avg yield. On redeems you burn your idleDAI and get back DAI principal + DAI earned as interest + a set of governance tokens rewards (currently IDLE, COMP, stkAAVE)
-
-Notes:
-- IdleCDO, IdleStrategy and IdleCDOTrancheRewards are upgradable contracts.
-- There are no 'loose' scripts but only hardhat tasks which are used both for interacting with contracts and tests in fork (`integration` task)
-- The `integration` task should be useful also to understand the complete workflow
 
 ## Setup
 
