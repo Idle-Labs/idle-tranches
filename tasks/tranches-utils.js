@@ -150,10 +150,16 @@ task("upgrade-rewards", "Upgrade IdleCDOTrancheRewards contract")
 task("upgrade-strategy", "Upgrade IdleCDO strategy")
   .addParam('cdoname')
   .setAction(async (args) => {
+    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
+    const deployToken = (
+      isMatic ?
+        addresses.deployTokensPolygon :
+        addresses.deployTokens
+    )[args.cdoname];
     
     await run("upgrade-with-multisig", {
       cdoname: args.cdoname,
-      contractName: addresses.deployTokens[args.cdoname].strategyName,
+      contractName: deployToken.strategyName,
       contractKey: 'strategy' // check eg CDOs.idleDAI.*
     });
   });
@@ -420,7 +426,12 @@ subtask("upgrade-with-multisig", "Get signer")
   .addOptionalParam('initParams')
   .setAction(async (args) => {
     await run("compile");
-    const deployToken = addresses.deployTokens[args.cdoname];
+    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
+    const deployToken = (
+      isMatic ?
+        addresses.deployTokensPolygon :
+        addresses.deployTokens
+    )[args.cdoname];
     const contractName = args.contractName;
 
     console.log('To upgrade: ', contractName)
@@ -438,7 +449,7 @@ subtask("upgrade-with-multisig", "Get signer")
     // deploy implementation with any signer
     const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
     // Use multisig for calling upgrade or upgradeAndCall
-    signer = await run('get-multisig-or-fake');
+    // signer = await run('get-multisig-or-fake');
     const proxyAdminAddress = deployToken.cdo.proxyAdmin;
     if (!newImpl || !proxyAdminAddress) {
       console.log(`New impl or proxyAdmin address are null`);
@@ -465,7 +476,7 @@ subtask("upgrade-with-multisig", "Get signer")
 subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
@@ -480,7 +491,7 @@ subtask("get-signer-or-fake", "Get signer")
 subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.IdleTokens.mainnet.devLeagueMultisig);
     } else {
       signer = await helpers.getMultisigSigner();

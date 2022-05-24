@@ -164,13 +164,13 @@
           {
             "contract": "CelsiusxStrategy",
             "label": "stakingRewards",
-            "type": "t_contract(IStakingDualRewards)33112",
+            "type": "t_contract(IStakingDualRewards)30248",
             "src": "quickswap-PYT/src/CelsiusxStrategy.sol:52"
           },
           {
             "contract": "CelsiusxStrategy",
             "label": "quickRouter",
-            "type": "t_contract(IUniswapV2Router02)33505",
+            "type": "t_contract(IUniswapV2Router02)30641",
             "src": "quickswap-PYT/src/CelsiusxStrategy.sol:55"
           },
           {
@@ -229,10 +229,10 @@
           "t_uint256": {
             "label": "uint256"
           },
-          "t_contract(IStakingDualRewards)33112": {
+          "t_contract(IStakingDualRewards)30248": {
             "label": "contract IStakingDualRewards"
           },
-          "t_contract(IUniswapV2Router02)33505": {
+          "t_contract(IUniswapV2Router02)30641": {
             "label": "contract IUniswapV2Router02"
           },
           "t_mapping(t_address,t_uint256)": {
@@ -571,6 +571,223 @@
           },
           "t_array(t_uint256)50_storage": {
             "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "3e30f073214f59852d39ef30926b2b95b045532c9248aeb754abec1122ea8583": {
+      "address": "0xAC253DaA41190Df771a9D878CBE7791CBE682E86",
+      "txHash": "0x43a0b2029ec5082932be1a6e4e74e7ce1fdb49c24453ed5c1f8768246c930678",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_balances",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:34"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_allowances",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:36"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_totalSupply",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:38"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_name",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "_symbol",
+            "type": "t_string_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:41"
+          },
+          {
+            "contract": "ERC20Upgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)45_storage",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:309"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:39"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "token",
+            "type": "t_address",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:41"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:43"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "tokenDecimals",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:45"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "baseToken",
+            "type": "t_address",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:48"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "cxToken",
+            "type": "t_address",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:49"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "stakingRewards",
+            "type": "t_contract(IStakingDualRewards)29519",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:52"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "quickRouter",
+            "type": "t_contract(IUniswapV2Router02)29912",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:55"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "idleCDO",
+            "type": "t_address",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:58"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "lastIndexAmount",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:61"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "lastIndexedTime",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:64"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "lastApr",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:67"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "releaseBlocksPeriod",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:70"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "latestHarvestBlock",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:73"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "totalLpTokensStaked",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:76"
+          },
+          {
+            "contract": "CelsiusxStrategy",
+            "label": "totalLpTokensLocked",
+            "type": "t_uint256",
+            "src": "quickswap-PYT/src/CelsiusxStrategy.sol:79"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_contract(IStakingDualRewards)29519": {
+            "label": "contract IStakingDualRewards"
+          },
+          "t_contract(IUniswapV2Router02)29912": {
+            "label": "contract IUniswapV2Router02"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))"
+          },
+          "t_string_storage": {
+            "label": "string"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
           }
         }
       }
