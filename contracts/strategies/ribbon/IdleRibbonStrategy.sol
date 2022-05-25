@@ -5,7 +5,7 @@ import "../../interfaces/IWETH.sol";
 import "../../interfaces/IIdleCDOStrategy.sol";
 import "../../interfaces/IERC20Detailed.sol";
 
-import "../../interfaces/ribbon/IRibbonThetaSTETHVault.sol";
+import "../../interfaces/ribbon/IRibbonVault.sol";
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
@@ -38,25 +38,16 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
     /* ------------Extra declarations ---------------- */
     /// @notice vault
-    IRibbonThetaSTETHVault public vault;
+    IRibbonVault public vault;
 
     /// @notice address of the IdleCDO
     address public idleCDO;
 
-    /// @notice amount last indexed for calculating APR
-    uint256 public lastIndexAmount;
-
-    /// @notice time when last deposit/redeem was made, used for calculating the APR
-    uint256 public lastIndexedTime;
-
     /// @notice total tokens deposited
     uint256 public totalDeposited;
 
-    /// @notice latest saved apr
-    uint256 public lastApr;
-
-    /// @notice one year, used to calculate the APR
-    uint256 private constant YEAR = 365 days;
+    /// @notice 100000 => 100%
+    uint32 constant MAX_APR_PERC = 100000;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -92,12 +83,9 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         
         // strategy token
         strategyToken = address(this);
-        underlyingToken.approve(_strategyToken, type(uint256).max);
 
         // ribbon vault
-        vault = IRibbonThetaSTETHVault(_vault);
-        lastIndexedTime = block.timestamp;
-
+        vault = IRibbonVault(_vault);
     }
     
     /* -------- write functions ------------- */
@@ -144,7 +132,15 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     /// @notice Approximate APR
     /// @return apr
     function getApr() external view override returns (uint256 apr) {
-        return lastApr;
+        uint16 round = vault.vaultState().round;
+        if (round < 2) {
+            return 0;
+        }
+
+        uint256 previousWeekStartAmount = vault.roundPricePerShare(round - 2);
+        uint256 previousWeekEndAmount = vault.roundPricePerShare(round - 1);
+        uint256 weekApr = (previousWeekEndAmount * MAX_APR_PERC / previousWeekStartAmount) - MAX_APR_PERC;
+        return weekApr * 52;
     }
 
     /// @notice net price in underlyings of 1 strategyToken
@@ -161,50 +157,54 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     function _deposit(uint256 _amount) internal returns (uint256 _minted) {
         
         if (_amount > 0) {
-
             underlyingToken.transferFrom(msg.sender, address(this), _amount);
-            IWETH(token).withdraw(_amount);
 
-            _updateApr(int256(_amount));
-            
-            vault.depositETH{value: _amount}();
+            if(address(underlyingToken) == vault.WETH()) {
+                IWETH(token).withdraw(_amount);
+                vault.depositETH{value: _amount}();
+            } else {
+                underlyingToken.approve(address(vault), _amount);
 
-            uint256 _minted = _amount * oneToken / price();
+                try vault.STETH() returns (address v) {
+                    vault.depositYieldToken(_amount);
+                } catch (bytes memory) {
+                    vault.deposit(_amount);
+                }
+
+            }
+
+            uint256 _minted = _amount * oneToken;
             _mint(msg.sender, _minted);
             totalDeposited += _amount;
         }
         
     }
 
-        /// @notice Internal function to redeem the underlying tokens
+    /// @notice Internal function to redeem the underlying tokens
     /// @param _amount Amount of strategy tokens
     /// @return massetReceived Amount of underlying tokens received
     function _redeem(uint256 _amount, uint256 _price) internal returns (uint256 massetReceived) {
 
         uint256 redeemed = (_amount * _price) / oneToken;
-        _updateApr(-int256(redeemed));
 
         totalDeposited -= redeemed;
 
         _burn(msg.sender, _amount);
-        
-        IWETH(token).deposit{value : _amount}();
-        
-        underlyingToken.transferFrom(address(this), msg.sender, _amount);
-    }
 
-    /// @notice update last saved apr
-    /// @param _amount amount of underlying tokens to mint/redeem
-    function _updateApr(int256 _amount) internal {
-        uint256 amountDeposited = uint256(_amount >= 0 ? _amount : -_amount) * 110 / 100;
-        uint256 _lastIndexAmount = lastIndexAmount;
-        if (lastIndexAmount > 0) {
-            uint256 diff = amountDeposited > _lastIndexAmount ? amountDeposited - _lastIndexAmount : _lastIndexAmount - amountDeposited;
-            uint256 gainPerc = (diff * 10**20) / _lastIndexAmount;
-            lastApr = (YEAR / (block.timestamp - lastIndexedTime)) * gainPerc;
+        vault.completeWithdraw();
+
+        uint256 currentBalance; 
+
+        if(address(underlyingToken) == vault.WETH()) {
+            currentBalance = address(this).balance;
+            IWETH(address(underlyingToken)).deposit{value : currentBalance}();
+        } else {
+            currentBalance = underlyingToken.balanceOf(address(this));
+            underlyingToken.approve(address(this), currentBalance);
+            underlyingToken.approve(msg.sender, currentBalance);
         }
-        lastIndexedTime = block.timestamp;
-        lastIndexAmount = uint256(int256(amountDeposited) + _amount);
+
+        underlyingToken.transferFrom(address(this), msg.sender, currentBalance);
     }
 
     /// @notice fallback functions to allow receiving eth
