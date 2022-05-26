@@ -91,7 +91,7 @@ function ribbonBaseStrategy (_isSwap ,underlyingToken, gammaOracle, oracleOwner,
 
     // get vault proxy contract
     vault = await ethers.getContractAt('IRibbonVault', vaultAddress);
-    
+
     // get oracle contract
     opynOracle = await ethers.getContractAt('IChainlinkOracle', gammaOracle, ownerSigner);
 
@@ -167,14 +167,8 @@ function ribbonBaseStrategy (_isSwap ,underlyingToken, gammaOracle, oracleOwner,
     const currentCap = await vault.cap()
     await vault.connect(vaultOwnerSigner).setCap(currentCap.add(depositAmount))
 
-  });
-
-  it("Check Ribbon strategy contract", async () => {
     // check if deployed correctly
     expect(ethers.utils.isAddress(IdleRibbonStrategy.address)).to.eq(true);
-
-    // check parameters initialized correctly
-    expect(await IdleRibbonStrategy.totalDeposited()).eq(0);
   });
 
   it("Check strategy APR", async () => {

@@ -43,9 +43,6 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     /// @notice address of the IdleCDO
     address public idleCDO;
 
-    /// @notice total tokens deposited
-    uint256 public totalDeposited;
-
     /// @notice 100000 => 100%
     uint32 constant MAX_APR_PERC = 100000;
 
@@ -109,7 +106,7 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     /// @return Amount of underlying tokens received
     function completeRedeem() external onlyIdleCDO returns (uint256) {
         uint256 _amount = vault.accountVaultBalance(address(this));
-        return _redeem(_amount, price());
+        return _redeem(_amount);
     }
 
     /// @notice Redeem Tokens
@@ -118,7 +115,7 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     function redeemUnderlying(uint256 _amount) external override onlyIdleCDO returns (uint256) {
         uint256 _price = price();
         uint256 _strategyTokens = (_amount * oneToken) / _price;
-        return _redeem(_strategyTokens, _price);
+        return _redeem(_strategyTokens);
     }
 
     /// @notice allow to update whitelisted address
@@ -175,7 +172,6 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
             uint256 _minted = _amount * oneToken;
             _mint(msg.sender, _minted);
-            totalDeposited += _amount;
         }
         
     }
@@ -183,11 +179,7 @@ contract IdleRibbonStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     /// @notice Internal function to redeem the underlying tokens
     /// @param _amount Amount of strategy tokens
     /// @return massetReceived Amount of underlying tokens received
-    function _redeem(uint256 _amount, uint256 _price) internal returns (uint256 massetReceived) {
-
-        uint256 redeemed = (_amount * _price) / oneToken;
-
-        totalDeposited -= redeemed;
+    function _redeem(uint256 _amount) internal returns (uint256 massetReceived) {
 
         _burn(msg.sender, _amount);
 
