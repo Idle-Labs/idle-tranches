@@ -139,8 +139,9 @@ describe("Euler PYT", function () {
     // Check that Apr is > 0
     const aprAA = await idleCDO.getApr(AA.address);
     const aprBB = await idleCDO.getApr(BB.address);
-    expect(aprAA).to.be.bignumber.gt(BN('0'));
-    expect(aprBB).to.be.bignumber.gt(BN('0'));
+    // apr (1 ± 10)% just to test that has roughly the same decimals
+    expect(BN(aprAA).div(ONE_TOKEN(18))).to.be.closeTo(BN(1), 10); 
+    expect(BN(aprBB).div(ONE_TOKEN(18))).to.be.closeTo(BN(1), 10);
 
     console.log('######## Withdraws');
     // First user withdraw

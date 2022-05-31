@@ -3,6 +3,8 @@ const { BigNumber } = require("@ethersproject/bignumber");
 const { time } = require("@openzeppelin/test-helpers");
 const addresses = require("../lib/addresses");
 const { LedgerSigner } = require("@ethersproject/hardware-wallets");
+const Safe = require('@gnosis.pm/safe-core-sdk').default;
+const EthersAdapter = require('@gnosis.pm/safe-ethers-lib').default;
 const { SafeEthersSigner, SafeService } = require("@gnosis.pm/safe-ethers-adapters");
 
 const BN = n => BigNumber.from(n);
@@ -30,9 +32,11 @@ const impersonateSigner = async (acc) => {
 const getMultisigSigner = async (skipLog) => {
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   const service = new SafeService('https://safe-transaction.gnosis.io/');
-  const signer = await SafeEthersSigner.create(
-    addresses.IdleTokens.mainnet.devLeagueMultisig, ledgerSigner, service, ethers.provider
-  );
+  const safe = await Safe.create({ 
+    ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
+    safeAddress: addresses.IdleTokens.mainnet.devLeagueMultisig
+  });
+  const signer = new SafeEthersSigner(safe, service, ethers.provider);
   const address = await signer.getAddress();
   if (!skipLog) {
     log(`Deploying with ${address}`);

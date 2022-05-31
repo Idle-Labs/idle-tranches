@@ -448,8 +448,8 @@ subtask("upgrade-with-multisig", "Get signer")
     let signer = await run('get-signer-or-fake');
     // deploy implementation with any signer
     const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+    signer = await run('get-multisig-or-fake');
     // Use multisig for calling upgrade or upgradeAndCall
-    // signer = await run('get-multisig-or-fake');
     const proxyAdminAddress = deployToken.cdo.proxyAdmin;
     if (!newImpl || !proxyAdminAddress) {
       console.log(`New impl or proxyAdmin address are null`);

@@ -225,6 +225,10 @@ contract IdleEulerStrategy is
             totalBalancesUnderlying,
             reserveFee
         );
+        // apr is eg 0.024300334 * 1e27 for 2.43% apr
+        // while the method needs to return the value in the format 2.43 * 1e18
+        // so we do apr / 1e9 * 100 -> apr / 1e7
+        apr = apr / 1e7;
     }
 
     /// @return tokens array of reward token addresses

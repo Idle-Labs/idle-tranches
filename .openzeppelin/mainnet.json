@@ -5545,6 +5545,121 @@
           }
         }
       }
+    },
+    "c50221dfd6b91083ff2c4fd8d58a06303615ab2753d9922ea47ffc73ef76d8a4": {
+      "address": "0x3886557ed1698dbd496a4A0F2e00dF8918eA45E0",
+      "txHash": "0xe150cfd2054d01be197fbd2082228886b15e5a8a7d1c44ecae4ff7b47fc9cce0",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:29"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "token",
+            "type": "t_address",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:31"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:33"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "tokenDecimals",
+            "type": "t_uint256",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:35"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "underlyingToken",
+            "type": "t_contract(IERC20Detailed)9827",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:37"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "eToken",
+            "type": "t_contract(IEToken)11782",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:39"
+          },
+          {
+            "contract": "IdleEulerStrategy",
+            "label": "whitelistedCDO",
+            "type": "t_address",
+            "src": "contracts/strategies/euler/IdleEulerStrategy.sol:49"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_contract(IERC20Detailed)9827": {
+            "label": "contract IERC20Detailed"
+          },
+          "t_contract(IEToken)11782": {
+            "label": "contract IEToken"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
     }
   }
 }
