@@ -10,7 +10,7 @@ const idleMstableStrategyAbi =
 const rewardDistributorAbi =
   require("../../../artifacts/contracts/polygon/interfaces/mstable/IL2EmissionController.sol/IL2EmissionController.json").abi;
 
-const addresses = require("../../../lib/addresses");
+const addresses = require("../../../utils/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require("@defi-wonderland/smock");
 const { ethers } = require("hardhat");

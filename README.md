@@ -91,7 +91,7 @@ npx hardhat TASK_NAME
 npx hardhat deploy-with-factory-params --network YOUR_CONFIGURED_NETWORK --cdoname CDO_NAME 
 ```
 
-`CDO_NAME` should be the name of the key of the `deployTokens` object in `lib/addresses.js` with all params for deployment.
+`CDO_NAME` should be the name of the key of the `deployTokens` object in `utils/addresses.js` with all params for deployment.
 This is an example of config for deploying an IdleCDO with Lido strategy:
 ```
   lido: {

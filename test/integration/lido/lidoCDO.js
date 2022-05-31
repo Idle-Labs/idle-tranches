@@ -1,7 +1,7 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../../../scripts/helpers");
-const addresses = require("../../../lib/addresses");
+const addresses = require("../../../utils/addresses");
 const mainnetContracts = addresses.mainnetContracts;
 const { expect } = require("chai");
 const { FakeContract, smock } = require('@defi-wonderland/smock');
