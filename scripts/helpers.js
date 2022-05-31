@@ -1,7 +1,7 @@
 const rl = require("readline");
 const { BigNumber } = require("@ethersproject/bignumber");
 const { time } = require("@openzeppelin/test-helpers");
-const addresses = require("../lib/addresses");
+const addresses = require("../utils/addresses");
 const { LedgerSigner } = require("@ethersproject/hardware-wallets");
 const Safe = require('@gnosis.pm/safe-core-sdk').default;
 const EthersAdapter = require('@gnosis.pm/safe-ethers-lib').default;
