@@ -1,7 +1,7 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
-const addresses = require("../lib/addresses");
+const addresses = require("../utils/addresses");
 const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
 const { task } = require("hardhat/config");
 
@@ -140,7 +140,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
   
 /**
  * @name deploy-with-factory
- * task to deploy CDO and staking rewards with factory and basic params from lib/addresses.js
+ * task to deploy CDO and staking rewards with factory and basic params from utils/addresses.js
  */
 task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and Staking contract for rewards with default parameters")
   .addParam('cdoname')
@@ -288,7 +288,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       
 /**
  * @name deploy-with-factory-params
- * task to deploy CDO with strategy, staking rewards via factory with all params from lib/addresses.js
+ * task to deploy CDO with strategy, staking rewards via factory with all params from utils/addresses.js
  */
 task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optionally staking rewards via CDOFactory")
   .addParam('cdoname')

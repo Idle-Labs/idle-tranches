@@ -1,7 +1,7 @@
 require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
-const addresses = require("../lib/addresses");
+const addresses = require("../utils/addresses");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));

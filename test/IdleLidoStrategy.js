@@ -2,7 +2,7 @@ require("hardhat/config");
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const erc20 = require("../artifacts/contracts/interfaces/IERC20Detailed.sol/IERC20Detailed.json");
-const addresses = require("../lib/addresses");
+const addresses = require("../utils/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require("@defi-wonderland/smock");
 

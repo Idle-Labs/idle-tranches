@@ -7,7 +7,7 @@ const masset = require("../../../artifacts/contracts/interfaces/IMAsset.sol/IMAs
 const savingsManagerAbi = require("../../../artifacts/contracts/interfaces/ISavingsManager.sol/ISavingsManager.json").abi;
 const idleMstableStrategyAbi = require("../../../artifacts/contracts/strategies/mstable/IdleMStableStrategy.sol/IdleMStableStrategy.json").abi;
 
-const addresses = require("../../../lib/addresses");
+const addresses = require("../../../utils/addresses");
 const { expect } = require("chai");
 const { FakeContract, smock } = require("@defi-wonderland/smock");
 const { ethers } = require("hardhat");

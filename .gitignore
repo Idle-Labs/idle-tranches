@@ -12,3 +12,6 @@ coverage
 bin/**
 soljson-v*
 audit*
+
+#Foundry files 
+out/

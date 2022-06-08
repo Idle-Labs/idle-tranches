@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { BigNumber } = require("@ethersproject/bignumber");
-const addresses = require('../lib/addresses');
+const addresses = require('../utils/addresses');
 const helpers = require('../scripts/helpers');
 const { ethers } = require("hardhat");
 const BN = v => BigNumber.from(v.toString());
