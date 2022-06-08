@@ -10,7 +10,9 @@ remappings = [
   'contracts/=contracts/',
 ]
 optimizer_runs = 15000
-fuzz_runs = 7500
+fuzz_runs = 1000
+fuzz_max_global_rejects = 1000000
+fuzz_max_local_rejects = 1000000
 
 [optimized]
 solc = '0.8.10'

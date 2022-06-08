@@ -28,7 +28,7 @@
     "test": "npx hardhat test test/*.js",
     "test-integration": "npx hardhat test test/integration/**/*.js",
     "test:polygon": "npx hardhat test test/polygon/**/*.js",
-    "test:forge": "FOUNDRY_PROFILE=optimized forge build; FOUNDRY_PROFILE=test forge test -vvv"
+    "test:forge": "FOUNDRY_PROFILE=optimized forge test --fork-url https://eth-mainnet.alchemyapi.io/v2/$ALCHEMY_API_KEY --fork-block-number 14879273 -vvv"
   },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
