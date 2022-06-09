@@ -445,7 +445,7 @@ exports.deployTokens = {
       mainnetContracts.eulerMain, // _euler
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerusdc,
+    // cdo: CDOs.eulerusdt,
     ...baseCDOArgs,
     AARatio: '20000',
   },
@@ -459,7 +459,7 @@ exports.deployTokens = {
       mainnetContracts.eulerMain, // _euler
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerusdc,
+    // cdo: CDOs.eulerdai,
     ...baseCDOArgs,
     AARatio: '20000',
   },
