@@ -38,7 +38,7 @@
     "ethers": "^5.6.4",
     "hardhat": "^2.9.3",
     "hardhat-abi-exporter": "^2.2.1",
-    "hardhat-contract-sizer": "^2.0.3",
+    "hardhat-contract-sizer": "^2.5.1",
     "hardhat-docgen": "^1.1.2",
     "hardhat-etherscan-abi": "^0.1.1",
     "hardhat-log-remover": "^2.0.2",
