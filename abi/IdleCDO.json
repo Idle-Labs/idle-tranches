@@ -492,6 +492,19 @@
   },
   {
     "inputs": [],
+    "name": "isAYSActive",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "lastNAVAA",
     "outputs": [
       {
@@ -797,6 +810,19 @@
       }
     ],
     "name": "setIncentiveTokens",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bool",
+        "name": "_active",
+        "type": "bool"
+      }
+    ],
+    "name": "setIsAYSActive",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

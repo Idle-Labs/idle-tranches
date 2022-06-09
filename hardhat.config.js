@@ -17,7 +17,16 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
-const mainContactRuns = 90;
+const mainContactRuns = 300;
+const overrideConfig = {
+  version: "0.8.10",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: mainContactRuns
+    }
+  }
+};
 
 module.exports = {
   solidity: {
@@ -33,49 +42,18 @@ module.exports = {
       }
     ],
     overrides: {
-      "contracts/IdleCDO.sol": {
-        version: "0.8.10",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: mainContactRuns
-          }
-        }
-      },
-      "contracts/polygon/IdleCDOPolygon.sol": {
-        version: "0.8.10",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: mainContactRuns
-          }
-        }
-      },
-      "contracts/GuardedLaunchUpgradable.sol": {
-        version: "0.8.10",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: mainContactRuns
-          }
-        }
-      },
-      "contracts/IdleCDOStorage.sol": {
-        version: "0.8.10",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: mainContactRuns
-          }
-        }
-      }
+      "contracts/GuardedLaunchUpgradable.sol": overrideConfig,
+      "contracts/IdleCDOTranche.sol": overrideConfig,
+      "contracts/IdleCDOStorage.sol": overrideConfig,
+      "contracts/IdleCDO.sol": overrideConfig,
+      "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
   },
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true,
       // forking: {
-      //   // url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url:`https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
       //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
@@ -95,9 +73,10 @@ module.exports = {
       //   // blockNumber: 14141000 // harvest strategy
       //   // blockNumber: 14705834 // euler strategy
       //   // blockNumber: 14748963 // pbtc test
-      //   blockNumber: 28479157 // polygon
+      //   blockNumber: 14931960 // euler strategy update
+      //   // blockNumber: 28479157 // polygon
       // },
-      // chainId: 137
+      // // chainId: 137
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
@@ -114,8 +93,8 @@ module.exports = {
     mainnet: {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
-      gas: 'auto',
-      gasMultiplier: 1.1,
+      // gas: 'auto',
+      // gasMultiplier: 1.1,
       timeout: 1200000
     },
     matic: {

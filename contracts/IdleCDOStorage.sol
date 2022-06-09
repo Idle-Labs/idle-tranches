@@ -94,4 +94,11 @@ contract IdleCDOStorage {
   address public referral;
   // amount of fee for feeReceiver. Max is FULL_ALLOC
   uint256 public feeSplit;
+
+  // if Adaptive Yield Split is active
+  bool public isAYSActive;
+  // constant to represent 99% (for ADS AA ratio upper limit)
+  uint256 internal constant AA_RATIO_LIM_UP = 99000;
+  // constant to represent 50% (for ADS AA ratio lower limit)
+  uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
 }

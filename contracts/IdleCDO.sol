@@ -195,13 +195,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// last depositXX/withdrawXX/harvest
   /// @return AA tranches ratio (in underlying value) considering all interest
   function getCurrentAARatio() public view returns (uint256) {
-    uint256 AABal = _virtualBalance(AATranche);
-    uint256 contractVal = AABal + _virtualBalance(BBTranche);
-    if (contractVal == 0) {
-      return 0;
-    }
-    // Current AA tranche split ratio = AABal * FULL_ALLOC / (AABal + BBBal)
-    return AABal * FULL_ALLOC / contractVal;
+    return _getAARatio(false);
   }
 
   /// @notice calculates the current tranches price considering the interest that is yet to be splitted
@@ -259,6 +253,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_amount, msg.sender, _tranche);
+    // update trancheAPRSplitRatio
+    _updateSplitRatio();
   }
 
   /// @notice this method is called on depositXX/withdrawXX/harvest and
@@ -295,6 +291,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _virtualBalance(address _tranche) internal view returns (uint256) {
     // balance is: tranche supply * virtual tranche price
     return IdleCDOTranche(_tranche).totalSupply() * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
+  }
+
+  /// @notice calculates the NAV for a tranche without considering the interest that is yet to be splitted
+  /// @param _tranche address of the requested tranche
+  /// @return net asset value, in underlying tokens, for _tranche
+  function _instantBalance(address _tranche) internal view returns (uint256) {
+    return IdleCDOTranche(_tranche).totalSupply() * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice calculates the current tranches price considering the interest that is yet to be splitted and the
@@ -385,7 +388,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       }
 
       // mint tranches tokens to this contract
-      uint256 _minted = _mintShares(_amount - _referralAmount,
+      uint256 _minted = _mintShares(
+        _amount - _referralAmount,
         isStakingRewardsActive ? address(this) : _feeReceiver,
         // Mint AA tranche tokens as fees
         AATranche
@@ -439,6 +443,43 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     } else {
       lastNAVBB -= toRedeem;
     }
+
+    // update trancheAPRSplitRatio
+    _updateSplitRatio();
+  }
+
+  /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
+  /// @dev the idea here is to limit the min and max APR that the senior tranche can get
+  function _updateSplitRatio() internal {
+    if (isAYSActive) {
+      uint256 tvlAARatio = _getAARatio(true);
+      uint256 aux;
+      if (tvlAARatio >= AA_RATIO_LIM_UP) {
+        aux = AA_RATIO_LIM_UP;
+      } else if (tvlAARatio > AA_RATIO_LIM_DOWN) {
+        aux = tvlAARatio;
+      } else {
+        aux = AA_RATIO_LIM_DOWN;
+      }
+      trancheAPRSplitRatio = aux * tvlAARatio / FULL_ALLOC;
+    }
+  }
+
+  /// @notice calculates the current AA tranches ratio
+  /// @dev it does count accrued interest not yet split since last
+  /// depositXX/withdrawXX/harvest only if _instant flag is true
+  /// @param _instant if true, it returns the current ratio without accrued interest
+  /// @return AA tranches ratio (in underlying value) considering all interest
+  function _getAARatio(bool _instant) internal view returns (uint256) {
+    function(address) internal view returns (uint256) _getNAV =
+      _instant ? _instantBalance : _virtualBalance;
+    uint256 AABal = _getNAV(AATranche);
+    uint256 contractVal = AABal + _getNAV(BBTranche);
+    if (contractVal == 0) {
+      return 0;
+    }
+    // Current AA tranche split ratio = AABal * FULL_ALLOC / (AABal + BBBal)
+    return AABal * FULL_ALLOC / contractVal;
   }
 
   /// @dev check if _strategyPrice is decreased since last update and updates last saved strategy price
@@ -650,38 +691,39 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @notice used to start the cooldown for unstaking stkAAVE and claiming AAVE rewards (for the contract itself)
+  /// [DEPRECATED] Unused as stkAAVE distribution has been halted, but kept for reference
   function _claimStkAave() internal {
-    if (!isStkAAVEActive) {
-      return;
-    }
+    //
+    // if (!isStkAAVEActive) {
+    //   return;
+    // }
+    // IStakedAave _stkAave = IStakedAave(stkAave);
+    // uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
+    // // If there is a pending cooldown:
+    // if (_stakersCooldown > 0) {
+    //   uint256 _cooldownEnd = _stakersCooldown + _stkAave.COOLDOWN_SECONDS();
+    //   // If it is over
+    //   if (_cooldownEnd < block.timestamp) {
+    //     // If the unstake window is active
+    //     if (block.timestamp - _cooldownEnd <= _stkAave.UNSTAKE_WINDOW()) {
+    //       // redeem stkAave AND begin new cooldown
+    //       _stkAave.redeem(address(this), type(uint256).max);
+    //     }
+    //   } else {
+    //     // If it is not over, do nothing
+    //     return;
+    //   }
+    // }
 
-    IStakedAave _stkAave = IStakedAave(stkAave);
-    uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
-    // If there is a pending cooldown:
-    if (_stakersCooldown > 0) {
-      uint256 _cooldownEnd = _stakersCooldown + _stkAave.COOLDOWN_SECONDS();
-      // If it is over
-      if (_cooldownEnd < block.timestamp) {
-        // If the unstake window is active
-        if (block.timestamp - _cooldownEnd <= _stkAave.UNSTAKE_WINDOW()) {
-          // redeem stkAave AND begin new cooldown
-          _stkAave.redeem(address(this), type(uint256).max);
-        }
-      } else {
-        // If it is not over, do nothing
-        return;
-      }
-    }
+    // // Pull new stkAAVE rewards
+    // IIdleCDOStrategy(strategy).pullStkAAVE();
 
-    // Pull new stkAAVE rewards
-    IIdleCDOStrategy(strategy).pullStkAAVE();
-
-    // If there's no pending cooldown or we just redeem the prev locked rewards,
-    // then begin a new cooldown
-    if (_stkAave.balanceOf(address(this)) > 0) {
-      // start a new cooldown
-      _stkAave.cooldown();
-    }
+    // // If there's no pending cooldown or we just redeem the prev locked rewards,
+    // // then begin a new cooldown
+    // if (_stkAave.balanceOf(address(this)) > 0) {
+    //   // start a new cooldown
+    //   _stkAave.cooldown();
+    // }
   }
 
   // ###################
@@ -781,6 +823,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // ###################
   // onlyOwner
   // ###################
+
+  /// @param _active flag to allow Adaptive Yield Split
+  function setIsAYSActive(bool _active) external {
+    _checkOnlyOwner();
+    isAYSActive = _active;
+  }
 
   /// @param _allowed flag to allow AA withdraws
   function setAllowAAWithdraw(bool _allowed) external {

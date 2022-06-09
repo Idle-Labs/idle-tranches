@@ -1548,93 +1548,93 @@ describe("IdleCDO", function () {
     expect(nav).to.be.equal(BN('3800').mul(one));
   });
 
-  it("claimStkAave new cooldown", async () => {
-    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+  // it("claimStkAave new cooldown", async () => {
+  //   const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
 
-    await idleCDO.setIsStkAAVEActive(true);
-    await strategy.setWhitelistedCDO(idleCDO.address);
-    // Mock response
-    fakeStkAave.stakersCooldowns.returnsAtCall(0, 0);
-    fakeStkAave.balanceOf.returnsAtCall(0, 0);
-    fakeStkAave.balanceOf.returnsAtCall(1, 100);
+  //   await idleCDO.setIsStkAAVEActive(true);
+  //   await strategy.setWhitelistedCDO(idleCDO.address);
+  //   // Mock response
+  //   fakeStkAave.stakersCooldowns.returnsAtCall(0, 0);
+  //   fakeStkAave.balanceOf.returnsAtCall(0, 0);
+  //   fakeStkAave.balanceOf.returnsAtCall(1, 100);
 
-    await idleCDO.connect(AABuyer).claimStkAave();
-    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
-    fakeStkAave.balanceOf.atCall(1).should.be.calledWith(idleCDO.address);
-    fakeStkAave.cooldown.should.be.calledOnce;
-  });
+  //   await idleCDO.connect(AABuyer).claimStkAave();
+  //   fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+  //   fakeStkAave.balanceOf.atCall(1).should.be.calledWith(idleCDO.address);
+  //   fakeStkAave.cooldown.should.be.calledOnce;
+  // });
 
-  it("claimStkAave cooldown ended and unstake window finished", async () => {
-    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
-    await idleCDO.setIsStkAAVEActive(true);
-    await strategy.setWhitelistedCDO(idleCDO.address);
-    const blocknumber = await ethers.provider.getBlockNumber();
-    const block = await ethers.provider.getBlock(blocknumber);
-    const timestamp = block.timestamp;
-    await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 1000]);
-    // Mock response
-    fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
-    fakeStkAave.COOLDOWN_SECONDS.returns(10);
-    fakeStkAave.UNSTAKE_WINDOW.returns(100);
-    fakeStkAave.cooldown.returns();
-    // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
-    fakeStkAave.balanceOf.returns(0, 1);
-    fakeStkAave.balanceOf.returns(1, 1);
-    fakeStkAave.transfer.returns(0, true);
-    await idleCDO.connect(AABuyer).claimStkAave();
-    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
-    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
-    fakeStkAave.cooldown.should.be.calledOnce;
-    fakeStkAave.redeem.should.not.be.calledOnce;
-    // 1 inside pullStkAAVE and 1 in idleCDO
-    fakeStkAave.balanceOf.should.be.calledTwice;
-  });
+  // it("claimStkAave cooldown ended and unstake window finished", async () => {
+  //   const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+  //   await idleCDO.setIsStkAAVEActive(true);
+  //   await strategy.setWhitelistedCDO(idleCDO.address);
+  //   const blocknumber = await ethers.provider.getBlockNumber();
+  //   const block = await ethers.provider.getBlock(blocknumber);
+  //   const timestamp = block.timestamp;
+  //   await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 1000]);
+  //   // Mock response
+  //   fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
+  //   fakeStkAave.COOLDOWN_SECONDS.returns(10);
+  //   fakeStkAave.UNSTAKE_WINDOW.returns(100);
+  //   fakeStkAave.cooldown.returns();
+  //   // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
+  //   fakeStkAave.balanceOf.returns(0, 1);
+  //   fakeStkAave.balanceOf.returns(1, 1);
+  //   fakeStkAave.transfer.returns(0, true);
+  //   await idleCDO.connect(AABuyer).claimStkAave();
+  //   fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+  //   fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+  //   fakeStkAave.cooldown.should.be.calledOnce;
+  //   fakeStkAave.redeem.should.not.be.calledOnce;
+  //   // 1 inside pullStkAAVE and 1 in idleCDO
+  //   fakeStkAave.balanceOf.should.be.calledTwice;
+  // });
 
-  it("claimStkAave cooldown ended", async () => {
-    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
-    await idleCDO.setIsStkAAVEActive(true);
-    await strategy.setWhitelistedCDO(idleCDO.address);
-    const blocknumber = await ethers.provider.getBlockNumber();
-    const block = await ethers.provider.getBlock(blocknumber);
-    const timestamp = block.timestamp;
-    await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 100]);
-    // Mock response
-    fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
-    fakeStkAave.COOLDOWN_SECONDS.returns(10);
-    fakeStkAave.UNSTAKE_WINDOW.returns(1000);
-    fakeStkAave.redeem.returns();
-    // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
-    fakeStkAave.balanceOf.returns(0, 0);
-    await idleCDO.connect(AABuyer).claimStkAave();
-    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
-    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
-    fakeStkAave.redeem.atCall(0).should.be.calledWith(idleCDO.address, MAX_UINT);
-    // 1 inside pullStkAAVE and 1 in idleCDO
-    fakeStkAave.balanceOf.should.be.calledTwice;
-  });
+  // it("claimStkAave cooldown ended", async () => {
+  //   const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+  //   await idleCDO.setIsStkAAVEActive(true);
+  //   await strategy.setWhitelistedCDO(idleCDO.address);
+  //   const blocknumber = await ethers.provider.getBlockNumber();
+  //   const block = await ethers.provider.getBlock(blocknumber);
+  //   const timestamp = block.timestamp;
+  //   await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 100]);
+  //   // Mock response
+  //   fakeStkAave.stakersCooldowns.returnsAtCall(0, timestamp);
+  //   fakeStkAave.COOLDOWN_SECONDS.returns(10);
+  //   fakeStkAave.UNSTAKE_WINDOW.returns(1000);
+  //   fakeStkAave.redeem.returns();
+  //   // for pullStkAAVE and for the subsequent new cooldown (simulating no balance pulled)
+  //   fakeStkAave.balanceOf.returns(0, 0);
+  //   await idleCDO.connect(AABuyer).claimStkAave();
+  //   fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+  //   fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+  //   fakeStkAave.redeem.atCall(0).should.be.calledWith(idleCDO.address, MAX_UINT);
+  //   // 1 inside pullStkAAVE and 1 in idleCDO
+  //   fakeStkAave.balanceOf.should.be.calledTwice;
+  // });
 
-  it("claimStkAave cooldown active", async () => {
-    const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
-    await idleCDO.setIsStkAAVEActive(true);
-    await strategy.setWhitelistedCDO(idleCDO.address);
-    // Mock response
-    const timestamp = (await ethers.provider.getBlock()).timestamp;
-    fakeStkAave.stakersCooldowns.returnsAtCall(0, BN(timestamp));
-    fakeStkAave.COOLDOWN_SECONDS.returns(100000);
-    await idleCDO.connect(AABuyer).claimStkAave();
-    fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
-    fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
+  // it("claimStkAave cooldown active", async () => {
+  //   const fakeStkAave = await smock.fake(stkAAVEjson.abi, { address: stkAAVEAddr });
+  //   await idleCDO.setIsStkAAVEActive(true);
+  //   await strategy.setWhitelistedCDO(idleCDO.address);
+  //   // Mock response
+  //   const timestamp = (await ethers.provider.getBlock()).timestamp;
+  //   fakeStkAave.stakersCooldowns.returnsAtCall(0, BN(timestamp));
+  //   fakeStkAave.COOLDOWN_SECONDS.returns(100000);
+  //   await idleCDO.connect(AABuyer).claimStkAave();
+  //   fakeStkAave.stakersCooldowns.atCall(0).should.be.calledWith(idleCDO.address);
+  //   fakeStkAave.COOLDOWN_SECONDS.should.be.calledOnce;
 
-    // Redeem should not be called
-    let isFailed;
-    try {
-      fakeStkAave.redeem.should.be.calledOnce;
-    } catch (e) {
-      isFailed = true;
-    }
+  //   // Redeem should not be called
+  //   let isFailed;
+  //   try {
+  //     fakeStkAave.redeem.should.be.calledOnce;
+  //   } catch (e) {
+  //     isFailed = true;
+  //   }
 
-    expect(isFailed).to.be.true;
-  });
+  //   expect(isFailed).to.be.true;
+  // });
 
   it("harvest should split fees between feeReceiver and referral if referral is present and feeSplit > 0", async () => {
     // set fee receiver, referral and 10/90 fee split
