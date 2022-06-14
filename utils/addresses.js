@@ -264,7 +264,7 @@ const CDOs = {
   eulerusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x5DaD2eEF80a8cdFD930aB8f0353cA13Bd48c4346',
+    strategyToken: mainnetContracts.eUSDC,
     underlying: mainnetContracts.USDC,
     cdoAddr: '0xf5a3d259bfe7288284bd41823ec5c8327a314054',
     proxyAdmin: mainnetContracts.proxyAdmin,
@@ -273,6 +273,32 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x1e095cbF663491f15cC1bDb5919E701b27dDE90C',
     BBTranche: '0xe11679CDb4587FeE907d69e9eC4a7d3F0c2bcf3B'
+  },
+  eulerdai: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: mainnetContracts.eDAI,
+    underlying: mainnetContracts.DAI,
+    cdoAddr: '0x46c1f702a6aad1fd810216a5ff15aab1c62ca826',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0xc7f1b9c72b8230e470420a4b69af7c50781a3f44',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x852c4d2823E98930388b5cE1ed106310b942bD5a',
+    BBTranche: '0x6629baA8C7c6a84290Bf9a885825E3540875219D'
+  },
+  eulerusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: mainnetContracts.eUSDT,
+    underlying: mainnetContracts.USDT,
+    cdoAddr: '0xD5469DF8CA36E7EaeDB35D428F28E13380eC8ede',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x3d1775dA27Dd9c6d936795Ac21b94CDeD8baBD69',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xE0f126236d2a5b13f26e72cBb1D1ff5f297dDa07',
+    BBTranche: '0xb1EC065abF6783BCCe003B8d6B9f947129504854'
   },
 };
 
@@ -434,6 +460,7 @@ exports.deployTokens = {
     cdo: CDOs.eulerusdc,
     ...baseCDOArgs,
     AARatio: '20000',
+    isAYSActive: true,
   },
   eulerusdt: {
     decimals: 6,
@@ -448,6 +475,8 @@ exports.deployTokens = {
     // cdo: CDOs.eulerusdt,
     ...baseCDOArgs,
     AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
   },
   eulerdai: {
     decimals: 18,
@@ -459,9 +488,11 @@ exports.deployTokens = {
       mainnetContracts.eulerMain, // _euler
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerdai,
+    cdo: CDOs.eulerdai,
     ...baseCDOArgs,
     AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
   },
 
   // Convex

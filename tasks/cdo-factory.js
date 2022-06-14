@@ -257,14 +257,20 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
       console.log(`staking reward contracts set`);
     }
-    
-    // Set flag for not receiving stkAAVE if needed
-    console.log('stkAAVE distribution: ', args.stkAAVEActive);
-    if (!args.stkAAVEActive && !isMatic) {
-      console.log('Disabling stkAAVE distribution')
-      await idleCDO.connect(signer).setIsStkAAVEActive(false);
+
+    if (!args.isAYSActive) {
+      console.log("Turning off AYS");
+      await idleCDO.connect(signer).setIsAYSActive(false);
+      console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
     }
-    console.log();
+    
+    // // Set flag for not receiving stkAAVE if needed
+    // console.log('stkAAVE distribution: ', args.stkAAVEActive);
+    // if (!args.stkAAVEActive && !isMatic) {
+    //   console.log('Disabling stkAAVE distribution')
+    //   await idleCDO.connect(signer).setIsStkAAVEActive(false);
+    // }
+    // console.log();
 
     const feeReceiver = await idleCDO.feeReceiver();
     if (
@@ -336,7 +342,6 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
     // Deploy strategy
     const strategy = await helpers.deployUpgradableContract(
       deployToken.strategyName, 
-      // deployToken.strategyParams, 
       params,
       signer
     );
@@ -351,6 +356,7 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       bbStaking: deployToken.BBStaking,
       stkAAVEActive: deployToken.stkAAVEActive,
       limit: deployToken.limit,
-      aaRatio: deployToken.AARatio
+      aaRatio: deployToken.AARatio,
+      isAYSActive: deployToken.isAYSActive,
     });
 });

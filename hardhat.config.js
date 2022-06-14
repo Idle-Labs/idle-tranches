@@ -73,7 +73,8 @@ module.exports = {
       //   // blockNumber: 14141000 // harvest strategy
       //   // blockNumber: 14705834 // euler strategy
       //   // blockNumber: 14748963 // pbtc test
-      //   blockNumber: 14931960 // euler strategy update
+      //   // blockNumber: 14931960 // euler strategy update
+      //   blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
       // },
       // // chainId: 137
@@ -93,8 +94,8 @@ module.exports = {
     mainnet: {
       url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
-      // gas: 'auto',
-      // gasMultiplier: 1.1,
+      gas: 'auto',
+      gasMultiplier: 1.1,
       timeout: 1200000
     },
     matic: {
