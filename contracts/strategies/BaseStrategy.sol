@@ -19,9 +19,7 @@ abstract contract BaseStrategy is
     using SafeERC20Upgradeable for IERC20Detailed;
 
     /// @notice one year, used to calculate the APR
-    uint256 public constant YEAR = 365 days;
-
-    uint256 public constant ONE_SCALE = 10**18;
+    uint256 private constant YEAR = 365 days;
 
     /// @notice underlying token address (ex: DAI)
     address public override token;
@@ -103,14 +101,14 @@ abstract contract BaseStrategy is
     function _deposit(uint256 _amount)
         internal
         virtual
-        returns (uint256 shares);
+        returns (uint256 amountUsed, uint256 amountStaked);
 
     /// @dev makes the actual withdraw from the 'strategy'
     /// @return amountWithdrawn returns the amount withdrawn
     function _withdraw(uint256 _amountToWithdraw, address _destination)
         internal
         virtual
-        returns (uint256 amountWithdrawn);
+        returns (uint256 amountWithdrawn, uint256 amountUnstaked);
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
@@ -122,15 +120,26 @@ abstract contract BaseStrategy is
         returns (uint256 shares)
     {
         if (_amount != 0) {
+            // Get current price
+            uint256 _price = price();
             // Send tokens to the strategy
             IERC20Detailed(token).safeTransferFrom(
                 msg.sender,
                 address(this),
                 _amount
             );
+            totalLpTokensStaked += _amount;
             // Calls our internal deposit function
-            shares = _deposit(_amount);
+            (uint256 amountUsed, uint256 amountStaked) = _deposit(_amount);
+            // Adjust with actual staked amount
+            if (amountStaked != 0) {
+                totalLpTokensStaked =
+                    totalLpTokensStaked -
+                    _amount +
+                    amountStaked;
+            }
             // Mint shares
+            shares = (amountUsed * oneToken) / _price;
             _mint(msg.sender, shares);
         }
     }
@@ -177,18 +186,25 @@ abstract contract BaseStrategy is
         uint256 _underlyingPerShare,
         uint256 _minUnderlying
     ) internal returns (uint256 amountWithdrawn) {
-        uint256 amountNeeded = (_shares * _underlyingPerShare) / ONE_SCALE;
+        uint256 amountNeeded = (_shares * _underlyingPerShare) / oneToken;
 
         // check-effect-interaction
         _burn(msg.sender, _shares);
 
+        uint256 amountUnstaked;
         // Withdraw amount needed
         totalLpTokensStaked -= amountNeeded;
-        amountWithdrawn = _withdraw(amountNeeded, _destination);
+        (amountWithdrawn, amountUnstaked) = _withdraw(
+            amountNeeded,
+            _destination
+        );
 
-        // Adjust with actual amount withdrawn
-        if (amountNeeded > amountWithdrawn) {
-            totalLpTokensStaked += amountNeeded - amountWithdrawn;
+        // Adjust with actual unstaked amount
+        if (amountNeeded > amountUnstaked) {
+            totalLpTokensStaked =
+                totalLpTokensStaked +
+                amountNeeded -
+                amountUnstaked;
         }
 
         // We revert if this call doesn't produce enough underlying
@@ -209,16 +225,17 @@ abstract contract BaseStrategy is
         (mintedUnderlyings, rewards) = _redeemRewards(data);
 
         // reinvest the generated/minted underlying to the the `strategy`
-        if (mintedUnderlyings > 0) {
-            (, uint256 underlyingsUsed) = _reinvest(mintedUnderlyings);
+        if (mintedUnderlyings != 0) {
+            uint256 underlyingsStaked = _reinvest(mintedUnderlyings);
+            require(underlyingsStaked <= mintedUnderlyings, "sanity check");
 
             // save the block in which rewards are swapped and the amount
             latestHarvestBlock = uint128(block.number);
-            totalLpTokensLocked = underlyingsUsed;
-            totalLpTokensStaked += underlyingsUsed;
+            totalLpTokensLocked = underlyingsStaked;
+            totalLpTokensStaked += underlyingsStaked;
 
             // update the apr after claiming the rewards
-            _updateApr(underlyingsUsed);
+            _updateApr(underlyingsStaked);
         }
     }
 
@@ -227,9 +244,9 @@ abstract contract BaseStrategy is
     function _reinvest(uint256 underlyings)
         internal
         virtual
-        returns (uint256 sharesMinted, uint256 underlyingsUsed)
+        returns (uint256 underlyingsStaked)
     {
-        _deposit(underlyings);
+        (, underlyingsStaked) = _deposit(underlyings);
     }
 
     function _redeemRewards(bytes calldata data)
@@ -240,7 +257,7 @@ abstract contract BaseStrategy is
     /// @notice update last saved apr
     /// @param _gain amount of underlying tokens to mint/redeem
     function _updateApr(uint256 _gain) internal {
-        uint256 priceIncrease = (_gain * ONE_SCALE) / totalSupply();
+        uint256 priceIncrease = (_gain * oneToken) / totalSupply();
         lastApr = uint96(
             priceIncrease * (YEAR / (block.timestamp - lastIndexedTime)) * 100
         ); // prettier-ignore
@@ -257,10 +274,10 @@ abstract contract BaseStrategy is
         uint256 _totalSupply = totalSupply();
 
         if (_totalSupply == 0) {
-            _price = ONE_SCALE;
+            _price = oneToken;
         } else {
             _price =
-                ((totalLpTokensStaked - _lockedLpTokens()) * ONE_SCALE) /
+                ((totalLpTokensStaked - _lockedLpTokens()) * oneToken) /
                 _totalSupply;
         }
     }
