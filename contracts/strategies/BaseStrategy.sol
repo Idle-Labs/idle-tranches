@@ -39,11 +39,11 @@ abstract contract BaseStrategy is
     /// @notice address of the IdleCDO
     address public idleCDO;
 
-    /// @notice total tokens staked
-    uint256 public totalLpTokensStaked;
+    /// @notice total underlying tokens staked
+    uint256 public totalTokensStaked;
 
-    /// @notice total tokens locked
-    uint256 public totalLpTokensLocked;
+    /// @notice total underlying tokens locked
+    uint256 public totalTokensLocked;
 
     /// @notice time when last deposit/redeem was made, used for calculating the APR
     uint256 public lastIndexedTime;
@@ -128,15 +128,15 @@ abstract contract BaseStrategy is
                 address(this),
                 _amount
             );
-            totalLpTokensStaked += _amount;
+
+            totalTokensStaked += _amount;
+
             // Calls our internal deposit function
             (uint256 amountUsed, uint256 amountStaked) = _deposit(_amount);
+
             // Adjust with actual staked amount
             if (amountStaked != 0) {
-                totalLpTokensStaked =
-                    totalLpTokensStaked -
-                    _amount +
-                    amountStaked;
+                totalTokensStaked = totalTokensStaked - _amount + amountStaked;
             }
             // Mint shares
             shares = (amountUsed * oneToken) / _price;
@@ -193,7 +193,7 @@ abstract contract BaseStrategy is
 
         uint256 amountUnstaked;
         // Withdraw amount needed
-        totalLpTokensStaked -= amountNeeded;
+        totalTokensStaked -= amountNeeded;
         (amountWithdrawn, amountUnstaked) = _withdraw(
             amountNeeded,
             _destination
@@ -201,8 +201,8 @@ abstract contract BaseStrategy is
 
         // Adjust with actual unstaked amount
         if (amountNeeded > amountUnstaked) {
-            totalLpTokensStaked =
-                totalLpTokensStaked +
+            totalTokensStaked =
+                totalTokensStaked +
                 amountNeeded -
                 amountUnstaked;
         }
@@ -231,16 +231,17 @@ abstract contract BaseStrategy is
 
             // save the block in which rewards are swapped and the amount
             latestHarvestBlock = uint128(block.number);
-            totalLpTokensLocked = underlyingsStaked;
-            totalLpTokensStaked += underlyingsStaked;
+            totalTokensLocked = underlyingsStaked;
+            totalTokensStaked += underlyingsStaked;
 
             // update the apr after claiming the rewards
             _updateApr(underlyingsStaked);
         }
     }
 
-    /// @dev reinvest `underlyings` to the `strategy`
+    /// @dev reinvest underlyings` to the `strategy`
     ///      this method should be used in the `_redeemRewards` method
+    ///      Ussually don't mint new shares.
     function _reinvest(uint256 underlyings)
         internal
         virtual
@@ -277,22 +278,22 @@ abstract contract BaseStrategy is
             _price = oneToken;
         } else {
             _price =
-                ((totalLpTokensStaked - _lockedLpTokens()) * oneToken) /
+                ((totalTokensStaked - _lockedTokens()) * oneToken) /
                 _totalSupply;
         }
     }
 
-    function _lockedLpTokens() internal view returns (uint256 _locked) {
-        uint256 _totalLockedLpTokens = totalLpTokensLocked;
+    function _lockedTokens() internal view returns (uint256 _locked) {
+        uint256 _totalLockedTokens = totalTokensLocked;
         uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
         uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
 
         if (
-            _totalLockedLpTokens != 0 &&
+            _totalLockedTokens != 0 &&
             _blocksSinceLastHarvest < _releaseBlocksPeriod
         ) {
             // progressively release harvested rewards
-            _locked = (_totalLockedLpTokens * (_releaseBlocksPeriod - _blocksSinceLastHarvest)) / _releaseBlocksPeriod; // prettier-ignore
+            _locked = (_totalLockedTokens * (_releaseBlocksPeriod - _blocksSinceLastHarvest)) / _releaseBlocksPeriod; // prettier-ignore
         }
     }
 

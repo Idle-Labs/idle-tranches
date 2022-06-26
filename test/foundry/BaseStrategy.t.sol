@@ -1,39 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
-import "../../contracts/strategies/BaseStrategy.sol";
-import "../../contracts/mocks/MockERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "forge-std/Test.sol";
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "../../contracts/strategies/BaseStrategy.sol";
+import "../../contracts/mocks/MockStakingReward.sol";
+
 import "../../contracts/interfaces/IERC20Detailed.sol";
-
-contract StakingRewardMock is ERC20("StakedERC20Mock", "StkERC20Mock") {
-    IERC20Detailed internal token;
-    uint256 internal reward;
-
-    constructor(IERC20Detailed _token) {
-        token = _token;
-    }
-
-    function setTestReward(uint256 _reward) external {
-        reward = _reward;
-    }
-
-    function stake(uint256 _amount) external {
-        token.transferFrom(msg.sender, address(this), _amount);
-        _mint(msg.sender, _amount);
-    }
-
-    function unstake(uint256 _amount) external {
-        _burn(msg.sender, _amount);
-        token.transfer(msg.sender, _amount);
-    }
-
-    function claimRewards() external {
-        token.transfer(msg.sender, reward);
-    }
-}
 
 contract TestStrategy is BaseStrategy {
     function initialize(
@@ -54,7 +28,7 @@ contract TestStrategy is BaseStrategy {
         returns (uint256, uint256)
     {
         underlyingToken.approve(strategyToken, _amount);
-        StakingRewardMock(strategyToken).stake(_amount);
+        MockStakingReward(strategyToken).stake(_amount);
         return (_amount, _amount);
     }
 
@@ -65,7 +39,7 @@ contract TestStrategy is BaseStrategy {
         override
         returns (uint256, uint256)
     {
-        StakingRewardMock(strategyToken).unstake(_amountToWithdraw);
+        MockStakingReward(strategyToken).unstake(_amountToWithdraw);
         underlyingToken.transfer(_destination, _amountToWithdraw);
         return (_amountToWithdraw, _amountToWithdraw);
     }
@@ -73,11 +47,11 @@ contract TestStrategy is BaseStrategy {
     function _redeemRewards(bytes calldata)
         internal
         override
-        returns (uint256 underlyingReward, uint256[] memory rewards)
+        returns (uint256 underlyingReward, uint256[] memory)
     {
         // uint256 _amountToWithdraw = abi.decode(data, (uint256));
         uint256 balBefore = underlyingToken.balanceOf(address(this));
-        StakingRewardMock(strategyToken).claimRewards();
+        MockStakingReward(strategyToken).claimRewards();
         underlyingReward = underlyingToken.balanceOf(address(this)) - balBefore;
     }
 
@@ -96,7 +70,7 @@ contract TestBaseStrategy is Test {
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     IERC20Detailed internal underlying;
-    StakingRewardMock internal strategyToken;
+    MockStakingReward internal strategyToken;
     TestStrategy internal strategy;
 
     modifier runOnForkingNetwork(uint256 networkId) {
@@ -108,7 +82,7 @@ contract TestBaseStrategy is Test {
 
     function setUp() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
         underlying = IERC20Detailed(USDC);
-        strategyToken = new StakingRewardMock(underlying);
+        strategyToken = new MockStakingReward(underlying);
         strategyToken.setTestReward(1000 * ONE_SCALE);
 
         // deploy strategy
@@ -148,6 +122,7 @@ contract TestBaseStrategy is Test {
         assertEq(strategy.idleCDO(), address(this));
         assertEq(strategy.oneToken(), ONE_SCALE);
         assertEq(strategy.price(), ONE_SCALE);
+        assertEq(strategy.getApr(), 0);
         assertTrue(strategy.lastIndexedTime() != 0);
         assertTrue(strategy.releaseBlocksPeriod() != 0);
 
@@ -168,11 +143,11 @@ contract TestBaseStrategy is Test {
         strategy.deposit(1e10);
 
         assertEq(strategy.balanceOf(address(this)), 1e10);
-        assertEq(strategy.totalLpTokensStaked(), 1e10);
+        assertEq(strategy.totalTokensStaked(), 1e10);
 
         strategy.redeem(1e10);
         assertEq(strategy.balanceOf(address(this)), 0);
-        assertEq(strategy.totalLpTokensStaked(), 0);
+        assertEq(strategy.totalTokensStaked(), 0);
     }
 
     function testOnlyIdleCDO() external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -185,6 +160,20 @@ contract TestBaseStrategy is Test {
         strategy.redeem(1e10);
     }
 
+    function testOnlyOwner() external runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        strategy.setReleaseBlocksPeriod(1000);
+
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        strategy.setWhitelistedCDO(address(0xcafe));
+
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        strategy.transferToken(USDC, 1e6, address(0xbabe));
+    }
+
     function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
         underlying.approve(address(strategy), 1e10);
         strategy.deposit(1e10);
@@ -192,17 +181,24 @@ contract TestBaseStrategy is Test {
         skip(5 days);
         strategy.redeemRewards(bytes(""));
 
-        assertGt(strategy.totalLpTokensStaked(), 0);
-        assertGt(strategy.totalLpTokensLocked(), 0);
+        assertGt(strategy.totalTokensStaked(), 0);
+        assertGt(strategy.totalTokensLocked(), 0);
 
         // rewards are lineally released
+        assertEq(strategy.releaseBlocksPeriod(), 6400);
         assertEq(strategy.price(), ONE_SCALE);
 
-        vm.roll(block.number + 1200);
+        // half of the period
+        skip(5 days);
+        vm.roll(block.number + 3200);
+
         uint256 _price = strategy.price();
         assertGt(_price, ONE_SCALE);
+        assertGt(strategy.getApr(), 0);
 
-        vm.roll(block.number + 2400);
-        assertGt(strategy.price(), _price);
+        skip(5 days);
+        vm.roll(block.number + 6400);
+
+        assertEq(strategy.price(), 2 * (_price - ONE_SCALE) + ONE_SCALE);
     }
 }
