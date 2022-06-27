@@ -6,8 +6,6 @@ import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/clearpool/IPoolFactory.sol";
 import "../../interfaces/clearpool/IPoolMaster.sol";
 
-import "../../interfaces/IUniswapV2Router02.sol";
-
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -46,12 +44,6 @@ contract IdleClearpoolStrategy is
     /// @notice address of the governance token (here CPOOL)
     address public govToken;
 
-    /// @notice uniswap router path that should be used to swap the tokens
-    address[] public uniswapRouterPath;
-
-    /// @notice interface derived from uniswap router
-    IUniswapV2Router02 public uniswapV2Router02;
-
     /// @notice latest saved apr
     uint256 public lastApr;
 
@@ -63,13 +55,9 @@ contract IdleClearpoolStrategy is
     /// @notice can be only called once
     /// @param _strategyToken address of the strategy token (lending pool)
     /// @param _underlyingToken address of the underlying token (pool currency)
-    /// @param _uniswapV2Router02 address of the uniswap router
-    /// @param _routerPath path to swap governance tokens
     function initialize(
         address _strategyToken,
         address _underlyingToken,
-        address _uniswapV2Router02,
-        address[] calldata _routerPath,
         address _owner
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
@@ -90,9 +78,6 @@ contract IdleClearpoolStrategy is
             string(abi.encodePacked("idleCPOOL", underlyingToken.symbol()))
         );
         //------//-------//
-
-        uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02);
-        uniswapRouterPath = _routerPath;
 
         transferOwnership(_owner);
     }
@@ -231,23 +216,10 @@ contract IdleClearpoolStrategy is
         return balanceAfter - balanceBefore;
     }
 
-    /// @notice Change idleCDO address
-    /// @dev operation can be only done by the owner of the contract
-    function changeIdleCDO(address _idleCDO) external onlyOwner {
-        idleCDO = _idleCDO;
-    }
-
     /// @notice allow to update whitelisted address
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
         idleCDO = _cdo;
-    }
-
-    function changeUniswapRouterPath(address[] memory newPath)
-        public
-        onlyOwner
-    {
-        uniswapRouterPath = newPath;
     }
 
     /// @notice Modifier to make sure that caller os only the idleCDO contract

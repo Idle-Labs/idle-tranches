@@ -6,7 +6,6 @@ const { expect } = require("chai");
 const usdcAddress = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"; // USDC
 const circleAddress = "0x55fe002aeff02f77364de339a1292923a15844b8"; // Holds a lot of USDC
 const lendingPoolAddress = "0xe3D20A721522874D32548B4097d1afc6f024e45b"; // One of Clearpool pools
-const uniswapV2RouterV2Address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
 describe.only("Idle Clearpool Strategy", async () => {
   let idleClearpoolStrategy, usdc, lendingPool, cpool, strategyToken;
@@ -46,8 +45,6 @@ describe.only("Idle Clearpool Strategy", async () => {
       [
         lendingPool.address,
         usdc.address,
-        uniswapV2RouterV2Address,
-        [cpool.address, usdc.address],
         owner.address,
       ]
     );
