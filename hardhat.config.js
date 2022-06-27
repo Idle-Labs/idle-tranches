@@ -74,8 +74,9 @@ module.exports = {
       //   // blockNumber: 14705834 // euler strategy
       //   // blockNumber: 14748963 // pbtc test
       //   // blockNumber: 14931960 // euler strategy update
-      //   blockNumber: 14956557 // eulerdai eulerusdt with AYS
+      //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
+      //   // blockNumber: 15014308, // clearpool strategy
       // },
       // // chainId: 137
     },
