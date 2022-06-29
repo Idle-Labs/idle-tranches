@@ -24,7 +24,7 @@ contract IdleClearpoolStrategy is
     address public override token;
 
     /// @notice strategy token address (lending pool address for Clearpool)
-    address public override strategyToken;
+    address public cpToken;
 
     /// @notice decimals of the underlying asset
     uint256 public override tokenDecimals;
@@ -53,10 +53,10 @@ contract IdleClearpoolStrategy is
     }
 
     /// @notice can be only called once
-    /// @param _strategyToken address of the strategy token (lending pool)
+    /// @param _cpToken address of the strategy token (lending pool)
     /// @param _underlyingToken address of the underlying token (pool currency)
     function initialize(
-        address _strategyToken,
+        address _cpToken,
         address _underlyingToken,
         address _owner
     ) public initializer {
@@ -65,22 +65,31 @@ contract IdleClearpoolStrategy is
         require(token == address(0), "Token is already initialized");
 
         //----- // -------//
-        strategyToken = _strategyToken;
+        cpToken = _cpToken;
         token = _underlyingToken;
         underlyingToken = IERC20Detailed(token);
         tokenDecimals = underlyingToken.decimals();
         oneToken = 10**(tokenDecimals);
 
-        govToken = IPoolMaster(_strategyToken).factory().cpool();
+        govToken = IPoolMaster(_cpToken).factory().cpool();
 
         ERC20Upgradeable.__ERC20_init(
             "Idle Clearpool Strategy Token",
-            string(abi.encodePacked("idleCPOOL", underlyingToken.symbol()))
+            string(abi.encodePacked("idle_", IERC20Detailed(_cpToken).symbol()))
         );
         //------//-------//
 
         transferOwnership(_owner);
     }
+
+    /// @notice strategy token address
+    function strategyToken()
+        external
+        view
+        override
+        returns (address) {
+            return address(this);
+        }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @return rewards amount of reward that is deposited to vault
@@ -90,7 +99,7 @@ contract IdleClearpoolStrategy is
         onlyIdleCDO
         returns (uint256[] memory rewards)
     {
-        address pool = strategyToken;
+        address pool = cpToken;
         address[] memory pools = new address[](1);
         pools[0] = pool;
         IPoolMaster(pool).factory().withdrawReward(pools);
@@ -114,7 +123,7 @@ contract IdleClearpoolStrategy is
 
     /// @notice Internal price function (uses Clearpool's precision)
     function _price() private view returns (uint256) {
-        return IPoolMaster(strategyToken).getCurrentExchangeRate();
+        return IPoolMaster(cpToken).getCurrentExchangeRate();
     }
 
     /// @notice Get the reward token
@@ -131,7 +140,7 @@ contract IdleClearpoolStrategy is
     }
 
     function getApr() external view returns (uint256) {
-        return IPoolMaster(strategyToken).getSupplyRate() * 100;
+        return IPoolMaster(cpToken).getSupplyRate() * 100;
     }
 
     /// @notice Redeem Tokens
@@ -158,8 +167,8 @@ contract IdleClearpoolStrategy is
         returns (uint256)
     {
         if (_amount > 0) {
-            uint256 _strategyTokens = (_amount * 10**18) / _price();
-            return _redeem(_strategyTokens);
+            uint256 _cpTokens = (_amount * 10**18) / _price();
+            return _redeem(_cpTokens);
         }
         return 0;
     }
@@ -171,7 +180,7 @@ contract IdleClearpoolStrategy is
         _burn(msg.sender, _amount);
         IERC20Detailed _underlyingToken = underlyingToken;
         uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
-        IPoolMaster(strategyToken).redeem(_amount);
+        IPoolMaster(cpToken).redeem(_amount);
         uint256 balanceAfter = _underlyingToken.balanceOf(address(this));
         uint256 balanceReceived = balanceAfter - balanceBefore;
         _underlyingToken.safeTransfer(msg.sender, balanceReceived);
@@ -200,14 +209,14 @@ contract IdleClearpoolStrategy is
     /// @notice internal function to deposit the funds to the vault
     /// @param _amount Amount of underlying tokens to deposit
     function _depositToVault(uint256 _amount) internal returns (uint256) {
-        address _strategyToken = strategyToken;
-        underlyingToken.safeApprove(_strategyToken, _amount);
+        address _cpToken = cpToken;
+        underlyingToken.safeApprove(_cpToken, _amount);
 
-        uint256 balanceBefore = IERC20Detailed(_strategyToken).balanceOf(
+        uint256 balanceBefore = IERC20Detailed(_cpToken).balanceOf(
             address(this)
         );
-        IPoolMaster(_strategyToken).provide(_amount);
-        uint256 balanceAfter = IERC20Detailed(_strategyToken).balanceOf(
+        IPoolMaster(_cpToken).provide(_amount);
+        uint256 balanceAfter = IERC20Detailed(_cpToken).balanceOf(
             address(this)
         );
 
