@@ -117,13 +117,7 @@ contract IdleClearpoolStrategy is
     /// @notice return the price from the strategy token contract
     /// @return price
     function price() public view override returns (uint256) {
-        // Convert clearpool precision (18 decimals) to price with idle precision (token decimals)
-        return (_price() * oneToken) / 10**18;
-    }
-
-    /// @notice Internal price function (uses Clearpool's precision)
-    function _price() private view returns (uint256) {
-        return IPoolMaster(cpToken).getCurrentExchangeRate();
+        return (IPoolMaster(cpToken).getCurrentExchangeRate() * oneToken) / 10**18;
     }
 
     /// @notice Get the reward token
@@ -140,7 +134,8 @@ contract IdleClearpoolStrategy is
     }
 
     function getApr() external view returns (uint256) {
-        return IPoolMaster(cpToken).getSupplyRate() * 100;
+        // (getSupplyRate * 100) is in seconds
+        return IPoolMaster(cpToken).getSupplyRate() * 100 * 365 days;
     }
 
     /// @notice Redeem Tokens
@@ -167,7 +162,7 @@ contract IdleClearpoolStrategy is
         returns (uint256)
     {
         if (_amount > 0) {
-            uint256 _cpTokens = (_amount * 10**18) / _price();
+            uint256 _cpTokens = (_amount * oneToken) / price();
             return _redeem(_cpTokens);
         }
         return 0;
@@ -175,16 +170,15 @@ contract IdleClearpoolStrategy is
 
     /// @notice Internal function to redeem the underlying tokens
     /// @param _amount Amount of strategy tokens
-    /// @return Amount of underlying tokens received
-    function _redeem(uint256 _amount) internal returns (uint256) {
-        _burn(msg.sender, _amount);
+    /// @return balanceReceived Amount of underlying tokens received
+    function _redeem(uint256 _amount) internal returns (uint256 balanceReceived) {
+        // strategyToken (ie this contract) has 18 decimals
+        _burn(msg.sender, _amount * 1e18 / oneToken);
         IERC20Detailed _underlyingToken = underlyingToken;
         uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
         IPoolMaster(cpToken).redeem(_amount);
-        uint256 balanceAfter = _underlyingToken.balanceOf(address(this));
-        uint256 balanceReceived = balanceAfter - balanceBefore;
+        balanceReceived = _underlyingToken.balanceOf(address(this)) - balanceBefore;
         _underlyingToken.safeTransfer(msg.sender, balanceReceived);
-        return balanceReceived;
     }
 
     /// @notice Deposit the underlying token to vault
@@ -208,7 +202,8 @@ contract IdleClearpoolStrategy is
 
     /// @notice internal function to deposit the funds to the vault
     /// @param _amount Amount of underlying tokens to deposit
-    function _depositToVault(uint256 _amount) internal returns (uint256) {
+    /// @return minted number of reward tokens minted
+    function _depositToVault(uint256 _amount) internal returns (uint256 minted) {
         address _cpToken = cpToken;
         underlyingToken.safeApprove(_cpToken, _amount);
 
@@ -216,13 +211,9 @@ contract IdleClearpoolStrategy is
             address(this)
         );
         IPoolMaster(_cpToken).provide(_amount);
-        uint256 balanceAfter = IERC20Detailed(_cpToken).balanceOf(
-            address(this)
-        );
-
-        _mint(msg.sender, balanceAfter - balanceBefore);
-
-        return balanceAfter - balanceBefore;
+        minted = IERC20Detailed(_cpToken).balanceOf(address(this)) - balanceBefore;
+        minted = minted * 10**18 / oneToken;
+        _mint(msg.sender, minted);
     }
 
     /// @notice allow to update whitelisted address
