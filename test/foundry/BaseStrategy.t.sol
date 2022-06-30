@@ -22,14 +22,10 @@ contract TestStrategy is BaseStrategy {
 
     /// @dev makes the actual deposit into the `strategy`
     /// @param _amount amount of tokens to deposit
-    function _deposit(uint256 _amount)
-        internal
-        override
-        returns (uint256, uint256)
-    {
+    function _deposit(uint256 _amount) internal override returns (uint256) {
         underlyingToken.approve(strategyToken, _amount);
         MockStakingReward(strategyToken).stake(_amount);
-        return (_amount, _amount);
+        return _amount;
     }
 
     /// @dev makes the actual withdraw from the 'strategy'
@@ -37,11 +33,11 @@ contract TestStrategy is BaseStrategy {
     function _withdraw(uint256 _amountToWithdraw, address _destination)
         internal
         override
-        returns (uint256, uint256)
+        returns (uint256)
     {
         MockStakingReward(strategyToken).unstake(_amountToWithdraw);
         underlyingToken.transfer(_destination, _amountToWithdraw);
-        return (_amountToWithdraw, _amountToWithdraw);
+        return _amountToWithdraw;
     }
 
     function _redeemRewards(bytes calldata)

@@ -101,14 +101,14 @@ abstract contract BaseStrategy is
     function _deposit(uint256 _amount)
         internal
         virtual
-        returns (uint256 amountUsed, uint256 amountStaked);
+        returns (uint256 amountUsed);
 
     /// @dev makes the actual withdraw from the 'strategy'
     /// @return amountWithdrawn returns the amount withdrawn
     function _withdraw(uint256 _amountToWithdraw, address _destination)
         internal
         virtual
-        returns (uint256 amountWithdrawn, uint256 amountUnstaked);
+        returns (uint256 amountWithdrawn);
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
@@ -132,11 +132,11 @@ abstract contract BaseStrategy is
             totalTokensStaked += _amount;
 
             // Calls our internal deposit function
-            (uint256 amountUsed, uint256 amountStaked) = _deposit(_amount);
+            uint256 amountUsed = _deposit(_amount);
 
             // Adjust with actual staked amount
-            if (amountStaked != 0) {
-                totalTokensStaked = totalTokensStaked - _amount + amountStaked;
+            if (amountUsed != 0) {
+                totalTokensStaked = totalTokensStaked - _amount + amountUsed;
             }
             // Mint shares
             shares = (amountUsed * oneToken) / _price;
@@ -191,20 +191,16 @@ abstract contract BaseStrategy is
         // check-effect-interaction
         _burn(msg.sender, _shares);
 
-        uint256 amountUnstaked;
         // Withdraw amount needed
         totalTokensStaked -= amountNeeded;
-        (amountWithdrawn, amountUnstaked) = _withdraw(
-            amountNeeded,
-            _destination
-        );
+        amountWithdrawn = _withdraw(amountNeeded, _destination);
 
         // Adjust with actual unstaked amount
-        if (amountNeeded > amountUnstaked) {
+        if (amountNeeded > amountWithdrawn) {
             totalTokensStaked =
                 totalTokensStaked +
                 amountNeeded -
-                amountUnstaked;
+                amountWithdrawn;
         }
 
         // We revert if this call doesn't produce enough underlying
@@ -247,7 +243,7 @@ abstract contract BaseStrategy is
         virtual
         returns (uint256 underlyingsStaked)
     {
-        (, underlyingsStaked) = _deposit(underlyings);
+        underlyingsStaked = _deposit(underlyings);
     }
 
     function _redeemRewards(bytes calldata data)
