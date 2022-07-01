@@ -3,7 +3,6 @@ pragma solidity 0.8.10;
 import "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/IdleCDO.sol";
-import "../../contracts/strategies/euler/IdleEulerStrategy.sol";
 import "forge-std/Test.sol";
 
 abstract contract TestIdleCDOBase is Test {
@@ -142,6 +141,18 @@ abstract contract TestIdleCDOBase is Test {
     }
   }
 
+  function testAPR() external runOnForkingNetwork(MAINNET_CHIANID) {
+    uint256 amount = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    // funds in lending
+    _cdoHarvest(true);
+    skip(7 days); 
+    vm.roll(block.number + 1);
+    uint256 apr = idleCDO.getApr(address(AAtranche));
+    assertGt(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
+  }
+
   function _cdoHarvest(bool _skipRewards) internal {
     uint256 numOfRewards = _numOfSellableRewards();
     bool[] memory _skipFlags = new bool[](4);
@@ -156,7 +167,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.prank(idleCDO.rebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
     // linearly release all sold rewards
-    vm.roll(idleCDO.releaseBlocksPeriod() + 1); 
+    vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 
   function _deployLocalContracts() internal returns (IdleCDO _cdo) {

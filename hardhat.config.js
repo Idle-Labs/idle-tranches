@@ -76,7 +76,7 @@ module.exports = {
       //   // blockNumber: 14931960 // euler strategy update
       //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
-      //  blockNumber: 15052893, // clearpool strategy
+      //   blockNumber: 15057210, // clearpool strategy
       // },
       // // chainId: 137
     },

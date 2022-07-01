@@ -5,8 +5,8 @@ import "../../interfaces/IIdleCDOStrategy.sol";
 import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/clearpool/IPoolFactory.sol";
 import "../../interfaces/clearpool/IPoolMaster.sol";
-import "../../interfaces/IUniswapV2Router02.sol";
 
+import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
