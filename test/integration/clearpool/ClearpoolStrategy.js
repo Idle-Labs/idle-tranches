@@ -6,6 +6,7 @@ const { expect } = require("chai");
 const usdcAddress = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"; // USDC
 const circleAddress = "0x55fe002aeff02f77364de339a1292923a15844b8"; // Holds a lot of USDC
 const lendingPoolAddress = "0xe3D20A721522874D32548B4097d1afc6f024e45b"; // One of Clearpool pools
+const uniswapV2RouterV2Address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // UniswapV2Router
 
 describe.only("Idle Clearpool Strategy", async () => {
   let idleClearpoolStrategy, usdc, lendingPool, cpool, strategyToken;
@@ -46,6 +47,7 @@ describe.only("Idle Clearpool Strategy", async () => {
         lendingPool.address,
         usdc.address,
         owner.address,
+        uniswapV2RouterV2Address
       ]
     );
     await idleClearpoolStrategy.connect(owner).setWhitelistedCDO(user.address);
@@ -86,8 +88,10 @@ describe.only("Idle Clearpool Strategy", async () => {
     expect(userUsdcBefore.sub(userUsdcAfter)).to.equal(amountToTransfer);
     expect(poolUsdcAfter.sub(poolUsdcBefore)).to.equal(amountToTransfer);
 
+    const cpBalance = await strategyToken.balanceOf(idleClearpoolStrategy.address);
+    const decimalDiff = 12; // Difference of decimals
     expect(
-      await strategyToken.balanceOf(idleClearpoolStrategy.address)
+      cpBalance.mul(ethers.utils.parseUnits("1", decimalDiff))
     ).to.equal(await idleClearpoolStrategy.balanceOf(user.address));
   });
 
@@ -103,13 +107,13 @@ describe.only("Idle Clearpool Strategy", async () => {
 
     await idleClearpoolStrategy
       .connect(user)
-      .redeem(await idleClearpoolStrategy.balanceOf(user.address));
+      .redeem(await strategyToken.balanceOf(idleClearpoolStrategy.address));
 
     const userUsdcAfter = await usdc.balanceOf(user.address);
     const poolUsdcAfter = await usdc.balanceOf(lendingPool.address);
 
-    expect(userUsdcAfter.sub(userUsdcBefore)).to.equal(amountToTransfer.add(1));
-    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.equal(amountToTransfer.add(1));
+    expect(userUsdcAfter.sub(userUsdcBefore)).to.be.closeTo(amountToTransfer, 5);
+    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.be.closeTo(amountToTransfer, 5);
 
     expect(
       await strategyToken.balanceOf(idleClearpoolStrategy.address)
@@ -133,10 +137,10 @@ describe.only("Idle Clearpool Strategy", async () => {
     const userUsdcAfter = await usdc.balanceOf(user.address);
     const poolUsdcAfter = await usdc.balanceOf(lendingPool.address);
 
-    expect(userUsdcAfter.sub(userUsdcBefore)).to.equal(
+    expect(userUsdcAfter.sub(userUsdcBefore)).to.be.gt(
       amountToTransfer.div(2).sub(1)
     );
-    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.equal(
+    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.be.gt(
       amountToTransfer.div(2).sub(1)
     );
   });
@@ -178,7 +182,9 @@ describe.only("Idle Clearpool Strategy", async () => {
         .div(ethers.utils.parseUnits("1", 9))
     );
 
-    expect(await idleClearpoolStrategy.connect(user).getApr()).to.be.gt(0);
+    const apr = await idleClearpoolStrategy.connect(user).getApr();
+    console.log("Calculated APR is:", ethers.utils.formatUnits(apr));
+    expect(apr).to.be.gt(0);
   });
 
   it("Redeem rewards", async () => {
