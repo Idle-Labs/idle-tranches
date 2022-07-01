@@ -13,4 +13,6 @@ interface IPoolMaster {
     function getSupplyRate() external view returns (uint256);
 
     function getCurrentExchangeRate() external view returns (uint256);
+
+    function rewardPerBlock() external view returns (uint256);
 }

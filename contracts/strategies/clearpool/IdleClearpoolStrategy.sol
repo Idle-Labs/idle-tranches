@@ -5,6 +5,7 @@ import "../../interfaces/IIdleCDOStrategy.sol";
 import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/clearpool/IPoolFactory.sol";
 import "../../interfaces/clearpool/IPoolMaster.sol";
+import "../../interfaces/IUniswapV2Router02.sol";
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -47,6 +48,9 @@ contract IdleClearpoolStrategy is
     /// @notice latest saved apr
     uint256 public lastApr;
 
+    /// @notice UniswapV2 router, used for APY calculation
+    IUniswapV2Router02 public uniswapRouter;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         token = address(1);
@@ -58,7 +62,8 @@ contract IdleClearpoolStrategy is
     function initialize(
         address _cpToken,
         address _underlyingToken,
-        address _owner
+        address _owner,
+        address _uniswapV2Router
     ) public initializer {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -79,17 +84,15 @@ contract IdleClearpoolStrategy is
         );
         //------//-------//
 
+        uniswapRouter = IUniswapV2Router02(_uniswapV2Router);
+
         transferOwnership(_owner);
     }
 
     /// @notice strategy token address
-    function strategyToken()
-        external
-        view
-        override
-        returns (address) {
-            return address(this);
-        }
+    function strategyToken() external view override returns (address) {
+        return address(this);
+    }
 
     /// @notice redeem the rewards. Claims reward as per the _extraData
     /// @return rewards amount of reward that is deposited to vault
@@ -117,7 +120,8 @@ contract IdleClearpoolStrategy is
     /// @notice return the price from the strategy token contract
     /// @return price
     function price() public view override returns (uint256) {
-        return (IPoolMaster(cpToken).getCurrentExchangeRate() * oneToken) / 10**18;
+        return
+            (IPoolMaster(cpToken).getCurrentExchangeRate() * oneToken) / 10**18;
     }
 
     /// @notice Get the reward token
@@ -134,8 +138,29 @@ contract IdleClearpoolStrategy is
     }
 
     function getApr() external view returns (uint256) {
-        // (getSupplyRate * 100) is in seconds
-        return IPoolMaster(cpToken).getSupplyRate() * 100 * 365 days;
+        // CPOOL per second (clearpool's contract has typo)
+        uint256 rewardSpeed = IPoolMaster(cpToken).rewardPerBlock();
+        // Underlying tokens equivalent of rewards
+        uint256 annualRewards = (rewardSpeed *
+            YEAR *
+            _tokenToUnderlyingRate()) / 10**18;
+        // Pool's TVL as underlying tokens
+        uint256 poolTVL = (IERC20Detailed(cpToken).totalSupply() *
+            IPoolMaster(cpToken).getCurrentExchangeRate()) / 10**18;
+        // Annual rewards rate (as clearpool's 18-precision decimal)
+        uint256 rewardRate = (annualRewards * 10**18) / poolTVL;
+
+        // Pool's annual interest rate
+        uint256 poolRate = IPoolMaster(cpToken).getSupplyRate() * YEAR;
+
+        return (poolRate + rewardRate) * 100;
+    }
+
+    function _tokenToUnderlyingRate() private view returns (uint256) {
+        address[] memory path = new address[](2);
+        (path[0], path[1]) = (govToken, token);
+        uint256[] memory amountsOut = uniswapRouter.getAmountsOut(10**18, path);
+        return amountsOut[1];
     }
 
     /// @notice Redeem Tokens
@@ -171,13 +196,18 @@ contract IdleClearpoolStrategy is
     /// @notice Internal function to redeem the underlying tokens
     /// @param _amount Amount of cpTokens (underlying decimals)
     /// @return balanceReceived Amount of underlying tokens received
-    function _redeem(uint256 _amount) internal returns (uint256 balanceReceived) {
+    function _redeem(uint256 _amount)
+        internal
+        returns (uint256 balanceReceived)
+    {
         // strategyToken (ie this contract) has 18 decimals
-        _burn(msg.sender, _amount * 1e18 / oneToken);
+        _burn(msg.sender, (_amount * 1e18) / oneToken);
         IERC20Detailed _underlyingToken = underlyingToken;
         uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
         IPoolMaster(cpToken).redeem(_amount);
-        balanceReceived = _underlyingToken.balanceOf(address(this)) - balanceBefore;
+        balanceReceived =
+            _underlyingToken.balanceOf(address(this)) -
+            balanceBefore;
         _underlyingToken.safeTransfer(msg.sender, balanceReceived);
     }
 
@@ -203,7 +233,10 @@ contract IdleClearpoolStrategy is
     /// @notice internal function to deposit the funds to the vault
     /// @param _amount Amount of underlying tokens to deposit
     /// @return minted number of reward tokens minted
-    function _depositToVault(uint256 _amount) internal returns (uint256 minted) {
+    function _depositToVault(uint256 _amount)
+        internal
+        returns (uint256 minted)
+    {
         address _cpToken = cpToken;
         underlyingToken.safeApprove(_cpToken, _amount);
 
@@ -211,8 +244,10 @@ contract IdleClearpoolStrategy is
             address(this)
         );
         IPoolMaster(_cpToken).provide(_amount);
-        minted = IERC20Detailed(_cpToken).balanceOf(address(this)) - balanceBefore;
-        minted = minted * 10**18 / oneToken;
+        minted =
+            IERC20Detailed(_cpToken).balanceOf(address(this)) -
+            balanceBefore;
+        minted = (minted * 10**18) / oneToken;
         _mint(msg.sender, minted);
     }
 
