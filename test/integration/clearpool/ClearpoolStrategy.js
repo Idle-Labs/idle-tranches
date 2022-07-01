@@ -70,6 +70,8 @@ describe.only("Idle Clearpool Strategy", async () => {
   });
 
   it("Deposit", async () => {
+    const oneToken = ethers.utils.parseUnits("1", 6);
+    const one18 = ethers.utils.parseUnits("1", 18);
     const amountToTransfer = ethers.utils.parseUnits("1000", 6);
 
     const userUsdcBefore = await usdc.balanceOf(user.address);
@@ -86,8 +88,9 @@ describe.only("Idle Clearpool Strategy", async () => {
     expect(userUsdcBefore.sub(userUsdcAfter)).to.equal(amountToTransfer);
     expect(poolUsdcAfter.sub(poolUsdcBefore)).to.equal(amountToTransfer);
 
+    const cpTokenBal = await strategyToken.balanceOf(idleClearpoolStrategy.address);
     expect(
-      await strategyToken.balanceOf(idleClearpoolStrategy.address)
+      cpTokenBal.mul(one18).div(oneToken)
     ).to.equal(await idleClearpoolStrategy.balanceOf(user.address));
   });
 
@@ -103,13 +106,13 @@ describe.only("Idle Clearpool Strategy", async () => {
 
     await idleClearpoolStrategy
       .connect(user)
-      .redeem(await idleClearpoolStrategy.balanceOf(user.address));
+      .redeem(await strategyToken.balanceOf(idleClearpoolStrategy.address));
 
     const userUsdcAfter = await usdc.balanceOf(user.address);
     const poolUsdcAfter = await usdc.balanceOf(lendingPool.address);
 
-    expect(userUsdcAfter.sub(userUsdcBefore)).to.equal(amountToTransfer.add(1));
-    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.equal(amountToTransfer.add(1));
+    expect(userUsdcAfter.sub(userUsdcBefore)).to.be.closeTo(amountToTransfer, 5);
+    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.be.closeTo(amountToTransfer, 5);
 
     expect(
       await strategyToken.balanceOf(idleClearpoolStrategy.address)
@@ -133,10 +136,10 @@ describe.only("Idle Clearpool Strategy", async () => {
     const userUsdcAfter = await usdc.balanceOf(user.address);
     const poolUsdcAfter = await usdc.balanceOf(lendingPool.address);
 
-    expect(userUsdcAfter.sub(userUsdcBefore)).to.equal(
+    expect(userUsdcAfter.sub(userUsdcBefore)).to.be.gt(
       amountToTransfer.div(2).sub(1)
     );
-    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.equal(
+    expect(poolUsdcBefore.sub(poolUsdcAfter)).to.be.gt(
       amountToTransfer.div(2).sub(1)
     );
   });

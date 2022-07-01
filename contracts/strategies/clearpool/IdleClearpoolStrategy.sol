@@ -139,7 +139,7 @@ contract IdleClearpoolStrategy is
     }
 
     /// @notice Redeem Tokens
-    /// @param _amount amount of strategy tokens to redeem
+    /// @param _amount amount of cpTokens to redeem
     /// @return Amount of underlying tokens received
     function redeem(uint256 _amount)
         external
@@ -169,7 +169,7 @@ contract IdleClearpoolStrategy is
     }
 
     /// @notice Internal function to redeem the underlying tokens
-    /// @param _amount Amount of strategy tokens
+    /// @param _amount Amount of cpTokens (underlying decimals)
     /// @return balanceReceived Amount of underlying tokens received
     function _redeem(uint256 _amount) internal returns (uint256 balanceReceived) {
         // strategyToken (ie this contract) has 18 decimals
