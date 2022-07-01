@@ -258,11 +258,15 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log(`staking reward contracts set`);
     }
 
-    if (!args.isAYSActive) {
+    const ays = await idleCDO.isAYSActive();
+    if (!args.isAYSActive && ays) {
       console.log("Turning off AYS");
       await idleCDO.connect(signer).setIsAYSActive(false);
-      console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
+    } else if (args.isAYSActive && !ays) {
+      console.log("Turning on AYS");
+      await idleCDO.connect(signer).setIsAYSActive(true);
     }
+    console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
     
     // // Set flag for not receiving stkAAVE if needed
     // console.log('stkAAVE distribution: ', args.stkAAVEActive);

@@ -21,6 +21,7 @@ const mainnetContracts = {
   eDAI: '0xe025E3ca2bE02316033184551D4d3Aa22024D9DC',
   eUSDT: '0x4d19F33948b99800B6113Ff3e83beC9b537C85d2',
   cUSDC: '0x39aa39c021dfbae8fac545936693ac917d5e7563',
+  cpWIN_USDC: '0xCb288b6d30738db7E3998159d192615769794B5b',
   USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
   cUSDT: '0xf650C3d88D12dB855b8bf7D11Be6C55A4e07dCC9',
   IDLE: '0x875773784Af8135eA0ef43b5a374AaD105c5D39e',
@@ -300,6 +301,19 @@ const CDOs = {
     AATranche: '0xE0f126236d2a5b13f26e72cBb1D1ff5f297dDa07',
     BBTranche: '0xb1EC065abF6783BCCe003B8d6B9f947129504854'
   },
+  cpwinusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xe4CECD8e7Cc1F8a45F0e7Def15466bE3D8031841',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xB8110bCAC56472E687885aD4f39035fa026E171E',
+    BBTranche: '0x668a006E8A1043Eaec5117996644f0c393D188e6'
+  },
 };
 
 const polygonCDOs = {
@@ -491,6 +505,23 @@ exports.deployTokens = {
     cdo: CDOs.eulerdai,
     ...baseCDOArgs,
     AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
+  },
+  // Clearpool
+  cpwinusdc: { // wintermute pool
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleClearpoolStrategy',
+    strategyParams: [
+      mainnetContracts.cpWIN_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: CDOs.cpwinusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
   },
