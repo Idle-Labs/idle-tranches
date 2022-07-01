@@ -52,8 +52,8 @@ module.exports = {
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true,
-      // forking: {
-      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      forking: {
+         url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url:`https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
       //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
@@ -76,8 +76,8 @@ module.exports = {
       //   // blockNumber: 14931960 // euler strategy update
       //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
-      //   // blockNumber: 15014308, // clearpool strategy
-      // },
+       blockNumber: 15052893, // clearpool strategy
+      },
       // // chainId: 137
     },
     coverage: {
