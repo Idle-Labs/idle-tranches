@@ -70,8 +70,6 @@ describe.only("Idle Clearpool Strategy", async () => {
   });
 
   it("Deposit", async () => {
-    const oneToken = ethers.utils.parseUnits("1", 6);
-    const one18 = ethers.utils.parseUnits("1", 18);
     const amountToTransfer = ethers.utils.parseUnits("1000", 6);
 
     const userUsdcBefore = await usdc.balanceOf(user.address);
@@ -88,9 +86,10 @@ describe.only("Idle Clearpool Strategy", async () => {
     expect(userUsdcBefore.sub(userUsdcAfter)).to.equal(amountToTransfer);
     expect(poolUsdcAfter.sub(poolUsdcBefore)).to.equal(amountToTransfer);
 
-    const cpTokenBal = await strategyToken.balanceOf(idleClearpoolStrategy.address);
+    const cpBalance = await strategyToken.balanceOf(idleClearpoolStrategy.address);
+    const decimalDiff = 12; // Difference of decimals
     expect(
-      cpTokenBal.mul(one18).div(oneToken)
+      cpBalance.mul(ethers.utils.parseUnits("1", decimalDiff))
     ).to.equal(await idleClearpoolStrategy.balanceOf(user.address));
   });
 
