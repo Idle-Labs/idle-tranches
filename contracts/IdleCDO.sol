@@ -113,6 +113,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // feeSplit = 0; // default all to feeReceiver as default
     // StkAAVE unwrapping is active
     isStkAAVEActive = true;
+    isAYSActive = true;
   }
 
   // ###############
