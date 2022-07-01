@@ -304,11 +304,11 @@ const CDOs = {
   cpwinusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '',
+    strategyToken: '0x54ae90be2dee0a960953c724839541e75bb1f471',
     underlying: mainnetContracts.USDC,
     cdoAddr: '0xe4CECD8e7Cc1F8a45F0e7Def15466bE3D8031841',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '',
+    strategy: '0x54ae90be2dee0a960953c724839541e75bb1f471',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xB8110bCAC56472E687885aD4f39035fa026E171E',
@@ -517,6 +517,7 @@ exports.deployTokens = {
       mainnetContracts.cpWIN_USDC, // _strategyToken
       mainnetContracts.USDC, // _underlyingToken
       'owner', // owner address
+      mainnetContracts.univ2Router
     ],
     cdo: CDOs.cpwinusdc,
     ...baseCDOArgs,
