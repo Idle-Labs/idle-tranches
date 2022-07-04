@@ -320,13 +320,13 @@ const CDOs = {
     // strategyToken it's the strategy itself here
     strategyToken: '0x54ae90be2dee0a960953c724839541e75bb1f471',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0xe4CECD8e7Cc1F8a45F0e7Def15466bE3D8031841',
+    cdoAddr: '0xDBCEE5AE2E9DAf0F5d93473e08780C9f45DfEb93',
     proxyAdmin: mainnetContracts.proxyAdmin,
     strategy: '0x54ae90be2dee0a960953c724839541e75bb1f471',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0xB8110bCAC56472E687885aD4f39035fa026E171E',
-    BBTranche: '0x668a006E8A1043Eaec5117996644f0c393D188e6'
+    AATranche: '0xb86264c21418aA75F7c337B1821CcB4Ff4d57673',
+    BBTranche: '0x4D9d9AA17c3fcEA05F20a87fc1991A045561167d'
   },
 };
 
