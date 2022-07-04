@@ -122,6 +122,7 @@ abstract contract BaseStrategy is
         if (_amount != 0) {
             // Get current price
             uint256 _price = price();
+
             // Send tokens to the strategy
             IERC20Detailed(token).safeTransferFrom(
                 msg.sender,
@@ -129,17 +130,16 @@ abstract contract BaseStrategy is
                 _amount
             );
 
-            totalTokensStaked += _amount;
-
             // Calls our internal deposit function
-            uint256 amountUsed = _deposit(_amount);
+            _amount = _deposit(_amount);
 
             // Adjust with actual staked amount
-            if (amountUsed != 0) {
-                totalTokensStaked = totalTokensStaked - _amount + amountUsed;
+            if (_amount != 0) {
+                totalTokensStaked += _amount;
             }
+
             // Mint shares
-            shares = (amountUsed * oneToken) / _price;
+            shares = (_amount * oneToken) / _price;
             _mint(msg.sender, shares);
         }
     }
@@ -188,19 +188,14 @@ abstract contract BaseStrategy is
     ) internal returns (uint256 amountWithdrawn) {
         uint256 amountNeeded = (_shares * _underlyingPerShare) / oneToken;
 
-        // check-effect-interaction
         _burn(msg.sender, _shares);
 
         // Withdraw amount needed
-        totalTokensStaked -= amountNeeded;
         amountWithdrawn = _withdraw(amountNeeded, _destination);
 
         // Adjust with actual unstaked amount
-        if (amountNeeded > amountWithdrawn) {
-            totalTokensStaked =
-                totalTokensStaked +
-                amountNeeded -
-                amountWithdrawn;
+        if (amountWithdrawn != 0) {
+            totalTokensStaked -= amountWithdrawn;
         }
 
         // We revert if this call doesn't produce enough underlying
