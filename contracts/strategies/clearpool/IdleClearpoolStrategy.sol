@@ -139,19 +139,20 @@ contract IdleClearpoolStrategy is
 
     function getApr() external view returns (uint256) {
         // CPOOL per second (clearpool's contract has typo)
-        uint256 rewardSpeed = IPoolMaster(cpToken).rewardPerBlock();
+        IPoolMaster _cpToken = IPoolMaster(cpToken);
+        uint256 rewardSpeed = _cpToken.rewardPerSecond();
         // Underlying tokens equivalent of rewards
         uint256 annualRewards = (rewardSpeed *
             YEAR *
             _tokenToUnderlyingRate()) / 10**18;
         // Pool's TVL as underlying tokens
-        uint256 poolTVL = (IERC20Detailed(cpToken).totalSupply() *
-            IPoolMaster(cpToken).getCurrentExchangeRate()) / 10**18;
+        uint256 poolTVL = (IERC20Detailed(address(_cpToken)).totalSupply() *
+            _cpToken.getCurrentExchangeRate()) / 10**18;
         // Annual rewards rate (as clearpool's 18-precision decimal)
         uint256 rewardRate = (annualRewards * 10**18) / poolTVL;
 
         // Pool's annual interest rate
-        uint256 poolRate = IPoolMaster(cpToken).getSupplyRate() * YEAR;
+        uint256 poolRate = _cpToken.getSupplyRate() * YEAR;
 
         return (poolRate + rewardRate) * 100;
     }
