@@ -8,6 +8,7 @@ import "../../contracts/strategies/BaseStrategy.sol";
 import "../../contracts/mocks/MockStakingReward.sol";
 
 import "../../contracts/interfaces/IERC20Detailed.sol";
+import "./TestIdleCDOBase.sol";
 
 contract TestStrategy is BaseStrategy {
     function initialize(
@@ -54,147 +55,80 @@ contract TestStrategy is BaseStrategy {
     function getRewardTokens() external view returns (address[] memory) {}
 }
 
-contract TestBaseStrategy is Test {
+contract TestBaseStrategy is TestIdleCDOBase {
     using stdStorage for StdStorage;
 
-    uint256 internal constant FULL_ALLOC = 100000;
-    uint256 internal constant ONE_SCALE = 1e6;
-    uint256 internal constant MAINNET_CHIANID = 1;
-    address private constant owner = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
-    address private constant rebalancer =
-        0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B;
-    address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
-    IERC20Detailed internal underlying;
-    MockStakingReward internal strategyToken;
-    TestStrategy internal strategy;
+    function _deployStrategy(address _owner)
+        internal
+        override
+        returns (address _strategy, address _underlying)
+    {
+        _underlying = USDC;
 
-    modifier runOnForkingNetwork(uint256 networkId) {
-        // solhint-disable-next-line
-        if (block.chainid == networkId) {
-            _;
-        }
-    }
+        strategyToken = IERC20Detailed(
+            address(new MockStakingReward(IERC20Detailed(_underlying)))
+        );
+        uint256 tokens = 1000000 * 10**IERC20Detailed(_underlying).decimals();
+        deal(_underlying, address(strategyToken), tokens , true); // prettier-ignore
+        MockStakingReward(address(strategyToken)).setTestReward(tokens);
 
-    function setUp() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
-        underlying = IERC20Detailed(USDC);
-        strategyToken = new MockStakingReward(underlying);
-        strategyToken.setTestReward(1000 * ONE_SCALE);
-
-        // deploy strategy
-        // `token` is address(1) to prevent initialization of the implementation contract.
-        // it need to be reset mannualy.
         strategy = new TestStrategy();
-        stdstore
-            .target(address(strategy))
-            .sig(strategy.token.selector)
-            .checked_write(address(0));
-        strategy.initialize(
+        _strategy = address(strategy);
+        stdstore.target(_strategy).sig(strategy.token.selector).checked_write(
+            address(0)
+        );
+        TestStrategy(_strategy).initialize(
             "Idle TestStrategy USDC",
             "IdleTestStrategy[USDC]",
             address(strategyToken),
-            address(underlying),
-            owner // owner
+            _underlying,
+            _owner
         );
-
-        vm.prank(owner);
-        strategy.setWhitelistedCDO(address(this));
-
-        // fund
-        deal(address(underlying), address(strategyToken), 1000000 * ONE_SCALE, true); // prettier-ignore
-        deal(address(underlying), address(this), 10000 * ONE_SCALE, true);
-        underlying.approve(address(strategy), type(uint256).max);
-
-        /// label
-        vm.label(address(strategy), "strategy");
-        vm.label(address(underlying), "underlying");
-        vm.label(USDC, "USDC");
     }
 
-    function testInitialize() external runOnForkingNetwork(MAINNET_CHIANID) {
-        assertEq(strategy.owner(), owner);
-        assertEq(strategy.token(), USDC);
-        assertEq(strategy.strategyToken(), address(strategyToken));
-        assertEq(strategy.idleCDO(), address(this));
-        assertEq(strategy.oneToken(), ONE_SCALE);
-        assertEq(strategy.price(), ONE_SCALE);
-        assertEq(strategy.getApr(), 0);
-        assertTrue(strategy.lastIndexedTime() != 0);
-        assertTrue(strategy.releaseBlocksPeriod() != 0);
+    function _postDeploy(address _cdo, address _owner) internal override {
+        vm.prank(_owner);
+        TestStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
+    }
 
+    function testOnlyOwner()
+        public
+        override
+        runOnForkingNetwork(MAINNET_CHIANID)
+    {
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        TestStrategy(address(strategy)).setReleaseBlocksPeriod(1000);
+
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        TestStrategy(address(strategy)).setWhitelistedCDO(address(0xcafe));
+
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        TestStrategy(address(strategy)).transferToken(
+            address(underlying),
+            1e6,
+            address(0xbabe)
+        );
+    }
+
+    function testCantReinitialize()
+        external
+        override
+        runOnForkingNetwork(MAINNET_CHIANID)
+    {
         vm.expectRevert(
             bytes("Initializable: contract is already initialized")
         );
-        strategy.initialize(
+        TestStrategy(address(strategy)).initialize(
             "Idle TestStrategy USDC",
             "IdleTestStrategy[USDC]",
             address(strategyToken),
             address(underlying),
             owner // owner
         );
-    }
-
-    function testMintAndRedeem() external runOnForkingNetwork(MAINNET_CHIANID) {
-        underlying.approve(address(strategy), 1e10);
-        strategy.deposit(1e10);
-
-        assertEq(strategy.balanceOf(address(this)), 1e10);
-        assertEq(strategy.totalTokensStaked(), 1e10);
-
-        strategy.redeem(1e10);
-        assertEq(strategy.balanceOf(address(this)), 0);
-        assertEq(strategy.totalTokensStaked(), 0);
-    }
-
-    function testOnlyIdleCDO() external runOnForkingNetwork(MAINNET_CHIANID) {
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Only IdleCDO can call"));
-        strategy.deposit(1e10);
-
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Only IdleCDO can call"));
-        strategy.redeem(1e10);
-    }
-
-    function testOnlyOwner() external runOnForkingNetwork(MAINNET_CHIANID) {
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        strategy.setReleaseBlocksPeriod(1000);
-
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        strategy.setWhitelistedCDO(address(0xcafe));
-
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        strategy.transferToken(USDC, 1e6, address(0xbabe));
-    }
-
-    function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
-        underlying.approve(address(strategy), 1e10);
-        strategy.deposit(1e10);
-
-        skip(5 days);
-        strategy.redeemRewards(bytes(""));
-
-        assertGt(strategy.totalTokensStaked(), 0);
-        assertGt(strategy.totalTokensLocked(), 0);
-
-        // rewards are lineally released
-        assertEq(strategy.releaseBlocksPeriod(), 6400);
-        assertEq(strategy.price(), ONE_SCALE);
-
-        // half of the period
-        skip(5 days);
-        vm.roll(block.number + 3200);
-
-        uint256 _price = strategy.price();
-        assertGt(_price, ONE_SCALE);
-        assertGt(strategy.getApr(), 0);
-
-        skip(5 days);
-        vm.roll(block.number + 6400);
-
-        assertEq(strategy.price(), 2 * (_price - ONE_SCALE) + ONE_SCALE);
     }
 }
