@@ -70,12 +70,15 @@ contract TestBaseStrategy is TestIdleCDOBase {
         strategyToken = IERC20Detailed(
             address(new MockStakingReward(IERC20Detailed(_underlying)))
         );
-        uint256 tokens = 1000000 * 10**IERC20Detailed(_underlying).decimals();
-        deal(_underlying, address(strategyToken), tokens , true); // prettier-ignore
-        MockStakingReward(address(strategyToken)).setTestReward(tokens);
-
         strategy = new TestStrategy();
         _strategy = address(strategy);
+
+        uint256 amountToFund = 1_000_000 * ONE_SCALE;
+        deal(_underlying, address(strategyToken), amountToFund , true); // prettier-ignore
+        MockStakingReward(address(strategyToken)).setTestReward(
+            1000 * ONE_SCALE
+        );
+
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(
             address(0)
         );
