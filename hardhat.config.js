@@ -11,7 +11,6 @@ require("hardhat-etherscan-abi");
 require("solidity-coverage");
 
 // Tasks
-require("./tasks/tests");
 require("./tasks/cdo-factory");
 require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
