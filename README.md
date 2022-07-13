@@ -34,9 +34,6 @@ When users deposit into the CDO they will: update the global accounting of the s
 
 # 
 
-## Contributing
-Note this repo was built using hardhat so all tests and script are in js. Foundry was also recently integrated and we encourage all new contributions and features to be tested using the foundry toolkit.
-
 ## Setup
 
 ```
@@ -84,10 +81,10 @@ npx hardhat TASK_NAME
 For foundry tests (located in `test/foundry/`) run:
 
 ```
-forge test --fork-url https://eth-mainnet.alchemyapi.io/v2/$ALCHEMY_API_KEY --fork-block-number XXXXX -vvv
+forge test --fork-url https://eth-mainnet.alchemyapi.io/v2/$ALCHEMY_API_KEY --fork-block-number XXXXX -vvv --match-contract=MyTestContract
 ```
 
-## Deploy
+## Deploy with Hardhat
 
 ```
 npx hardhat deploy-with-factory-params --network YOUR_CONFIGURED_NETWORK --cdoname CDO_NAME 
@@ -114,7 +111,7 @@ This is an example of config for deploying an IdleCDO with Lido strategy:
   },
 ```
 
-## Testing deployment with Foundry
+## Testing deployment with Foundry + Hardhat
 Start with
 
 ```
@@ -140,5 +137,7 @@ npx hardhat coverage
 ```
 
 ## Code Contributions
+Note this repo was built using hardhat so most tests and script are in js. Foundry was also recently integrated and we encourage all new contributions and features to be tested using the foundry toolkit.
+
 We welcome new contributors and code contributions with open arms! Please be sure to follow our contribution [guidelines](https://github.com/Idle-Labs/idle-tranches/blob/master/CONTRIBUTING.md) when proposing any new code. Idle Finance is a
 decentralized protocol managed by a decentralized governance, any new code contributions are more likely to be accepted into future deployments and proposals if they have been openly discussed within the community first in our forum https://gov.idle.finance/
