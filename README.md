@@ -11,8 +11,6 @@ There are no locking period or epochs and users are free to enter and exit at an
 
 https://docs.idle.finance/developers/perpetual-yield-tranches
 
-#
-
 ## Architecture
 The main contract which will be used by users is `IdleCDO` which allow to deposits underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
 
@@ -31,8 +29,6 @@ When users deposit into the CDO they will: update the global accounting of the s
 
 - **strategies/\*\*.sol**: strategies for lending assets in different lending providers.
 
-
-# 
 
 ## Setup
 
