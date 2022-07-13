@@ -16,7 +16,7 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 
 const BN = require("bignumber.js");
-const mainContactRuns = 300;
+const mainContactRuns = 170;
 const overrideConfig = {
   version: "0.8.10",
   settings: {
@@ -75,7 +75,7 @@ module.exports = {
       //   // blockNumber: 14931960 // euler strategy update
       //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
-      //   blockNumber: 15057210, // clearpool strategy
+      //   blockNumber: 15133116, // clearpool strategy
       // },
       // // chainId: 137
     },
