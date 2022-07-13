@@ -95,7 +95,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     priceBB = _oneToken;
     unlentPerc = 2000; // 2%
     // # blocks, after an harvest, during which harvested rewards gets progressively unlocked
-    releaseBlocksPeriod = 1500; // about 1/4 of a day
+    releaseBlocksPeriod = 6400; // about 1 day
     // Set flags
     allowAAWithdraw = true;
     allowBBWithdraw = true;
@@ -110,10 +110,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     fee = 10000; // 10% performance fee
     feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
     guardian = _owner;
-    // feeSplit = 0; // default all to feeReceiver as default
-    // StkAAVE unwrapping is active
-    isStkAAVEActive = true;
-    isAYSActive = true;
+    // feeSplit = 0; // default all to feeReceiver
+    isAYSActive = true; // adaptive yield split
   }
 
   // ###############
