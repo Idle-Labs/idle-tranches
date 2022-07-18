@@ -91,9 +91,9 @@ contract TestBaseStrategy is TestIdleCDOBase {
         strategyToken = IERC20Detailed(_strategy); // strategy itself
         uint256 _decimals = strategyToken.decimals();
 
-        uint256 amountToFund = 1_000_000 * 10**_decimals;
+        uint256 amountToFund = 10_000_000 * 10**_decimals;
         deal(_underlying, address(_stakingContract), amountToFund , true); // prettier-ignore
-        _stakingContract.setTestReward(1000 * 10**_decimals);
+        _stakingContract.setTestReward(100_000 * 10**_decimals);
     }
 
     function _postDeploy(address _cdo, address _owner) internal override {
