@@ -69,7 +69,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testInitialize() external runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
-    assertGt(strategy.price(), ONE_SCALE);
+    assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
   }
@@ -92,13 +92,21 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal");
     uint256 strategyPrice = strategy.price();
 
+    // skip rewards and deposit underlyings to the strategy
     _cdoHarvest(true);
+    skip(1 days); 
+    vm.roll(block.number + 6400 + 1);
+
+    // claim rewards
+    _cdoHarvest(false);
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");
+
     // Skip 7 day forward to accrue interest
-    skip(7 days); 
-    vm.roll(block.number + 1);
+    skip(7 days);
+    vm.roll(block.number + 6400 + 1);
 
     assertGt(strategy.price(), strategyPrice, "strategy price");
+
     // virtualPrice should increase too
     assertGt(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
@@ -119,7 +127,7 @@ abstract contract TestIdleCDOBase is Test {
   
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
-    assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
   function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -173,7 +181,7 @@ abstract contract TestIdleCDOBase is Test {
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
-    assertGt(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
+    assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
   function _cdoHarvest(bool _skipRewards) internal {
@@ -187,9 +195,14 @@ abstract contract TestIdleCDOBase is Test {
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
+    skip(1 days);
+    vm.roll(block.number + 1);
+
     vm.prank(idleCDO.rebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+
     // linearly release all sold rewards
+    skip(5 days); 
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 
@@ -204,7 +217,6 @@ abstract contract TestIdleCDOBase is Test {
       .target(address(_cdo))
       .sig(_cdo.token.selector)
       .checked_write(address(0));
-
     address[] memory incentiveTokens = new address[](0);
     _cdo.initialize(
       0,

@@ -11,21 +11,24 @@ import "../../contracts/interfaces/IERC20Detailed.sol";
 import "./TestIdleCDOBase.sol";
 
 contract TestStrategy is BaseStrategy {
+    MockStakingReward public stakingContract;
+
     function initialize(
         string memory _name,
         string memory _symbol,
-        address _strategyToken,
+        MockStakingReward _stakingContract,
         address _underlyingToken,
         address _owner
     ) public initializer {
-        _initialize(_name, _symbol, _strategyToken, _underlyingToken, _owner);
+        _initialize(_name, _symbol, _underlyingToken, _owner);
+        stakingContract = _stakingContract;
     }
 
     /// @dev makes the actual deposit into the `strategy`
     /// @param _amount amount of tokens to deposit
     function _deposit(uint256 _amount) internal override returns (uint256) {
-        underlyingToken.approve(strategyToken, _amount);
-        MockStakingReward(strategyToken).stake(_amount);
+        underlyingToken.approve(address(stakingContract), _amount);
+        stakingContract.stake(_amount);
         return _amount;
     }
 
@@ -36,7 +39,7 @@ contract TestStrategy is BaseStrategy {
         override
         returns (uint256)
     {
-        MockStakingReward(strategyToken).unstake(_amountToWithdraw);
+        stakingContract.unstake(_amountToWithdraw);
         underlyingToken.transfer(_destination, _amountToWithdraw);
         return _amountToWithdraw;
     }
@@ -44,12 +47,12 @@ contract TestStrategy is BaseStrategy {
     function _redeemRewards(bytes calldata)
         internal
         override
-        returns (uint256 underlyingReward, uint256[] memory)
+        returns (uint256[] memory rewards)
     {
-        // uint256 _amountToWithdraw = abi.decode(data, (uint256));
+        rewards = new uint256[](1);
         uint256 balBefore = underlyingToken.balanceOf(address(this));
-        MockStakingReward(strategyToken).claimRewards();
-        underlyingReward = underlyingToken.balanceOf(address(this)) - balBefore;
+        stakingContract.claimRewards();
+        rewards[0] = underlyingToken.balanceOf(address(this)) - balBefore;
     }
 
     function getRewardTokens() external view returns (address[] memory) {}
@@ -66,29 +69,31 @@ contract TestBaseStrategy is TestIdleCDOBase {
         returns (address _strategy, address _underlying)
     {
         _underlying = USDC;
-
-        strategyToken = IERC20Detailed(
-            address(new MockStakingReward(IERC20Detailed(_underlying)))
-        );
         strategy = new TestStrategy();
+        MockStakingReward _stakingContract = new MockStakingReward(
+            IERC20Detailed(_underlying)
+        );
+
         _strategy = address(strategy);
 
-        uint256 amountToFund = 1_000_000 * ONE_SCALE;
-        deal(_underlying, address(strategyToken), amountToFund , true); // prettier-ignore
-        MockStakingReward(address(strategyToken)).setTestReward(
-            1000 * ONE_SCALE
-        );
-
+        // initialize
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(
             address(0)
         );
         TestStrategy(_strategy).initialize(
             "Idle TestStrategy USDC",
             "IdleTestStrategy[USDC]",
-            address(strategyToken),
+            _stakingContract,
             _underlying,
             _owner
         );
+
+        strategyToken = IERC20Detailed(_strategy); // strategy itself
+        uint256 _decimals = strategyToken.decimals();
+
+        uint256 amountToFund = 1_000_000 * 10**_decimals;
+        deal(_underlying, address(_stakingContract), amountToFund , true); // prettier-ignore
+        _stakingContract.setTestReward(1000 * 10**_decimals);
     }
 
     function _postDeploy(address _cdo, address _owner) internal override {
@@ -123,13 +128,15 @@ contract TestBaseStrategy is TestIdleCDOBase {
         override
         runOnForkingNetwork(MAINNET_CHIANID)
     {
+        MockStakingReward _stakingContract = TestStrategy(address(strategy))
+            .stakingContract();
         vm.expectRevert(
             bytes("Initializable: contract is already initialized")
         );
         TestStrategy(address(strategy)).initialize(
             "Idle TestStrategy USDC",
             "IdleTestStrategy[USDC]",
-            address(strategyToken),
+            _stakingContract,
             address(underlying),
             owner // owner
         );

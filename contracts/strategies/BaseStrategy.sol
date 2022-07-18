@@ -66,12 +66,10 @@ abstract contract BaseStrategy is
     /// @notice can be only called once
     /// @param _name name of this strategy ERC20 tokens
     /// @param _symbol symbol of this strategy ERC20 tokens
-    /// @param _strategyToken address of the strategy token
     /// @param _underlyingToken address of the underlying token
     function _initialize(
         string memory _name,
         string memory _symbol,
-        address _strategyToken,
         address _underlyingToken,
         address _owner
     ) internal initializer {
@@ -80,7 +78,7 @@ abstract contract BaseStrategy is
         require(token == address(0), "Token is already initialized");
 
         //----- // -------//
-        strategyToken = _strategyToken;
+        strategyToken = address(this);
         token = _underlyingToken;
         underlyingToken = IERC20Detailed(token);
         tokenDecimals = underlyingToken.decimals();
@@ -205,6 +203,7 @@ abstract contract BaseStrategy is
 
     /// @notice redeem the rewards
     /// @return rewards amount of reward that is deposited to the ` strategy`
+    ///         rewards[0] : mintedUnderlyings
     function redeemRewards(bytes calldata data)
         external
         virtual
@@ -212,22 +211,22 @@ abstract contract BaseStrategy is
         nonReentrant
         returns (uint256[] memory rewards)
     {
-        uint256 mintedUnderlyings;
-        (mintedUnderlyings, rewards) = _redeemRewards(data);
+        rewards = _redeemRewards(data);
+        uint256 mintedUnderlyings = rewards[0];
+
+        if (mintedUnderlyings == 0) {
+            return rewards;
+        }
 
         // reinvest the generated/minted underlying to the the `strategy`
-        if (mintedUnderlyings != 0) {
-            uint256 underlyingsStaked = _reinvest(mintedUnderlyings);
-            require(underlyingsStaked <= mintedUnderlyings, "sanity check");
+        uint256 underlyingsStaked = _reinvest(mintedUnderlyings);
+        // save the block in which rewards are swapped and the amount
+        latestHarvestBlock = uint128(block.number);
+        totalTokensLocked = underlyingsStaked;
+        totalTokensStaked += underlyingsStaked;
 
-            // save the block in which rewards are swapped and the amount
-            latestHarvestBlock = uint128(block.number);
-            totalTokensLocked = underlyingsStaked;
-            totalTokensStaked += underlyingsStaked;
-
-            // update the apr after claiming the rewards
-            _updateApr(underlyingsStaked);
-        }
+        // update the apr after claiming the rewards
+        _updateApr(underlyingsStaked);
     }
 
     /// @dev reinvest underlyings` to the `strategy`
@@ -241,19 +240,23 @@ abstract contract BaseStrategy is
         underlyingsStaked = _deposit(underlyings);
     }
 
+    /// @return rewards rewards[0] : mintedUnderlying
     function _redeemRewards(bytes calldata data)
         internal
         virtual
-        returns (uint256 mintedUnderlyings, uint256[] memory rewards);
+        returns (uint256[] memory rewards);
 
     /// @notice update last saved apr
     /// @param _gain amount of underlying tokens to mint/redeem
     function _updateApr(uint256 _gain) internal {
-        uint256 priceIncrease = (_gain * oneToken) / totalSupply();
-        lastApr = uint96(
-            priceIncrease * (YEAR / (block.timestamp - lastIndexedTime)) * 100
-        ); // prettier-ignore
-        lastIndexedTime = block.timestamp;
+        uint256 _totalSupply = totalSupply();
+        if (_totalSupply != 0) {
+            uint256 priceIncrease = (_gain * oneToken) / _totalSupply;
+            lastApr = uint96(
+                priceIncrease * (YEAR / (block.timestamp - lastIndexedTime)) * 100
+            ); // prettier-ignore
+            lastIndexedTime = block.timestamp;
+        }
     }
 
     /// @dev deprecated method
