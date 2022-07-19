@@ -8,9 +8,14 @@ import "forge-std/Test.sol";
 abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
 
+  uint256 internal constant AA_RATIO_LIM_UP = 99000;
+  uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
   uint256 internal constant FULL_ALLOC = 100000;
   uint256 internal constant MAINNET_CHIANID = 1;
   uint256 internal initialBal;
+  uint256 public initialApr;
+  uint256 public initialAAApr;
+  uint256 public initialBBApr;
   uint256 internal decimals;
   uint256 internal ONE_SCALE;
   address[] internal rewards;
@@ -58,6 +63,11 @@ abstract contract TestIdleCDOBase is Test {
     deal(address(underlying), address(this), initialBal, true);
     underlying.approve(address(idleCDO), type(uint256).max);
 
+    // get initial aprs
+    initialApr = strategy.getApr();
+    initialAAApr = idleCDO.getApr(address(AAtranche));
+    initialBBApr = idleCDO.getApr(address(BBtranche));
+
     // label
     vm.label(address(idleCDO), "idleCDO");
     vm.label(address(AAtranche), "AAtranche");
@@ -72,6 +82,8 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
+    assertEq(initialAAApr, 0);
+    assertEq(initialBBApr, initialApr);
   }
 
   function testCantReinitialize() external virtual;
@@ -94,12 +106,17 @@ abstract contract TestIdleCDOBase is Test {
 
     // skip rewards and deposit underlyings to the strategy
     _cdoHarvest(true);
-    skip(1 days); 
-    vm.roll(block.number + 6400 + 1);
+
+    // check that trancheAPRSplitRatio and aprs are updated 
+    assertEq(idleCDO.trancheAPRSplitRatio(), 25000, "split ratio");
+    // limit is 50% of the strategy apr if AAratio is <= 50%
+    assertEq(idleCDO.getApr(address(AAtranche)), initialApr / 2, "AA apr");
+    // apr will be 150% of the strategy apr if AAratio is == 50%
+    assertEq(idleCDO.getApr(address(BBtranche)), initialApr * 3 / 2, "BB apr");
 
     // claim rewards
     _cdoHarvest(false);
-    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");
+    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
 
     // Skip 7 day forward to accrue interest
     skip(7 days);
@@ -187,8 +204,75 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
+  function testSetIsAYSActive() external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.prank(address(1));
+    vm.expectRevert(bytes("6")); // not authorized
+    idleCDO.setIsAYSActive(false);
+    vm.prank(owner);
+    idleCDO.setIsAYSActive(true);
+  }
+
+  function testAPRSplitRatioDeposits(
+    uint16 _ratio
+  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.assume(_ratio <= 1000);
+    uint256 amount = 1000 * ONE_SCALE;
+    // to have the same scale as FULL_ALLOC and avoid 
+    // `Too many global rejects` error in forge
+    uint256 ratio = uint256(_ratio) * 100; 
+    uint256 amountAA = amount * ratio / FULL_ALLOC;
+    idleCDO.depositAA(amountAA);
+    idleCDO.depositBB(amount - amountAA);
+
+    assertEq(
+      idleCDO.trancheAPRSplitRatio(), 
+      _calcNewAPRSplit(ratio),
+      "split ratio on deposits"
+    );
+  }
+
+  function testAPRSplitRatioRedeems(
+    uint16 _ratio,
+    uint16 _redeemRatioAA,
+    uint16 _redeemRatioBB
+  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.assume(_ratio <= 1000 && _ratio > 0);
+    // > 0 because it's a requirement of the withdraw
+    vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
+    vm.assume(_redeemRatioBB <= 1000 && _redeemRatioBB > 0);
+
+    uint256 amount = 1000 * ONE_SCALE;
+    // to have the same scale as FULL_ALLOC and avoid 
+    // `Too many global rejects` error in forge
+    uint256 ratio = uint256(_ratio) * 100; 
+    uint256 amountAA = amount * ratio / FULL_ALLOC;
+    uint256 amountBB = amount - amountAA;
+    idleCDO.depositAA(amountAA);
+    idleCDO.depositBB(amountBB);
+
+    // Set new block.height to avoid reentrancy check on deposit/withdraw
+    vm.roll(block.number + 1);
+
+    uint256 ratioRedeemAA = uint256(_redeemRatioAA) * 100; 
+    uint256 ratioRedeemBB = uint256(_redeemRatioBB) * 100; 
+    amountAA = AAtranche.balanceOf(address(this)) * ratioRedeemAA / FULL_ALLOC;
+    amountBB = BBtranche.balanceOf(address(this)) * ratioRedeemBB / FULL_ALLOC;
+    if (amountAA > 0) {
+      idleCDO.withdrawAA(amountAA);
+    }
+    if (amountBB > 0) {
+      idleCDO.withdrawBB(amountBB);
+    }
+    
+    assertEq(
+      idleCDO.trancheAPRSplitRatio(), 
+      _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 
+      "split ratio on redeem"
+    );
+  }
+
   function _cdoHarvest(bool _skipRewards) internal {
-    uint256 numOfRewards = _numOfSellableRewards();
+    uint256 numOfRewards = rewards.length;
     bool[] memory _skipFlags = new bool[](4);
     bool[] memory _skipReward = new bool[](numOfRewards);
     uint256[] memory _minAmount = new uint256[](numOfRewards);
@@ -257,5 +341,17 @@ abstract contract TestIdleCDOBase is Test {
     }
     // explicit return to fix linter
     return false;
+  }
+
+  function _calcNewAPRSplit(uint256 ratio) internal pure returns (uint256 _new){
+    uint256 aux;
+    if (ratio >= AA_RATIO_LIM_UP) {
+      aux = AA_RATIO_LIM_UP;
+    } else if (ratio > AA_RATIO_LIM_DOWN) {
+      aux = ratio;
+    } else {
+      aux = AA_RATIO_LIM_DOWN;
+    }
+    _new = aux * ratio / FULL_ALLOC;
   }
 }

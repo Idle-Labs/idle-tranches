@@ -101,4 +101,7 @@ contract IdleCDOStorage {
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   // constant to represent 50% (for ADS AA ratio lower limit)
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
+
+  // Referral event
+  event Referral(uint256 _amount, address _ref);
 }

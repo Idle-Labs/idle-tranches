@@ -67,7 +67,9 @@ const mainnetContracts = {
   // 2/12/2021
   // latestImplementation: '0xb93450f818ae2ce89bc5d660049753883acbb883',
   // 19/1/2022
-  latestImplementation: '0x31bee1fb186fc3bbc8f7639206d675cf3dea2140',
+  // latestImplementation: '0x31bee1fb186fc3bbc8f7639206d675cf3dea2140',
+  // 13/07/2022
+  latestImplementation: '0xBeD6E1FF4363730a56dfDcd6689e5D958085299d',
   // 2/12/2021
   latestIdleStrategyImpl: '0xd04843ac2ae7cfb7fe9ff6ff43c808af7a030527',
   // 8/3/2022 ConvexStrategyMeta3Pool
