@@ -178,6 +178,9 @@ abstract contract TestIdleCDOBase is Test {
 
     // funds in lending
     _cdoHarvest(true);
+    // claim rewards
+    _cdoHarvest(false);
+    
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
@@ -202,7 +205,6 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
     // linearly release all sold rewards
-    skip(5 days); 
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+
+// Notice old 'type' of test. For new tests inherit from TestIdleCDOBase.sol contract
 pragma solidity 0.8.10;
 import "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
