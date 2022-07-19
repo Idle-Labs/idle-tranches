@@ -55,7 +55,14 @@ contract TestStrategy is BaseStrategy {
         rewards[0] = underlyingToken.balanceOf(address(this)) - balBefore;
     }
 
-    function getRewardTokens() external view returns (address[] memory) {}
+    function getRewardTokens()
+        external
+        view
+        returns (address[] memory rewards)
+    {
+        rewards = new address[](1);
+        rewards[0] = token;
+    }
 }
 
 contract TestBaseStrategy is TestIdleCDOBase {
