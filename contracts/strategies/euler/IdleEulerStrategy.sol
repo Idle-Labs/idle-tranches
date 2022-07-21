@@ -101,7 +101,6 @@ contract IdleEulerStrategy is
     function deposit(uint256 _amount)
         external
         override
-        onlyIdleCDO
         returns (uint256 minted)
     {
         if (_amount > 0) {
@@ -129,7 +128,6 @@ contract IdleEulerStrategy is
     function redeem(uint256 _amount)
         external
         override
-        onlyIdleCDO
         returns (uint256 redeemed)
     {
         if (_amount > 0) {
@@ -146,7 +144,6 @@ contract IdleEulerStrategy is
     function redeemRewards(bytes calldata)
         external
         override
-        onlyIdleCDO
         returns (uint256[] memory _balances)
     {}
 
@@ -157,7 +154,6 @@ contract IdleEulerStrategy is
     function redeemUnderlying(uint256 _amount)
         external
         override
-        onlyIdleCDO
         returns (uint256 redeemed)
     {
         if (_amount > 0) {
@@ -268,11 +264,5 @@ contract IdleEulerStrategy is
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
         whitelistedCDO = _cdo;
-    }
-
-    /// @notice Modifier to make sure that caller os only the idleCDO contract
-    modifier onlyIdleCDO() {
-        require(whitelistedCDO == msg.sender, "Only IdleCDO can call");
-        _;
     }
 }

@@ -104,9 +104,6 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal");
     uint256 strategyPrice = strategy.price();
 
-    // skip rewards and deposit underlyings to the strategy
-    _cdoHarvest(true);
-
     // check that trancheAPRSplitRatio and aprs are updated 
     assertEq(idleCDO.trancheAPRSplitRatio(), 25000, "split ratio");
     // limit is 50% of the strategy apr if AAratio is <= 50%
@@ -114,13 +111,16 @@ abstract contract TestIdleCDOBase is Test {
     // apr will be 150% of the strategy apr if AAratio is == 50%
     assertEq(idleCDO.getApr(address(BBtranche)), initialApr * 3 / 2, "BB apr");
 
+    // skip rewards and deposit underlyings to the strategy
+    _cdoHarvest(true);
+
     // claim rewards
     _cdoHarvest(false);
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
 
     // Skip 7 day forward to accrue interest
     skip(7 days);
-    vm.roll(block.number + 6400 + 1);
+    vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
 
     assertGt(strategy.price(), strategyPrice, "strategy price");
 
@@ -159,7 +159,7 @@ abstract contract TestIdleCDOBase is Test {
     // sell some rewards
     uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));
     _cdoHarvest(false);
-    vm.roll(block.number + 1);
+    // vm.roll(block.number + 1);
     uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
     if (_numOfSellableRewards() > 0) {
       assertGt(pricePost, pricePre, "virtual price increased");
@@ -282,9 +282,6 @@ abstract contract TestIdleCDOBase is Test {
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
-    skip(1 days);
-    vm.roll(block.number + 1);
-
     vm.prank(idleCDO.rebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
@@ -353,5 +350,15 @@ abstract contract TestIdleCDOBase is Test {
       aux = AA_RATIO_LIM_DOWN;
     }
     _new = aux * ratio / FULL_ALLOC;
+  }
+
+  function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
+    (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
+    if (success){
+      releaseBlocksPeriod = abi.decode(returnData, (uint256));
+    } else {
+      emit log("can't find releaseBlocksPeriod() on strategy");
+      emit logs(returnData);
+    }
   }
 }

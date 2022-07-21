@@ -250,10 +250,11 @@ abstract contract BaseStrategy is
     /// @param _gain amount of underlying tokens to mint/redeem
     function _updateApr(uint256 _gain) internal {
         uint256 _totalSupply = totalSupply();
-        if (_totalSupply != 0) {
+        uint256 timeIncrease = block.timestamp - lastIndexedTime;
+        if (_totalSupply != 0 && timeIncrease != 0) {
             uint256 priceIncrease = (_gain * oneToken) / _totalSupply;
             lastApr = uint96(
-                priceIncrease * (YEAR / (block.timestamp - lastIndexedTime)) * 100
+                priceIncrease * (YEAR / timeIncrease) * 100
             ); // prettier-ignore
             lastIndexedTime = block.timestamp;
         }

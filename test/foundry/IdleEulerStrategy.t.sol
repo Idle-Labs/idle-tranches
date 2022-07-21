@@ -20,6 +20,8 @@ contract TestIdleEulerStrategy is TestIdleCDOBase {
       .sig(strategy.token.selector)
       .checked_write(address(0));
     IdleEulerStrategy(_strategy).initialize(lendingToken, _underlying, eulerMain, _owner);
+
+    vm.label(eulerMain, "euler");
   }
 
   function _postDeploy(address _cdo, address _owner) internal override {
@@ -27,6 +29,11 @@ contract TestIdleEulerStrategy is TestIdleCDOBase {
     IdleEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
   }
 
+  function testOnlyIdleCDO() 
+    public 
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {}
 
   function testOnlyOwner()
     public
