@@ -113,21 +113,11 @@ contract TestBaseStrategy is TestIdleCDOBase {
         override
         runOnForkingNetwork(MAINNET_CHIANID)
     {
+        super.testOnlyOwner();
+
         vm.prank(address(0xbabe));
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
         TestStrategy(address(strategy)).setReleaseBlocksPeriod(1000);
-
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        TestStrategy(address(strategy)).setWhitelistedCDO(address(0xcafe));
-
-        vm.prank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        TestStrategy(address(strategy)).transferToken(
-            address(underlying),
-            1e6,
-            address(0xbabe)
-        );
     }
 
     function testCantReinitialize()

@@ -35,16 +35,6 @@ contract TestIdleEulerStrategy is TestIdleCDOBase {
     runOnForkingNetwork(MAINNET_CHIANID)
   {}
 
-  function testOnlyOwner()
-    public
-    override
-    runOnForkingNetwork(MAINNET_CHIANID)
-  {
-    vm.prank(address(0xbabe));
-    vm.expectRevert(bytes("Ownable: caller is not the owner"));
-    IdleEulerStrategy(address(strategy)).setWhitelistedCDO(address(0xcafe));
-  }
-
   function testCantReinitialize()
     external
     override

@@ -159,7 +159,7 @@ abstract contract TestIdleCDOBase is Test {
     // sell some rewards
     uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));
     _cdoHarvest(false);
-    // vm.roll(block.number + 1);
+
     uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
     if (_numOfSellableRewards() > 0) {
       assertGt(pricePost, pricePre, "virtual price increased");
@@ -186,7 +186,23 @@ abstract contract TestIdleCDOBase is Test {
     strategy.redeemRewards(bytes(""));
   }
 
-  function testOnlyOwner() public virtual;
+  function testOnlyOwner() public virtual {
+    vm.startPrank(address(0xbabe));
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    // this call returns `success` when it reverted
+    address(strategy).call(abi.encodeWithSignature("setWhitelistedCDO(address)", address(0xcafe)));
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    // this call returns `success` when it reverted
+    address(strategy).call(abi.encodeWithSignature("transferToken(address, uint256, address)",
+      address(underlying),
+      1e6,
+      address(0xbabe)
+    ));
+
+    vm.stopPrank();
+  }
 
 
   function testAPR() external runOnForkingNetwork(MAINNET_CHIANID) {
