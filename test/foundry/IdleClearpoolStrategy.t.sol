@@ -26,4 +26,34 @@ contract TestIdleClearpoolStrategy is TestIdleCDOBase {
     vm.prank(_owner);
     IdleClearpoolStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
   }
+
+  function testOnlyOwner()
+    public
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    IdleClearpoolStrategy(address(strategy)).setWhitelistedCDO(address(0xcafe));
+  }
+
+  function testCantReinitialize()
+    external
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    address _strategy = address(strategy);
+    address cpToken = 0xCb288b6d30738db7E3998159d192615769794B5b;
+    address univ2Router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+
+    vm.expectRevert(
+      bytes("Initializable: contract is already initialized")
+    );
+    IdleClearpoolStrategy(_strategy).initialize(
+      cpToken,
+      address(underlying),
+      owner,
+      univ2Router
+    );
+  }
 }

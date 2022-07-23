@@ -79,12 +79,14 @@ abstract contract TestIdleCDOBase is Test {
 
   function testInitialize() external runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
-    assertGt(strategy.price(), ONE_SCALE);
+    assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
   }
+
+  function testCantReinitialize() external virtual;
 
   function testDeposits() external runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
@@ -109,13 +111,19 @@ abstract contract TestIdleCDOBase is Test {
     // apr will be 150% of the strategy apr if AAratio is == 50%
     assertEq(idleCDO.getApr(address(BBtranche)), initialApr * 3 / 2, "BB apr");
 
+    // skip rewards and deposit underlyings to the strategy
     _cdoHarvest(true);
+
+    // claim rewards
+    _cdoHarvest(false);
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
+
     // Skip 7 day forward to accrue interest
-    skip(7 days); 
-    vm.roll(block.number + 1);
+    skip(7 days);
+    vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
 
     assertGt(strategy.price(), strategyPrice, "strategy price");
+
     // virtualPrice should increase too
     assertGt(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
@@ -136,7 +144,7 @@ abstract contract TestIdleCDOBase is Test {
   
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
-    assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
   function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -151,7 +159,7 @@ abstract contract TestIdleCDOBase is Test {
     // sell some rewards
     uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));
     _cdoHarvest(false);
-    vm.roll(block.number + 1);
+
     uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
     if (_numOfSellableRewards() > 0) {
       assertGt(pricePost, pricePre, "virtual price increased");
@@ -160,16 +168,56 @@ abstract contract TestIdleCDOBase is Test {
     }
   }
 
+  function testOnlyIdleCDO()
+      public
+      virtual
+      runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Only IdleCDO can call"));
+    strategy.deposit(1e10);
+
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Only IdleCDO can call"));
+    strategy.redeem(1e10);
+
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Only IdleCDO can call"));
+    strategy.redeemRewards(bytes(""));
+  }
+
+  function testOnlyOwner() public virtual {
+    vm.startPrank(address(0xbabe));
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    // this call returns `success` when it reverted
+    address(strategy).call(abi.encodeWithSignature("setWhitelistedCDO(address)", address(0xcafe)));
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    // this call returns `success` when it reverted
+    address(strategy).call(abi.encodeWithSignature("transferToken(address, uint256, address)",
+      address(underlying),
+      1e6,
+      address(0xbabe)
+    ));
+
+    vm.stopPrank();
+  }
+
+
   function testAPR() external runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
     // funds in lending
     _cdoHarvest(true);
+    // claim rewards
+    _cdoHarvest(false);
+    
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
-    assertGt(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
+    assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
   function testSetIsAYSActive() external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -252,6 +300,7 @@ abstract contract TestIdleCDOBase is Test {
 
     vm.prank(idleCDO.rebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+
     // linearly release all sold rewards
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
@@ -267,7 +316,6 @@ abstract contract TestIdleCDOBase is Test {
       .target(address(_cdo))
       .sig(_cdo.token.selector)
       .checked_write(address(0));
-
     address[] memory incentiveTokens = new address[](0);
     _cdo.initialize(
       0,
@@ -318,5 +366,15 @@ abstract contract TestIdleCDOBase is Test {
       aux = AA_RATIO_LIM_DOWN;
     }
     _new = aux * ratio / FULL_ALLOC;
+  }
+
+  function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
+    (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
+    if (success){
+      releaseBlocksPeriod = abi.decode(returnData, (uint256));
+    } else {
+      emit log("can't find releaseBlocksPeriod() on strategy");
+      emit logs(returnData);
+    }
   }
 }

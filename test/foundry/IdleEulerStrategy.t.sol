@@ -20,10 +20,33 @@ contract TestIdleEulerStrategy is TestIdleCDOBase {
       .sig(strategy.token.selector)
       .checked_write(address(0));
     IdleEulerStrategy(_strategy).initialize(lendingToken, _underlying, eulerMain, _owner);
+
+    vm.label(eulerMain, "euler");
   }
 
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
     IdleEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
+  }
+
+  function testOnlyIdleCDO() 
+    public 
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {}
+
+  function testCantReinitialize()
+    external
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    address eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
+    address lendingToken = 0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716; // eUSDC
+    address _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+
+    vm.expectRevert(
+      bytes("Initializable: contract is already initialized")
+    );
+    IdleEulerStrategy(address(strategy)).initialize(lendingToken, _underlying, eulerMain, owner);
   }
 }
