@@ -118,8 +118,8 @@ contract TestUpdateLidoPYT is Test {
     uint256 totAmount = amount * 2;
     assertEq(IERC20(AAtranche).balanceOf(address(this)), amount * 1e18 / aaPrice, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), amount * 1e18 / bbPrice, "BBtranche bal");
-    assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal of contract");
-    assertEq(underlying.balanceOf(address(idleCDO)), totAmount, "underlying bal of idleCDO");
+    assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal - totAmount, 1, "underlying bal of contract");
+    assertApproxEqAbs(underlying.balanceOf(address(idleCDO)), totAmount, 1, "underlying bal of idleCDO");
     // strategy bal is unchanged
     assertApproxEqAbs(underlying.balanceOf(address(strategy)), initialStrategyBal, 1, "strategy bal");
     uint256 strategyPrice = strategy.price();
