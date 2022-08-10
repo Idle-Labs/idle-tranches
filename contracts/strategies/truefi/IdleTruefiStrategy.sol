@@ -1,5 +1,5 @@
 /// SPDX-License-Identifier: MIT
-/// @author trusttoken team https://github.com/trusttoken/idleFinanceContracts, review by @bugduino.
+/// @author trusttoken team https://github.com/trusttoken/idleFinanceContracts, review and last changes by @bugduino.
 /// @title IdleMStableStrategy
 /// @notice IIdleCDOStrategy to deploy funds in TrueFi.
 pragma solidity ^0.8.10;
@@ -157,61 +157,62 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _redeem(amount);
     }
 
+    // Not used in IdleCDOTruefiVariant but kept for reference in case we want to use it in the future
     function redeemUnderlying(uint256 amount) external onlyIdleCDO nonReentrant returns (uint256) {
-        if(amount == 0) {
-            return 0;
-        }
-        int256 amountInBasisPoints = int256(amount * BASIS_POINTS);
+        // if(amount == 0) {
+        //     return 0;
+        // }
+        // int256 amountInBasisPoints = int256(amount * BASIS_POINTS);
 
-        uint256 liquidValue = _pool.liquidValue();
-        require(applyPenalty(liquidValue) >= amountInBasisPoints, "TruefiPoolStrategy: Redeem amount is too big");
+        // uint256 liquidValue = _pool.liquidValue();
+        // require(applyPenalty(liquidValue) >= amountInBasisPoints, "TruefiPoolStrategy: Redeem amount is too big");
 
-        uint256 low = amount;
-        uint256 high = (amount * 11) / 10; // penalty cannot be greater than 10% of amount
+        // uint256 low = amount;
+        // uint256 high = (amount * 11) / 10; // penalty cannot be greater than 10% of amount
 
-        if (high > liquidValue) {
-            high = liquidValue;
-        }
+        // if (high > liquidValue) {
+        //     high = liquidValue;
+        // }
 
-        uint256 oneTokenInBasisPoints = _oneToken * BASIS_POINTS;
+        // uint256 oneTokenInBasisPoints = _oneToken * BASIS_POINTS;
 
-        uint256 x;
-        int256 difference;
-        while (high > low) {
-            x = (low + high) / 2;
-            difference = applyPenalty(x) - amountInBasisPoints;
-            if (abs(difference) <= oneTokenInBasisPoints) {
-                break;
-            }
-            if (difference > 0) {
-                high = x;
-            } else {
-                low = x + 1;
-            }
-        }
+        // uint256 x;
+        // int256 difference;
+        // while (high > low) {
+        //     x = (low + high) / 2;
+        //     difference = applyPenalty(x) - amountInBasisPoints;
+        //     if (abs(difference) <= oneTokenInBasisPoints) {
+        //         break;
+        //     }
+        //     if (difference > 0) {
+        //         high = x;
+        //     } else {
+        //         low = x + 1;
+        //     }
+        // }
 
-        uint256 estimatedAmount = (high + low) / 2;
-        uint256 estimatedTfAmount = toTfAmount(estimatedAmount);
-        uint256 senderBalance = balanceOf(msg.sender);
+        // uint256 estimatedAmount = (high + low) / 2;
+        // uint256 estimatedTfAmount = toTfAmount(estimatedAmount);
+        // uint256 senderBalance = balanceOf(msg.sender);
 
-        if(estimatedTfAmount > senderBalance) {
-            return _redeem(senderBalance);
-        } else {
-            return _redeem(estimatedTfAmount);
-        }
+        // if(estimatedTfAmount > senderBalance) {
+        //     return _redeem(senderBalance);
+        // } else {
+        //     return _redeem(estimatedTfAmount);
+        // }
     }
 
-    function applyPenalty(uint256 amount) internal view returns (int256) {
-        return int256(amount * _pool.liquidExitPenalty(amount));
-    }
+    // function applyPenalty(uint256 amount) internal view returns (int256) {
+    //     return int256(amount * _pool.liquidExitPenalty(amount));
+    // }
 
-    function toTfAmount(uint256 amount) internal view returns (uint256) {
-        return (amount * _pool.totalSupply()) / _pool.poolValue();
-    }
+    // function toTfAmount(uint256 amount) internal view returns (uint256) {
+    //     return (amount * _pool.totalSupply()) / _pool.poolValue();
+    // }
 
-    function abs(int256 x) internal pure returns (uint256) {
-        return x >= 0 ? uint256(x) : uint256(-x);
-    }
+    // function abs(int256 x) internal pure returns (uint256) {
+    //     return x >= 0 ? uint256(x) : uint256(-x);
+    // }
 
     // may be costly for big loans number
     function getApr() external view returns (uint256) {

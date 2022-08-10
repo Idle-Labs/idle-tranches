@@ -112,7 +112,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
+
+    _additionalInitSteps();
   }
+
+  /// @notice override this in child contracts if needed
+  function _additionalInitSteps() internal virtual {}
 
   // ###############
   // Public methods

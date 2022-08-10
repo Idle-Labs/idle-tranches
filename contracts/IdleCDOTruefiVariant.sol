@@ -21,6 +21,12 @@ import {ITruefiPool, ITrueLender, ILoanToken} from "./interfaces/truefi/ITruefi.
 contract IdleCDOTruefiVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
 
+    /// @dev override unlent percentage and fee
+  function _additionalInitSteps() internal override {
+    unlentPerc = 0; // 0%, unlent balance is not used in this variant
+    fee = 15000; // 15% performance fee
+  }
+
   /// @dev check if any loan for the pool is defaulted
   function _checkDefault() override internal view {
     // loop thorugh all loans, which should be at most like 10-20
@@ -56,21 +62,8 @@ contract IdleCDOTruefiVariant is IdleCDO {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
     require(_amount > 0, '0');
+
     address _token = token;
-
-    // TODO? check if unlent amount is enough? There may be issues I guess
-    //
-    // // calculate how many underlying tokens we will get with exit fee included
-    // toRedeem = _previewRedeem(_amount);
-    // // get current available unlent balance
-    // uint256 balanceUnderlying = _contractTokenBalance(_token);
-
-    // if (toRedeem > balanceUnderlying) {
-    //   // if the unlent balance is not enough we redeem the *whole* amount of tranche tokens passed
-    //   // by the user (instead of only what's missing).
-    //   // toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
-    // }
-
     address _aa = AATranche;
     IdleCDOTranche _selectedTranche = IdleCDOTranche(_tranche);
     uint256 _strategyTokens = IERC20Detailed(strategyToken).totalSupply();

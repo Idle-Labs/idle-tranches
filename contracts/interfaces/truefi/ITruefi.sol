@@ -54,4 +54,7 @@ interface ILoanToken {
     function amount() external view returns (uint256);
     // function status() external view returns (uint256);
     function status() external view returns (Status);
+    function start() external view returns (uint256);
+    function term() external view returns (uint256);
+    function enterDefault() external;
 }
