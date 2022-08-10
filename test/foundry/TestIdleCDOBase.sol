@@ -35,6 +35,9 @@ abstract contract TestIdleCDOBase is Test {
   );
 
   function _postDeploy(address _cdo, address _owner) virtual internal;
+  function _deployCDO() internal virtual returns (IdleCDO _cdo) {
+    _cdo = new IdleCDO();
+  }
   // end override
 
   modifier runOnForkingNetwork(uint256 networkId) {
@@ -129,7 +132,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
   }
 
-  function testRedeems() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeems() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -311,7 +314,7 @@ abstract contract TestIdleCDOBase is Test {
     (address _strategy, address _underlying) = _deployStrategy(_owner);
     
     // deploy idleCDO and tranches
-    _cdo = new IdleCDO();
+    _cdo = _deployCDO();
     stdstore
       .target(address(_cdo))
       .sig(_cdo.token.selector)

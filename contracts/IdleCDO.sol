@@ -112,7 +112,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
+
+    _additionalInitSteps();
   }
+
+  /// @notice override this in child contracts if needed
+  function _additionalInitSteps() internal virtual {}
 
   // ###############
   // Public methods
@@ -431,7 +436,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount in tranche tokens
   /// @param _tranche tranche address
   /// @return toRedeem number of underlyings redeemed
-  function _withdraw(uint256 _amount, address _tranche) internal nonReentrant returns (uint256 toRedeem) {
+  function _withdraw(uint256 _amount, address _tranche) virtual internal nonReentrant returns (uint256 toRedeem) {
     // check if a deposit is made in the same block from the same user
     _checkSameTx();
     // check if _strategyPrice decreased
@@ -505,7 +510,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @dev check if _strategyPrice is decreased since last update and updates last saved strategy price
-  function _checkDefault() internal {
+  function _checkDefault() virtual internal {
     uint256 currPrice = _strategyPrice();
     if (!skipDefaultCheck) {
       require(lastStrategyPrice <= currPrice, "4");
@@ -522,7 +527,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount in underlying tokens
   /// @param _revertIfNeeded flag whether to revert or not if the redeemed amount is not enough
   /// @return _redeemedTokens number of underlyings redeemed
-  function _liquidate(uint256 _amount, bool _revertIfNeeded) internal returns (uint256 _redeemedTokens) {
+  function _liquidate(uint256 _amount, bool _revertIfNeeded) internal virtual returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (_revertIfNeeded) {
       // keep 100 wei as margin for rounding errors
