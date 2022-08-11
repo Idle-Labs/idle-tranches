@@ -51,22 +51,19 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _rebalancer rebalancer address
   /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
-  /// @param _trancheIdealWeightRatio trancheIdealWeightRatio value
+  /// @param // deprecated
   /// @param _incentiveTokens array of addresses for incentive tokens
   function initialize(
     uint256 _limit, address _guardedToken, address _governanceFund, address _owner, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
     uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
-    uint256 _trancheIdealWeightRatio, // for AA tranches, so eg 10000 means 10% of tranches are AA and 90% BB
+    uint256, // Deprecated
     address[] memory _incentiveTokens
   ) external initializer {
-    uint256 _idealRange = FULL_ALLOC / 10;
     require(token == address(0), '1');
     require(_rebalancer != address(0) && _strategy != address(0) && _guardedToken != address(0), "0");
     require( _trancheAPRSplitRatio <= FULL_ALLOC, '7');
-    require(_trancheIdealWeightRatio <= (FULL_ALLOC - _idealRange), '7');
-    require(_trancheIdealWeightRatio >= _idealRange, '5');
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
@@ -84,8 +81,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     strategyToken = _strategyToken;
     rebalancer = _rebalancer;
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
-    trancheIdealWeightRatio = _trancheIdealWeightRatio;
-    idealRange = _idealRange; // trancheIdealWeightRatio ± 10%
     uint256 _oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
     oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -112,12 +107,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
-
-    _additionalInitSteps();
   }
-
-  /// @notice override this in child contracts if needed
-  function _additionalInitSteps() internal virtual {}
 
   // ###############
   // Public methods
@@ -197,12 +187,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
             _contractTokenBalance(token) -
             _lockedRewards() -
             unclaimedFees;
-  }
-
-  /// @param _tranche tranche address
-  /// @return apr at ideal ratio (trancheIdealWeightRatio) between AA and BB
-  function getIdealApr(address _tranche) external view returns (uint256) {
-    return _getApr(_tranche, trancheIdealWeightRatio);
   }
 
   /// @param _tranche tranche address
@@ -406,17 +390,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       address stakingRewards = AAStaking;
       bool isStakingRewardsActive = stakingRewards != address(0);
       address _feeReceiver = feeReceiver;
-      address _referral = referral;
-      uint256 _referralAmount;
-      if (_referral != address(0)) {
-        // If the contract has a referral, then we give the referral a share of the fees (in AA tranche tokens)
-        _referralAmount = _amount * feeSplit / FULL_ALLOC;
-        _mintShares(_referralAmount, _referral, AATranche);
-      }
 
       // mint tranches tokens to this contract
       uint256 _minted = _mintShares(
-        _amount - _referralAmount,
+        _amount,
         isStakingRewardsActive ? address(this) : _feeReceiver,
         // Mint AA tranche tokens as fees
         AATranche
@@ -542,36 +519,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
     // Read state variables only once to save gas
-    uint256 _trancheIdealWeightRatio = trancheIdealWeightRatio;
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
-    uint256 _idealRange = idealRange;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
     bool _isBBStakingActive = _BBStaking != address(0);
     bool _isAAStakingActive = _AAStaking != address(0);
-
-    uint256 currAARatio;
-    if (_isBBStakingActive && _isAAStakingActive) {
-      currAARatio = getCurrentAARatio();
-    }
-
-    // Check if BB tranches should be rewarded (if AA ratio is too high)
-    if (_isBBStakingActive && (!_isAAStakingActive || (currAARatio > (_trancheIdealWeightRatio + _idealRange)))) {
-      // give more rewards to BB holders, ie send some rewards to BB Staking contract
-      return _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-    }
-    // Check if AA tranches should be rewarded (id AA ratio is too low)
-    if (_isAAStakingActive && (!_isBBStakingActive || (currAARatio < (_trancheIdealWeightRatio - _idealRange)))) {
-      // give more rewards to AA holders, ie send some rewards to AA Staking contract
-      return _depositIncentiveToken(_AAStaking, FULL_ALLOC);
-    }
 
     // Split rewards according to trancheAPRSplitRatio in case the ratio between
     // AA and BB is already ideal
     if (_isAAStakingActive) {
       // NOTE: the order is important here, first there must be the deposit for AA rewards,
       // if staking contract for AA is present
-      _depositIncentiveToken(_AAStaking, _trancheAPRSplitRatio);
+      _depositIncentiveToken(_AAStaking, _isBBStakingActive ? _trancheAPRSplitRatio : FULL_ALLOC);
     }
 
     if (_isBBStakingActive) {
@@ -924,14 +883,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     require((feeReceiver = _feeReceiver) != address(0), '0');
   }
 
-  /// @notice set new referral address
-  /// @dev can be called only by the owner
-  /// @param _referral new referral address (can be address(0))
-  function setReferral(address _referral) external {
-    _checkOnlyOwner();
-    referral = _referral;
-  }
-
   /// @param _guardian new guardian (pauser) address
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
@@ -942,14 +893,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setFee(uint256 _fee) external {
     _checkOnlyOwner();
     require((fee = _fee) <= MAX_FEE, '7');
-  }
-
-  /// @notice set fee split between feeReceiver and referral (if any). If referral is not set, fee goes to feeReceiver.
-  /// @dev can be called only by the owner
-  /// @param _feeSplit new fee split
-  function setFeeSplit(uint256 _feeSplit) external {
-    _checkOnlyOwner();
-    require((feeSplit = _feeSplit) <= FULL_ALLOC, '8');
   }
 
   /// @param _unlentPerc new unlent percentage
@@ -965,29 +908,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     releaseBlocksPeriod = _releaseBlocksPeriod;
   }
 
-  /// @param _isStkAAVEActive whether the contract receive stkAAVE or not
-  function setIsStkAAVEActive(bool _isStkAAVEActive) external {
-    _checkOnlyOwner();
-    isStkAAVEActive = _isStkAAVEActive;
-  }
-
-  /// @param _idealRange new ideal range
-  function setIdealRange(uint256 _idealRange) external {
-    _checkOnlyOwner();
-    require((idealRange = _idealRange) <= FULL_ALLOC, '7');
-  }
-
   /// @param _trancheAPRSplitRatio new apr split ratio
   function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external {
     _checkOnlyOwner();
     require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
-  }
-
-  /// @param _trancheIdealWeightRatio new ideal weight ratio (for incentives)
-  function setTrancheIdealWeightRatio(uint256 _trancheIdealWeightRatio) external {
-    _checkOnlyOwner();
-    require((_trancheIdealWeightRatio) >= idealRange, '5');
-    require((trancheIdealWeightRatio = _trancheIdealWeightRatio) <= (FULL_ALLOC - idealRange), '7');
   }
 
   /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
