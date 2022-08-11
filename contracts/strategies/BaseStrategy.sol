@@ -66,11 +66,11 @@ abstract contract BaseStrategy is
     /// @notice can be only called once
     /// @param _name name of this strategy ERC20 tokens
     /// @param _symbol symbol of this strategy ERC20 tokens
-    /// @param _underlyingToken address of the underlying token
+    /// @param _token address of the underlying token
     function _initialize(
         string memory _name,
         string memory _symbol,
-        address _underlyingToken,
+        address _token,
         address _owner
     ) internal initializer {
         OwnableUpgradeable.__Ownable_init();
@@ -79,7 +79,7 @@ abstract contract BaseStrategy is
 
         //----- // -------//
         strategyToken = address(this);
-        token = _underlyingToken;
+        token = _token;
         underlyingToken = IERC20Detailed(token);
         tokenDecimals = underlyingToken.decimals();
         oneToken = 10**(tokenDecimals);

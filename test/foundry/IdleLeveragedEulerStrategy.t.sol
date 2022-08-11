@@ -27,6 +27,10 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
 
     IExec internal constant EULER_EXEC = IExec(0x59828FdF7ee634AaaD3f58B19fDBa3b03E2D9d80);
 
+    IEulDistributor public EUL_DISTRIBUTOR = IEulDistributor(0xd524E29E3BAF5BB085403Ca5665301E94387A7e2);
+
+    uint256 internal constant INITIAL_TARGET_HEALTH = 1.2 * 1e18;
+
     address internal eulerMain;
     IEToken internal eToken;
     IDToken internal dToken;
@@ -49,7 +53,9 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
             address(eToken),
             address(dToken),
             _underlying,
-            _owner
+            _owner,
+            address(EUL_DISTRIBUTOR),
+            INITIAL_TARGET_HEALTH
         );
 
         vm.label(eulerMain, "euler");
@@ -75,7 +81,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
             _getCurrentHealthScore(),
             targetHealthScore,
             1e15, // 0.1%
-            "!target health score"
+            "!target health score 1"
         );
 
         _strategyDeposit(targetHealthScore, amount);
@@ -85,36 +91,88 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
             _getCurrentHealthScore(),
             targetHealthScore,
             1e15, // 0.1%
+            "!target health score 2"
+        );
+    }
+
+    function testLeverageAndDeleverageWithMint(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.assume(target > 1 && target < 20);
+
+        uint256 amount = 10000 * ONE_SCALE;
+        uint256 initialTargetHealth = 20 * EXP_SCALE;
+        uint256 targetHealthScore = target * EXP_SCALE;
+
+        // first deposit
+        _strategyDeposit(initialTargetHealth, amount);
+
+        // maxPercentDelta 1e18 == 100%
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            initialTargetHealth,
+            1e15, // 0.1%
+            "!target health score"
+        );
+
+        // leverage
+        _strategyDeposit(targetHealthScore, amount / 10);
+
+        assertLe(_getCurrentHealthScore(), initialTargetHealth, "hs < initial hs");
+
+        // deleverage
+        _strategyDeposit(initialTargetHealth, amount / 10);
+
+        assertGe(_getCurrentHealthScore(), targetHealthScore, "hs > initial hs");
+    }
+
+    function testGetSelfAmountToBurn(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.assume(target > 1 && target <= 20);
+
+        uint256 amount = 10000 * ONE_SCALE;
+        uint256 targetHealthScore = target * EXP_SCALE;
+
+        _strategyDeposit(targetHealthScore, amount);
+
+        uint256 amountAA = IERC20(AAtranche).balanceOf(address(this));
+        _strategyWithdraw(targetHealthScore, amountAA / 10);
+
+        // maxPercentDelta 1e18 == 100%
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            targetHealthScore,
+            1e15, // 0.1%
+            "!target health score"
+        );
+
+        _strategyWithdraw(targetHealthScore, amountAA / 10);
+
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            targetHealthScore,
+            1e15, // 0.1%
             "!target health score"
         );
     }
 
-    function testLeverage(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
-        vm.assume(target > 10 && target < 30);
+    function testLeverageAndDeleverageWithBurn(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.assume(target > 1 && target < 20);
 
         uint256 amount = 10000 * ONE_SCALE;
-        uint256 initialTargetHealth = 30 * EXP_SCALE;
+        uint256 initialTargetHealth = 20 * EXP_SCALE;
         uint256 targetHealthScore = target * EXP_SCALE;
 
+        // first deposit
         _strategyDeposit(initialTargetHealth, amount);
 
-        _strategyDeposit(targetHealthScore, amount / 10);
+        // leverage
+        uint256 amountAA = IERC20(AAtranche).balanceOf(address(this));
+        _strategyWithdraw(targetHealthScore, amountAA / 10);
 
         assertLe(_getCurrentHealthScore(), initialTargetHealth, "hs < initial hs");
-    }
 
-    function testDeleverage(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
-        vm.assume(target > 10 && target < 30);
+        // deleverage
+        _strategyWithdraw(initialTargetHealth, amountAA / 10);
 
-        uint256 amount = 10000 * ONE_SCALE;
-        uint256 initialTargetHealth = 10 * EXP_SCALE;
-        uint256 targetHealthScore = target * EXP_SCALE;
-
-        _strategyDeposit(initialTargetHealth, amount);
-
-        _strategyDeposit(targetHealthScore, amount / 10);
-
-        assertGe(_getCurrentHealthScore(), initialTargetHealth, "hs > initial hs");
+        assertGe(_getCurrentHealthScore(), targetHealthScore, "hs > initial hs");
     }
 
     function _strategyDeposit(uint256 targetHealthScore, uint256 amount) internal {
@@ -133,11 +191,51 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _cdoHarvest(true);
     }
 
-    function _getCurrentHealthScore() internal returns (uint256) {
+    function _strategyWithdraw(uint256 targetHealthScore, uint256 amountAA) internal {
+        // set targetHealthScore
+        vm.prank(owner);
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(targetHealthScore);
+
+        uint256 amount = (amountAA * idleCDO.virtualPrice(address(AAtranche))) / 1e18;
+        uint256 amtToBurn = IdleLeveragedEulerStrategy(address(strategy)).getSelfAmountToBurn(
+            targetHealthScore,
+            amount
+        );
+        assertLe(amtToBurn, amount, "amtToBurn < amountAA");
+
+        idleCDO.withdrawAA(amountAA);
+    }
+
+    function _getCurrentHealthScore() internal view returns (uint256) {
         return IdleLeveragedEulerStrategy(address(strategy)).getCurrentHealthScore();
     }
 
-    function testOnlyIdleCDO() public override runOnForkingNetwork(MAINNET_CHIANID) {}
+    function testSetInvalidTargetHealthScore() public runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.prank(owner);
+        vm.expectRevert(bytes("strat/invalid-target-hs"));
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(1e18);
+    }
 
-    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {}
+    function testOnlyOwner() public override runOnForkingNetwork(MAINNET_CHIANID) {
+        super.testOnlyOwner();
+
+        vm.prank(address(0xbabe));
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(2e18);
+    }
+
+    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        vm.expectRevert(bytes("Initializable: contract is already initialized"));
+        IdleLeveragedEulerStrategy(address(strategy)).initialize(
+            "LeverageEulerStrat",
+            "LEVERAGE_EULER",
+            address(0xbabe),
+            address(eToken),
+            address(dToken),
+            address(underlying),
+            owner,
+            0xd524E29E3BAF5BB085403Ca5665301E94387A7e2,
+            2e18
+        );
+    }
 }

@@ -8,6 +8,7 @@ import "../../interfaces/euler/IDToken.sol";
 import "../../interfaces/euler/IMarkets.sol";
 import "../../interfaces/euler/IExec.sol";
 import "../../interfaces/euler/IEulerGeneralView.sol";
+import "../../interfaces/euler/IEulDistributor.sol";
 
 import "forge-std/Test.sol";
 
@@ -22,6 +23,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         IEulerGeneralView(0xACC25c4d40651676FEEd43a3467F3169e3E68e42);
 
     IExec internal constant EULER_EXEC = IExec(0x59828FdF7ee634AaaD3f58B19fDBa3b03E2D9d80);
+
+    IERC20Detailed internal constant EUL = IERC20Detailed(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b);
 
     uint256 internal constant EXP_SCALE = 1e18;
 
@@ -40,6 +43,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
     uint256 public targetHealthScore;
 
+    IEulDistributor public eulDistributor;
+
     event UpdateTargetHealthScore(uint256 oldHeathScore, uint256 newHeathScore);
 
     function initialize(
@@ -49,11 +54,16 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         address _eToken,
         address _dToken,
         address _underlying,
-        address _owner
+        address _owner,
+        address _eulDistributor,
+        uint256 _targetHealthScore
     ) public initializer {
         _initialize(_name, _symbol, _underlying, _owner);
         eToken = IEToken(_eToken);
         dToken = IDToken(_dToken);
+        eulDistributor = IEulDistributor(_eulDistributor);
+
+        targetHealthScore = _targetHealthScore;
 
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlying);
@@ -77,25 +87,26 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         console.log("status.collateralValue, status.liabilityValue :>>", status.collateralValue, status.liabilityValue);
 
         // some of the amount should be deposited to make the health score close to the target one.
-        uint256 amountToDeposit = _amount - amountToMint;
-        if (amountToDeposit != 0) {
-            eToken.deposit(SUB_ACCOUNT_ID, amountToDeposit); // increase health score
-        }
+        eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
         // self borrow
         if (amountToMint != 0) {
             eToken.mint(SUB_ACCOUNT_ID, amountToMint);
         }
-
+        console.log("underlyingT    oken.balanceOf(address(this)) :>>", underlyingToken.balanceOf(address(this)));
         amountUsed = balanceBefore - underlyingToken.balanceOf(address(this));
+        console.log("amountUsed :>>", amountUsed);
     }
 
     function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
         rewards = new uint256[](1);
+        // (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
         // claim EUL by verifying a merkle root
-        // claimedRewards = merkleDistributor.claim(claimData);
+        // eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
+        // uint256 bal = EUL.balanceOf(address(this));
+        // address[] memory path = new address[](3);
         // path = [EUL, ETH, underlying];
-        // router.swap(path, claimedRewards);
+        // router.swap(path, bal);
         // amountOut = underlying.balanceOf(address(this));
     }
 
@@ -107,27 +118,29 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         uint256 balanceBefore = underlyingToken.balanceOf(address(this));
         uint256 amountToBurn = getSelfAmountToBurn(targetHealthScore, _amountToWithdraw);
 
+        console.log("_amountToWithdraw :>>", _amountToWithdraw);
         if (amountToBurn != 0) {
             // Pay off dToken liability with eTokens ("self-repay")
             eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
         }
+        eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
 
-        uint256 amountToRepay = _amountToWithdraw - amountToBurn;
-        if (amountToRepay != 0) {
-            dToken.repay(SUB_ACCOUNT_ID, amountToRepay); 
-        }
+        console.log("underlyingToken.balanceOf(address(this)) :>>", underlyingToken.balanceOf(address(this)));
+        console.log("dToken.balanceOf(address(this)) :>>", dToken.balanceOf(address(this)));
 
         amountWithdrawn = underlyingToken.balanceOf(address(this)) - balanceBefore;
         underlyingToken.safeTransfer(_destination, amountWithdrawn);
+
+        console.log("amountWithdrawn :>>", amountWithdrawn);
     }
 
-    function repayMannualy(uint256 _amount) external onlyOwner returns (uint256) {
-        // Pay off dToken liability with eTokens ("self-repay")
+    /// @dev Pay off dToken liability with eTokens ("self-repay")
+    function repayMannualy(uint256 _amount) external onlyOwner {
         eToken.burn(SUB_ACCOUNT_ID, _amount);
     }
 
     function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
-        require(_healthScore > EXP_SCALE, "strat/invalid-hs");
+        require(_healthScore > EXP_SCALE, "strat/invalid-target-hs");
 
         uint256 _oldTargetHealthScore = targetHealthScore;
         targetHealthScore = _healthScore;
@@ -175,9 +188,12 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 EXP_SCALE +
                 (cf * ONE_FACTOR_SCALE) /
                 SELF_COLLATERAL_FACTOR -
+                (cf * ONE_FACTOR_SCALE) /
+                CONFIG_FACTOR_SCALE -
                 ONE_FACTOR_SCALE;
             int256 selfAmount = ((int256(term1) - int256(term2)) * int256(ONE_FACTOR_SCALE)) / int256(denominator);
-
+            console.log("selfAmount :>>");
+            console.logInt(selfAmount);
             if ((_amount >= 0 && selfAmount <= 0) || (_amount <= 0 && selfAmount >= 0)) {
                 return 0;
             }
@@ -209,5 +225,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         return debtInUnderlying / (balanceInUnderlying - debtInUnderlying);
     }
 
-    function getRewardTokens() external view override returns (address[] memory) {}
+    function getRewardTokens() external view override returns (address[] memory rewards) {
+        rewards = new address[](1);
+        rewards[0] = address(EUL);
+    }
 }
