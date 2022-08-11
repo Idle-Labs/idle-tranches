@@ -5,6 +5,8 @@ import {IdleTruefiStrategy} from "../../contracts/strategies/truefi/IdleTruefiSt
 import {IdleCDOTruefiVariant} from "../../contracts/IdleCDOTruefiVariant.sol";
 import {ITruefiPool, ITrueLegacyMultiFarm, ILoanToken} from "../../contracts/interfaces/truefi/ITruefi.sol";
 
+error Default();
+
 contract TestIdleTruefiStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
   ITruefiPool public _pool = ITruefiPool(0xA991356d261fbaF194463aF6DF8f0464F8f1c742);
@@ -32,11 +34,26 @@ contract TestIdleTruefiStrategy is TestIdleCDOBase {
 
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
-    IdleTruefiStrategy(address(strategy)).setIdleCDO(address(_cdo));
+    IdleTruefiStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
   }
 
   function _deployCDO() internal override returns (IdleCDO _cdo) {
     _cdo = new IdleCDOTruefiVariant();
+  }
+
+  function testCantReinitialize()
+    external
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    vm.expectRevert(
+      bytes("Initializable: contract is already initialized")
+    );
+    IdleTruefiStrategy(address(strategy)).initialize(
+      _pool, // tfUSDC 
+      ITrueLegacyMultiFarm(0xec6c3FD795D6e6f202825Ddb56E01b3c128b0b10),
+      owner
+    );
   }
 
   function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
@@ -104,11 +121,11 @@ contract TestIdleTruefiStrategy is TestIdleCDOBase {
     
     // try to exit the position but it will fail with status reason "4" (defaulted)
     uint256 balAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(Default.selector);
     idleCDO.withdrawAA(balAA);
 
     uint256 balBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(Default.selector);
     idleCDO.withdrawBB(balBB);
   }
 

@@ -26,6 +26,15 @@ const overrideConfig = {
     }
   }
 };
+const minimalSizeConfig = {
+  version: "0.8.10",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 50
+    }
+  }
+};
 
 module.exports = {
   solidity: {
@@ -41,10 +50,8 @@ module.exports = {
       }
     ],
     overrides: {
-      "contracts/GuardedLaunchUpgradable.sol": overrideConfig,
-      "contracts/IdleCDOTranche.sol": overrideConfig,
-      "contracts/IdleCDOStorage.sol": overrideConfig,
       "contracts/IdleCDO.sol": overrideConfig,
+      "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
   },
