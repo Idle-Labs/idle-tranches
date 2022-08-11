@@ -996,6 +996,20 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     revertIfTooLow = true;
   }
 
+  /// @notice allow deposits and redeems for all classes of tranches
+  /// @dev can be called by the owner only
+  function restoreOperations() external {
+    _checkOnlyOwner();
+    // restore deposits
+    _unpause();
+    // restore withdraws
+    allowAAWithdraw = true;
+    allowBBWithdraw = true;
+    // Allow deposits/withdraws but checks for lending protocol default
+    skipDefaultCheck = false;
+    revertIfTooLow = true;
+  }
+
   /// @notice Pauses deposits and redeems
   /// @dev can be called by both the owner and the guardian
   function pause() external  {

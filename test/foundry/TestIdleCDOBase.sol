@@ -233,6 +233,30 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.withdrawBB(amount);
   }
 
+  function testRestoreOperations() external runOnForkingNetwork(MAINNET_CHIANID) {
+    uint256 amount = 1000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    // call with non owner
+    vm.expectRevert(bytes("6"));
+    vm.prank(address(0xbabe));
+    idleCDO.restoreOperations();
+
+    // call with owner
+    vm.startPrank(owner);
+    idleCDO.emergencyShutdown();
+    idleCDO.restoreOperations();
+    vm.stopPrank();
+
+    vm.roll(block.number + 1);
+
+    idleCDO.withdrawAA(amount);
+    idleCDO.withdrawBB(amount);
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+  }
+
   function testAPR() external runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
