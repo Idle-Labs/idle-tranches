@@ -14,6 +14,9 @@ import "./strategies/truefi/IdleTruefiStrategy.sol";
 import "./IdleCDO.sol";
 import {ITruefiPool, ITrueLender, ILoanToken} from "./interfaces/truefi/ITruefi.sol";
 
+error Default();
+error Is0();
+
 /// @title IdleCDO variant for TrueFi. 
 /// @author Idle Labs Inc.
 /// @dev In this variant the `_checkDefault` is perfomed by looping through all loans (which should always be at most like 10-20)
@@ -21,28 +24,17 @@ import {ITruefiPool, ITrueLender, ILoanToken} from "./interfaces/truefi/ITruefi.
 contract IdleCDOTruefiVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
 
-    /// @dev override unlent percentage and fee
-  function _additionalInitSteps() internal override {
-    unlentPerc = 0; // 0%, unlent balance is not used in this variant
-    fee = 15000; // 15% performance fee
-  }
-
   /// @dev check if any loan for the pool is defaulted
   function _checkDefault() override internal view {
     // loop thorugh all loans, which should be at most like 10-20
     // and see if any loan is defaulted
     ITruefiPool _truePool = IdleTruefiStrategy(strategy)._pool();
-    ITrueLender _trueLender = _truePool.lender();
-    ILoanToken[] memory loans = _trueLender.loans(_truePool);
-    bool isDefaulted;
+    ILoanToken[] memory loans = _truePool.lender().loans(_truePool);
     for (uint256 i = 0; i < loans.length; i++) {
-      if (isDefaulted) {
-        break;
+      if (ILoanToken(loans[i]).status() == ILoanToken.Status.Defaulted) {
+        revert Default();
       }
-      isDefaulted = ILoanToken(loans[i]).status() == ILoanToken.Status.Defaulted;
     }
-
-    require(!isDefaulted, "4");
   }
 
   /// @notice It allows users to burn their tranche token and redeem their principal + interest back
@@ -61,16 +53,17 @@ contract IdleCDOTruefiVariant is IdleCDO {
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
-    require(_amount > 0, '0');
+    if (_amount == 0) {
+      revert Is0();
+    }
 
     address _token = token;
     address _aa = AATranche;
     IdleCDOTranche _selectedTranche = IdleCDOTranche(_tranche);
     uint256 _strategyTokens = IERC20Detailed(strategyToken).totalSupply();
     // round down for BB tranche
-    uint256 _BBstrategyTokens = _strategyTokens * (FULL_ALLOC - _getAARatio(true)) / FULL_ALLOC;
-    uint256 _AAstrategyTokens = _strategyTokens - _BBstrategyTokens;
-    uint256 _strategyTokensForTranche = _aa == _tranche ? _AAstrategyTokens : _BBstrategyTokens;
+    uint256 _strategyTokensBB = _strategyTokens * (FULL_ALLOC - _getAARatio(true)) / FULL_ALLOC;
+    uint256 _strategyTokensForTranche = _aa == _tranche ? _strategyTokens - _strategyTokensBB : _strategyTokensBB;
 
     toRedeem = IIdleCDOStrategy(strategy).redeem(
       // strategyToken amount = strategyTokensForAA * trancheamount / trancheSupply

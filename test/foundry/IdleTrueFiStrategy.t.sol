@@ -5,6 +5,8 @@ import {IdleTruefiStrategy} from "../../contracts/strategies/truefi/IdleTruefiSt
 import {IdleCDOTruefiVariant} from "../../contracts/IdleCDOTruefiVariant.sol";
 import {ITruefiPool, ITrueLegacyMultiFarm, ILoanToken} from "../../contracts/interfaces/truefi/ITruefi.sol";
 
+error Default();
+
 contract TestIdleTruefiStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
   ITruefiPool public _pool = ITruefiPool(0xA991356d261fbaF194463aF6DF8f0464F8f1c742);
@@ -119,11 +121,11 @@ contract TestIdleTruefiStrategy is TestIdleCDOBase {
     
     // try to exit the position but it will fail with status reason "4" (defaulted)
     uint256 balAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(Default.selector);
     idleCDO.withdrawAA(balAA);
 
     uint256 balBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(Default.selector);
     idleCDO.withdrawBB(balBB);
   }
 
