@@ -58,7 +58,7 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     }
 
     modifier onlyIdleCDO() {
-        require(msg.sender == idleCDO, "TruefiPoolStrategy: Caller must be Idle CDO");
+        require(msg.sender == idleCDO, "Only IdleCDO can call");
         _;
     }
 
@@ -82,7 +82,7 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _oneToken;
     }
 
-    function setIdleCDO(address _idleCDO) external onlyOwner {
+    function setWhitelistedCDO(address _idleCDO) external onlyOwner {
         require(_idleCDO != address(0), "TruefiPoolStrategy: Address cannot be zero");
         idleCDO = _idleCDO;
     }

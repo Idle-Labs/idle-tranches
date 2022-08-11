@@ -32,11 +32,26 @@ contract TestIdleTruefiStrategy is TestIdleCDOBase {
 
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
-    IdleTruefiStrategy(address(strategy)).setIdleCDO(address(_cdo));
+    IdleTruefiStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
   }
 
   function _deployCDO() internal override returns (IdleCDO _cdo) {
     _cdo = new IdleCDOTruefiVariant();
+  }
+
+  function testCantReinitialize()
+    external
+    override
+    runOnForkingNetwork(MAINNET_CHIANID)
+  {
+    vm.expectRevert(
+      bytes("Initializable: contract is already initialized")
+    );
+    IdleTruefiStrategy(address(strategy)).initialize(
+      _pool, // tfUSDC 
+      ITrueLegacyMultiFarm(0xec6c3FD795D6e6f202825Ddb56E01b3c128b0b10),
+      owner
+    );
   }
 
   function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
