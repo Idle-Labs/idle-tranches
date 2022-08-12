@@ -174,10 +174,10 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
     let idleCDOAddress;
+    const contractName = deployToken.cdoVariant || (isMatic ? 'IdleCDOPolygon' : 'IdleCDO');
 
     if (helpers.isEmptyString(cdoProxyAddressToClone)) {
       console.log("🛑 cdoProxyAddressToClone must be specified");
-      const contractName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
       await helpers.prompt(`Deploy a new instance of ${contractName}? [y/n]`, true);
 
       const newCDO = await helpers.deployUpgradableContract(
@@ -211,7 +211,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       idleCDOAddress = await hre.run("deploy-cdo-with-factory", deployParams);
     }
 
-    const idleCDO = await ethers.getContractAt(isMatic ? "IdleCDOPolygon" : "IdleCDO", idleCDOAddress);
+    const idleCDO = await ethers.getContractAt(contractName, idleCDOAddress);
     console.log('owner idleCDO', await idleCDO.owner());
 
     if (strategy.setWhitelistedCDO) {
@@ -285,6 +285,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
     }
 
+    if (deployToken.unlent == 0) {
+      console.log('Setting unlent to 0')
+      await idleCDO.connect(signer).setUnlentPerc(0);
+    }
+
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
     // const isValid = await reg.isValidCdo(idleCDO.address);
@@ -353,6 +358,7 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
     // Deploy IdleCDO with new strategy
     await hre.run("deploy-with-factory", {
       cdoname: args.cdoname,
+      cdoVariant: deployToken.cdoVariant,
       proxyCdoAddress: deployToken.proxyCdoAddress,
       strategyAddress: strategy.address,
       strategyName: deployToken.strategyName,

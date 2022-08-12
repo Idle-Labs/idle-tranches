@@ -4,10 +4,10 @@
 /// @notice IIdleCDOStrategy to deploy funds in TrueFi.
 pragma solidity ^0.8.10;
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {IIdleCDOStrategy} from "../../interfaces/IIdleCDOStrategy.sol";
 import {ITruefiPool, IERC20WithDecimals, ITrueLegacyMultiFarm, ITrueLender, ILoanToken} from "../../interfaces/truefi/ITruefi.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -15,9 +15,9 @@ import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy, ReentrancyGuardUpgradeable {
-    using SafeERC20 for ITruefiPool;
-    using SafeERC20 for IERC20;
-    using SafeERC20 for IERC20WithDecimals;
+    using SafeERC20Upgradeable for ITruefiPool;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20Upgradeable for IERC20WithDecimals;
 
     uint256 private constant PRECISION = 1e30;
     uint256 private constant BASIS_POINTS = 1e4;
@@ -27,7 +27,7 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     ITrueLender internal _lender;
     IERC20WithDecimals internal _token;
     IERC20WithDecimals internal _rewardToken;
-    IERC20[] internal _farmTokens;
+    IERC20Upgradeable[] internal _farmTokens;
     address[] internal _rewardTokens;
 
     uint256 internal _oneToken;
@@ -48,7 +48,7 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _farm = farm;
         _rewardToken = farm.rewardToken();
 
-        _farmTokens = toArray(IERC20(_pool));
+        _farmTokens = toArray(IERC20Upgradeable(_pool));
         _rewardTokens = toArray(address(_rewardToken));
 
         _token.safeApprove(address(_pool), type(uint256).max);
@@ -259,8 +259,8 @@ contract IdleTruefiStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         array[0] = _address;
     }
 
-    function toArray(IERC20 _erc20) internal pure returns (IERC20[] memory array) {
-        array = new IERC20[](1);
+    function toArray(IERC20Upgradeable _erc20) internal pure returns (IERC20Upgradeable[] memory array) {
+        array = new IERC20Upgradeable[](1);
         array[0] = _erc20;
     }
 }

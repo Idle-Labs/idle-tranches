@@ -23,6 +23,8 @@ const mainnetContracts = {
   eUSDT: '0x4d19F33948b99800B6113Ff3e83beC9b537C85d2',
   cUSDC: '0x39aa39c021dfbae8fac545936693ac917d5e7563',
   cpWIN_USDC: '0xCb288b6d30738db7E3998159d192615769794B5b',
+  tfUSDC: '0xA991356d261fbaF194463aF6DF8f0464F8f1c742',
+  tfUSDCMultifarm: '0xec6c3FD795D6e6f202825Ddb56E01b3c128b0b10',
   USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
   cUSDT: '0xf650C3d88D12dB855b8bf7D11Be6C55A4e07dCC9',
   IDLE: '0x875773784Af8135eA0ef43b5a374AaD105c5D39e',
@@ -330,6 +332,19 @@ const CDOs = {
     AATranche: '0xb86264c21418aA75F7c337B1821CcB4Ff4d57673',
     BBTranche: '0x4D9d9AA17c3fcEA05F20a87fc1991A045561167d'
   },
+  truefiusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x62B17c9083Db5941197E83BD385985B8878B58Fb',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x1f5A97fB665e295303D2F7215bA2160cc5313c8E',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x62B17c9083Db5941197E83BD385985B8878B58Fb',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x868bb78fb045576162B510ba33358C9f93e7959e',
+    BBTranche: '0x6EdE2522347E6a5A0420F41f42e021246e97B540'
+  },
 };
 
 const polygonCDOs = {
@@ -557,6 +572,25 @@ exports.deployTokens = {
     limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
+  },
+  // Truefi
+  truefiusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleTruefiStrategy',
+    strategyParams: [
+      mainnetContracts.tfUSDC, // _strategyToken
+      mainnetContracts.tfUSDCMultifarm, // _underlyingToken
+      'owner' // owner address
+    ],
+    cdo: CDOs.truefiusdc,
+    cdoVariant: 'IdleCDOTruefiVariant',
+    unlent: 0,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: '', // deploy new instance
   },
 
   // Convex

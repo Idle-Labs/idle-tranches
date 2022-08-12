@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 
-interface IERC20WithDecimals is IERC20 {
+interface IERC20WithDecimals is IERC20Upgradeable {
     function decimals() external view returns (uint8);
 
     function mint(address receiver, uint256 amount) external;
@@ -38,13 +38,13 @@ interface ITruefiPool is IERC20WithDecimals {
 interface ITrueLegacyMultiFarm {
     function rewardToken() external view returns (IERC20WithDecimals);
 
-    function stake(IERC20 token, uint256 amount) external;
+    function stake(IERC20Upgradeable token, uint256 amount) external;
 
-    function unstake(IERC20 token, uint256 amount) external;
+    function unstake(IERC20Upgradeable token, uint256 amount) external;
 
-    function claim(IERC20[] calldata tokens) external;
+    function claim(IERC20Upgradeable[] calldata tokens) external;
 
-    function staked(IERC20 token, address staker) external view returns (uint256);
+    function staked(IERC20Upgradeable token, address staker) external view returns (uint256);
 }
 
 interface ILoanToken {
