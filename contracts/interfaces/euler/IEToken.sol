@@ -15,6 +15,9 @@ interface IEToken is IERC20 {
     /// @param amount In underlying units (use max uint256 for full underlying token balance)
     function deposit(uint256 subAccountId, uint256 amount) external;
 
+    /// @notice Mint eTokens and a corresponding amount of dTokens ("self-borrow")
+    /// @param subAccountId 0 for primary, 1-255 for a sub-account
+    /// @param amount In underlying units
     function mint(uint256 subAccountId, uint256 amount) external;
 
     /// @notice Transfer underlying tokens from Euler pool to sender, and decrease account's eTokens

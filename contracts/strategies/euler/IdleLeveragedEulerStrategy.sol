@@ -9,6 +9,7 @@ import "../../interfaces/euler/IMarkets.sol";
 import "../../interfaces/euler/IExec.sol";
 import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/euler/IEulDistributor.sol";
+import "../../interfaces/ISwapRouter.sol";
 
 import "forge-std/Test.sol";
 
@@ -45,7 +46,17 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
     IEulDistributor public eulDistributor;
 
+    ISwapRouter public router;
+
+    bytes public path;
+
     event UpdateTargetHealthScore(uint256 oldHeathScore, uint256 newHeathScore);
+
+    event UpdateEulDistributor(address oldEulDistributor, address newEulDistributor);
+
+    event UpdateSwapRouter(address oldRouter, address newRouter);
+
+    event UpdateRouterPath(bytes oldRouter, bytes _path);
 
     function initialize(
         string memory _name,
@@ -56,13 +67,16 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         address _underlying,
         address _owner,
         address _eulDistributor,
+        address _router,
+        bytes memory _path,
         uint256 _targetHealthScore
     ) public initializer {
         _initialize(_name, _symbol, _underlying, _owner);
         eToken = IEToken(_eToken);
         dToken = IDToken(_dToken);
         eulDistributor = IEulDistributor(_eulDistributor);
-
+        router = ISwapRouter(_router);
+        path = _path;
         targetHealthScore = _targetHealthScore;
 
         // Enter the collateral market (collateral's address, *not* the eToken address)
@@ -84,8 +98,6 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         // uint256 amountToMint = getAmountToMintByHealthScore(targetHealthScore, _amount);
         uint256 amountToMint = getSelfAmountToMint(targetHealthScore, _amount);
 
-        console.log("status.collateralValue, status.liabilityValue :>>", status.collateralValue, status.liabilityValue);
-
         // some of the amount should be deposited to make the health score close to the target one.
         eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
@@ -93,21 +105,34 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         if (amountToMint != 0) {
             eToken.mint(SUB_ACCOUNT_ID, amountToMint);
         }
-        console.log("underlyingT    oken.balanceOf(address(this)) :>>", underlyingToken.balanceOf(address(this)));
+
         amountUsed = balanceBefore - underlyingToken.balanceOf(address(this));
-        console.log("amountUsed :>>", amountUsed);
     }
 
     function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
         rewards = new uint256[](1);
-        // (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
-        // claim EUL by verifying a merkle root
-        // eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
-        // uint256 bal = EUL.balanceOf(address(this));
-        // address[] memory path = new address[](3);
-        // path = [EUL, ETH, underlying];
-        // router.swap(path, bal);
-        // amountOut = underlying.balanceOf(address(this));
+
+        if (address(eulDistributor) != address(0) && address(router) != address(0) && data.length != 0) {
+            (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
+
+            // claim EUL by verifying a merkle root
+            eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
+            uint256 amountIn = EUL.balanceOf(address(this));
+
+            // swap EUL for underlying
+            EUL.safeApprove(address(router), amountIn);
+            router.exactInput(
+                ISwapRouter.ExactInputParams({
+                    path: path,
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    amountIn: amountIn,
+                    amountOutMinimum: 0
+                })
+            );
+
+            rewards[0] = underlyingToken.balanceOf(address(this));
+        }
     }
 
     function _withdraw(uint256 _amountToWithdraw, address _destination)
@@ -117,26 +142,27 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     {
         uint256 balanceBefore = underlyingToken.balanceOf(address(this));
         uint256 amountToBurn = getSelfAmountToBurn(targetHealthScore, _amountToWithdraw);
-
-        console.log("_amountToWithdraw :>>", _amountToWithdraw);
+        // @note
         if (amountToBurn != 0) {
             // Pay off dToken liability with eTokens ("self-repay")
             eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
         }
-        eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
 
-        console.log("underlyingToken.balanceOf(address(this)) :>>", underlyingToken.balanceOf(address(this)));
-        console.log("dToken.balanceOf(address(this)) :>>", dToken.balanceOf(address(this)));
+        uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
+        if (_amountToWithdraw > balanceInUnderlying) {
+            _amountToWithdraw = balanceInUnderlying;
+        }
+        // withdraw underlying
+        eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
 
         amountWithdrawn = underlyingToken.balanceOf(address(this)) - balanceBefore;
         underlyingToken.safeTransfer(_destination, amountWithdrawn);
-
-        console.log("amountWithdrawn :>>", amountWithdrawn);
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay")
-    function repayMannualy(uint256 _amount) external onlyOwner {
+    function deleverageMannualy(uint256 _amount) external onlyOwner {
         eToken.burn(SUB_ACCOUNT_ID, _amount);
+        eToken.mint(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
     }
 
     function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
@@ -146,6 +172,27 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         targetHealthScore = _healthScore;
 
         emit UpdateTargetHealthScore(_oldTargetHealthScore, _healthScore);
+    }
+
+    function setEulDistributor(address _eulDistributor) external onlyOwner {
+        address oldEulDistributor = address(eulDistributor);
+        eulDistributor = IEulDistributor(_eulDistributor);
+
+        emit UpdateEulDistributor(oldEulDistributor, _eulDistributor);
+    }
+
+    function setSwapRouter(address _router) external onlyOwner {
+        address oldRouter = address(router);
+        router = ISwapRouter(_router);
+
+        emit UpdateSwapRouter(oldRouter, _router);
+    }
+
+    function setRouterPath(bytes calldata _path) external onlyOwner {
+        bytes memory oldPath = path;
+        path = _path;
+
+        emit UpdateRouterPath(oldPath, _path);
     }
 
     /// @notice For example
@@ -165,18 +212,25 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// ref: https://github.com/euler-xyz/euler-contracts/blob/0fade57d9ede7b010f943fa8ad3ad74b9c30e283/contracts/modules/RiskManager.sol#L314
     /// @param _targetHealthScore  health score 1.0 == 1e18
     /// @param _amount _amount to deposit or withdraw. _amount greater than zero means `deposit`. _amount less than zero means `withdraw`
-    function _getSelfAmount(uint256 _targetHealthScore, int256 _amount) internal view returns (int256) {
+    function _getSelfAmount(uint256 _targetHealthScore, int256 _amount) internal view returns (uint256 selfAmount) {
         require(_targetHealthScore > EXP_SCALE, "strat/invalid-target-hs");
-        IMarkets.AssetConfig memory config = EULER_MARKETS.underlyingToAssetConfig(token);
-        uint256 cf = config.collateralFactor;
 
-        uint256 balanceInUnderlying = IEToken(config.eTokenAddress).balanceOfUnderlying(address(this));
         uint256 debtInUnderlying = dToken.balanceOf(address(this));
-        int256 collateral = int256(balanceInUnderlying) + _amount;
-        require(collateral > 0, "strat/exceed-balance");
 
-        console.log("balanceInUnderlying,debtInUnderlying :>>", balanceInUnderlying, debtInUnderlying);
+        uint256 cf;
+        uint256 balance;
+        uint256 balanceInUnderlying;
         {
+            IMarkets.AssetConfig memory config = EULER_MARKETS.underlyingToAssetConfig(token);
+            cf = config.collateralFactor;
+            balance = IEToken(config.eTokenAddress).balanceOf(address(this));
+            balanceInUnderlying = IEToken(config.eTokenAddress).convertBalanceToUnderlying(balance);
+        }
+
+        {
+            int256 collateral = int256(balanceInUnderlying) + _amount;
+            require(collateral > 0, "strat/exceed-balance");
+
             uint256 term1 = ((cf * uint256(collateral))) / CONFIG_FACTOR_SCALE;
             uint256 term2 = (((_targetHealthScore * ONE_FACTOR_SCALE) /
                 EXP_SCALE +
@@ -191,25 +245,26 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 (cf * ONE_FACTOR_SCALE) /
                 CONFIG_FACTOR_SCALE -
                 ONE_FACTOR_SCALE;
-            int256 selfAmount = ((int256(term1) - int256(term2)) * int256(ONE_FACTOR_SCALE)) / int256(denominator);
-            console.log("selfAmount :>>");
-            console.logInt(selfAmount);
-            if ((_amount >= 0 && selfAmount <= 0) || (_amount <= 0 && selfAmount >= 0)) {
-                return 0;
+
+            if (term1 >= term2) {
+                if (_amount <= 0) return 0;
+                selfAmount = ((term1 - term2) * ONE_FACTOR_SCALE) / denominator;
+            } else {
+                if (_amount >= 0) return 0;
+                selfAmount = ((term2 - term1) * ONE_FACTOR_SCALE) / denominator;
+                if (selfAmount >= debtInUnderlying) {
+                    selfAmount = type(uint256).max;
+                }
             }
-            if ((_amount >= 0 && selfAmount >= _amount) || (_amount <= 0 && selfAmount <= _amount)) {
-                return _amount;
-            }
-            return selfAmount;
         }
     }
 
     function getSelfAmountToMint(uint256 _targetHealthScore, uint256 _amount) public view returns (uint256) {
-        return uint256(_getSelfAmount(_targetHealthScore, int256(_amount)));
+        return _getSelfAmount(_targetHealthScore, int256(_amount));
     }
 
     function getSelfAmountToBurn(uint256 _targetHealthScore, uint256 _amount) public view returns (uint256) {
-        return uint256(-1 * _getSelfAmount(_targetHealthScore, -int256(_amount)));
+        return _getSelfAmount(_targetHealthScore, -int256(_amount));
     }
 
     function getCurrentHealthScore() public view returns (uint256) {
