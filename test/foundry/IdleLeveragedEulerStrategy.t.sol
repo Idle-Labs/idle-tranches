@@ -43,6 +43,8 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
 
     IDToken internal dToken;
 
+    bytes internal path;
+
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
         eToken = IEToken(0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716); // eUSDC
@@ -50,15 +52,15 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
         eulDistributor = new EulDistributorMock();
-        deal(EUL, address(eulDistributor), 1000e18, true);
+        deal(EUL, address(eulDistributor), 1e23, true);
         // claim data
-        extraData = abi.encode(uint256(10e18), new bytes32[](0));
+        extraData = abi.encode(uint256(1000e18), new bytes32[](0));
 
         strategy = new IdleLeveragedEulerStrategy();
         strategyToken = IERC20Detailed(_strategy); // strategy itself
         _strategy = address(strategy);
-        //  The path is a sequence of tokenAddress Fee tokenAddress, encoded in reverse order
-        bytes memory path = abi.encode(address(underlying), uint24(3000), WETH9, uint24(10000), EUL);
+
+        path = abi.encodePacked(EUL, uint24(10000), WETH9, uint24(3000), _underlying);
 
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
         IdleLeveragedEulerStrategy(_strategy).initialize(
@@ -78,6 +80,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         vm.label(eulerMain, "euler");
         vm.label(address(eToken), "eToken");
         vm.label(address(dToken), "dToken");
+        vm.label(WETH9, "WETH9");
         vm.label(address(eulDistributor), "eulDist");
         vm.label(address(router), "router");
     }
@@ -85,23 +88,6 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     function _postDeploy(address _cdo, address _owner) internal override {
         vm.prank(_owner);
         IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
-    }
-
-    function testSwap() public {
-        // swap EUL for underlying
-        uint256 amountIn = 10e18;
-        bytes memory path = abi.encode(address(underlying), uint24(3000), WETH9, uint24(10000), EUL);
-        deal(EUL, address(this), amountIn, true);
-        IERC20Detailed(EUL).approve(address(router), amountIn);
-        router.exactInput(
-            ISwapRouter.ExactInputParams({
-                path: path,
-                recipient: address(this),
-                deadline: block.timestamp,
-                amountIn: amountIn,
-                amountOutMinimum: 0
-            })
-        );
     }
 
     function testGetSelfAmountToMint(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -184,7 +170,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
             _getCurrentHealthScore(),
             targetHealthScore,
             1e15, // 0.1%
-            "!target health score"
+            "!target health score before"
         );
 
         _strategyWithdraw(targetHealthScore, amountAA / 10);
@@ -194,7 +180,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
             _getCurrentHealthScore(),
             targetHealthScore,
             1e15, // 0.1%
-            "!target health score"
+            "!target health score after"
         );
     }
 
@@ -272,7 +258,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setSwapRouter(address(0xabcd));
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        _strategy.setRouterPath(abi.encode(address(underlying), 3000, WETH9, 10000, EUL));
+        _strategy.setRouterPath(path);
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
         _strategy.deleverageMannualy(1000);

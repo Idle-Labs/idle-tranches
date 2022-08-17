@@ -97,7 +97,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         // get amount to deposit to retain a target health score
         // uint256 amountToMint = getAmountToMintByHealthScore(targetHealthScore, _amount);
         uint256 amountToMint = getSelfAmountToMint(targetHealthScore, _amount);
-
+        console.log("amountToMint :>>", amountToMint);
         // some of the amount should be deposited to make the health score close to the target one.
         eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
