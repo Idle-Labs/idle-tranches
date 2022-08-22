@@ -51,15 +51,15 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         dToken = IDToken(0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42); // dUSDC
         _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
-        eulDistributor = new EulDistributorMock();
-        deal(EUL, address(eulDistributor), 1e23, true);
-        // claim data
-        extraData = abi.encode(uint256(1000e18), new bytes32[](0));
-
         strategy = new IdleLeveragedEulerStrategy();
-        strategyToken = IERC20Detailed(_strategy); // strategy itself
         _strategy = address(strategy);
 
+        eulDistributor = new EulDistributorMock();
+        deal(EUL, address(eulDistributor), 1e23, true);
+
+        // claim data
+        extraData = abi.encode(uint256(1000e18), new bytes32[](0));
+        // v3 router path
         path = abi.encodePacked(EUL, uint24(10000), WETH9, uint24(3000), _underlying);
 
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));

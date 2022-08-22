@@ -78,7 +78,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
-  function testInitialize() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialize() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
@@ -375,7 +375,7 @@ abstract contract TestIdleCDOBase is Test {
   function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
     (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
     if (success){
-      releaseBlocksPeriod = abi.decode(returnData, (uint256));
+      releaseBlocksPeriod = abi.decode(returnData, (uint32));
     } else {
       emit log("can't find releaseBlocksPeriod() on strategy");
       emit logs(returnData);

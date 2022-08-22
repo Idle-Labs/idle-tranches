@@ -94,12 +94,14 @@ abstract contract BaseStrategy is
         transferOwnership(_owner);
     }
 
+    /// @dev tokenized position has same decimals as its underlying
+    function decimals() public view override returns (uint8) {
+        return uint8(tokenDecimals);
+    }
+
     /// @dev makes the actual deposit into the `strategy`
     /// @param _amount amount of tokens to deposit
-    function _deposit(uint256 _amount)
-        internal
-        virtual
-        returns (uint256 amountUsed);
+    function _deposit(uint256 _amount) internal virtual returns (uint256 amountUsed);
 
     /// @dev makes the actual withdraw from the 'strategy'
     /// @return amountWithdrawn returns the amount withdrawn
@@ -111,22 +113,13 @@ abstract contract BaseStrategy is
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
     /// @return shares strategyTokens minted
-    function deposit(uint256 _amount)
-        external
-        override
-        onlyIdleCDO
-        returns (uint256 shares)
-    {
+    function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 shares) {
         if (_amount != 0) {
             // Get current price
             uint256 _price = price();
 
             // Send tokens to the strategy
-            IERC20Detailed(token).safeTransferFrom(
-                msg.sender,
-                address(this),
-                _amount
-            );
+            IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
 
             // Calls our internal deposit function
             _amount = _deposit(_amount);
@@ -145,12 +138,7 @@ abstract contract BaseStrategy is
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
     /// @param _shares amount of strategyTokens to redeem
     /// @return amountRedeemed  amount of underlyings redeemed
-    function redeem(uint256 _shares)
-        external
-        override
-        onlyIdleCDO
-        returns (uint256 amountRedeemed)
-    {
+    function redeem(uint256 _shares) external override onlyIdleCDO returns (uint256 amountRedeemed) {
         if (_shares != 0) {
             amountRedeemed = _positionWithdraw(_shares, msg.sender, price(), 0);
         }
@@ -159,12 +147,7 @@ abstract contract BaseStrategy is
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
     /// @return amountRedeemed Amount of underlying tokens received
-    function redeemUnderlying(uint256 _amount)
-        external
-        virtual
-        onlyIdleCDO
-        returns (uint256 amountRedeemed)
-    {
+    function redeemUnderlying(uint256 _amount) external virtual onlyIdleCDO returns (uint256 amountRedeemed) {
         uint256 _price = price();
         uint256 _shares = (_amount * oneToken) / _price;
         if (_shares != 0) {
@@ -213,7 +196,6 @@ abstract contract BaseStrategy is
     {
         rewards = _redeemRewards(data);
         uint256 mintedUnderlyings = rewards[0];
-
         if (mintedUnderlyings == 0) {
             return rewards;
         }
@@ -232,25 +214,19 @@ abstract contract BaseStrategy is
     /// @dev reinvest underlyings` to the `strategy`
     ///      this method should be used in the `_redeemRewards` method
     ///      Ussually don't mint new shares.
-    function _reinvest(uint256 underlyings)
-        internal
-        virtual
-        returns (uint256 underlyingsStaked)
-    {
+    function _reinvest(uint256 underlyings) internal virtual returns (uint256 underlyingsStaked) {
         underlyingsStaked = _deposit(underlyings);
     }
 
     /// @return rewards rewards[0] : mintedUnderlying
-    function _redeemRewards(bytes calldata data)
-        internal
-        virtual
-        returns (uint256[] memory rewards);
+    function _redeemRewards(bytes calldata data) internal virtual returns (uint256[] memory rewards);
 
     /// @notice update last saved apr
     /// @param _gain amount of underlying tokens to mint/redeem
     function _updateApr(uint256 _gain) internal {
         uint256 _totalSupply = totalSupply();
         uint256 timeIncrease = block.timestamp - lastIndexedTime;
+
         if (_totalSupply != 0 && timeIncrease != 0) {
             uint256 priceIncrease = (_gain * oneToken) / _totalSupply;
             lastApr = uint96(
@@ -265,16 +241,14 @@ abstract contract BaseStrategy is
     function pullStkAAVE() external override returns (uint256 pulledAmount) {}
 
     /// @notice net price in underlyings of 1 strategyToken
-    /// @return _price
+    /// @return _price denominated in decimals of underlyings
     function price() public view virtual override returns (uint256 _price) {
         uint256 _totalSupply = totalSupply();
 
         if (_totalSupply == 0) {
             _price = oneToken;
         } else {
-            _price =
-                ((totalTokensStaked - _lockedTokens()) * oneToken) /
-                _totalSupply;
+            _price = ((totalTokensStaked - _lockedTokens()) * oneToken) / _totalSupply;
         }
     }
 
@@ -283,10 +257,7 @@ abstract contract BaseStrategy is
         uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
         uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
 
-        if (
-            _totalLockedTokens != 0 &&
-            _blocksSinceLastHarvest < _releaseBlocksPeriod
-        ) {
+        if (_totalLockedTokens != 0 && _blocksSinceLastHarvest < _releaseBlocksPeriod) {
             // progressively release harvested rewards
             _locked = (_totalLockedTokens * (_releaseBlocksPeriod - _blocksSinceLastHarvest)) / _releaseBlocksPeriod; // prettier-ignore
         }
@@ -296,10 +267,7 @@ abstract contract BaseStrategy is
         apr = lastApr;
     }
 
-    function setReleaseBlocksPeriod(uint32 _releaseBlocksPeriod)
-        external
-        onlyOwner
-    {
+    function setReleaseBlocksPeriod(uint32 _releaseBlocksPeriod) external onlyOwner {
         require(_releaseBlocksPeriod != 0, "IS_0");
         releaseBlocksPeriod = _releaseBlocksPeriod;
     }

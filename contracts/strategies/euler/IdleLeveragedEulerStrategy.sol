@@ -97,7 +97,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         // get amount to deposit to retain a target health score
         // uint256 amountToMint = getAmountToMintByHealthScore(targetHealthScore, _amount);
         uint256 amountToMint = getSelfAmountToMint(targetHealthScore, _amount);
-        console.log("amountToMint :>>", amountToMint);
+
         // some of the amount should be deposited to make the health score close to the target one.
         eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
@@ -142,7 +142,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     {
         uint256 balanceBefore = underlyingToken.balanceOf(address(this));
         uint256 amountToBurn = getSelfAmountToBurn(targetHealthScore, _amountToWithdraw);
-        // @note
+
         if (amountToBurn != 0) {
             // Pay off dToken liability with eTokens ("self-repay")
             eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
@@ -150,6 +150,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
         uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
         if (_amountToWithdraw > balanceInUnderlying) {
+            console.log("_amountToWithdraw :>>", _amountToWithdraw);
+            console.log("balanceInUnderlying :>>", balanceInUnderlying);
             _amountToWithdraw = balanceInUnderlying;
         }
         // withdraw underlying
@@ -159,10 +161,10 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         underlyingToken.safeTransfer(_destination, amountWithdrawn);
     }
 
-    /// @dev Pay off dToken liability with eTokens ("self-repay")
+    /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
     function deleverageMannualy(uint256 _amount) external onlyOwner {
         eToken.burn(SUB_ACCOUNT_ID, _amount);
-        eToken.mint(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+        eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
     }
 
     function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
@@ -252,8 +254,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
             } else {
                 if (_amount >= 0) return 0;
                 selfAmount = ((term2 - term1) * ONE_FACTOR_SCALE) / denominator;
-                if (selfAmount >= debtInUnderlying) {
-                    selfAmount = type(uint256).max;
+                if (selfAmount > debtInUnderlying) {
+                    selfAmount = debtInUnderlying;
                 }
             }
         }
