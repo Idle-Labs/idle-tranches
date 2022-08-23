@@ -18,6 +18,8 @@ abstract contract BaseStrategy is
 {
     using SafeERC20Upgradeable for IERC20Detailed;
 
+    uint256 private constant EXP_SCALE = 1e18;
+
     /// @notice one year, used to calculate the APR
     uint256 private constant YEAR = 365 days;
 
@@ -82,7 +84,8 @@ abstract contract BaseStrategy is
         token = _token;
         underlyingToken = IERC20Detailed(token);
         tokenDecimals = underlyingToken.decimals();
-        oneToken = 10**(tokenDecimals);
+        oneToken = 10**(tokenDecimals); // underlying decimals
+        // note tokenized position has 18 decimals
 
         // Set basic parameters
         lastIndexedTime = block.timestamp;
@@ -92,11 +95,6 @@ abstract contract BaseStrategy is
         //------//-------//
 
         transferOwnership(_owner);
-    }
-
-    /// @dev tokenized position has same decimals as its underlying
-    function decimals() public view override returns (uint8) {
-        return uint8(tokenDecimals);
     }
 
     /// @dev makes the actual deposit into the `strategy`
@@ -130,7 +128,7 @@ abstract contract BaseStrategy is
             }
 
             // Mint shares
-            shares = (_amount * oneToken) / _price;
+            shares = (_amount * EXP_SCALE) / _price;
             _mint(msg.sender, shares);
         }
     }
@@ -148,8 +146,8 @@ abstract contract BaseStrategy is
     /// @param _amount amount of underlying tokens to redeem
     /// @return amountRedeemed Amount of underlying tokens received
     function redeemUnderlying(uint256 _amount) external virtual onlyIdleCDO returns (uint256 amountRedeemed) {
-        uint256 _price = price();
-        uint256 _shares = (_amount * oneToken) / _price;
+        uint256 _price = price(); // in underlying terms
+        uint256 _shares = (_amount * EXP_SCALE) / _price;
         if (_shares != 0) {
             amountRedeemed = _positionWithdraw(_shares, msg.sender, _price, 0);
         }
@@ -167,7 +165,7 @@ abstract contract BaseStrategy is
         uint256 _underlyingPerShare,
         uint256 _minUnderlying
     ) internal returns (uint256 amountWithdrawn) {
-        uint256 amountNeeded = (_shares * _underlyingPerShare) / oneToken;
+        uint256 amountNeeded = (_shares * _underlyingPerShare) / EXP_SCALE;
 
         _burn(msg.sender, _shares);
 
@@ -228,7 +226,7 @@ abstract contract BaseStrategy is
         uint256 timeIncrease = block.timestamp - lastIndexedTime;
 
         if (_totalSupply != 0 && timeIncrease != 0) {
-            uint256 priceIncrease = (_gain * oneToken) / _totalSupply;
+            uint256 priceIncrease = (_gain * EXP_SCALE) / _totalSupply;
             lastApr = uint96(
                 priceIncrease * (YEAR / timeIncrease) * 100
             ); // prettier-ignore
@@ -248,7 +246,7 @@ abstract contract BaseStrategy is
         if (_totalSupply == 0) {
             _price = oneToken;
         } else {
-            _price = ((totalTokensStaked - _lockedTokens()) * oneToken) / _totalSupply;
+            _price = ((totalTokensStaked - _lockedTokens()) * EXP_SCALE) / _totalSupply;
         }
     }
 
