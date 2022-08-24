@@ -58,7 +58,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         deal(EUL, address(eulDistributor), 1e23, true);
 
         // claim data
-        extraData = abi.encode(uint256(1000e18), new bytes32[](0));
+        extraData = abi.encode(uint256(1000e18), new bytes32[](0), uint256(0));
         // v3 router path
         path = abi.encodePacked(EUL, uint24(10000), WETH9, uint24(3000), _underlying);
 
@@ -90,10 +90,11 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
-    function testGetSelfAmountToMint(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testGetSelfAmountToMint(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
+        vm.assume(unit > 100 && unit <= 10000);
 
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = unit * ONE_SCALE;
         uint256 targetHealthScore = target * EXP_SCALE;
 
         _strategyDeposit(targetHealthScore, amount);
@@ -154,10 +155,11 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(_getCurrentHealthScore(), targetHealthScore, "hs > initial hs");
     }
 
-    function testGetSelfAmountToBurn(uint256 target) external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testGetSelfAmountToBurn(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
+        vm.assume(unit > 100 && unit <= 10000);
 
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = unit * ONE_SCALE;
         uint256 targetHealthScore = target * EXP_SCALE;
 
         _strategyDeposit(targetHealthScore, amount);
@@ -261,7 +263,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setRouterPath(path);
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        _strategy.deleverageMannualy(1000);
+        _strategy.deleverageManualy(1000);
         vm.stopPrank();
     }
 

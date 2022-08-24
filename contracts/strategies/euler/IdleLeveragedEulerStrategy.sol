@@ -16,15 +16,17 @@ import "forge-std/Test.sol";
 contract IdleLeveragedEulerStrategy is BaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
-    /// @notice Euler markets contract address
+    /// @notice Euler markets contract
     IMarkets internal constant EULER_MARKETS = IMarkets(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3);
 
-    /// @notice Euler general view contract address
+    /// @notice Euler general view contract
     IEulerGeneralView internal constant EULER_GENERAL_VIEW =
         IEulerGeneralView(0xACC25c4d40651676FEEd43a3467F3169e3E68e42);
 
+    /// @notice Euler general Exec contract
     IExec internal constant EULER_EXEC = IExec(0x59828FdF7ee634AaaD3f58B19fDBa3b03E2D9d80);
 
+    /// @notice Euler Governance Token
     IERC20Detailed internal constant EUL = IERC20Detailed(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b);
 
     uint256 internal constant EXP_SCALE = 1e18;
@@ -35,19 +37,26 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
     uint256 internal constant SELF_COLLATERAL_FACTOR = 0.95 * 4_000_000_000;
 
+    /// @notice Euler account id
     uint256 internal constant SUB_ACCOUNT_ID = 0;
 
     /// @notice EToken contract
     IEToken public eToken;
 
+    /// @notice DToken contract
     IDToken public dToken;
 
+    /// @notice target health score is defined as adjusted collateral divided by adjusted liability.
+    /// @dev 18 decimals. 1 == 1e18. must be greater 1e18
     uint256 public targetHealthScore;
 
+    /// @notice Eul reward distributor
     IEulDistributor public eulDistributor;
 
+    /// @notice uniswap v3 router
     ISwapRouter public router;
 
+    /// @notice uniswap v3 router path
     bytes public path;
 
     event UpdateTargetHealthScore(uint256 oldHeathScore, uint256 newHeathScore);
@@ -113,7 +122,10 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         rewards = new uint256[](1);
 
         if (address(eulDistributor) != address(0) && address(router) != address(0) && data.length != 0) {
-            (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
+            (uint256 claimable, bytes32[] memory proof, uint256 minAmountOut) = abi.decode(
+                data,
+                (uint256, bytes32[], uint256)
+            );
 
             // claim EUL by verifying a merkle root
             eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
@@ -127,7 +139,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                     recipient: address(this),
                     deadline: block.timestamp,
                     amountIn: amountIn,
-                    amountOutMinimum: 0
+                    amountOutMinimum: minAmountOut
                 })
             );
 
@@ -162,7 +174,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
-    function deleverageMannualy(uint256 _amount) external onlyOwner {
+    function deleverageManualy(uint256 _amount) external onlyOwner {
         eToken.burn(SUB_ACCOUNT_ID, _amount);
         eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
     }
@@ -215,30 +227,47 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @param _targetHealthScore  health score 1.0 == 1e18
     /// @param _amount _amount to deposit or withdraw. _amount greater than zero means `deposit`. _amount less than zero means `withdraw`
     function _getSelfAmount(uint256 _targetHealthScore, int256 _amount) internal view returns (uint256 selfAmount) {
+        // target health score has 1e18 decimals.
         require(_targetHealthScore > EXP_SCALE, "strat/invalid-target-hs");
 
-        uint256 debtInUnderlying = dToken.balanceOf(address(this));
+        // Calculate amount to `mint` or `burn` to maintain a target health score.
+        // Let `h` denote the target health score we want to maintain.
+        // Let `ac` denote the balance of collateral and `sc` denote the self-collateralized balance of collateral.
+        // Let `fc` denote the collateral factor of a asset,
+        // `fb` denote its borrow factor and `fs` denote the collateral factor of a self-collateralized asset (called self-collateralized factor).
 
-        uint256 cf;
-        uint256 balance;
+        // Let `x` denote its newly added collateral by user and `xs` denote its newly added collateral with recursive borrowing/repay (`eToken.mint()` or `eToken.burn()`).
+        // Heath score is:
+        // h = {fc[ac + x + xs - (sc + xs)/fs] + sc + xs} / (sc + xs)
+
+        // Resolve the equation for xs.
+        // xs = {fc(ac + x) - (h + fc/fs - 1)sc} / {h + fc(1/fs -1) - 1}
+        // Here, we define term1 := fc(ac + x) and term2 := (h + fc/fs - 1)sc.
+
+        uint256 debtInUnderlying = dToken.balanceOf(address(this)); // liability in underlying `sc`
+
+        uint256 cf; // underlying collateral factor
+        // collateral balance in underlying
+        // this is `a` which is the summation of usual collateral and self-borrowed collateral
         uint256 balanceInUnderlying;
         {
+            // avoid stack too deep error
             IMarkets.AssetConfig memory config = EULER_MARKETS.underlyingToAssetConfig(token);
             cf = config.collateralFactor;
-            balance = IEToken(config.eTokenAddress).balanceOf(address(this));
-            balanceInUnderlying = IEToken(config.eTokenAddress).convertBalanceToUnderlying(balance);
+            balanceInUnderlying = IEToken(config.eTokenAddress).balanceOfUnderlying(address(this));
         }
 
         {
-            int256 collateral = int256(balanceInUnderlying) + _amount;
+            int256 collateral = int256(balanceInUnderlying) + _amount; // `ac` + `x`
             require(collateral > 0, "strat/exceed-balance");
 
-            uint256 term1 = ((cf * uint256(collateral))) / CONFIG_FACTOR_SCALE;
+            uint256 term1 = ((cf * uint256(collateral))) / CONFIG_FACTOR_SCALE; // in underlying terms
+            // health score must be normalized
             uint256 term2 = (((_targetHealthScore * ONE_FACTOR_SCALE) /
                 EXP_SCALE +
                 (cf * ONE_FACTOR_SCALE) /
                 SELF_COLLATERAL_FACTOR -
-                ONE_FACTOR_SCALE) * debtInUnderlying) / ONE_FACTOR_SCALE;
+                ONE_FACTOR_SCALE) * debtInUnderlying) / ONE_FACTOR_SCALE; // in underlying terms
 
             uint256 denominator = (_targetHealthScore * ONE_FACTOR_SCALE) /
                 EXP_SCALE +
@@ -246,15 +275,21 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 SELF_COLLATERAL_FACTOR -
                 (cf * ONE_FACTOR_SCALE) /
                 CONFIG_FACTOR_SCALE -
-                ONE_FACTOR_SCALE;
+                ONE_FACTOR_SCALE; // in ONE_FACTOR_SCALE terms
 
+            // `selfAmount` := abs(xs) = abs(term1 - term2) / denominator.
+            // when depositing, xs is greater than zero.
+            // when withdrawing, xs is less than current debt and less than zero.
             if (term1 >= term2) {
+                // when withdrawing, maximum value of xs is zero.
                 if (_amount <= 0) return 0;
                 selfAmount = ((term1 - term2) * ONE_FACTOR_SCALE) / denominator;
             } else {
+                // when depositing, minimum value of xs is zero.
                 if (_amount >= 0) return 0;
                 selfAmount = ((term2 - term1) * ONE_FACTOR_SCALE) / denominator;
                 if (selfAmount > debtInUnderlying) {
+                    // maximum repayable value is current debt value.
                     selfAmount = debtInUnderlying;
                 }
             }
