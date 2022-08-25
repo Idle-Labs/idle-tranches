@@ -90,6 +90,29 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
+    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+        skip(7 days);
+        vm.roll(block.number + 1);
+
+        // claim accrued euler tokens
+        _cdoHarvest(false);
+        skip(7 days);
+        vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+
+        idleCDO.withdrawAA(IERC20Detailed(address(AAtranche)).balanceOf(address(this)));
+        idleCDO.withdrawBB(IERC20Detailed(address(BBtranche)).balanceOf(address(this)));
+
+        assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
+        assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
+        assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    }
+
     function testGetSelfAmountToMint(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
         vm.assume(unit > 100 && unit <= 10000);

@@ -89,7 +89,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testCantReinitialize() external virtual;
 
-  function testDeposits() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     // AARatio 50%
     idleCDO.depositAA(amount);
@@ -130,7 +130,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
   }
 
-  function testRedeems() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeems() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -148,7 +148,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
-  function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeemRewards() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
