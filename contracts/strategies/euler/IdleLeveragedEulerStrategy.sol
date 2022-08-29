@@ -11,8 +11,6 @@ import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/euler/IEulDistributor.sol";
 import "../../interfaces/ISwapRouter.sol";
 
-import "forge-std/Test.sol";
-
 contract IdleLeveragedEulerStrategy is BaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
 
@@ -110,37 +108,40 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         if (_amount == 0) {
             return 0;
         }
-        uint256 balanceBefore = underlyingToken.balanceOf(address(this));
+        IEToken _eToken = eToken;
+        IERC20Detailed _underlyingToken = underlyingToken;
+        uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
         // get amount to deposit to retain a target health score
         uint256 amountToMint = getSelfAmountToMint(targetHealthScore, _amount);
 
         // some of the amount should be deposited to make the health score close to the target one.
-        eToken.deposit(SUB_ACCOUNT_ID, _amount);
+        _eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
         // self borrow
         if (amountToMint != 0) {
-            eToken.mint(SUB_ACCOUNT_ID, amountToMint);
+            _eToken.mint(SUB_ACCOUNT_ID, amountToMint);
         }
 
-        amountUsed = balanceBefore - underlyingToken.balanceOf(address(this));
+        amountUsed = balanceBefore - _underlyingToken.balanceOf(address(this));
     }
 
     function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
         rewards = new uint256[](1);
-
-        if (address(eulDistributor) != address(0) && address(router) != address(0) && data.length != 0) {
+        IEulDistributor _eulDistributor = eulDistributor;
+        ISwapRouter _router = router;
+        if (address(_eulDistributor) != address(0) && address(_router) != address(0) && data.length != 0) {
             (uint256 claimable, bytes32[] memory proof, uint256 minAmountOut) = abi.decode(
                 data,
                 (uint256, bytes32[], uint256)
             );
 
             // claim EUL by verifying a merkle root
-            eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
+            _eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
             uint256 amountIn = EUL.balanceOf(address(this));
 
             // swap EUL for underlying
-            EUL.safeApprove(address(router), amountIn);
-            router.exactInput(
+            EUL.safeApprove(address(_router), amountIn);
+            _router.exactInput(
                 ISwapRouter.ExactInputParams({
                     path: path,
                     recipient: address(this),
@@ -159,31 +160,32 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         override
         returns (uint256 amountWithdrawn)
     {
-        uint256 balanceBefore = underlyingToken.balanceOf(address(this));
+        IERC20Detailed _underlyingToken = underlyingToken;
+        IEToken _eToken = eToken;
+        uint256 balanceBefore = _underlyingToken.balanceOf(address(this));
         uint256 amountToBurn = getSelfAmountToBurn(targetHealthScore, _amountToWithdraw);
 
         if (amountToBurn != 0) {
             // Pay off dToken liability with eTokens ("self-repay")
-            eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
+            _eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
         }
 
-        uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
+        uint256 balanceInUnderlying = _eToken.balanceOfUnderlying(address(this));
         if (_amountToWithdraw > balanceInUnderlying) {
-            console.log("_amountToWithdraw :>>", _amountToWithdraw);
-            console.log("balanceInUnderlying :>>", balanceInUnderlying);
             _amountToWithdraw = balanceInUnderlying;
         }
         // withdraw underlying
-        eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
+        _eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
 
-        amountWithdrawn = underlyingToken.balanceOf(address(this)) - balanceBefore;
-        underlyingToken.safeTransfer(_destination, amountWithdrawn);
+        amountWithdrawn = _underlyingToken.balanceOf(address(this)) - balanceBefore;
+        _underlyingToken.safeTransfer(_destination, amountWithdrawn);
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
     function deleverageManualy(uint256 _amount) external onlyOwner {
-        eToken.burn(SUB_ACCOUNT_ID, _amount);
-        eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+        IEToken _eToken = eToken;
+        _eToken.burn(SUB_ACCOUNT_ID, _amount);
+        _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
     }
 
     function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
@@ -324,7 +326,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         return debtInUnderlying / (balanceInUnderlying - debtInUnderlying);
     }
 
-    function getRewardTokens() external view override returns (address[] memory rewards) {
+    function getRewardTokens() external pure override returns (address[] memory rewards) {
         rewards = new address[](1);
         rewards[0] = address(EUL);
     }
