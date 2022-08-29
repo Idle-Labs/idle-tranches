@@ -66,8 +66,6 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     event UpdateRouterPath(bytes oldRouter, bytes _path);
 
     function initialize(
-        string memory _name,
-        string memory _symbol,
         address _euler,
         address _eToken,
         address _dToken,
@@ -78,7 +76,12 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         bytes memory _path,
         uint256 _targetHealthScore
     ) public initializer {
-        _initialize(_name, _symbol, _underlying, _owner);
+        _initialize(
+            string(abi.encodePacked("Idle ", IERC20Detailed(_underlying).name(), " Euler Leverege Strategy")),
+            string(abi.encodePacked("idleEulLev", IERC20Detailed(_underlying).symbol())),
+            _underlying, 
+            _owner
+        );
         eToken = IEToken(_eToken);
         dToken = IDToken(_dToken);
         eulDistributor = IEulDistributor(_eulDistributor);
@@ -323,7 +326,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
         uint256 debtInUnderlying = dToken.balanceOf(address(this));
         // leverage = debt / principal
-        return debtInUnderlying / (balanceInUnderlying - debtInUnderlying);
+        return debtInUnderlying * oneToken / (balanceInUnderlying - debtInUnderlying);
     }
 
     function getRewardTokens() external pure override returns (address[] memory rewards) {

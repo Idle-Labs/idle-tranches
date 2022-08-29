@@ -62,11 +62,8 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         extraData = abi.encode(uint256(1000e18), new bytes32[](0), uint256(0));
         // v3 router path
         path = abi.encodePacked(EUL, uint24(10000), WETH9, uint24(3000), _underlying);
-
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
         IdleLeveragedEulerStrategy(_strategy).initialize(
-            "LeverageEulerStrat",
-            "LEVERAGE_EULER",
             eulerMain,
             address(eToken),
             address(dToken),
@@ -347,8 +344,6 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         IdleLeveragedEulerStrategy(address(strategy)).initialize(
-            "LeverageEulerStrat",
-            "LEVERAGE_EULER",
             address(0xbabe),
             address(eToken),
             address(dToken),
