@@ -52,6 +52,7 @@ module.exports = {
     overrides: {
       "contracts/IdleCDO.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
+      "contracts/IdleCDOLeveregedEulerVariant.sol": minimalSizeConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
   },

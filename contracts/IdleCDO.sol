@@ -210,7 +210,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev this should always be >= of _tranchePrice(_tranche)
   /// @param _tranche address of the requested tranche
   /// @return _virtualPrice tranche price considering all interest
-  function virtualPrice(address _tranche) public view returns (uint256 _virtualPrice) {
+  function virtualPrice(address _tranche) public virtual view returns (uint256 _virtualPrice) {
     // get both NAVs, because we need the total NAV anyway
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
@@ -275,7 +275,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// - update tranche prices (priceAA and priceBB)
   /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
   /// - update fee accounting (unclaimedFees)
-  function _updateAccounting() internal {
+  function _updateAccounting() internal virtual {
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
     uint256 _lastNAV = _lastNAVAA + _lastNAVBB;

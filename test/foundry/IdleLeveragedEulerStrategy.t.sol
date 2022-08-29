@@ -124,6 +124,29 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
+    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+        uint256 pricePre = strategy.price();
+        // funds in lending
+        _cdoHarvest(true);
+        skip(7 days);
+        vm.roll(block.number + 1);
+        uint256 pricePost = strategy.price();
+        // here we didn't harvested any rewards and 
+        // borrow apy > supply apr so the strategy price decreases
+        assertLt(pricePost, pricePre, 'Strategy price correctly decreased');
+ 
+        idleCDO.withdrawAA(IERC20Detailed(address(AAtranche)).balanceOf(address(this)));
+        idleCDO.withdrawBB(IERC20Detailed(address(BBtranche)).balanceOf(address(this)));
+
+        assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
+        assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
+        // balance should be less than the initial if no rewards are sold
+        assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    }
+
     function testGetSelfAmountToMint(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
         vm.assume(unit > 100 && unit <= 10000);
