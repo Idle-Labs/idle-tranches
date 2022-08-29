@@ -101,11 +101,16 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        uint256 pricePre = strategy.price();
         // funds in lending
         _cdoHarvest(true);
         skip(7 days);
         vm.roll(block.number + 1);
-
+        uint256 pricePost = strategy.price();
+        // here we didn't harvested any rewards and 
+        // borrow apy > supply apr so the strategy price decreases
+        assertLt(pricePost, pricePre, 'Strategy price correctly decreased');
+ 
         // claim accrued euler tokens
         _cdoHarvest(false);
         skip(7 days);

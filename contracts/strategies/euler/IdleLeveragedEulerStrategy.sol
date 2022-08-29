@@ -94,17 +94,24 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         underlyingToken.safeApprove(_euler, type(uint256).max);
     }
 
+    /// @return _price net in underlyings of 1 strategyToken
+    function price() public view override returns (uint256 _price) {
+        uint256 _totalSupply = totalSupply();
+        uint256 _tokenValue = eToken.balanceOfUnderlying(address(this)) - dToken.balanceOf(address(this));
+        if (_totalSupply == 0) {
+            _price = oneToken;
+        } else {
+            _price = ((_tokenValue - _lockedTokens()) * EXP_SCALE) / _totalSupply;
+        }
+    }
+
     /// @param _amount amount of underlying to deposit
     function _deposit(uint256 _amount) internal override returns (uint256 amountUsed) {
         if (_amount == 0) {
             return 0;
         }
-        IRiskManager.LiquidityStatus memory status = EULER_EXEC.liquidity(address(this));
-
         uint256 balanceBefore = underlyingToken.balanceOf(address(this));
-
         // get amount to deposit to retain a target health score
-        // uint256 amountToMint = getAmountToMintByHealthScore(targetHealthScore, _amount);
         uint256 amountToMint = getSelfAmountToMint(targetHealthScore, _amount);
 
         // some of the amount should be deposited to make the health score close to the target one.
