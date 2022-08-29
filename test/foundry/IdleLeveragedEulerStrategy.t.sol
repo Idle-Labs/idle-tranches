@@ -6,6 +6,7 @@ import "../../contracts/strategies/euler/IdleLeveragedEulerStrategy.sol";
 import "forge-std/Test.sol";
 
 import "./TestIdleCDOBase.sol";
+import "../../contracts/IdleCDOLeveregedEulerVariant.sol";
 
 contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     using stdStorage for StdStorage;
@@ -85,16 +86,21 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         vm.label(address(router), "router");
     }
 
+    function _deployCDO() internal override returns (IdleCDO _cdo) {
+        _cdo = new IdleCDOLeveregedEulerVariant();
+    }
+
     function _postDeploy(address _cdo, address _owner) internal override {
-        vm.prank(_owner);
-        IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
+        vm.startPrank(_owner);
+        IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(_cdo);
+        IdleCDOLeveregedEulerVariant(_cdo).setMaxDecreaseDefault(5000); // 1%
+        vm.stopPrank();
     }
 
     function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
-
         // funds in lending
         _cdoHarvest(true);
         skip(7 days);
