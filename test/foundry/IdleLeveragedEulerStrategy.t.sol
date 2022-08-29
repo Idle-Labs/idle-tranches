@@ -93,11 +93,11 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     function _postDeploy(address _cdo, address _owner) internal override {
         vm.startPrank(_owner);
         IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(_cdo);
-        IdleCDOLeveregedEulerVariant(_cdo).setMaxDecreaseDefault(5000); // 1%
+        IdleCDOLeveregedEulerVariant(_cdo).setMaxDecreaseDefault(1000); // 1%
         vm.stopPrank();
     }
 
-    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeemsWithRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
@@ -244,6 +244,26 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(_getCurrentHealthScore(), targetHealthScore, "hs > initial hs");
     }
 
+    function testDefaultCheck() external runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+        // accrue some debt as no rewards are harvested
+        skip(365 days);
+        vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+        // try to exit the position but it will fail with status reason "4" (defaulted)
+        uint256 balAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
+        vm.expectRevert(bytes('4'));
+        idleCDO.withdrawAA(balAA);
+
+        uint256 balBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
+        vm.expectRevert(bytes('4'));
+        idleCDO.withdrawBB(balBB);
+    }
+
     function _strategyDeposit(uint256 targetHealthScore, uint256 amount) internal {
         // set targetHealthScore
         vm.prank(owner);
@@ -323,14 +343,14 @@ contract EulDistributorMock is IEulDistributor {
     /// @notice Claim distributed tokens
     /// @param account Address that should receive tokens
     /// @param token Address of token being claimed (ie EUL)
-    /// @param proof Merkle proof that validates this claim
-    /// @param stake If non-zero, then the address of a token to auto-stake to, instead of claiming
+    /// @param - Merkle proof that validates this claim
+    /// @param - If non-zero, then the address of a token to auto-stake to, instead of claiming
     function claim(
         address account,
         address token,
         uint256 claimable,
-        bytes32[] calldata proof,
-        address stake
+        bytes32[] calldata,
+        address
     ) external {
         IERC20Detailed(token).transfer(account, claimable);
     }
