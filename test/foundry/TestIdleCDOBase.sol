@@ -5,6 +5,11 @@ import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/IdleCDO.sol";
 import "forge-std/Test.sol";
 
+interface IIdleCDOStrategyEnhanced is IIdleCDOStrategy {
+  function setWhitelistedCDO(address _cdo) external;
+  function transferToken(address, uint256, address) external;
+}
+
 abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
 
@@ -36,6 +41,9 @@ abstract contract TestIdleCDOBase is Test {
   );
 
   function _postDeploy(address _cdo, address _owner) virtual internal;
+  function _deployCDO() internal virtual returns (IdleCDO _cdo) {
+    _cdo = new IdleCDO();
+  }
   // end override
 
   modifier runOnForkingNetwork(uint256 networkId) {
@@ -191,20 +199,64 @@ abstract contract TestIdleCDOBase is Test {
     vm.startPrank(address(0xbabe));
 
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
-    // this call returns `success` when it reverted
-    address(strategy).call(abi.encodeWithSignature("setWhitelistedCDO(address)", address(0xcafe)));
+    IIdleCDOStrategyEnhanced(address(strategy)).setWhitelistedCDO(address(0xcafe));
 
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
-    // this call returns `success` when it reverted
-    address(strategy).call(abi.encodeWithSignature("transferToken(address, uint256, address)",
+    IIdleCDOStrategyEnhanced(address(strategy)).transferToken(
       address(underlying),
       1e6,
       address(0xbabe)
-    ));
-
+    );
     vm.stopPrank();
   }
 
+  function testEmergencyShutdown() external runOnForkingNetwork(MAINNET_CHIANID) {
+    uint256 amount = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    // call with non owner
+    vm.expectRevert(bytes("6"));
+    vm.prank(address(0xbabe));
+    idleCDO.emergencyShutdown();
+
+    // call with owner
+    vm.prank(owner);
+    idleCDO.emergencyShutdown();
+
+    vm.expectRevert(bytes("Pausable: paused")); // default
+    idleCDO.depositAA(amount);
+    vm.expectRevert(bytes("Pausable: paused")); // default
+    idleCDO.depositBB(amount);
+    vm.expectRevert(bytes("3")); // default
+    idleCDO.withdrawAA(amount);
+    vm.expectRevert(bytes("3")); // default
+    idleCDO.withdrawBB(amount);
+  }
+
+  function testRestoreOperations() external runOnForkingNetwork(MAINNET_CHIANID) {
+    uint256 amount = 1000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    // call with non owner
+    vm.expectRevert(bytes("6"));
+    vm.prank(address(0xbabe));
+    idleCDO.restoreOperations();
+
+    // call with owner
+    vm.startPrank(owner);
+    idleCDO.emergencyShutdown();
+    idleCDO.restoreOperations();
+    vm.stopPrank();
+
+    vm.roll(block.number + 1);
+
+    idleCDO.withdrawAA(amount);
+    idleCDO.withdrawBB(amount);
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+  }
 
   function testAPR() external runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
@@ -315,7 +367,7 @@ abstract contract TestIdleCDOBase is Test {
     (address _strategy, address _underlying) = _deployStrategy(_owner);
     
     // deploy idleCDO and tranches
-    _cdo = new IdleCDO();
+    _cdo = _deployCDO();
     stdstore
       .target(address(_cdo))
       .sig(_cdo.token.selector)
