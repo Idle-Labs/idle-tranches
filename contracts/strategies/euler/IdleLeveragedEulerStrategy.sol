@@ -88,6 +88,7 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         router = ISwapRouter(_router);
         path = _path;
         targetHealthScore = _targetHealthScore;
+        releaseBlocksPeriod = 89600; // ~14 days in blocks (6400 block per day)
 
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlying);
