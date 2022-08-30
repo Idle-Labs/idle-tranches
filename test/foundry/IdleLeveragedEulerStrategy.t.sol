@@ -60,6 +60,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
 
         // claim data
         extraData = abi.encode(uint256(1000e18), new bytes32[](0), uint256(0));
+        extraRewards = 1;
         // v3 router path
         path = abi.encodePacked(EUL, uint24(10000), WETH9, uint24(3000), _underlying);
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));

@@ -23,6 +23,7 @@ abstract contract TestIdleCDOBase is Test {
   uint256 public initialBBApr;
   uint256 internal decimals;
   uint256 internal ONE_SCALE;
+  uint256 internal extraRewards;
   address[] internal rewards;
   address[] internal incentives; // incentives is a subset of rewards
   address public owner;
@@ -399,6 +400,10 @@ abstract contract TestIdleCDOBase is Test {
       if (!_includesAddress(incentives, rewards[i])) {
         num++;
       }
+    }
+    
+    if (extraRewards > 0) {
+      num = num + extraRewards;
     }
   }
 
