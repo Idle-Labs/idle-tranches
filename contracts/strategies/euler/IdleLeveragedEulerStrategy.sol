@@ -138,6 +138,10 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 (uint256, bytes32[], uint256)
             );
 
+            if (claimable == 0) {
+                return rewards;
+            }
+
             // claim EUL by verifying a merkle root
             _eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
             uint256 amountIn = EUL.balanceOf(address(this));
@@ -329,8 +333,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         return debtInUnderlying * oneToken / (balanceInUnderlying - debtInUnderlying);
     }
 
-    function getRewardTokens() external pure override returns (address[] memory rewards) {
-        rewards = new address[](1);
-        rewards[0] = address(EUL);
+    /// @notice this should be empty as rewards are sold directly in the strategy and 
+    /// `getRewardTokens` is used only in IdleCDO for selling rewards
+    function getRewardTokens() external pure override returns (address[] memory) {
     }
 }
