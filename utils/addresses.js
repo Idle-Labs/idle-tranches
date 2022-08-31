@@ -270,6 +270,19 @@ const CDOs = {
     AATranche: '0xfC558914b53BE1DfAd084fA5Da7f281F798227E7',
     BBTranche: '0x91fb938FEa02DFd5303ACeF5a8A2c0CaB62b94C7'
   },
+  eullevusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x29d094110c7a89f1cb6c975df0a38cae80f24b21',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xb43B101F1261784E3c4AF931dBD6082e08BB3317',
+    BBTranche: '0x19ef72c89e0B28406B7EbAcf2556CAb7Cc623eF9'
+  },
   eulerusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -620,7 +633,7 @@ exports.deployTokens = {
       ), // path
       (1.013 * 1e18).toString(), // initial target health -> ~ 15x leverage
     ],
-    // cdo: CDOs.eullevusdc,
+    cdo: CDOs.eullevusdc,
     cdoVariant: 'IdleCDOLeveregedEulerVariant',
     ...baseCDOArgs,
     AARatio: '20000',
