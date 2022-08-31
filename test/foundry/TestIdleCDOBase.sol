@@ -23,6 +23,7 @@ abstract contract TestIdleCDOBase is Test {
   uint256 public initialBBApr;
   uint256 internal decimals;
   uint256 internal ONE_SCALE;
+  uint256 internal extraRewards;
   address[] internal rewards;
   address[] internal incentives; // incentives is a subset of rewards
   address public owner;
@@ -32,6 +33,7 @@ abstract contract TestIdleCDOBase is Test {
   IdleCDOTranche internal AAtranche;
   IdleCDOTranche internal BBtranche;
   IIdleCDOStrategy internal strategy;
+  bytes internal extraData;
 
   // override these methods in derived contracts
   function _deployStrategy(address _owner) internal virtual returns (
@@ -85,7 +87,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
-  function testInitialize() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialize() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
@@ -96,7 +98,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testCantReinitialize() external virtual;
 
-  function testDeposits() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     // AARatio 50%
     idleCDO.depositAA(amount);
@@ -155,7 +157,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
-  function testRedeemRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeemRewards() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -347,6 +349,9 @@ abstract contract TestIdleCDOBase is Test {
     uint256[] memory _sellAmounts = new uint256[](numOfRewards);
     bytes memory _extraData;
     // bytes memory _extraData = abi.encode(uint256(0), uint256(0), uint256(0));
+    if(!_skipRewards){
+      _extraData = extraData;
+    }
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
@@ -396,6 +401,10 @@ abstract contract TestIdleCDOBase is Test {
         num++;
       }
     }
+    
+    if (extraRewards > 0) {
+      num = num + extraRewards;
+    }
   }
 
   function _includesAddress(address[] memory _array, address _val) internal pure returns (bool) {
@@ -423,7 +432,7 @@ abstract contract TestIdleCDOBase is Test {
   function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
     (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
     if (success){
-      releaseBlocksPeriod = abi.decode(returnData, (uint256));
+      releaseBlocksPeriod = abi.decode(returnData, (uint32));
     } else {
       emit log("can't find releaseBlocksPeriod() on strategy");
       emit logs(returnData);

@@ -52,6 +52,7 @@ module.exports = {
     overrides: {
       "contracts/IdleCDO.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
+      "contracts/IdleCDOLeveregedEulerVariant.sol": minimalSizeConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
   },
@@ -82,7 +83,8 @@ module.exports = {
       //   // blockNumber: 14931960 // euler strategy update
       //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
-      //   blockNumber: 15133116, // clearpool strategy
+      //   // blockNumber: 15133116, // clearpool strategy
+      //   blockNumber: 15435009, // euler lev usdc strategy
       // },
       // // chainId: 137
     },

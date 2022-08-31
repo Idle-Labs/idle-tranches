@@ -1,3 +1,5 @@
+const ethers = require('ethers');
+
 const addr0 = '0x0000000000000000000000000000000000000000';
 const mainnetContracts = {
   idleDAIBest:  "0x3fE7940616e5Bc47b0775a0dccf6237893353bB4",
@@ -19,6 +21,7 @@ const mainnetContracts = {
   cDAI: '0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643',
   USDC: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
+  dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   eDAI: '0xe025E3ca2bE02316033184551D4d3Aa22024D9DC',
   eUSDT: '0x4d19F33948b99800B6113Ff3e83beC9b537C85d2',
   cUSDC: '0x39aa39c021dfbae8fac545936693ac917d5e7563',
@@ -55,7 +58,9 @@ const mainnetContracts = {
   imUSD: '0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19',
   mUSDVault: '0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B',
   MTA: '0xa3BeD4E1c75D00fa6f4E5E6922DB7261B5E9AcD2',
+  EUL: '0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b',
   univ2Router: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',
+  univ3Router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
   treasuryMultisig: "0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814",
   devLeagueMultisig: '0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b',
   deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
@@ -83,6 +88,7 @@ const mainnetContracts = {
   minimalInitializableProxyFactory: '0x91baced76e3e327ba7850ef82a7a8251f6e43fb8',
   proxyAdmin: '0x9438904ABC7d8944A6E2A89671fEf51C629af351',
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
+  eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e'
 }
 
@@ -94,9 +100,6 @@ const polygonContracts = {
   WMATIC: '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
   // wbtc
   WBTC: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6',
-  CXWBTC: '',
-  CXBTC_WBTC_LP: '',
-  CXBTC_WBTC_REWARDS: '',
   // weth
   WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
   CXETH: '0xfe4546feFe124F30788c4Cc1BB9AA6907A7987F9',
@@ -266,6 +269,19 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xfC558914b53BE1DfAd084fA5Da7f281F798227E7',
     BBTranche: '0x91fb938FEa02DFd5303ACeF5a8A2c0CaB62b94C7'
+  },
+  eullevusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x29d094110c7a89f1cb6c975df0a38cae80f24b21',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xb43B101F1261784E3c4AF931dBD6082e08BB3317',
+    BBTranche: '0x19ef72c89e0B28406B7EbAcf2556CAb7Cc623eF9'
   },
   eulerusdc: {
     decimals: 6,
@@ -592,6 +608,39 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: '', // deploy new instance
   },
+  // Euler leverage
+  eullevusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleLeveragedEulerStrategy',
+    strategyParams: [
+      mainnetContracts.eulerMain,
+      mainnetContracts.eUSDC,
+      mainnetContracts.dUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.eulerDistributor,
+      mainnetContracts.univ3Router,
+      ethers.utils.solidityPack(
+        ['address', 'uint24', 'address', 'uint24', 'address'],
+        [
+          mainnetContracts.EUL,
+          10000,
+          mainnetContracts.WETH,
+          3000,
+          mainnetContracts.USDC
+        ]
+      ), // path
+      (1.013 * 1e18).toString(), // initial target health -> ~ 15x leverage
+    ],
+    cdo: CDOs.eullevusdc,
+    cdoVariant: 'IdleCDOLeveregedEulerVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '2000000',
+    isAYSActive: true,
+    proxyCdoAddress: '', // deploy new instance
+  },
 
   // Convex
   //
@@ -788,27 +837,6 @@ exports.deployTokensPolygon = {
     AARatio: '10000', // 100000 is 100% to AA
     cdo: polygonCDOs.quickcxethweth,
   },
-  // quickcxbtcwbtc: {
-  //   decimals: 18,
-  //   underlying: polygonContracts.CXBTC_WBTC_LP,
-  //   strategyName: 'IdleQuickswap',
-  //   strategyParams: [
-  //     polygonContracts.CXBTC_WBTC_LP, // underlying
-  //     polygonContracts.WBTC, // baseToken of the LP
-  //     polygonContracts.CXBTC, // celsiusx tokenized BTC
-  //     'owner', // owner address
-  //     polygonContracts.CXBTC_WBTC_REWARDS, // stakingRewards
-  //     polygonContracts.quickRouter,
-  //   ],
-  //   incentiveTokens: [polygonContracts.dQUICK],
-  //   proxyCdoAddress: polygonCDOs.quickcxethweth.cdoAddr,
-  //   AAStaking: true,
-  //   BBStaking: true,
-  //   stkAAVEActive: false,
-  //   limit: '0',
-  //   AARatio: '10000', // 100000 is 100% to AA
-  //   // cdo: polygonCDOs.quickcxbtcwbtc,
-  // }
 };
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
