@@ -29,6 +29,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     IExec internal constant EULER_EXEC = IExec(0x59828FdF7ee634AaaD3f58B19fDBa3b03E2D9d80);
 
     address internal constant EUL = 0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b;
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     address internal constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
@@ -50,14 +51,14 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
         eToken = IEToken(0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716); // eUSDC
         dToken = IDToken(0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42); // dUSDC
-        _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        _underlying = USDC;
 
         strategy = new IdleLeveragedEulerStrategy();
         _strategy = address(strategy);
 
         eulDistributor = new EulDistributorMock();
         deal(EUL, address(eulDistributor), 1e23, true);
-
+        deal(_underlying, address(1), 1e23, true);
         // claim data
         extraData = abi.encode(uint256(1000e18), new bytes32[](0), uint256(0));
         extraRewards = 1;
@@ -93,6 +94,65 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         IdleLeveragedEulerStrategy(address(strategy)).setWhitelistedCDO(_cdo);
         IdleCDOLeveregedEulerVariant(_cdo).setMaxDecreaseDefault(1000); // 1%
         vm.stopPrank();
+
+        vm.prank(address(1));
+        IERC20Detailed(USDC).approve(_cdo, type(uint256).max);
+    }
+
+    function testMultipleRedeemsWithRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 1000 * ONE_SCALE;
+        uint256 balBefore = underlying.balanceOf(address(this));
+        uint256 balBefor1 = underlying.balanceOf(address(1));
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+        uint256 aaBal = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
+        uint256 bbBal = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
+        uint256 pricePre = strategy.price();
+        // funds in lending
+        _cdoHarvest(true);
+        skip(7 days);
+        vm.roll(block.number + 1);
+        uint256 pricePost = strategy.price();
+        // here we didn't harvested any rewards and 
+        // borrow apy > supply apr so the strategy price decreases
+        assertLt(pricePost, pricePre, 'Strategy price did not decrease, loss not reported');
+
+        // deposit with another user, price decreased so he will mint more tranche tokens
+        vm.startPrank(address(1));
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+        vm.stopPrank();
+
+        uint256 aaBal1 = IERC20Detailed(address(AAtranche)).balanceOf(address(1));
+        uint256 bbBal1 = IERC20Detailed(address(BBtranche)).balanceOf(address(1));
+        assertLt(aaBal, aaBal1, 'AA balance minted is < than before, loss not reported');
+        assertLt(bbBal, bbBal1, 'BB balance minted is < than before, loss not reported');
+        // accrue some more loss
+        skip(7 days);
+        vm.roll(block.number + 1);
+
+        // claim accrued euler tokens
+        _cdoHarvest(false);
+        skip(7 days);
+        vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+
+        vm.startPrank(address(1));
+        idleCDO.withdrawAA(aaBal1);
+        idleCDO.withdrawBB(bbBal1);
+        vm.stopPrank();
+
+        idleCDO.withdrawAA(aaBal);
+        idleCDO.withdrawBB(bbBal);
+
+        uint256 balAfter = underlying.balanceOf(address(this));
+        uint256 balAfter1 = underlying.balanceOf(address(1));
+        assertLt(balBefore, balAfter, 'underlying balance for address(this) is < than before');
+        assertLt(balBefor1, balAfter1, 'underlying balance for address(1) is < than before');
+        uint256 increaseThis = balAfter - balBefore;
+        uint256 increase1 = balAfter1 - balBefor1;
+        console.log('increaseThis', increaseThis);
+        console.log('increase1   ', increase1);
+        assertGe(increaseThis, increase1, "gain for address this is < than gain of addr(1)");
     }
 
     function testRedeemsWithRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
