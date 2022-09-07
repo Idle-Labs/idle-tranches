@@ -48,6 +48,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @dev 18 decimals. 1 == 1e18. must be greater 1e18
     uint256 public targetHealthScore;
 
+    /// @notice price used to mint tranche tokens if current tranche price < last harvest
+    uint256 public mintPrice;
+
     /// @notice Eul reward distributor
     IEulDistributor public eulDistributor;
 
@@ -88,7 +91,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         router = ISwapRouter(_router);
         path = _path;
         targetHealthScore = _targetHealthScore;
-        releaseBlocksPeriod = 89600; // ~14 days in blocks (6400 block per day)
+        // This should be more than the Euler epoch period
+        releaseBlocksPeriod = 108900; // ~15 days in blocks (counting 11.9 sec per block with PoS)
+        mintPrice = oneToken;
 
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlying);
@@ -105,6 +110,12 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         } else {
             _price = ((_tokenValue - _lockedTokens()) * EXP_SCALE) / _totalSupply;
         }
+    }
+
+    function _setMintPrice() internal {
+        uint256 _tokenValue = eToken.balanceOfUnderlying(address(this)) - dToken.balanceOf(address(this));
+        // count all tokens as unlocked so price will be higher for mint (otherwise interest unlocked is stealed from others)
+        mintPrice = (_tokenValue * EXP_SCALE) / totalSupply();
     }
 
     /// @param _amount amount of underlying to deposit
@@ -142,7 +153,6 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
             if (claimable == 0) {
                 return rewards;
             }
-
             // claim EUL by verifying a merkle root
             _eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
             uint256 amountIn = EUL.balanceOf(address(this));
@@ -161,6 +171,19 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
             rewards[0] = underlyingToken.balanceOf(address(this));
         }
+    }
+
+    /// @notice redeem the rewards
+    /// @return rewards amount of reward that is deposited to the ` strategy`
+    ///         rewards[0] : mintedUnderlyings
+    function redeemRewards(bytes calldata data)
+        public
+        override
+        onlyIdleCDO
+        returns (uint256[] memory rewards)
+    {
+        rewards = super.redeemRewards(data);
+        _setMintPrice();
     }
 
     function _withdraw(uint256 _amountToWithdraw, address _destination)

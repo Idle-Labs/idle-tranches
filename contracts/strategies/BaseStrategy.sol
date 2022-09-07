@@ -186,7 +186,7 @@ abstract contract BaseStrategy is
     /// @return rewards amount of reward that is deposited to the ` strategy`
     ///         rewards[0] : mintedUnderlyings
     function redeemRewards(bytes calldata data)
-        external
+        public
         virtual
         onlyIdleCDO
         nonReentrant

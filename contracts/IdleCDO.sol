@@ -107,7 +107,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
+
+    _additionalInit();
   }
+
+  /// @notice used by child contracts if anything needs to be done on/after init
+  function _additionalInit() internal virtual {}
 
   // ###############
   // Public methods
@@ -369,7 +374,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
-  function _mintShares(uint256 _amount, address _to, address _tranche) internal returns (uint256 _minted) {
+  function _mintShares(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
     IdleCDOTranche(_tranche).mint(_to, _minted);
@@ -747,7 +752,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256[] calldata _minAmount,
     uint256[] calldata _sellAmounts,
     bytes calldata _extraData
-  ) external
+  ) public
+    virtual
     returns (uint256[][] memory _res) {
     _checkOnlyOwnerOrRebalancer();
     // initalize the returned array (elements will be [_soldAmounts, _swappedAmounts, _redeemedRewards])
