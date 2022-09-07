@@ -22,8 +22,6 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
 
   function _additionalInit() internal override {
     maxDecreaseDefault = 5000; // 5%
-    fee = 15000; // 15%
-    limit = 2000000 * oneToken; // 2M$
     lastAAPrice = oneToken;
     lastBBPrice = oneToken;
   }
@@ -47,7 +45,7 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
     maxDecreaseDefault = _maxDecreaseDefault;
   }
 
-  /// @notice mint tranche tokens and updates tranche last NAV
+  /// @notice mint tranche tokens and updates tranche last NAV and lastXXPrice if needed
   /// @param _amount, in underlyings, to convert in tranche tokens
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
@@ -58,14 +56,13 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
     uint256 _lastAAPrice = lastAAPrice;
     uint256 _lastBBPrice = lastBBPrice;
     bool _isAA = _tranche == AATranche;
-    // Get tranche mint price
     uint256 _mintPrice = _isAA ? _lastAAPrice : _lastBBPrice;
     // always mint at the highest price
     uint256 _price = _currPrice > _mintPrice ? _currPrice : _mintPrice;
 
     _minted = _amount * ONE_TRANCHE_TOKEN / _price;
-
     IdleCDOTranche(_tranche).mint(_to, _minted);
+
     // update NAV with the _amount of underlyings added
     // and update lastXXPrice if > than before
     if (_isAA) {

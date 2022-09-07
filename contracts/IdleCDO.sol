@@ -102,7 +102,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // Save current strategy price
     lastStrategyPrice = _strategyPrice();
     // Fee params
-    fee = 10000; // 10% performance fee
+    fee = 15000; // 10% performance fee
     feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
@@ -524,18 +524,16 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
     // Read state variables only once to save gas
-    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     address _BBStaking = BBStaking;
     address _AAStaking = AAStaking;
     bool _isBBStakingActive = _BBStaking != address(0);
-    bool _isAAStakingActive = _AAStaking != address(0);
 
     // Split rewards according to trancheAPRSplitRatio in case the ratio between
     // AA and BB is already ideal
-    if (_isAAStakingActive) {
+    if (_AAStaking != address(0)) {
       // NOTE: the order is important here, first there must be the deposit for AA rewards,
       // if staking contract for AA is present
-      _depositIncentiveToken(_AAStaking, _isBBStakingActive ? _trancheAPRSplitRatio : FULL_ALLOC);
+      _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
     }
 
     if (_isBBStakingActive) {
@@ -853,29 +851,31 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// if the lending provider is changed
   /// @param _strategy new strategy address
   /// @param _incentiveTokens array of incentive tokens addresses
-  function setStrategy(address _strategy, address[] memory _incentiveTokens) external {
-    _checkOnlyOwner();
+  /// [DEPRECATED] all strategies are upgradeable and most of the strategy create a tokenized position
+  /// so it's not viable anymore to change strategyAddress.
+  // function setStrategy(address _strategy, address[] memory _incentiveTokens) external {
+  //   _checkOnlyOwner();
 
-    require(_strategy != address(0), '0');
-    IERC20Detailed _token = IERC20Detailed(token);
-    // revoke allowance for the current strategy
-    address _currStrategy = strategy;
-    _removeAllowance(address(_token), _currStrategy);
-    _removeAllowance(strategyToken, _currStrategy);
-    // Updated strategy variables
-    strategy = _strategy;
-    // Update incentive tokens
-    incentiveTokens = _incentiveTokens;
-    // Update strategyToken
-    address _newStrategyToken = IIdleCDOStrategy(_strategy).strategyToken();
-    strategyToken = _newStrategyToken;
-    // Approve underlyingToken
-    _allowUnlimitedSpend(address(_token), _strategy);
-    // Approve the new strategy to transfer strategyToken out from this contract
-    _allowUnlimitedSpend(_newStrategyToken, _strategy);
-    // Update last strategy price
-    lastStrategyPrice = _strategyPrice();
-  }
+  //   require(_strategy != address(0), '0');
+  //   IERC20Detailed _token = IERC20Detailed(token);
+  //   // revoke allowance for the current strategy
+  //   address _currStrategy = strategy;
+  //   _removeAllowance(address(_token), _currStrategy);
+  //   _removeAllowance(strategyToken, _currStrategy);
+  //   // Updated strategy variables
+  //   strategy = _strategy;
+  //   // Update incentive tokens
+  //   incentiveTokens = _incentiveTokens;
+  //   // Update strategyToken
+  //   address _newStrategyToken = IIdleCDOStrategy(_strategy).strategyToken();
+  //   strategyToken = _newStrategyToken;
+  //   // Approve underlyingToken
+  //   _allowUnlimitedSpend(address(_token), _strategy);
+  //   // Approve the new strategy to transfer strategyToken out from this contract
+  //   _allowUnlimitedSpend(_newStrategyToken, _strategy);
+  //   // Update last strategy price
+  //   lastStrategyPrice = _strategyPrice();
+  // }
 
   /// @param _rebalancer new rebalancer address
   function setRebalancer(address _rebalancer) external {
