@@ -81,9 +81,7 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
     }
   }
 
-  /// @notice calculates the current total value locked (in `token` terms) using mintPrice. This method
-  /// is called after the transferFrom from the user so we should remove the amount just deposited
-  /// from the total
+  /// @notice calculates the current total value locked (in `token` terms) using mintPrice.
   /// @dev unclaimed rewards (gov tokens) are not counted.
   /// NOTE: `unclaimedFees` are not included in the contract value
   /// NOTE2: fees that *will* be taken (in the next _updateAccounting call) are counted
