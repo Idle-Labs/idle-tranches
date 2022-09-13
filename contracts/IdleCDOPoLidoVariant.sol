@@ -38,22 +38,22 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
         }
         require(_amount > 0, "0");
         address _token = token;
-        // get current available unlent balance
-        uint256 balanceUnderlying = _contractTokenBalance(_token);
+
         // Calculate the amount to redeem
         toRedeem = (_amount * _tranchePrice(_tranche)) / ONE_TRANCHE_TOKEN;
-        if (toRedeem > balanceUnderlying) {
-            // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
-            // and then add it to the current unlent balance
-            // NOTE: A difference of up to 100 wei due to rounding is tolerated
-            toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
-        }
+
+        // NOTE: modified from IdleCDO
+        // request unstaking matic from poLido strategy and receive an nft.
+        toRedeem = _liquidate(toRedeem, revertIfTooLow);
         // burn tranche token
         IdleCDOTranche(_tranche).burn(msg.sender, _amount);
 
         // NOTE: modified from IdleCDO
-        // send an PoLido NFT instead of underlyings to msg.sender
-        uint256 tokenId;
+        // send an PoLido nft not matic to msg.sender
+        uint256[] memory tokenIds = stMatic.getOwnedTokens(address(this));
+        require(tokenIds.length != 0, "no NFTs");
+
+        uint256 tokenId = tokenIds[tokenIds.length - 1];
         stMatic.poLidoNFT().safeTransferFrom(address(this), msg.sender, tokenId);
 
         // update NAV with the _amount of underlyings removed

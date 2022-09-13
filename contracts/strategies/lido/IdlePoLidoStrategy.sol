@@ -126,9 +126,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
             IPoLidoNFT poLidoNFT = stMatic.poLidoNFT();
             // transfer nft to msg.sender
             uint256[] memory tokenIds = poLidoNFT.getOwnedTokens(address(this));
-            //   for (uint256 i = 0; i < tokenIds.length; i++) {
-            //     poLidoNFT.safeTransferFrom(address(this), msg.sender, tokenIds[i]);
-            //   }
+
             // NOTE: assume last token is the one we just minted.
             uint256 tokenId = tokenIds[tokenIds.length - 1];
             poLidoNFT.safeTransferFrom(address(this), msg.sender, tokenId);
