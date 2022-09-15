@@ -37,7 +37,6 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
             _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
         }
         require(_amount > 0, "0");
-        address _token = token;
 
         // Calculate the amount to redeem
         toRedeem = (_amount * _tranchePrice(_tranche)) / ONE_TRANCHE_TOKEN;
@@ -50,7 +49,7 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
 
         // NOTE: modified from IdleCDO
         // send an PoLido nft not matic to msg.sender
-        uint256[] memory tokenIds = stMatic.getOwnedTokens(address(this));
+        uint256[] memory tokenIds = stMatic.poLidoNFT().getOwnedTokens(address(this));
         require(tokenIds.length != 0, "no NFTs");
 
         uint256 tokenId = tokenIds[tokenIds.length - 1];

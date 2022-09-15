@@ -185,6 +185,13 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
         IERC20Detailed(_token).safeTransfer(_to, value);
     }
 
+    /// @dev Emergency method
+    /// @param to receiver address
+    /// @param tokenId nft
+    function transferNft(uint256 to, address tokenId) external onlyOwner nonReentrant {
+        stMatic.poLidoNFT().safeTransferFrom(msg.sender, to, tokenId);
+    }
+
     /// @notice allow to update address whitelisted to pull stkAAVE rewards
     function setWhitelistedCDO(address _cdo) external onlyOwner {
         require(_cdo != address(0), "IS_0");
