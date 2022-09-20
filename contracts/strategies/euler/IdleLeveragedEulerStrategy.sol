@@ -213,14 +213,19 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
-    function deleverageManualy(uint256 _amount) external onlyOwner {
+    function deleverageManually(uint256 _amount, uint256 _targetHealthScore) external onlyOwner {
         IEToken _eToken = eToken;
+        if (_amount == 0) {
+            // deleverage all
+            _amount = dToken.balanceOf(address(this));
+        }
         _eToken.burn(SUB_ACCOUNT_ID, _amount);
         _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+        targetHealthScore = _targetHealthScore;
     }
 
     function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
-        require(_healthScore > EXP_SCALE, "strat/invalid-target-hs");
+        require(_healthScore > EXP_SCALE || _healthScore == 0, "strat/invalid-target-hs");
 
         uint256 _oldTargetHealthScore = targetHealthScore;
         targetHealthScore = _healthScore;
@@ -268,7 +273,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @param _amount _amount to deposit or withdraw. _amount greater than zero means `deposit`. _amount less than zero means `withdraw`
     function _getSelfAmount(uint256 _targetHealthScore, int256 _amount) internal view returns (uint256 selfAmount) {
         // target health score has 1e18 decimals.
-        require(_targetHealthScore > EXP_SCALE, "strat/invalid-target-hs");
+        require(_targetHealthScore > EXP_SCALE || _targetHealthScore == 0, "strat/invalid-target-hs");
+        if (_targetHealthScore == 0) {
+            // no leverage
+            return 0;
+        }
 
         // Calculate amount to `mint` or `burn` to maintain a target health score.
         // Let `h` denote the target health score we want to maintain.
@@ -347,14 +356,21 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     function getCurrentHealthScore() public view returns (uint256) {
         IRiskManager.LiquidityStatus memory status = EULER_EXEC.liquidity(address(this));
         // approximately equal to `eToken.balanceOfUnderlying(address(this))` divide by ` dToken.balanceOf(address(this))`
+        if (status.liabilityValue == 0) {
+            return 0;
+        }
         return (status.collateralValue * EXP_SCALE) / status.liabilityValue;
     }
 
     function getCurrentLeverage() public view returns (uint256) {
         uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
         uint256 debtInUnderlying = dToken.balanceOf(address(this));
+        uint256 principal = balanceInUnderlying - debtInUnderlying;
+        if (principal == 0) {
+            return EXP_SCALE;
+        }
         // leverage = debt / principal
-        return debtInUnderlying * oneToken / (balanceInUnderlying - debtInUnderlying);
+        return debtInUnderlying * oneToken / principal;
     }
 
     /// @notice this should be empty as rewards are sold directly in the strategy and 

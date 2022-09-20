@@ -167,6 +167,33 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(increaseThis, increase1, "gain for address this is < than gain of addr(1)");
     }
 
+    function testDeleverageManually() external runOnForkingNetwork(MAINNET_CHIANID) {
+        // set targetHealthScore
+        vm.prank(owner);
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(105 * EXP_SCALE / 100); // 1.05
+
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        // funds in lending
+        _cdoHarvest(true, true);
+        assertGt(_getCurrentLeverage(), ONE_SCALE, 'Not levereged');
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has no debt');
+
+        vm.prank(owner);
+        // deleverege all and set target health to special value 0 ie no leverage
+        IdleLeveragedEulerStrategy(address(strategy)).deleverageManually(0, 0);
+
+        assertEq(_getCurrentLeverage(), 0, 'Still levereged');
+        assertEq(_getCurrentHealthScore(), 0, 'Current target health is not 0');
+        assertEq(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt');
+
+        idleCDO.depositAA(amount);
+
+        assertEq(_getCurrentLeverage(), 0, 'Still levereged');
+        assertEq(_getCurrentHealthScore(), 0, 'Current target health is not 0 after another deposit');
+        assertEq(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt after another deposit');
+    }
+
     function testRedeemsWithRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
@@ -217,7 +244,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    function testGetSelfAmountToMint(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testGetSelfAmountToMint(uint32 target, uint32 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
         vm.assume(unit > 100 && unit <= 10000);
 
@@ -282,7 +309,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(_getCurrentHealthScore(), targetHealthScore, "hs > initial hs");
     }
 
-    function testGetSelfAmountToBurn(uint256 target, uint256 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testGetSelfAmountToBurn(uint32 target, uint32 unit) external runOnForkingNetwork(MAINNET_CHIANID) {
         vm.assume(target > 1 && target <= 20);
         vm.assume(unit > 100 && unit <= 10000);
 
@@ -386,6 +413,10 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         return IdleLeveragedEulerStrategy(address(strategy)).getCurrentHealthScore();
     }
 
+    function _getCurrentLeverage() internal view returns (uint256) {
+        return IdleLeveragedEulerStrategy(address(strategy)).getCurrentLeverage();
+    }
+
     function testSetInvalidTargetHealthScore() public runOnForkingNetwork(MAINNET_CHIANID) {
         vm.prank(owner);
         vm.expectRevert(bytes("strat/invalid-target-hs"));
@@ -410,7 +441,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setRouterPath(path);
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        _strategy.deleverageManualy(1000);
+        _strategy.deleverageManually(1000, 2e18);
         vm.stopPrank();
     }
 
@@ -468,4 +499,5 @@ contract EulDistributorMock is IEulDistributor {
     ) external {
         IERC20Detailed(token).transfer(account, claimable);
     }
+    function claimed(address, address) external view returns (uint256) {}
 }
