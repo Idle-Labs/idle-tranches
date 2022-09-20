@@ -428,7 +428,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
 
         IdleLeveragedEulerStrategy _strategy = IdleLeveragedEulerStrategy(address(strategy));
         vm.startPrank(address(0xbabe));
-        vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        vm.expectRevert(bytes("!AUTH"));
         _strategy.setTargetHealthScore(2e18);
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
@@ -438,9 +438,31 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setSwapRouter(address(0xabcd));
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        _strategy.setRouterPath(path);
+        _strategy.setRebalancer(address(22));
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
+        _strategy.setRouterPath(path);
+
+        vm.expectRevert(bytes("!AUTH"));
+        _strategy.deleverageManually(1000, 2e18);
+        vm.stopPrank();
+    }
+
+    function testOnlyRebalancer() public runOnForkingNetwork(MAINNET_CHIANID) {
+        IdleLeveragedEulerStrategy _strategy = IdleLeveragedEulerStrategy(address(strategy));
+        vm.prank(owner);
+        _strategy.setRebalancer(address(0xdead));
+        
+        vm.startPrank(address(0xbabe));
+        vm.expectRevert(bytes("!AUTH"));
+        _strategy.setTargetHealthScore(2e18);
+
+        vm.expectRevert(bytes("!AUTH"));
+        _strategy.deleverageManually(1000, 2e18);
+        vm.stopPrank();
+
+        vm.startPrank(address(0xdead));
+        _strategy.setTargetHealthScore(2e18);
         _strategy.deleverageManually(1000, 2e18);
         vm.stopPrank();
     }

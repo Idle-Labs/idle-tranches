@@ -60,6 +60,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @notice uniswap v3 router path
     bytes public path;
 
+    /// @notice address used to manage targetHealth
+    address public rebalancer;
+
     event UpdateTargetHealthScore(uint256 oldHeathScore, uint256 newHeathScore);
 
     event UpdateEulDistributor(address oldEulDistributor, address newEulDistributor);
@@ -213,7 +216,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
-    function deleverageManually(uint256 _amount, uint256 _targetHealthScore) external onlyOwner {
+    function deleverageManually(uint256 _amount, uint256 _targetHealthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+
         IEToken _eToken = eToken;
         if (_amount == 0) {
             // deleverage all
@@ -224,7 +229,8 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         targetHealthScore = _targetHealthScore;
     }
 
-    function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
+    function setTargetHealthScore(uint256 _healthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
         require(_healthScore > EXP_SCALE || _healthScore == 0, "strat/invalid-target-hs");
 
         uint256 _oldTargetHealthScore = targetHealthScore;
@@ -238,6 +244,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         eulDistributor = IEulDistributor(_eulDistributor);
 
         emit UpdateEulDistributor(oldEulDistributor, _eulDistributor);
+    }
+
+    function setRebalancer(address _rebalancer) external onlyOwner {
+        require(_rebalancer != address(0), '0');
+        rebalancer = _rebalancer;
     }
 
     function setSwapRouter(address _router) external onlyOwner {
