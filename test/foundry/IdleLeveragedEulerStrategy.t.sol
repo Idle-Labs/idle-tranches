@@ -167,7 +167,55 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertGe(increaseThis, increase1, "gain for address this is < than gain of addr(1)");
     }
 
-    function testDeleverageManually() external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testLeverageManually() external runOnForkingNetwork(MAINNET_CHIANID) {
+        // set targetHealthScore
+        vm.prank(owner);
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(0); // no lev
+
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        // funds in lending
+        _cdoHarvest(true, true);
+        assertEq(_getCurrentLeverage(), 0, 'Not levereged');
+        assertEq(dToken.balanceOf(address(strategy)), 0, 'Current strategy has no debt');
+
+        uint256 targetHealth = 110 * EXP_SCALE / 100;
+        vm.prank(owner);
+        // deleverege all and set target health to special value 0 ie no leverage
+        IdleLeveragedEulerStrategy(address(strategy)).leverageManually(targetHealth);
+
+        assertApproxEqRel(
+            _getCurrentLeverage(),
+            6 * ONE_SCALE,
+            2e16, // 0.2
+            'Current target health does not match expected one'
+        );
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            targetHealth,
+            1e15, // 0.1%
+            'Current target health does not match expected one'
+        );
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt');
+
+        idleCDO.depositAA(amount);
+
+        assertApproxEqRel(
+            _getCurrentLeverage(),
+            6 * ONE_SCALE,
+            2e16, // 0.2
+            'Current target health does not match expected one after deposit'
+        );
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            targetHealth,
+            1e15, // 0.1%
+            'Current target health does not match expected one after deposit'
+        );
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt after another deposit');
+    }
+
+    function testDeleverageAllManually() external runOnForkingNetwork(MAINNET_CHIANID) {
         // set targetHealthScore
         vm.prank(owner);
         IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(105 * EXP_SCALE / 100); // 1.05
@@ -181,7 +229,7 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
 
         vm.prank(owner);
         // deleverege all and set target health to special value 0 ie no leverage
-        IdleLeveragedEulerStrategy(address(strategy)).deleverageManually(0, 0);
+        IdleLeveragedEulerStrategy(address(strategy)).deleverageManually(0);
 
         assertEq(_getCurrentLeverage(), 0, 'Still levereged');
         assertEq(_getCurrentHealthScore(), 0, 'Current target health is not 0');
@@ -192,6 +240,45 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         assertEq(_getCurrentLeverage(), 0, 'Still levereged');
         assertEq(_getCurrentHealthScore(), 0, 'Current target health is not 0 after another deposit');
         assertEq(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt after another deposit');
+    }
+
+    function testDeleverageManually() external runOnForkingNetwork(MAINNET_CHIANID) {
+        // set targetHealthScore
+        vm.prank(owner);
+        IdleLeveragedEulerStrategy(address(strategy)).setTargetHealthScore(105 * EXP_SCALE / 100); // 1.05
+
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        // funds in lending
+        _cdoHarvest(true, true);
+        uint256 initialLev = _getCurrentLeverage();
+        assertGt(initialLev, ONE_SCALE, 'Not levereged');
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has no debt');
+
+        uint256 _targetHealthScore = 2 * EXP_SCALE; // 1.1
+        // uint256 _targetHealthScore = 110 * EXP_SCALE / 100; // 1.1
+        vm.prank(owner);
+        // half leverage
+        IdleLeveragedEulerStrategy(address(strategy)).deleverageManually(_targetHealthScore);
+        
+        assertEq(_getTargetHealthScore(), _targetHealthScore, 'target health score not updated');
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            _targetHealthScore,
+            1e15, // 0.1%
+            'Current health does not match expected one'
+        );
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt');
+
+        idleCDO.depositAA(amount);
+
+        assertApproxEqRel(
+            _getCurrentHealthScore(),
+            _targetHealthScore,
+            1e15, // 0.1%
+            'Current target health does not match expected one after deposit'
+        );
+        assertGt(dToken.balanceOf(address(strategy)), 0, 'Current strategy has debt after another deposit');
     }
 
     function testRedeemsWithRewards() external runOnForkingNetwork(MAINNET_CHIANID) {
@@ -412,6 +499,9 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
     function _getCurrentHealthScore() internal view returns (uint256) {
         return IdleLeveragedEulerStrategy(address(strategy)).getCurrentHealthScore();
     }
+    function _getTargetHealthScore() internal view returns (uint256) {
+        return IdleLeveragedEulerStrategy(address(strategy)).targetHealthScore();
+    }
 
     function _getCurrentLeverage() internal view returns (uint256) {
         return IdleLeveragedEulerStrategy(address(strategy)).getCurrentLeverage();
@@ -444,7 +534,10 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setRouterPath(path);
 
         vm.expectRevert(bytes("!AUTH"));
-        _strategy.deleverageManually(1000, 2e18);
+        _strategy.deleverageManually(2e18);
+
+        vm.expectRevert(bytes("!AUTH"));
+        _strategy.leverageManually(2e18);
         vm.stopPrank();
     }
 
@@ -458,12 +551,16 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         _strategy.setTargetHealthScore(2e18);
 
         vm.expectRevert(bytes("!AUTH"));
-        _strategy.deleverageManually(1000, 2e18);
+        _strategy.deleverageManually(2e18);
         vm.stopPrank();
+
+        idleCDO.depositAA(1000 * ONE_SCALE);
+        _cdoHarvest(true, true);
 
         vm.startPrank(address(0xdead));
         _strategy.setTargetHealthScore(2e18);
-        _strategy.deleverageManually(1000, 2e18);
+        _strategy.leverageManually(2e18);
+        _strategy.deleverageManually(0);
         vm.stopPrank();
     }
 

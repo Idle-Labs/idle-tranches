@@ -216,17 +216,38 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
-    function deleverageManually(uint256 _amount, uint256 _targetHealthScore) external {
+    function deleverageManually(uint256 _targetHealthScore) external {
         require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+        require(_targetHealthScore > EXP_SCALE || _targetHealthScore == 0, "!VALID");
+
+        // set target health score
+        targetHealthScore = _targetHealthScore;
 
         IEToken _eToken = eToken;
-        if (_amount == 0) {
+        if (_targetHealthScore == 0) {
             // deleverage all
-            _amount = dToken.balanceOf(address(this));
+            _eToken.burn(SUB_ACCOUNT_ID, dToken.balanceOf(address(this)));
+        } else {
+            uint256 amountToBurn = getSelfAmountToBurn(_targetHealthScore, 0);
+            if (amountToBurn != 0) {
+                _eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
+            }
         }
-        _eToken.burn(SUB_ACCOUNT_ID, _amount);
         _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+    }
+
+    /// @dev Leverage position by setting target health score
+    function leverageManually(uint256 _targetHealthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+        require(_targetHealthScore > EXP_SCALE, "!VALID");
+        // set target health score
         targetHealthScore = _targetHealthScore;
+
+        IEToken _eToken = eToken;
+        uint256 amountToMint = _getSelfAmount(_targetHealthScore, 0);
+        if (amountToMint != 0) {
+            _eToken.mint(SUB_ACCOUNT_ID, amountToMint);
+        }
     }
 
     function setTargetHealthScore(uint256 _healthScore) external {
@@ -342,11 +363,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
             // when withdrawing, xs is less than current debt and less than zero.
             if (term1 >= term2) {
                 // when withdrawing, maximum value of xs is zero.
-                if (_amount <= 0) return 0;
+                if (_amount < 0) return 0;
                 selfAmount = ((term1 - term2) * ONE_FACTOR_SCALE) / denominator;
             } else {
                 // when depositing, minimum value of xs is zero.
-                if (_amount >= 0) return 0;
+                if (_amount > 0) return 0;
                 selfAmount = ((term2 - term1) * ONE_FACTOR_SCALE) / denominator;
                 if (selfAmount > debtInUnderlying) {
                     // maximum repayable value is current debt value.
