@@ -227,8 +227,9 @@ abstract contract BaseStrategy is
 
         if (_totalSupply != 0 && timeIncrease != 0) {
             uint256 priceIncrease = (_gain * EXP_SCALE) / _totalSupply;
+            // normalized to 1e18 decimals
             lastApr = uint96(
-                priceIncrease * (YEAR / timeIncrease) * 100
+                priceIncrease * (YEAR / timeIncrease) * 100 * (10 ** (18 - tokenDecimals))
             ); // prettier-ignore
             lastIndexedTime = block.timestamp;
         }

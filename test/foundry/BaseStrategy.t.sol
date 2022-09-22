@@ -69,7 +69,7 @@ contract TestBaseStrategy is TestIdleCDOBase {
     using stdStorage for StdStorage;
 
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-
+    MockStakingReward public stakingContract;
     function _deployStrategy(address _owner)
         internal
         override
@@ -77,7 +77,7 @@ contract TestBaseStrategy is TestIdleCDOBase {
     {
         _underlying = USDC;
         strategy = new TestStrategy();
-        MockStakingReward _stakingContract = new MockStakingReward(
+        stakingContract = new MockStakingReward(
             IERC20Detailed(_underlying)
         );
 
@@ -90,17 +90,17 @@ contract TestBaseStrategy is TestIdleCDOBase {
         TestStrategy(_strategy).initialize(
             "Idle TestStrategy USDC",
             "IdleTestStrategy[USDC]",
-            _stakingContract,
+            stakingContract,
             _underlying,
             _owner
         );
 
         strategyToken = IERC20Detailed(_strategy); // strategy itself
-        uint256 _decimals = strategyToken.decimals();
+        uint256 _underlyingDec = IERC20Detailed(USDC).decimals();
 
-        uint256 amountToFund = 10_000_000 * 10**_decimals;
-        deal(_underlying, address(_stakingContract), amountToFund , true); // prettier-ignore
-        _stakingContract.setTestReward(100_000 * 10**_decimals);
+        uint256 amountToFund = 10_000_000 * 10**_underlyingDec;
+        deal(_underlying, address(stakingContract), amountToFund , true); // prettier-ignore
+        stakingContract.setTestReward(100_000 * 10**_underlyingDec);
     }
 
     function _postDeploy(address _cdo, address _owner) internal override {
@@ -136,6 +136,29 @@ contract TestBaseStrategy is TestIdleCDOBase {
             _stakingContract,
             address(underlying),
             owner // owner
+        );
+    }
+
+    function testAPR() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        stakingContract.setTestReward(100 * 10**6);
+
+        uint256 amount = 100000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        // funds in lending
+        _cdoHarvest(true);
+
+        skip(7 days);
+        // claim 100 rewards
+        _cdoHarvest(false);
+        vm.roll(block.number + 1);
+        // so user claimed 100 rewards in 7 days
+        // or 5200 per year ie 5.2% apr (5.2e18)
+        uint256 apr = idleCDO.getApr(address(AAtranche));
+        assertApproxEqAbs(
+            apr,
+            5.2 * 1e18,
+            1e17, // 0.1
+            'Current apr does not match expected one'
         );
     }
 }
