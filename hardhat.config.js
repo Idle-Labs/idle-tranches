@@ -35,6 +35,15 @@ const minimalSizeConfig = {
     }
   }
 };
+const highRunConfig = {
+  version: "0.8.10",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 10000
+    }
+  }
+};
 
 module.exports = {
   solidity: {
@@ -53,6 +62,7 @@ module.exports = {
       "contracts/IdleCDO.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
       "contracts/IdleCDOLeveregedEulerVariant.sol": minimalSizeConfig,
+      "contracts/strategies/euler/IdleLeveragedEulerStrategy.sol": highRunConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
   },
@@ -84,9 +94,10 @@ module.exports = {
       //   // blockNumber: 14956557 // eulerdai eulerusdt with AYS
       //   // blockNumber: 28479157 // polygon
       //   // blockNumber: 15133116, // clearpool strategy
-      //   blockNumber: 15435009, // euler lev usdc strategy
+      //   // blockNumber: 15435009, // euler lev usdc strategy
+      //   blockNumber: 15576018, // euler lev usdc strat upgrade
       // },
-      // // chainId: 137
+      // chainId: 137
     },
     coverage: {
       url: "http://127.0.0.1:8545/",

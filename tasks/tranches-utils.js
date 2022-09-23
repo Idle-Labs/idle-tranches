@@ -434,10 +434,9 @@ subtask("upgrade-with-multisig", "Get signer")
     )[args.cdoname];
     const contractName = args.contractName;
 
-    console.log('To upgrade: ', contractName)
-    console.log('deployToken', deployToken)
-
     const contractAddress = deployToken.cdo[args.contractKey];
+    console.log(`To upgrade: ${contractName} @ ${contractAddress}`)
+    console.log('deployToken', deployToken)
 
     if (!contractAddress || !contractName) {
       console.log(`contractAddress and contractName must be defined`);

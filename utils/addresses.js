@@ -273,15 +273,15 @@ const CDOs = {
   eullevusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    strategyToken: '0xee5ec95ce2c8700a2d152db3249fa13b163f0073',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0x29d094110c7a89f1cb6c975df0a38cae80f24b21',
+    cdoAddr: '0xcb2bd49d4b7874e6597dedfaa3e7b4e01831c5af',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '0x37De1D299C93743472343699c58Ec95000870Dc5',
+    strategy: '0xee5ec95ce2c8700a2d152db3249fa13b163f0073',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0xb43B101F1261784E3c4AF931dBD6082e08BB3317',
-    BBTranche: '0x19ef72c89e0B28406B7EbAcf2556CAb7Cc623eF9'
+    AATranche: '0x9F94fa97cC2d48315015040708D12aB855283164',
+    BBTranche: '0x617648B846512E2F49dC21Bf27e4505C285E6977'
   },
   eulerusdc: {
     decimals: 6,
