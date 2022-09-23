@@ -129,6 +129,57 @@ contract TestIdleTruefiStrategy is TestIdleCDOBase {
     idleCDO.withdrawBB(balBB);
   }
 
+  function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    uint256 amount = 10000 * ONE_SCALE;
+    // AARatio 50%
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    uint256 totAmount = amount * 2;
+
+    assertEq(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, "AAtranche bal");
+    assertEq(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, "BBtranche bal");
+    assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal");
+    // No unlent balance<
+    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal");
+    // strategy has balance as user will deposit directly
+    assertGt(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal");
+    uint256 strategyPrice = strategy.price();
+
+    // check that trancheAPRSplitRatio and aprs are updated 
+    assertEq(idleCDO.trancheAPRSplitRatio(), 25000, "split ratio");
+    // limit is 50% of the strategy apr if AAratio is <= 50%
+    assertApproxEqAbs(
+      idleCDO.getApr(address(AAtranche)),
+      initialApr / 2,
+      1e17, // 0.1
+      'AA apr'
+    );
+    assertApproxEqAbs(
+      idleCDO.getApr(address(BBtranche)),
+      initialApr * 3 / 2,
+      1e17, // 0.1
+      'BB apr'
+    );
+
+    // skip rewards and deposit underlyings to the strategy
+    _cdoHarvest(true);
+
+    // claim rewards
+    _cdoHarvest(false);
+    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
+
+    // Skip 7 day forward to accrue interest
+    skip(7 days);
+    vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+
+    assertGt(strategy.price(), strategyPrice, "strategy price");
+
+    // virtualPrice should increase too
+    assertGt(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
+    assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
+  }
+
   // calculate exit penalty
   function applyPenalty(uint256 amount) internal view returns (uint256) {
     return amount * _pool.liquidExitPenalty(amount) / BASIS_POINTS;
