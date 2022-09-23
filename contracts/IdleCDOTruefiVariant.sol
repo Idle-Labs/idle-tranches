@@ -83,4 +83,9 @@ contract IdleCDOTruefiVariant is IdleCDO {
     // update trancheAPRSplitRatio
     _updateSplitRatio();
   }
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256 _minted) {
+    _minted = super._deposit(_amount, _tranche, _referral);
+    // lend funds directly
+    IIdleCDOStrategy(strategy).deposit(_amount);
+  }
 }
