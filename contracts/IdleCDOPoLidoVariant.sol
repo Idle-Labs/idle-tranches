@@ -20,6 +20,19 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
     /// @notice stMatic contract
     IStMATIC public constant stMatic = IStMATIC(0x9ee91F9f426fA633d227f7a9b000E28b9dfd8599);
 
+    // NOTE: override this function
+    /// @notice method used to deposit `token` and mint tranche tokens
+    /// @dev deposit underlyings to strategy immediately
+    /// @return _minted number of tranche tokens minted
+    function _deposit(
+        uint256 _amount,
+        address _tranche,
+        address _referral
+    ) internal override whenNotPaused returns (uint256 _minted) {
+        _minted = super._deposit(_amount, _tranche, _referral);
+        IIdleCDOStrategy(strategy).deposit(_amount);
+    }
+
     /// @notice It allows users to burn their tranche token and redeem their principal + interest back
     /// @dev automatically reverts on lending provider default (_strategyPrice decreased).
     /// @param _amount in tranche tokens

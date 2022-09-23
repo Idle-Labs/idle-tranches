@@ -242,7 +242,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _tranche tranche address
   /// @param _referral referral address
   /// @return _minted number of tranche tokens minted
-  function _deposit(uint256 _amount, address _tranche, address _referral) internal whenNotPaused returns (uint256 _minted) {
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal virtual whenNotPaused returns (uint256 _minted) {
     if (_amount == 0) {
       return _minted;
     }

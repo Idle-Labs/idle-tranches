@@ -145,20 +145,12 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
         return balanceInMATIC;
     }
 
-    /// @dev Lido stETH: calculation of staker rewards
-    /// @return apr net apr (fees should already be excluded)
+    /// @dev values returned by this method should be taken as an imprecise estimation.
+    ///      For client integration something more complex should be done to have a more precise
+    ///      estimate (eg. computing APR using historical APR data).
+    /// @return apr : net apr
     function getApr() external view override returns (uint256 apr) {
-        // (uint256 postTotalPooledEther, uint256 preTotalPooledEther, uint256 timeElapsed) = _lidoOralce
-        //     .getLastCompletedReportDelta();
-        // if (postTotalPooledEther > preTotalPooledEther) {
-        //     // Calculate APR
-        //     apr =
-        //         (((postTotalPooledEther - preTotalPooledEther) * SECONDS_IN_YEAR) * 1e18 * 100) /
-        //         (preTotalPooledEther * timeElapsed);
-        //     // remove fee
-        //     // Fee in basis points.  10000 BP corresponding to 100%.
-        //     apr -= (apr * stMatic.getFee()) / 10000;
-        // }
+        // apr = rate * blocks in a year / harvest interval
     }
 
     /// @return tokens array of reward token addresses
@@ -188,7 +180,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
     /// @dev Emergency method
     /// @param to receiver address
     /// @param tokenId nft
-    function transferNft(uint256 to, address tokenId) external onlyOwner nonReentrant {
+    function transferNft(address to, uint256 tokenId) external onlyOwner nonReentrant {
         stMatic.poLidoNFT().safeTransferFrom(msg.sender, to, tokenId);
     }
 
@@ -199,7 +191,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
     }
 
     modifier onlyIdleCDO() {
-        require(msg.sender == whitelistedCDO, "onlyIdleCDO");
+        require(msg.sender == whitelistedCDO, "Only IdleCDO can call");
         _;
     }
 }
