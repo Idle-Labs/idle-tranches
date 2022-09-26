@@ -15,4 +15,6 @@ interface IEulDistributor {
         bytes32[] calldata proof,
         address stake
     ) external;
+
+    function claimed(address account, address token) external view returns (uint256);
 }

@@ -107,7 +107,11 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
     }
     await helpers.prompt("continue? [y/n]", true);
     const signer = await run('get-signer-or-fake');
-    await helpers.upgradeContract(contractAddress, 'IdleCDO', signer);
+    let contractName = 'IdleCDO';
+    if (deployToken.cdoVariant) {
+      contractName = deployToken.cdoVariant;
+    }
+    await helpers.upgradeContract(contractAddress, contractName, signer);
     console.log(`IdleCDO upgraded`);
   });
 
@@ -117,9 +121,14 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
 task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
   .addParam('cdoname')
   .setAction(async (args) => {
+    const deployToken = addresses.deployTokens[args.cdoname];
+    let contractName = 'IdleCDO';
+    if (deployToken.cdoVariant) {
+      contractName = deployToken.cdoVariant;
+    }
     await run("upgrade-with-multisig", {
       cdoname: args.cdoname,
-      contractName: 'IdleCDO',
+      contractName,
       contractKey: 'cdoAddr',
       // initMethod: '_init',
       // initParams: []
@@ -434,10 +443,9 @@ subtask("upgrade-with-multisig", "Get signer")
     )[args.cdoname];
     const contractName = args.contractName;
 
-    console.log('To upgrade: ', contractName)
-    console.log('deployToken', deployToken)
-
     const contractAddress = deployToken.cdo[args.contractKey];
+    console.log(`To upgrade: ${contractName} @ ${contractAddress}`)
+    console.log('deployToken', deployToken)
 
     if (!contractAddress || !contractName) {
       console.log(`contractAddress and contractName must be defined`);

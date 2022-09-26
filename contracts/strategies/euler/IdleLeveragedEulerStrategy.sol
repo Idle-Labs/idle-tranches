@@ -48,6 +48,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @dev 18 decimals. 1 == 1e18. must be greater 1e18
     uint256 public targetHealthScore;
 
+    /// @notice price used to mint tranche tokens if current tranche price < last harvest
+    uint256 public mintPrice;
+
     /// @notice Eul reward distributor
     IEulDistributor public eulDistributor;
 
@@ -56,6 +59,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
     /// @notice uniswap v3 router path
     bytes public path;
+
+    /// @notice address used to manage targetHealth
+    address public rebalancer;
 
     event UpdateTargetHealthScore(uint256 oldHeathScore, uint256 newHeathScore);
 
@@ -88,7 +94,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         router = ISwapRouter(_router);
         path = _path;
         targetHealthScore = _targetHealthScore;
-        releaseBlocksPeriod = 89600; // ~14 days in blocks (6400 block per day)
+        // This should be more than the Euler epoch period
+        releaseBlocksPeriod = 108900; // ~15 days in blocks (counting 11.9 sec per block with PoS)
+        mintPrice = oneToken;
 
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlying);
@@ -105,6 +113,12 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         } else {
             _price = ((_tokenValue - _lockedTokens()) * EXP_SCALE) / _totalSupply;
         }
+    }
+
+    function _setMintPrice() internal {
+        uint256 _tokenValue = eToken.balanceOfUnderlying(address(this)) - dToken.balanceOf(address(this));
+        // count all tokens as unlocked so price will be higher for mint (otherwise interest unlocked is stealed from others)
+        mintPrice = (_tokenValue * EXP_SCALE) / totalSupply();
     }
 
     /// @param _amount amount of underlying to deposit
@@ -142,7 +156,6 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
             if (claimable == 0) {
                 return rewards;
             }
-
             // claim EUL by verifying a merkle root
             _eulDistributor.claim(address(this), address(EUL), claimable, proof, address(0));
             uint256 amountIn = EUL.balanceOf(address(this));
@@ -161,6 +174,19 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
 
             rewards[0] = underlyingToken.balanceOf(address(this));
         }
+    }
+
+    /// @notice redeem the rewards
+    /// @return rewards amount of reward that is deposited to the ` strategy`
+    ///         rewards[0] : mintedUnderlyings
+    function redeemRewards(bytes calldata data)
+        public
+        override
+        onlyIdleCDO
+        returns (uint256[] memory rewards)
+    {
+        rewards = super.redeemRewards(data);
+        _setMintPrice();
     }
 
     function _withdraw(uint256 _amountToWithdraw, address _destination)
@@ -190,14 +216,43 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     }
 
     /// @dev Pay off dToken liability with eTokens ("self-repay") and depost the withdrawn underlying
-    function deleverageManualy(uint256 _amount) external onlyOwner {
+    function deleverageManually(uint256 _targetHealthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+        require(_targetHealthScore > EXP_SCALE || _targetHealthScore == 0, "!VALID");
+
+        // set target health score
+        targetHealthScore = _targetHealthScore;
+
         IEToken _eToken = eToken;
-        _eToken.burn(SUB_ACCOUNT_ID, _amount);
+        if (_targetHealthScore == 0) {
+            // deleverage all
+            _eToken.burn(SUB_ACCOUNT_ID, dToken.balanceOf(address(this)));
+        } else {
+            uint256 amountToBurn = getSelfAmountToBurn(_targetHealthScore, 0);
+            if (amountToBurn != 0) {
+                _eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
+            }
+        }
         _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
     }
 
-    function setTargetHealthScore(uint256 _healthScore) external onlyOwner {
-        require(_healthScore > EXP_SCALE, "strat/invalid-target-hs");
+    /// @dev Leverage position by setting target health score
+    function leverageManually(uint256 _targetHealthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+        require(_targetHealthScore > EXP_SCALE, "!VALID");
+        // set target health score
+        targetHealthScore = _targetHealthScore;
+
+        IEToken _eToken = eToken;
+        uint256 amountToMint = _getSelfAmount(_targetHealthScore, 0);
+        if (amountToMint != 0) {
+            _eToken.mint(SUB_ACCOUNT_ID, amountToMint);
+        }
+    }
+
+    function setTargetHealthScore(uint256 _healthScore) external {
+        require(msg.sender == owner() || msg.sender == rebalancer, '!AUTH');
+        require(_healthScore > EXP_SCALE || _healthScore == 0, "strat/invalid-target-hs");
 
         uint256 _oldTargetHealthScore = targetHealthScore;
         targetHealthScore = _healthScore;
@@ -210,6 +265,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         eulDistributor = IEulDistributor(_eulDistributor);
 
         emit UpdateEulDistributor(oldEulDistributor, _eulDistributor);
+    }
+
+    function setRebalancer(address _rebalancer) external onlyOwner {
+        require(_rebalancer != address(0), '0');
+        rebalancer = _rebalancer;
     }
 
     function setSwapRouter(address _router) external onlyOwner {
@@ -245,7 +305,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @param _amount _amount to deposit or withdraw. _amount greater than zero means `deposit`. _amount less than zero means `withdraw`
     function _getSelfAmount(uint256 _targetHealthScore, int256 _amount) internal view returns (uint256 selfAmount) {
         // target health score has 1e18 decimals.
-        require(_targetHealthScore > EXP_SCALE, "strat/invalid-target-hs");
+        require(_targetHealthScore > EXP_SCALE || _targetHealthScore == 0, "strat/invalid-target-hs");
+        if (_targetHealthScore == 0) {
+            // no leverage
+            return 0;
+        }
 
         // Calculate amount to `mint` or `burn` to maintain a target health score.
         // Let `h` denote the target health score we want to maintain.
@@ -299,11 +363,11 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
             // when withdrawing, xs is less than current debt and less than zero.
             if (term1 >= term2) {
                 // when withdrawing, maximum value of xs is zero.
-                if (_amount <= 0) return 0;
+                if (_amount < 0) return 0;
                 selfAmount = ((term1 - term2) * ONE_FACTOR_SCALE) / denominator;
             } else {
                 // when depositing, minimum value of xs is zero.
-                if (_amount >= 0) return 0;
+                if (_amount > 0) return 0;
                 selfAmount = ((term2 - term1) * ONE_FACTOR_SCALE) / denominator;
                 if (selfAmount > debtInUnderlying) {
                     // maximum repayable value is current debt value.
@@ -324,14 +388,21 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     function getCurrentHealthScore() public view returns (uint256) {
         IRiskManager.LiquidityStatus memory status = EULER_EXEC.liquidity(address(this));
         // approximately equal to `eToken.balanceOfUnderlying(address(this))` divide by ` dToken.balanceOf(address(this))`
+        if (status.liabilityValue == 0) {
+            return 0;
+        }
         return (status.collateralValue * EXP_SCALE) / status.liabilityValue;
     }
 
     function getCurrentLeverage() public view returns (uint256) {
         uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
         uint256 debtInUnderlying = dToken.balanceOf(address(this));
+        uint256 principal = balanceInUnderlying - debtInUnderlying;
+        if (principal == 0) {
+            return EXP_SCALE;
+        }
         // leverage = debt / principal
-        return debtInUnderlying * oneToken / (balanceInUnderlying - debtInUnderlying);
+        return debtInUnderlying * oneToken / principal;
     }
 
     /// @notice this should be empty as rewards are sold directly in the strategy and 

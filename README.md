@@ -5,7 +5,7 @@ The aim of Idle Perpetual Yield Tranches is to pool capital of users (eg DAI), d
 
 One will gain more interest and will be more risky (BB or junior tranche) and the other will have a lower APR but more safety (AA or senior tranche). In the case of an hack or a loss of funds of the lending provider integrated (or any other protocol integrated by this provider), all funds still available will be used to refund senior tranche holders first with the aim of making them whole, and with remaining funds, if any, junior holders after.
 
-There are no locking period or epochs and users are free to enter and exit at any time, the interest earned (and governance tokens, after being partially sold in the market) will be split between the two classes according to either a predefined ratio called `trancheAPRSplitRatio` (eg 20% interest to AA holders and 80% to BB) or an adaptive ratio depending on the pool selected. The apr is variable for both classes of tranches.
+There are no locking period or epochs and users are free to enter and exit at any time, the interest earned (and governance tokens, after being partially sold in the market) will be split between the two classes according to a dynamic ratio called `trancheAPRSplitRatio` which is updated, based on the TVL of both tranches, at each deposit/redeem. The apr is variable for both classes of tranches.
 
 ## Docs
 
@@ -14,16 +14,12 @@ https://docs.idle.finance/developers/perpetual-yield-tranches
 ## Architecture
 The main contract which will be used by users is `IdleCDO` which allow to deposits underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
 
-The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possibile. Other tokens (eg IDLE that won't be sold or tokens that have no liquid markets) will get redistributed to people who staked their tranches in a separate `StakingRewards` contract (one for AA and one for BB).
+The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possibile. Other tokens (eg IDLE or LDO that won't be sold or tokens that have no liquid markets) will get redistributed via [Idle Gauges](https://github.com/Idle-Finance/idle-gauges) with a `Multirewards` contract
 
 These are the main contracts used:
 
 - **IdleCDO.sol**: contract which holds all the users pooled assets (both underlyings, eg DAI, and interest bearing tokens, eg cDAI or aDAI) and entry point for the user to mint tranche tokens and burn them to redeem principal + interest.
 When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their choosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 6400) blocks, to increase the value of all tranche holders, and part of the gov tokens will be sent to StakingRewards contracts, if those are set. On redeem users will burn their tranche tokens and get underlyings back.
-
-- **StakingRewards.sol**: A forked version of the Synthetix staking rewards contract for staking tranche tokens and getting rewards. During harvest depositReward can be called to transfer rewards that will be released linearly over x (currently set a 6400) blocks.
-
-- **IdleCDOTrancheRewards.sol**: [Used only for DAI and FEI IdleCDOs] contract for staking tranche tokens and getting rewards. During harvest `depositReward` can be called to transfer rewards that will be released linearly over x (currently set a 1500) blocks
 
 - **IdleCDOTranche.sol**: ERC20 representing a specific (either AA or BB) tranche token. Only IdleCDO contract can mint and burn tranche tokens.
 
