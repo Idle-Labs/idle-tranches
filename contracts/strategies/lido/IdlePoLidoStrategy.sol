@@ -31,6 +31,8 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
     /// @notice decimals of the underlying asset
     uint256 public constant override tokenDecimals = 18;
 
+    /// @notice LDO contract (manually distributed as rewards)
+    address public constant LDO = 0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32;
     /// @notice Matic contract
     IERC20Detailed public constant MATIC = IERC20Detailed(0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0);
 
@@ -150,11 +152,15 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
     ///      estimate (eg. computing APR using historical APR data).
     /// @return apr : net apr
     function getApr() external view override returns (uint256 apr) {
-        // apr = rate * blocks in a year / harvest interval
+        // Not available
     }
 
     /// @return tokens array of reward token addresses
-    function getRewardTokens() external view override returns (address[] memory tokens) {}
+    function getRewardTokens() external pure override returns (address[] memory tokens) {
+        tokens = new address[](1);
+        tokens[0] = LDO;
+        return tokens;
+    }
 
     // ###################
     // Protected
