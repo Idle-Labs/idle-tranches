@@ -51,7 +51,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         vm.startPrank(address(0xbabe));
 
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        IdlePoLidoStrategy(address(strategy)).setBlocksInYear(100);
+        IdlePoLidoStrategy(address(strategy)).transferToken(address(1), 100, address(2));
 
         vm.stopPrank();
     }
@@ -130,14 +130,14 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
     }
 
-    function testOnlyIdleCDO() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
+    function testOnlyIdleCDO() public override runOnForkingNetwork(MAINNET_CHIANID) {
         vm.prank(address(0xbabe));
         vm.expectRevert(bytes("Only IdleCDO can call"));
         strategy.deposit(1e10);
 
         vm.prank(address(0xbabe));
         vm.expectRevert(bytes("Only IdleCDO can call"));
-        strategy.redeem(1e10);;
+        strategy.redeem(1e10);
     }
 
     function testRestoreOperations() external override runOnForkingNetwork(MAINNET_CHIANID) {
