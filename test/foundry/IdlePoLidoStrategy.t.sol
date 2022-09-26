@@ -17,6 +17,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
 
     /// @notice Matic contract
     IERC20Detailed public constant MATIC = IERC20Detailed(0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0);
+    address public constant LDO = 0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32;
 
     IPoLidoNFT internal poLidoNFT;
 
@@ -101,6 +102,13 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
 
         vm.clearMockedCalls();
+    }
+
+    function testRedeemRewards() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        // rewards are managed manually so we only test that the correct reward token address is set
+        address[] memory _rewards = strategy.getRewardTokens();
+        assertEq(_rewards[0], LDO, "Wrong reward address");
+        assertEq(_rewards.length, 1, "Wrong reward number");
     }
 
     function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
