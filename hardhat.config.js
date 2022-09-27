@@ -62,6 +62,7 @@ module.exports = {
       "contracts/IdleCDO.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
       "contracts/IdleCDOLeveregedEulerVariant.sol": minimalSizeConfig,
+      "contracts/IdleCDOPoLidoVariant.sol": minimalSizeConfig,
       "contracts/strategies/euler/IdleLeveragedEulerStrategy.sol": highRunConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
     }
@@ -70,7 +71,8 @@ module.exports = {
     hardhat: {
       allowUnlimitedContractSize: true,
       // forking: {
-      //    url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      //   url: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
+      //   // url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url:`https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
       //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
@@ -95,7 +97,8 @@ module.exports = {
       //   // blockNumber: 28479157 // polygon
       //   // blockNumber: 15133116, // clearpool strategy
       //   // blockNumber: 15435009, // euler lev usdc strategy
-      //   blockNumber: 15576018, // euler lev usdc strat upgrade
+      //   // blockNumber: 15576018, // euler lev usdc strat upgrade
+      //   blockNumber: 15617063, // stMatic strategy
       // },
       // chainId: 137
     },

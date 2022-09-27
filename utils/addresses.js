@@ -37,6 +37,8 @@ const mainnetContracts = {
   WBTC: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
   ANGLE: '0x31429d1856ad1377a8a0079410b297e1a9e214c2',
   LDO: '0x5a98fcbea516cf06857215779fd812ca3bef1b32',
+  MATIC: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0',
+  stMATIC: '0x9ee91F9f426fA633d227f7a9b000E28b9dfd8599',
   PNT: '0x89ab32156e46f46d02ade3fecbe5fc4243b9aaed',
   CRV_3POOL: '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490',
   CRV_STECRV: '0x06325440D014e39736583c165C2963BA99fAf14E',
@@ -361,6 +363,19 @@ const CDOs = {
     AATranche: '0x868bb78fb045576162B510ba33358C9f93e7959e',
     BBTranche: '0x6EdE2522347E6a5A0420F41f42e021246e97B540'
   },
+  stmatic: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: mainnetContracts.stMATIC,
+    underlying: mainnetContracts.MATIC,
+    cdoAddr: '0xF87ec7e1Ee467d7d78862089B92dd40497cBa5B8',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x6110deC9faC2A721c0EEe64B769A7E4cCcf4aa81',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xAEf4FCC4E5F2dc270760063446d4116D24704Ad1',
+    BBTranche: '0x077212c69A66261CF7bD1fd3b5C5db7CfFA948Ee'
+  },
 };
 
 const polygonCDOs = {
@@ -638,6 +653,23 @@ exports.deployTokens = {
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '2000000',
+    isAYSActive: true,
+    proxyCdoAddress: '', // deploy new instance
+  },
+  // stMATIC
+  stmatic: {
+    decimals: 18,
+    underlying: mainnetContracts.MATIC,
+    strategyName: 'IdlePoLidoStrategy',
+    strategyParams: [
+      'owner' // owner address
+    ],
+    cdo: CDOs.stmatic,
+    cdoVariant: 'IdleCDOPoLidoVariant',
+    unlent: 0,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: '', // deploy new instance
   },

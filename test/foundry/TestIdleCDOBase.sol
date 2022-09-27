@@ -235,7 +235,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.withdrawBB(amount);
   }
 
-  function testRestoreOperations() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRestoreOperations() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 1000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
