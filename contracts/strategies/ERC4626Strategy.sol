@@ -91,28 +91,20 @@ abstract contract ERC4626Strategy is
     /// @param _shares amount of strategyTokens to redeem
     /// @return redeemed amount of underlyings redeemed
     function redeem(uint256 _shares) external virtual override onlyIdleCDO returns (uint256 redeemed) {
-        if (_shares != 0) {
-            address _strategyToken = strategyToken;
-
-            IERC20Detailed(_strategyToken).safeTransferFrom(msg.sender, address(this), _shares);
-            redeemed = IERC4626(_strategyToken).redeem(_shares, msg.sender, address(this));
-        }
+        return _redeem(_shares);
     }
 
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
-    /// @return redeemed Amount of underlying tokens received
+    /// @return redeemed amount of underlyings redeemed
     function redeemUnderlying(uint256 _amount) external virtual onlyIdleCDO returns (uint256 redeemed) {
-        if (_amount != 0) {
-            address _strategyToken = strategyToken;
-            IERC20Detailed _underlyingToken = underlyingToken;
+        return _redeem(IERC4626(strategyToken).convertToShares(_amount));
+    }
 
-            // redeem strategyTokens
-            IERC20Detailed(_strategyToken).safeTransferFrom(msg.sender, address(this), _amount);
-            IERC4626(_strategyToken).withdraw(_amount, address(this), address(this));
-            // send underlying tokens to msg.sender
-            redeemed = _underlyingToken.balanceOf(address(this));
-            _underlyingToken.safeTransfer(msg.sender, redeemed);
+    function _redeem(uint256 _shares) internal virtual returns (uint256 redeemed) {
+        if (_shares != 0) {
+            IERC20Detailed(strategyToken).safeTransferFrom(msg.sender, address(this), _shares);
+            redeemed = IERC4626(strategyToken).redeem(_shares, msg.sender, address(this));
         }
     }
 
