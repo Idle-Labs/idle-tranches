@@ -45,7 +45,9 @@ abstract contract ERC4626Strategy is
     /// @notice can be only called once
     /// @param _name name of this strategy ERC20 tokens
     /// @param _symbol symbol of this strategy ERC20 tokens
+    /// @param _strategyToken address of the vault token
     /// @param _token address of the underlying token
+    /// @param _owner owner of this contract
     function _initialize(
         string memory _name,
         string memory _symbol,
@@ -69,24 +71,26 @@ abstract contract ERC4626Strategy is
         //------//-------//
 
         transferOwnership(_owner);
+
+        // NOTE: when initialized in parent contract, the strategy should approve vault spending underlyingToken
     }
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
     /// @return shares strategyTokens minted
-    function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 shares) {
+    function deposit(uint256 _amount) external virtual override onlyIdleCDO returns (uint256 shares) {
         if (_amount != 0) {
             // Send tokens to the strategy
             IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
             // Calls deposit function
-            IERC4626(strategyToken).deposit(_amount, msg.sender);
+            shares = IERC4626(strategyToken).deposit(_amount, msg.sender);
         }
     }
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
     /// @param _shares amount of strategyTokens to redeem
     /// @return redeemed amount of underlyings redeemed
-    function redeem(uint256 _shares) external override onlyIdleCDO returns (uint256 redeemed) {
+    function redeem(uint256 _shares) external virtual override onlyIdleCDO returns (uint256 redeemed) {
         if (_shares != 0) {
             address _strategyToken = strategyToken;
 
