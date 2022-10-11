@@ -233,7 +233,10 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 _eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
             }
         }
-        _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+        uint256 bal = underlyingToken.balanceOf(address(this));
+        if (bal > 0) {
+            _eToken.deposit(SUB_ACCOUNT_ID, bal);
+        }
     }
 
     /// @dev Leverage position by setting target health score
