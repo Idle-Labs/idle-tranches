@@ -194,6 +194,10 @@ abstract contract TestIdleCDOBase is Test {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Only IdleCDO can call"));
     strategy.redeemRewards(bytes(""));
+
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Only IdleCDO can call"));
+    strategy.redeemUnderlying(1);
   }
 
   function testOnlyOwner() public virtual {
@@ -271,6 +275,7 @@ abstract contract TestIdleCDOBase is Test {
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
+    console.log('apr', apr);
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
@@ -362,7 +367,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 
-  function _deployLocalContracts() internal returns (IdleCDO _cdo) {
+  function _deployLocalContracts() internal virtual returns (IdleCDO _cdo) {
     address _owner = address(2);
     address _rebalancer = address(3);
     (address _strategy, address _underlying) = _deployStrategy(_owner);
