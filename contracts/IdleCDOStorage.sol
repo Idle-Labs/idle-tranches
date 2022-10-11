@@ -104,4 +104,6 @@ contract IdleCDOStorage {
 
   // Referral event
   event Referral(uint256 _amount, address _ref);
+  // tolerance in underlyings when redeeming
+  uint256 public liquidationTolerance; 
 }

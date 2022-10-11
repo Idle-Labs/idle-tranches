@@ -512,9 +512,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _liquidate(uint256 _amount, bool _revertIfNeeded) internal virtual returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (_revertIfNeeded) {
-      // keep 100 wei as margin for rounding errors
-      require(_redeemedTokens + 100 >= _amount, '5');
+      uint256 _tolerance = liquidationTolerance;
+      if (_tolerance == 0) {
+        _tolerance = 100;
+      }
+      // keep `_tolerance` wei as margin for rounding errors
+      require(_redeemedTokens + _tolerance >= _amount, '5');
     }
+
     if (_redeemedTokens > _amount) {
       _redeemedTokens = _amount;
     }
@@ -893,6 +898,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
     require((guardian = _guardian) != address(0), '0');
+  }
+
+  /// @param _diff max liquidation diff tolerance in underlyings
+  function setLiquidationTolerance(uint256 _diff) external {
+    _checkOnlyOwner();
+    liquidationTolerance = _diff;
   }
 
   /// @param _fee new fee
