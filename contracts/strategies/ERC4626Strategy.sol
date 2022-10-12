@@ -54,7 +54,7 @@ abstract contract ERC4626Strategy is
         address _strategyToken,
         address _token,
         address _owner
-    ) internal initializer {
+    ) internal virtual initializer {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
         require(token == address(0), "Token is already initialized");
@@ -72,7 +72,7 @@ abstract contract ERC4626Strategy is
 
         transferOwnership(_owner);
 
-        // NOTE: when initialized in parent contract, the strategy should approve vault spending underlyingToken
+        IERC20Detailed(_token).approve(_strategyToken, type(uint256).max);
     }
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
@@ -125,7 +125,8 @@ abstract contract ERC4626Strategy is
     /// @notice net price in underlyings of 1 strategyToken
     /// @return _price denominated in decimals of underlyings
     function price() public view virtual override returns (uint256) {
-        return IERC4626(strategyToken).convertToAssets(10**IERC4626(strategyToken).decimals());
+        IERC4626 vault = IERC4626(strategyToken);
+        return vault.convertToAssets(10**vault.decimals());
     }
 
     function getApr() external view virtual returns (uint256 apr);
