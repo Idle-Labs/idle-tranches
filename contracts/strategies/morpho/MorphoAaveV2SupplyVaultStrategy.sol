@@ -10,6 +10,7 @@ contract MorphoAaveV2SupplyVaultStrategy is MorphoSupplyVaultStrategy {
 
     function getApr() external view override returns (uint256 apr) {
         // The supply rate per year experienced on average on the given market (in WAD).
-        (apr, , ) = MORPHO_LENS.getAverageSupplyRatePerYear(poolToken);
+        (uint256 avgSupplyRatePerYear, , ) = MORPHO_LENS.getAverageSupplyRatePerYear(poolToken);
+        apr = avgSupplyRatePerYear / 1e7; // TODO
     }
 }

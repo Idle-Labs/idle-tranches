@@ -10,6 +10,7 @@ contract MorphoCompoundSupplyVaultStrategy is MorphoSupplyVaultStrategy {
 
     function getApr() external view override returns (uint256 apr) {
         //  The market's average supply rate per block (in wad).
-        (apr, , ) = LENS.getAverageSupplyRatePerBlock(poolToken);
+        (uint256 avgSupplyRatePerYear, , ) = LENS.getAverageSupplyRatePerBlock(poolToken);
+        return avgSupplyRatePerYear; // TODO
     }
 }
