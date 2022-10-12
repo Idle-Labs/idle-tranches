@@ -16,8 +16,6 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
     // Morpho-Aave Dai Stablecoin Supply Vault
     // https://github.com/morpho-dao/morpho-tokenized-vaults
     address internal constant maDAI = 0x36F8d0D0573ae92326827C4a82Fe4CE4C244cAb6;
-    // set to address(0) to skip `redeemRewards`
-    address internal constant morpho = address(0);
 
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         _underlying = DAI;
@@ -35,7 +33,7 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
             _underlying,
             _owner,
             ADAI,
-            morpho
+            address(0)
         );
     }
 
@@ -53,9 +51,7 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
             address(underlying),
             owner,
             ADAI,
-            morpho
+            address(0)
         );
     }
-
-    function testAPR() external override runOnForkingNetwork(MAINNET_CHIANID) {}
 }

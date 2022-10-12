@@ -11,16 +11,4 @@ interface IMorphoAaveV2Lens {
             uint256 p2pSupplyAmount,
             uint256 poolSupplyAmount
         );
-
-    function getCurrentUserSupplyRatePerYear(address _poolToken, address _user) external view returns (uint256);
-
-    function getRatesPerYear(address _poolToken)
-        external
-        view
-        returns (
-            uint256 p2pSupplyRate,
-            uint256 p2pBorrowRate,
-            uint256 poolSupplyRate,
-            uint256 poolBorrowRate
-        );
 }
