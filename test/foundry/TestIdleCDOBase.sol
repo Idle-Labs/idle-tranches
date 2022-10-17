@@ -34,6 +34,7 @@ abstract contract TestIdleCDOBase is Test {
   IdleCDOTranche internal BBtranche;
   IIdleCDOStrategy internal strategy;
   bytes internal extraData;
+  bytes internal extraDataSell;
 
   // override these methods in derived contracts
   function _deployStrategy(address _owner) internal virtual returns (
@@ -352,10 +353,10 @@ abstract contract TestIdleCDOBase is Test {
     bool[] memory _skipReward = new bool[](numOfRewards);
     uint256[] memory _minAmount = new uint256[](numOfRewards);
     uint256[] memory _sellAmounts = new uint256[](numOfRewards);
-    bytes memory _extraData;
-    // bytes memory _extraData = abi.encode(uint256(0), uint256(0), uint256(0));
+    bytes[] memory _extraData = new bytes[](2);
     if(!_skipRewards){
-      _extraData = extraData;
+      _extraData[0] = extraData;
+      _extraData[1] = extraDataSell;
     }
     // skip fees distribution
     _skipFlags[3] = _skipRewards;

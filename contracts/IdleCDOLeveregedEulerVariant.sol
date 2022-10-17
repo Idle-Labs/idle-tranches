@@ -225,7 +225,7 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
     bool[] calldata _skipReward,
     uint256[] calldata _minAmount,
     uint256[] calldata _sellAmounts,
-    bytes calldata _extraData
+    bytes[] calldata _extraData
   ) public
     override
     returns (uint256[][] memory _res) {

@@ -55,6 +55,9 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
         eToken = IEToken(0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716); // eUSDC
         dToken = IDToken(0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42); // dUSDC
+        bytes[] memory _extraPath = new bytes[](1);
+        _extraPath[0] = abi.encodePacked(EUL, uint24(10000), USDC);
+        extraDataSell = abi.encode(_extraPath);
         _underlying = USDC;
 
         strategy = new IdleLeveragedEulerStrategy();
@@ -585,10 +588,11 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         bool[] memory _skipReward = new bool[](numOfRewards);
         uint256[] memory _minAmount = new uint256[](numOfRewards);
         uint256[] memory _sellAmounts = new uint256[](numOfRewards);
-        bytes memory _extraData;
+        bytes[] memory _extraData = new bytes[](2);
         // bytes memory _extraData = abi.encode(uint256(0), uint256(0), uint256(0));
         if(!_skipRewards){
-            _extraData = extraData;
+            _extraData[0] = extraData;
+            _extraData[1] = extraDataSell;
         }
         // skip fees distribution
         _skipFlags[3] = _skipRewards;

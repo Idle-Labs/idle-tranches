@@ -93,7 +93,6 @@ describe("LidoCDOTrancheGateway", function () {
 
     await idleCDO.setWethForTest(weth.address);
     await idleCDO.setUnlentPerc(BN('0'));
-    await idleCDO.setIsStkAAVEActive(false);
 
     initialAmount = BN("10").mul(ONE_TOKEN(18));
 

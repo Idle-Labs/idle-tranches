@@ -6,6 +6,8 @@ import "../../contracts/strategies/clearpool/IdleClearpoolPSMStrategy.sol";
 contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
   address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+  address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+  address public constant CPOOL = 0x66761Fa41377003622aEE3c7675Fc7b5c1C2FaC5;
   // clearpool Folkvang USDC pool
   address public constant cpToken = 0xe3D20A721522874D32548B4097d1afc6f024e45b;
 
@@ -13,7 +15,9 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
     address _owner = address(2);
     address _rebalancer = address(3);
     (address _strategy, ) = _deployStrategy(_owner);
-    
+    bytes[] memory _extraPath = new bytes[](1);
+    _extraPath[0] = abi.encodePacked(CPOOL, uint24(10000), USDC, uint24(100), DAI);
+    extraDataSell = abi.encode(_extraPath);
     // deploy idleCDO and tranches
     _cdo = _deployCDO();
     stdstore

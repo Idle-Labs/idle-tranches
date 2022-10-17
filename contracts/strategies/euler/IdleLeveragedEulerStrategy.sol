@@ -9,7 +9,7 @@ import "../../interfaces/euler/IMarkets.sol";
 import "../../interfaces/euler/IExec.sol";
 import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/euler/IEulDistributor.sol";
-import "../../interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract IdleLeveragedEulerStrategy is BaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
