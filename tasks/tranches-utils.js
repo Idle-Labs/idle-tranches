@@ -500,7 +500,7 @@ subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
     if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic') {
-      signer = await helpers.impersonateSigner(args.fakeAddress || addresses.IdleTokens.mainnet.devLeagueMultisig);
+      signer = await helpers.impersonateSigner(args.fakeAddress || addresses.IdleTokens.mainnet.treasuryMultisig);
     } else {
       signer = await helpers.getMultisigSigner();
     }
