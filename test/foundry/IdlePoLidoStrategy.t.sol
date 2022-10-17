@@ -24,7 +24,9 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
 
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         poLidoNFT = stMatic.poLidoNFT();
-        extraDataSell = abi.encodePacked(LDO, uint24(3000), WETH, uint24(3000), address(MATIC));
+        bytes[] memory _extraPath = new bytes[](1);
+        _extraPath[0] = abi.encodePacked(LDO, uint24(3000), WETH, uint24(3000), address(MATIC));
+        extraDataSell = abi.encode(_extraPath);
         _underlying = address(MATIC);
         strategy = new IdlePoLidoStrategy();
         _strategy = address(strategy);
