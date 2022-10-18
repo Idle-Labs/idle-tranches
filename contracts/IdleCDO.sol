@@ -526,46 +526,47 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
   }
 
+  /// [DEPRECATED]
   /// @notice sends rewards to the tranche rewards staking contracts
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
-    // Read state variables only once to save gas
-    address _BBStaking = BBStaking;
-    address _AAStaking = AAStaking;
-    bool _isBBStakingActive = _BBStaking != address(0);
+  //   // Read state variables only once to save gas
+  //   address _BBStaking = BBStaking;
+  //   address _AAStaking = AAStaking;
+  //   bool _isBBStakingActive = _BBStaking != address(0);
 
-    // Split rewards according to trancheAPRSplitRatio in case the ratio between
-    // AA and BB is already ideal
-    if (_AAStaking != address(0)) {
-      // NOTE: the order is important here, first there must be the deposit for AA rewards,
-      // if staking contract for AA is present
-      _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
-    }
+  //   // Split rewards according to trancheAPRSplitRatio in case the ratio between
+  //   // AA and BB is already ideal
+  //   if (_AAStaking != address(0)) {
+  //     // NOTE: the order is important here, first there must be the deposit for AA rewards,
+  //     // if staking contract for AA is present
+  //     _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
+  //   }
 
-    if (_isBBStakingActive) {
-      // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
-      // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
-      // and the balance for AA is already transferred
-      _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-    }
+  //   if (_isBBStakingActive) {
+  //     // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
+  //     // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
+  //     // and the balance for AA is already transferred
+  //     _depositIncentiveToken(_BBStaking, FULL_ALLOC);
+  //   }
   }
 
-  /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
-  /// @param _stakingContract address which will receive incentive Rewards
-  /// @param _ratio ratio of the incentive token balance to send
-  function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
-    address[] memory _incentiveTokens = incentiveTokens;
-    for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-      address _incentiveToken = _incentiveTokens[i];
-      // calculates the requested _ratio of the current contract balance of
-      // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
-      uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
-      if (_reward > 0) {
-        // call depositReward to actually let the IdleCDOTrancheRewards get the reward
-        IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
-      }
-    }
-  }
+  // /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
+  // /// @param _stakingContract address which will receive incentive Rewards
+  // /// @param _ratio ratio of the incentive token balance to send
+  // function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
+  //   address[] memory _incentiveTokens = incentiveTokens;
+  //   for (uint256 i = 0; i < _incentiveTokens.length; i++) {
+  //     address _incentiveToken = _incentiveTokens[i];
+  //     // calculates the requested _ratio of the current contract balance of
+  //     // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
+  //     uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
+  //     if (_reward > 0) {
+  //       // call depositReward to actually let the IdleCDOTrancheRewards get the reward
+  //       IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
+  //     }
+  //   }
+  // }
 
   /// @notice method used to sell `_rewardToken` for `_token` on uniswap
   /// @param _rewardToken address of the token to sell

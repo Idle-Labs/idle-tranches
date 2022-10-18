@@ -1325,43 +1325,43 @@ describe("IdleCDO", function () {
   //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
   // });
 
-  it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('1000').mul(one);
-    const _amountBB = BN('100').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
+  //   await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('1000').mul(one);
+  //   const _amountBB = BN('100').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
-  });
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
+  // });
 
-  it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
-    await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('100').mul(one);
-    const _amountBB = BN('1000').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
+  //   await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('100').mul(one);
+  //   const _amountBB = BN('1000').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
-  });
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
+  // });
 
   // it("harvest should give incentive to BB staking rewards if AA ratio is high", async () => {
   //   const feeReceiver = RandomAddr;
@@ -1381,27 +1381,27 @@ describe("IdleCDO", function () {
   //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
   // });
 
-  it("harvest should split incentives to both AA and BB staking rewards contracts if currAA ratio is in the ideal range", async () => {
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('1000').mul(one);
-    const _amountBB = BN('500').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should split incentives to both AA and BB staking rewards contracts if currAA ratio is in the ideal range", async () => {
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('1000').mul(one);
+  //   const _amountBB = BN('500').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
-    expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
-    // 20% of 1000
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(BN('200').mul(one));
-    // 80% of 1000
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(BN('800').mul(one));
-  });
+  //   expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
+  //   // 20% of 1000
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(BN('200').mul(one));
+  //   // 80% of 1000
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(BN('800').mul(one));
+  // });
 
   it("harvest should not sell incentiveTokens", async () => {
     const feeReceiver = RandomAddr;
