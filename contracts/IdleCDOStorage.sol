@@ -105,5 +105,26 @@ contract IdleCDOStorage {
   // Referral event
   event Referral(uint256 _amount, address _ref);
   // tolerance in underlyings when redeeming
-  uint256 public liquidationTolerance; 
+  uint256 public liquidationTolerance;
+
+  // Add new variables here. For each storage slot
+  // used, reduce the __gap length by 1. 
+  // ####################### 
+  // uint256 public test;
+
+
+
+  // ####################### 
+  // This is empty reserved space in storage that is put 
+  // in place in Upgradeable contracts. It allows us to 
+  // freely add new state variables in the future without 
+  // compromising the storage compatibility with existing 
+  // deployments.
+  // The size of the __gap array is calculated so that the 
+  // amount of storage used by a contract always adds up to 
+  // always the same number, 50 in this case.
+  uint256[50] private __gap;
+  // uint256[49] private __gap; -> after adding `test`
+  // #######################
+  // IMPORTANT: Do not add any variables below `__gap`
 }

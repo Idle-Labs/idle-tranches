@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
-import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721ReceiverUpgradeable.sol";
@@ -12,7 +11,7 @@ import "./interfaces/IStMatic.sol";
 
 import "./IdleCDO.sol";
 
-/// @title IdleCDO variant for Euler Levereged strategy.
+/// @title IdleCDO variant for Polido strategy
 /// @author Idle DAO, @massun-onibakuchi
 contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
     using SafeERC20Upgradeable for IERC20Detailed;

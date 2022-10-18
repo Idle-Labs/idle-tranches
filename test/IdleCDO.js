@@ -98,7 +98,7 @@ describe("IdleCDO", function () {
 
     await idleCDO.setUnlentPerc(BN('0'));
     await idleCDO.setIsAYSActive(false);
-    // await idleCDO.setIsStkAAVEActive(false);
+    await idleCDO.setFee(BN('10000'));
 
     // Params
     initialAmount = BN('100000').mul(ONE_TOKEN(18));
@@ -383,7 +383,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceAA which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     const _amountW = BN('500').mul(ONE_TOKEN(18));
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amountW);
@@ -403,7 +403,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceAA which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     await helpers.withdraw('AA', idleCDO, AABuyerAddr, _amount);
     expect(BN(await AA.balanceOf(AABuyerAddr))).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
     const finalBal = await underlying.balanceOf(AABuyerAddr);
@@ -430,7 +430,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceAA which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     await idleCDO.emergencyShutdown();
     await idleCDO.setAllowAAWithdraw(true);
@@ -483,7 +483,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceBB which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     const _amountW = BN('0').mul(ONE_TOKEN(18));
     await helpers.withdraw('BB', idleCDO, BBBuyerAddr, _amountW);
@@ -499,7 +499,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceBB which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     const _amountW = BN('500').mul(ONE_TOKEN(18));
     await helpers.withdraw('BB', idleCDO, BBBuyerAddr, _amountW);
@@ -518,7 +518,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceBB which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     await helpers.withdraw('BB', idleCDO, BBBuyerAddr, _amount);
     expect(BN(await BB.balanceOf(BBBuyerAddr))).to.be.equal(BN('0').mul(ONE_TOKEN(18)));
     const finalBal = await underlying.balanceOf(BBBuyerAddr);
@@ -545,7 +545,7 @@ describe("IdleCDO", function () {
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // to update tranchePriceBB which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     await idleCDO.emergencyShutdown();
     await idleCDO.setAllowBBWithdraw(true);
@@ -568,7 +568,7 @@ describe("IdleCDO", function () {
     await idleToken.setLossOnRedeem(BN('101'));
 
     // to update tranchePriceBB which will be 1.9
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     await expect(
       idleCDO.connect(BBBuyer).withdrawAA(_amount)
@@ -661,7 +661,7 @@ describe("IdleCDO", function () {
 
     // do an harvest and skip fee deposit -> so we should have in the end 200 + 200 from the sold
     // rewards (2000 in DAI) in `unclaimedFees`, unlocked in 1500  blocks
-    const res = await idleCDO.harvest([false, true, true, false && true && true], [false], [_minAmount], [_amountAA], '0x');
+    const res = await idleCDO.harvest([false, true, true, false && true && true], [false], [_minAmount], [_amountAA], ['0x', '0x']);
     await hre.ethers.provider.send("evm_setAutomine", [false]);
 
     // mine 1 block so 1/4 of rewards unlocked -> 500 (450 + 50 fee)
@@ -749,7 +749,7 @@ describe("IdleCDO", function () {
     const _amountBB = BN('1000').mul(one);
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
     await helpers.deposit('BB', idleCDO, BBBuyerAddr, _amountBB);
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     ratio = await idleCDO.getCurrentAARatio();
     expect(ratio).to.be.equal(50000); // 50%
@@ -1113,27 +1113,27 @@ describe("IdleCDO", function () {
     expect(await idleCDO.paused()).to.be.equal(false);
   });
 
-  it("setStrategy should set the relative addresses for incentiveTokens", async () => {
-    await expect(
-      idleCDO.setStrategy(addresses.addr0, [Random2Addr])
-    ).to.be.revertedWith("0");
+  // it("setStrategy should set the relative addresses for incentiveTokens", async () => {
+  //   await expect(
+  //     idleCDO.setStrategy(addresses.addr0, [Random2Addr])
+  //   ).to.be.revertedWith("0");
 
-    await expect(
-      idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
-    ).to.be.revertedWith("6");
+  //   await expect(
+  //     idleCDO.connect(BBBuyer).setStrategy(RandomAddr, [Random2Addr])
+  //   ).to.be.revertedWith("6");
 
-    await idleCDO.setStrategy(strategy2.address, [Random2Addr]);
-    expect(await idleCDO.strategy()).to.be.equal(strategy2.address);
-    expect(await idleCDO.getIncentiveTokens()).to.have.all.members([Random2Addr]);
-    expect(await idleCDO.strategyToken()).to.be.equal(idleToken2.address);
-    expect(await idleCDO.lastStrategyPrice()).to.be.equal(one.mul(BN('2')));
+  //   await idleCDO.setStrategy(strategy2.address, [Random2Addr]);
+  //   expect(await idleCDO.strategy()).to.be.equal(strategy2.address);
+  //   expect(await idleCDO.getIncentiveTokens()).to.have.all.members([Random2Addr]);
+  //   expect(await idleCDO.strategyToken()).to.be.equal(idleToken2.address);
+  //   expect(await idleCDO.lastStrategyPrice()).to.be.equal(one.mul(BN('2')));
 
-    expect(await idleToken.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
-    expect(await underlying.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
+  //   expect(await idleToken.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
+  //   expect(await underlying.allowance(idleCDO.address, strategy.address)).to.be.equal(0);
 
-    expect(await underlying.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
-    expect(await idleToken2.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
-  });
+  //   expect(await underlying.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
+  //   expect(await idleToken2.allowance(idleCDO.address, strategy2.address)).to.be.equal(MAX_UINT);
+  // });
   it("transferToken should be callable only from owner", async () => {
     const _amountAA = BN('1000').mul(one);
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
@@ -1155,12 +1155,12 @@ describe("IdleCDO", function () {
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
 
     await expect(
-      idleCDO.connect(BBBuyer).harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x')
+      idleCDO.connect(BBBuyer).harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x'])
     ).to.be.revertedWith("6");
 
     await idleCDO.setRebalancer(BBBuyer.address);
 
-    await idleCDO.connect(BBBuyer).harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.connect(BBBuyer).harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     // underlying should have been deposited in Idle
     const finalBal = await idleToken.balanceOf(idleCDO.address);
     expect(finalBal).to.be.equal(_amountAA);
@@ -1170,7 +1170,7 @@ describe("IdleCDO", function () {
     const _amountAA = BN('1000').mul(one);
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
     await idleToken.setTokenPriceWithFee(BN(2 * 10**18));
-    await idleCDO.harvest([true, true, true, true && true && true], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, true, true && true && true], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     // underlying should have been deposited in Idle
     const finalBal = await idleToken.balanceOf(idleCDO.address);
     expect(finalBal).to.be.equal(_amountAA.div(2));
@@ -1189,7 +1189,7 @@ describe("IdleCDO", function () {
     await idleToken.setGovAmount(_amountAA);
     const initialBalIncentive = await incentiveToken.balanceOf(idleCDO.address);
 
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     // no new incentive tokens should be present in the contract
     const finalBalIncentive = await incentiveToken.balanceOf(idleCDO.address);
     expect(finalBalIncentive).to.be.equal(initialBalIncentive);
@@ -1212,7 +1212,7 @@ describe("IdleCDO", function () {
     await idleToken.setGovAmount(_amountAA);
 
     const initialBal = await incentiveToken.balanceOf(idleCDO.address);
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     const finalBal = await incentiveToken.balanceOf(idleCDO.address);
     expect(finalBal.sub(initialBal)).to.be.equal(_amountAA);
   });
@@ -1239,7 +1239,7 @@ describe("IdleCDO", function () {
     // 1960 * 2 + 40 = 3960
     const contractVal = await idleCDO.getContractValue();
     expect(contractVal).to.be.equal(BN('3960').mul(one));
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     const bal = await underlying.balanceOf(idleCDO.address);
     // unlent value should be 3960 * 2% = 79.2
     // but we only have 40 as underlyingBal so we do nothing
@@ -1248,7 +1248,7 @@ describe("IdleCDO", function () {
     // deposit 140
     await helpers.deposit('AA', idleCDO, AABuyerAddr, BN('140').mul(one));
 
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     const balFinal = await underlying.balanceOf(idleCDO.address);
     // unlent value should be 4100 * 2% = 82
     // but we only have 40 as underlyingBal so we do nothing
@@ -1268,7 +1268,7 @@ describe("IdleCDO", function () {
     expect(await idleCDO.priceAA()).to.be.equal(one);
     expect(await idleCDO.priceBB()).to.be.equal(one);
 
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     // gain is 2000 -> fee is 200
     // 2000 + (20% of 1800) = 1360 / 1000 = 1.36
@@ -1297,7 +1297,7 @@ describe("IdleCDO", function () {
     const expected = gain.mul(one).div(vPriceAA);
 
     expect(await AA.balanceOf(RandomAddr)).to.be.equal(BN('0'));
-    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     // check balance in tranche rewards staking contract
     expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.equal(expected);
@@ -1320,48 +1320,48 @@ describe("IdleCDO", function () {
   //   await idleToken.setGovTokens([incentiveToken.address]);
   //   await idleToken.setGovAmount(_amount);
 
-  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], '0x');
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
   //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
   //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
   // });
 
-  it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('1000').mul(one);
-    const _amountBB = BN('100').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should give incentive to AA staking rewards if BB staking is not present", async () => {
+  //   await idleCDO.setStakingRewards(stakingRewardsAA.address, addr0);
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('1000').mul(one);
+  //   const _amountBB = BN('100').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], '0x');
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
-  });
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(_amount);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(0);
+  // });
 
-  it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
-    await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('100').mul(one);
-    const _amountBB = BN('1000').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should give incentive to BB staking rewards if AA staking is not present", async () => {
+  //   await idleCDO.setStakingRewards(addr0, stakingRewardsBB.address);
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('100').mul(one);
+  //   const _amountBB = BN('1000').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], '0x');
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
-  });
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
+  // });
 
   // it("harvest should give incentive to BB staking rewards if AA ratio is high", async () => {
   //   const feeReceiver = RandomAddr;
@@ -1376,32 +1376,32 @@ describe("IdleCDO", function () {
   //   await idleToken.setGovTokens([incentiveToken.address]);
   //   await idleToken.setGovAmount(_amount);
 
-  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], '0x');
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
   //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(0);
   //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(_amount);
   // });
 
-  it("harvest should split incentives to both AA and BB staking rewards contracts if currAA ratio is in the ideal range", async () => {
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amount = BN('1000').mul(one);
-    const _amountBB = BN('500').mul(one);
-    await setupBasicDeposits(_amount, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amount);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amount);
+  // it("harvest should split incentives to both AA and BB staking rewards contracts if currAA ratio is in the ideal range", async () => {
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amount = BN('1000').mul(one);
+  //   const _amountBB = BN('500').mul(one);
+  //   await setupBasicDeposits(_amount, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amount);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amount);
 
-    expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
-    await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], '0x');
-    expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
-    // 20% of 1000
-    expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(BN('200').mul(one));
-    // 80% of 1000
-    expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(BN('800').mul(one));
-  });
+  //   expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
+  //   await idleCDO.harvest([false, false, false, false && false && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
+  //   // 20% of 1000
+  //   expect(await incentiveToken.balanceOf(stakingRewardsAA.address)).to.be.equal(BN('200').mul(one));
+  //   // 80% of 1000
+  //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(BN('800').mul(one));
+  // });
 
   it("harvest should not sell incentiveTokens", async () => {
     const feeReceiver = RandomAddr;
@@ -1416,7 +1416,7 @@ describe("IdleCDO", function () {
     await idleToken.setGovTokens([incentiveToken.address]);
     await idleToken.setGovAmount(_amountAA);
 
-    await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], ['0x', '0x']);
     expect(await incentiveToken.balanceOf(feeReceiver)).to.be.equal(0);
     expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(_amountAA);
   });
@@ -1444,7 +1444,7 @@ describe("IdleCDO", function () {
 
     // harvest will now try to sell 1000 incentiveToken for 2000 underlyings
     const balPre = await idleToken.balanceOf(idleCDO.address);
-    await idleCDO.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountAA], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountAA], ['0x', '0x']);
     expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(0);
     const balAfter = await idleToken.balanceOf(idleCDO.address);
     // idleCDO contract should have 1000 idleDAI more (bought with 2000 DAI)
@@ -1463,7 +1463,7 @@ describe("IdleCDO", function () {
     const balIdleTokenPre = await idleToken.balanceOf(idleCDO.address);
     const balDAIPre = await underlying.balanceOf(idleCDO.address);
     // skip fee deposit
-    await idleCDO.harvest([false, true, true, false && true && true], [false], [_minAmount], [_amountAA], '0x');
+    await idleCDO.harvest([false, true, true, false && true && true], [false], [_minAmount], [_amountAA], ['0x', '0x']);
     const balIdleTokenAfter = await idleToken.balanceOf(idleCDO.address);
     const balDAIAfter = await underlying.balanceOf(idleCDO.address);
     // It should have not invested anything new
@@ -1490,7 +1490,7 @@ describe("IdleCDO", function () {
     await underlying.transfer(uniRouter.address, _amountAA.mul(BN('2')));
 
     // harvest will now try to sell 1000 incentiveToken for 2000 underlyings
-    let res = await idleCDO.callStatic.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountAA], '0x');
+    let res = await idleCDO.callStatic.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountAA], ['0x', '0x']);
     expect(res[0].length).to.be.equal(1);
     expect(res[0][0]).to.be.equal(_amountAA);
     expect(res[1].length).to.be.equal(1);
@@ -1502,7 +1502,7 @@ describe("IdleCDO", function () {
     // Use all contract balance if 0 is passed as _sellAmounts
     const _amountToSend = _amountAA.mul(BN('3'));
     await incentiveToken.transfer(idleCDO.address, _amountToSend);
-    res = await idleCDO.callStatic.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountToSend], '0x');
+    res = await idleCDO.callStatic.harvest([false, true, false, false && true && false], [false], [_minAmount], [_amountToSend], ['0x', '0x']);
     expect(res[0].length).to.be.equal(1);
     expect(res[0][0]).to.be.equal(_amountToSend);
     expect(res[1].length).to.be.equal(1);
@@ -1527,7 +1527,7 @@ describe("IdleCDO", function () {
     await idleToken.setGovAmount(0);
 
     // NOTE: it works which means is not trying to sell on uniswap
-    await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], ['0x', '0x']);
   });
 
   it("harvest should skip fee deposit if flag is passed", async () => {
@@ -1543,7 +1543,7 @@ describe("IdleCDO", function () {
     await idleToken.setGovAmount(_amountAA);
     // gain is 2000 -> fee is 200
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('0').mul(one));
-    await idleCDO.harvest([false, true, true, false && true && true], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([false, true, true, false && true && true], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     expect(await idleCDO.unclaimedFees()).to.be.equal(BN('200').mul(one));
     const nav = await idleCDO.getContractValue();
     expect(nav).to.be.equal(BN('3800').mul(one));
@@ -1658,7 +1658,7 @@ describe("IdleCDO", function () {
 
   //   expect(await AA.balanceOf(RandomAddr)).to.be.equal(BN('0'));
   //   expect(await AA.balanceOf(Random2Addr)).to.be.equal(BN('0'));
-  //   await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], '0x');
+  //   await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
   //   // check balance in tranche rewards staking contract
   //   expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.closeTo(expected.div(BN('10')).mul(BN('9')), 10);
@@ -1689,23 +1689,23 @@ describe("IdleCDO", function () {
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amountAA);
     await helpers.deposit('BB', idleCDO, BBBuyerAddr, _amountBB);
     // nav is 2000
-    await idleCDO.harvest([true, true, skipFeeDeposit, true && true && skipFeeDeposit], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, skipFeeDeposit, true && true && skipFeeDeposit], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     // update lending protocol price which is now 2
     await idleToken.setTokenPriceWithFee(BN('2').mul(ONE_TOKEN(18)));
     // nav is 4000
     // updatePrices of mint and redeem
     if (!skipLastHarvest) {
-      await idleCDO.harvest([false, true, skipFeeDeposit, false && true && skipFeeDeposit], [true], [BN('0')], [BN('0')], '0x');
+      await idleCDO.harvest([false, true, skipFeeDeposit, false && true && skipFeeDeposit], [true], [BN('0')], [BN('0')], ['0x', '0x']);
     }
   };
   const firstDepositAA = async (_amount) => {
     await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
     // deposit in the lending protocol
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
   };
   const firstDepositBB = async (_amount) => {
     await helpers.deposit('BB', idleCDO, BBBuyerAddr, _amount);
     // deposit in the lending protocol
-    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], '0x');
+    await idleCDO.harvest([true, true, false, true && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
   };
 });
