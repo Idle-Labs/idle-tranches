@@ -34,7 +34,7 @@ const getMultisigSigner = async (skipLog) => {
   const service = new SafeService('https://safe-transaction.gnosis.io/');
   const safe = await Safe.create({ 
     ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
-    safeAddress: addresses.IdleTokens.mainnet.devLeagueMultisig
+    safeAddress: addresses.IdleTokens.mainnet.treasuryMultisig
   });
   const signer = new SafeEthersSigner(safe, service, ethers.provider);
   const address = await signer.getAddress();
