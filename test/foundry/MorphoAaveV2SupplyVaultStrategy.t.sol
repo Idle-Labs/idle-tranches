@@ -45,6 +45,41 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
         MorphoAaveV2SupplyVaultStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
+    function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        // poke morpho contract with a deposit to update strategyPrice
+        _pokeMorpho();
+
+        uint256 amount = 10000 * ONE_SCALE;
+        // AARatio 50%
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        uint256 strategyPrice = strategy.price();
+        // skip rewards and deposit underlyings to the strategy
+        _cdoHarvest(true);
+
+        // increase time to accrue some interest
+        skip(7 days);
+        // Poke morpho contract with a deposit to increase strategyPrice
+        _pokeMorpho();
+
+        assertGt(strategy.price(), strategyPrice, "strategy price");
+        // claim rewards
+        _cdoHarvest(false);
+        assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
+
+        // Skip 7 day forward to accrue interest
+        skip(7 days);
+        vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+        
+        // Poke morpho contract with a deposit to increase strategyPrice
+        _pokeMorpho();
+        assertGt(strategy.price(), strategyPrice, "strategy price");
+        // virtualPrice should increase too
+        assertGt(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
+        assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
+    }
+
     function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         MorphoAaveV2SupplyVaultStrategy(address(strategy)).initialize(
@@ -56,5 +91,15 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
             ADAI,
             address(0)
         );
+    }
+
+    function _pokeMorpho() internal {
+        uint256 userAmount = 10000 * ONE_SCALE;
+        address user = address(0xbabe);
+        deal(DAI, user, userAmount);
+        vm.startPrank(user);
+        IERC20Detailed(DAI).approve(maDAI, type(uint256).max);
+        IERC4626(maDAI).deposit(userAmount, user);
+        vm.stopPrank();  
     }
 }
