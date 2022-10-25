@@ -34,6 +34,7 @@ abstract contract TestIdleCDOBase is Test {
   IdleCDOTranche internal BBtranche;
   IIdleCDOStrategy internal strategy;
   bytes internal extraData;
+  bytes internal extraDataSell;
 
   // override these methods in derived contracts
   function _deployStrategy(address _owner) internal virtual returns (
@@ -194,6 +195,10 @@ abstract contract TestIdleCDOBase is Test {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Only IdleCDO can call"));
     strategy.redeemRewards(bytes(""));
+
+    vm.prank(address(0xbabe));
+    vm.expectRevert(bytes("Only IdleCDO can call"));
+    strategy.redeemUnderlying(1);
   }
 
   function testOnlyOwner() public virtual {
@@ -271,6 +276,7 @@ abstract contract TestIdleCDOBase is Test {
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
+    console.log('apr', apr);
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
@@ -347,10 +353,10 @@ abstract contract TestIdleCDOBase is Test {
     bool[] memory _skipReward = new bool[](numOfRewards);
     uint256[] memory _minAmount = new uint256[](numOfRewards);
     uint256[] memory _sellAmounts = new uint256[](numOfRewards);
-    bytes memory _extraData;
-    // bytes memory _extraData = abi.encode(uint256(0), uint256(0), uint256(0));
+    bytes[] memory _extraData = new bytes[](2);
     if(!_skipRewards){
-      _extraData = extraData;
+      _extraData[0] = extraData;
+      _extraData[1] = extraDataSell;
     }
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
@@ -362,7 +368,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 
-  function _deployLocalContracts() internal returns (IdleCDO _cdo) {
+  function _deployLocalContracts() internal virtual returns (IdleCDO _cdo) {
     address _owner = address(2);
     address _rebalancer = address(3);
     (address _strategy, address _underlying) = _deployStrategy(_owner);

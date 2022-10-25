@@ -160,7 +160,7 @@ contract TestUpdateLidoPYT is Test {
     bool[] memory _skipReward = new bool[](numOfRewards);
     uint256[] memory _minAmount = new uint256[](numOfRewards);
     uint256[] memory _sellAmounts = new uint256[](numOfRewards);
-    bytes memory _extraData;
+    bytes[] memory _extraData = new bytes[](2);
 
     vm.prank(idleCDO.rebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);

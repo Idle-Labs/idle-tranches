@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -512,63 +513,69 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _liquidate(uint256 _amount, bool _revertIfNeeded) internal virtual returns (uint256 _redeemedTokens) {
     _redeemedTokens = IIdleCDOStrategy(strategy).redeemUnderlying(_amount);
     if (_revertIfNeeded) {
-      // keep 100 wei as margin for rounding errors
-      require(_redeemedTokens + 100 >= _amount, '5');
+      uint256 _tolerance = liquidationTolerance;
+      if (_tolerance == 0) {
+        _tolerance = 100;
+      }
+      // keep `_tolerance` wei as margin for rounding errors
+      require(_redeemedTokens + _tolerance >= _amount, '5');
     }
+
     if (_redeemedTokens > _amount) {
       _redeemedTokens = _amount;
     }
   }
 
+  /// [DEPRECATED]
   /// @notice sends rewards to the tranche rewards staking contracts
   /// @dev this method is called only during harvests
   function _updateIncentives() internal {
-    // Read state variables only once to save gas
-    address _BBStaking = BBStaking;
-    address _AAStaking = AAStaking;
-    bool _isBBStakingActive = _BBStaking != address(0);
+  //   // Read state variables only once to save gas
+  //   address _BBStaking = BBStaking;
+  //   address _AAStaking = AAStaking;
+  //   bool _isBBStakingActive = _BBStaking != address(0);
 
-    // Split rewards according to trancheAPRSplitRatio in case the ratio between
-    // AA and BB is already ideal
-    if (_AAStaking != address(0)) {
-      // NOTE: the order is important here, first there must be the deposit for AA rewards,
-      // if staking contract for AA is present
-      _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
-    }
+  //   // Split rewards according to trancheAPRSplitRatio in case the ratio between
+  //   // AA and BB is already ideal
+  //   if (_AAStaking != address(0)) {
+  //     // NOTE: the order is important here, first there must be the deposit for AA rewards,
+  //     // if staking contract for AA is present
+  //     _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
+  //   }
 
-    if (_isBBStakingActive) {
-      // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
-      // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
-      // and the balance for AA is already transferred
-      _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-    }
+  //   if (_isBBStakingActive) {
+  //     // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
+  //     // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
+  //     // and the balance for AA is already transferred
+  //     _depositIncentiveToken(_BBStaking, FULL_ALLOC);
+  //   }
   }
 
-  /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
-  /// @param _stakingContract address which will receive incentive Rewards
-  /// @param _ratio ratio of the incentive token balance to send
-  function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
-    address[] memory _incentiveTokens = incentiveTokens;
-    for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-      address _incentiveToken = _incentiveTokens[i];
-      // calculates the requested _ratio of the current contract balance of
-      // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
-      uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
-      if (_reward > 0) {
-        // call depositReward to actually let the IdleCDOTrancheRewards get the reward
-        IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
-      }
-    }
-  }
+  // /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
+  // /// @param _stakingContract address which will receive incentive Rewards
+  // /// @param _ratio ratio of the incentive token balance to send
+  // function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
+  //   address[] memory _incentiveTokens = incentiveTokens;
+  //   for (uint256 i = 0; i < _incentiveTokens.length; i++) {
+  //     address _incentiveToken = _incentiveTokens[i];
+  //     // calculates the requested _ratio of the current contract balance of
+  //     // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
+  //     uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
+  //     if (_reward > 0) {
+  //       // call depositReward to actually let the IdleCDOTrancheRewards get the reward
+  //       IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
+  //     }
+  //   }
+  // }
 
   /// @notice method used to sell `_rewardToken` for `_token` on uniswap
   /// @param _rewardToken address of the token to sell
-  /// @param _path uniswap path for the trade
+  /// @param _path to buy
   /// @param _amount of `_rewardToken` to sell
   /// @param _minAmount min amount of `_token` to buy
   /// @return _amount of _rewardToken sold
   /// @return _amount received for the sell
-  function _sellReward(address _rewardToken, address[] memory _path, uint256 _amount, uint256 _minAmount)
+  function _sellReward(address _rewardToken, bytes memory _path, uint256 _amount, uint256 _minAmount)
     internal
     returns (uint256, uint256) {
     // If 0 is passed as sell amount, we get the whole contract balance
@@ -578,20 +585,41 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_amount == 0) {
       return (0, 0);
     }
-
-    IUniswapV2Router02 _uniRouter = uniswapRouterV2;
-    // approve the uniswap router to spend our reward
-    IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
-    // do the trade with all `_rewardToken` in this contract
-    uint256[] memory _amounts = _uniRouter.swapExactTokensForTokens(
-      _amount,
-      _minAmount,
-      _path,
-      address(this),
-      block.timestamp + 1
-    );
-    // return the amount swapped and the amount received
-    return (_amounts[0], _amounts[_amounts.length - 1]);
+  
+    if (_path.length > 0) {
+      // Uni v3 swap
+      ISwapRouter _swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+      IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_swapRouter), _amount);
+      // multi hop swap params
+      ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+        path: _path,
+        recipient: address(this),
+        deadline: block.timestamp + 100,
+        amountIn: _amount,
+        amountOutMinimum: _minAmount
+      });
+      // do the swap and return the amount swapped and the amount received
+      return (_amount, _swapRouter.exactInput(params));
+    } else {
+      // Uni v2 swap
+      IUniswapV2Router02 _uniRouter = uniswapRouterV2;
+      // approve the uniswap router to spend our reward
+      IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
+      // do the trade with all `_rewardToken` in this contract
+      address[] memory _pathUniv2 = new address[](3);
+      _pathUniv2[0] = _rewardToken;
+      _pathUniv2[1] = weth;
+      _pathUniv2[2] = token;
+      uint256[] memory _amounts = _uniRouter.swapExactTokensForTokens(
+        _amount,
+        _minAmount,
+        _pathUniv2,
+        address(this),
+        block.timestamp + 100
+      );
+      // return the amount swapped and the amount received
+      return (_amounts[0], _amounts[_amounts.length - 1]);
+    }
   }
 
   /// @notice method used to sell all sellable rewards for `_token` on uniswap
@@ -602,7 +630,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return _soldAmounts array with amounts of rewards actually sold
   /// @return _swappedAmounts array with amounts of _token actually bought
   /// @return _totSold total rewards sold in `_token`
-  function _sellAllRewards(IIdleCDOStrategy _strategy, uint256[] memory _sellAmounts, uint256[] memory _minAmount, bool[] memory _skipReward)
+  function _sellAllRewards(IIdleCDOStrategy _strategy, uint256[] memory _sellAmounts, uint256[] memory _minAmount, bool[] memory _skipReward, bytes memory _extraData)
     internal
     returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256 _totSold) {
     // Fetch state variables once to save gas
@@ -610,11 +638,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get all rewards addresses
     address[] memory _rewards = _strategy.getRewardTokens();
     address _rewardToken;
-    // Prepare path for uniswap trade
-    address[] memory _path = new address[](3);
-    // _path[0] will be the reward token to sell
-    _path[1] = weth;
-    _path[2] = token;
+    bytes[] memory _paths = new bytes[](_rewards.length);
+    if (_extraData.length > 0) {
+      _paths = abi.decode(_extraData, (bytes[]));
+    }
     // Initialize the return array, containing the amounts received after swapping reward tokens
     _soldAmounts = new uint256[](_rewards.length);
     _swappedAmounts = new uint256[](_rewards.length);
@@ -627,10 +654,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       if (_rewardToken == stkAave) {
         _rewardToken = AAVE;
       }
-      // set token to sell in the uniswap path
-      _path[0] = _rewardToken;
       // Market sell _rewardToken in this contract for _token
-      (_soldAmounts[i], _swappedAmounts[i]) = _sellReward(_rewardToken, _path, _sellAmounts[i], _minAmount[i]);
+      (_soldAmounts[i], _swappedAmounts[i]) = _sellReward(_rewardToken, _paths[i], _sellAmounts[i], _minAmount[i]);
       _totSold += _swappedAmounts[i];
     }
   }
@@ -679,42 +704,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
   }
 
-  /// @notice used to start the cooldown for unstaking stkAAVE and claiming AAVE rewards (for the contract itself)
-  /// [DEPRECATED] Unused as stkAAVE distribution has been halted, but kept for reference
-  function _claimStkAave() internal {
-    //
-    // if (!isStkAAVEActive) {
-    //   return;
-    // }
-    // IStakedAave _stkAave = IStakedAave(stkAave);
-    // uint256 _stakersCooldown = _stkAave.stakersCooldowns(address(this));
-    // // If there is a pending cooldown:
-    // if (_stakersCooldown > 0) {
-    //   uint256 _cooldownEnd = _stakersCooldown + _stkAave.COOLDOWN_SECONDS();
-    //   // If it is over
-    //   if (_cooldownEnd < block.timestamp) {
-    //     // If the unstake window is active
-    //     if (block.timestamp - _cooldownEnd <= _stkAave.UNSTAKE_WINDOW()) {
-    //       // redeem stkAave AND begin new cooldown
-    //       _stkAave.redeem(address(this), type(uint256).max);
-    //     }
-    //   } else {
-    //     // If it is not over, do nothing
-    //     return;
-    //   }
-    // }
-
-    // // Pull new stkAAVE rewards
-    // IIdleCDOStrategy(strategy).pullStkAAVE();
-
-    // // If there's no pending cooldown or we just redeem the prev locked rewards,
-    // // then begin a new cooldown
-    // if (_stkAave.balanceOf(address(this)) > 0) {
-    //   // start a new cooldown
-    //   _stkAave.cooldown();
-    // }
-  }
-
   // ###################
   // Protected
   // ###################
@@ -749,7 +738,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     bool[] calldata _skipReward,
     uint256[] calldata _minAmount,
     uint256[] calldata _sellAmounts,
-    bytes calldata _extraData
+    bytes[] calldata _extraData
   ) public
     virtual
     returns (uint256[][] memory _res) {
@@ -764,11 +753,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
       if (!_skipFlags[0]) {
         // Redeem all rewards associated with the strategy
-        _res[2] = _strategy.redeemRewards(_extraData);
-        // Redeem unlocked AAVE if any and start a new cooldown for stkAAVE
-        _claimStkAave();
+        _res[2] = _strategy.redeemRewards(_extraData[0]);
         // Sell rewards
-        (_res[0], _res[1], _totSold) = _sellAllRewards(_strategy, _sellAmounts, _minAmount, _skipReward);
+        (_res[0], _res[1], _totSold) = _sellAllRewards(_strategy, _sellAmounts, _minAmount, _skipReward, _extraData[1]);
       }
       // update last saved harvest block number
       latestHarvestBlock = block.number;
@@ -844,39 +831,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     revertIfTooLow = _allowed;
   }
 
-  /// @notice updates the strategy used (potentially changing the lending protocol used)
-  /// @dev it's REQUIRED to liquidate / redeem everything from the lending provider before changing strategy
-  /// if the leding provider of the new strategy is different from the current one
-  /// it's also REQUIRED to transfer out any incentive tokens accrued if those are changed from the current ones
-  /// if the lending provider is changed
-  /// @param _strategy new strategy address
-  /// @param _incentiveTokens array of incentive tokens addresses
-  /// [DEPRECATED] all strategies are upgradeable and most of the strategy create a tokenized position
-  /// so it's not viable anymore to change strategyAddress.
-  // function setStrategy(address _strategy, address[] memory _incentiveTokens) external {
-  //   _checkOnlyOwner();
-
-  //   require(_strategy != address(0), '0');
-  //   IERC20Detailed _token = IERC20Detailed(token);
-  //   // revoke allowance for the current strategy
-  //   address _currStrategy = strategy;
-  //   _removeAllowance(address(_token), _currStrategy);
-  //   _removeAllowance(strategyToken, _currStrategy);
-  //   // Updated strategy variables
-  //   strategy = _strategy;
-  //   // Update incentive tokens
-  //   incentiveTokens = _incentiveTokens;
-  //   // Update strategyToken
-  //   address _newStrategyToken = IIdleCDOStrategy(_strategy).strategyToken();
-  //   strategyToken = _newStrategyToken;
-  //   // Approve underlyingToken
-  //   _allowUnlimitedSpend(address(_token), _strategy);
-  //   // Approve the new strategy to transfer strategyToken out from this contract
-  //   _allowUnlimitedSpend(_newStrategyToken, _strategy);
-  //   // Update last strategy price
-  //   lastStrategyPrice = _strategyPrice();
-  // }
-
   /// @param _rebalancer new rebalancer address
   function setRebalancer(address _rebalancer) external {
     _checkOnlyOwner();
@@ -893,6 +847,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
     require((guardian = _guardian) != address(0), '0');
+  }
+
+  /// @param _diff max liquidation diff tolerance in underlyings
+  function setLiquidationTolerance(uint256 _diff) external {
+    _checkOnlyOwner();
+    liquidationTolerance = _diff;
   }
 
   /// @param _fee new fee

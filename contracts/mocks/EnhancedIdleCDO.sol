@@ -15,9 +15,6 @@ contract EnhancedIdleCDO is IdleCDO {
   function updateAccountingForTest() external {
     _updateAccounting();
   }
-  function claimStkAave() external {
-    _claimStkAave();
-  }
   function harvestedRewardsPublic() external view returns (uint256) {
     return harvestedRewards;
   }

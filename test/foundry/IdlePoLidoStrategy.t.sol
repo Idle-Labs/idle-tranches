@@ -18,11 +18,15 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
     /// @notice Matic contract
     IERC20Detailed public constant MATIC = IERC20Detailed(0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0);
     address public constant LDO = 0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32;
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     IPoLidoNFT internal poLidoNFT;
 
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         poLidoNFT = stMatic.poLidoNFT();
+        bytes[] memory _extraPath = new bytes[](1);
+        _extraPath[0] = abi.encodePacked(LDO, uint24(3000), WETH, uint24(3000), address(MATIC));
+        extraDataSell = abi.encode(_extraPath);
         _underlying = address(MATIC);
         strategy = new IdlePoLidoStrategy();
         _strategy = address(strategy);

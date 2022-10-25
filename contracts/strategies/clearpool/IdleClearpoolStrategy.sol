@@ -64,7 +64,7 @@ contract IdleClearpoolStrategy is
         address _underlyingToken,
         address _owner,
         address _uniswapV2Router
-    ) public initializer {
+    ) public virtual initializer {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
         require(token == address(0), "Token is already initialized");
@@ -119,7 +119,7 @@ contract IdleClearpoolStrategy is
 
     /// @notice return the price from the strategy token contract
     /// @return price
-    function price() public view override returns (uint256) {
+    function price() public view virtual override returns (uint256) {
         return
             (IPoolMaster(cpToken).getCurrentExchangeRate() * oneToken) / 10**18;
     }
@@ -157,7 +157,7 @@ contract IdleClearpoolStrategy is
         return (poolRate + rewardRate) * 100;
     }
 
-    function _tokenToUnderlyingRate() private view returns (uint256) {
+    function _tokenToUnderlyingRate() internal virtual view returns (uint256) {
         address[] memory path = new address[](2);
         (path[0], path[1]) = (govToken, token);
         uint256[] memory amountsOut = uniswapRouter.getAmountsOut(10**18, path);
@@ -198,6 +198,7 @@ contract IdleClearpoolStrategy is
     /// @param _amount Amount of cpTokens (underlying decimals)
     /// @return balanceReceived Amount of underlying tokens received
     function _redeem(uint256 _amount)
+        virtual
         internal
         returns (uint256 balanceReceived)
     {
@@ -217,6 +218,7 @@ contract IdleClearpoolStrategy is
     /// @return minted number of reward tokens minted
     function deposit(uint256 _amount)
         external
+        virtual
         override
         onlyIdleCDO
         returns (uint256 minted)
@@ -235,6 +237,7 @@ contract IdleClearpoolStrategy is
     /// @param _amount Amount of underlying tokens to deposit
     /// @return minted number of reward tokens minted
     function _depositToVault(uint256 _amount)
+        virtual
         internal
         returns (uint256 minted)
     {

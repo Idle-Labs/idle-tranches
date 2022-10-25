@@ -9,7 +9,7 @@ import "../../interfaces/euler/IMarkets.sol";
 import "../../interfaces/euler/IExec.sol";
 import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/euler/IEulDistributor.sol";
-import "../../interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract IdleLeveragedEulerStrategy is BaseStrategy {
     using SafeERC20Upgradeable for IERC20Detailed;
@@ -233,7 +233,10 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
                 _eToken.burn(SUB_ACCOUNT_ID, amountToBurn);
             }
         }
-        _eToken.deposit(SUB_ACCOUNT_ID, underlyingToken.balanceOf(address(this)));
+        uint256 bal = underlyingToken.balanceOf(address(this));
+        if (bal > 0) {
+            _eToken.deposit(SUB_ACCOUNT_ID, bal);
+        }
     }
 
     /// @dev Leverage position by setting target health score
