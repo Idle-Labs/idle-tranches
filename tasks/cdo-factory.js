@@ -39,6 +39,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
   .addParam('cdoImplementation', "The CDO implementation address", "", types.string, true)
   .addParam('cloneFromProxy', "The CDO proxy to clone the implementation from", "", types.string, true)
   .addParam('proxyAdmin', "The ProxyAdmin address", "", types.string, true)
+  .addParam('cdoUnderlying', "The CDO's underlying address", "", types.string, true)
   .addParam('limit', "CDO param _limit")
   .addParam('governanceFund', "CDO param _governanceFund")
   .addParam('strategy', "CDO param _strategy")
@@ -80,8 +81,11 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     console.log("🔎 Retrieving underlying token from strategy (", strategyAddress, ")");
     const strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress);
     const underlyingAddress = await strategy.token();
+    const underlyingAddressCDO = args.cdoUnderlying;
     const underlyingToken = await ethers.getContractAt("IERC20Detailed", underlyingAddress);
     const underlyingName = await underlyingToken.name();
+    const underlyingTokenCDO = await ethers.getContractAt("IERC20Detailed", underlyingAddressCDO);
+    const underlyingNameCDO = await underlyingTokenCDO.name();
 
     if (hre.network.name === 'hardhat' && cdoFactoryAddress === undefined) {
       console.log("\n⚠️  Local network - cdoFactoryAddress is undefined, deploying CDOFactory\n");
@@ -100,7 +104,8 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     console.log("network:                 ", hre.network.name);
     console.log("proxyAdmin:              ", proxyAdminAddress);
     console.log("factory:                 ", cdoFactoryAddress);
-    console.log("underlying:              ", `${underlyingAddress} (${underlyingName})`);
+    console.log("underlying (strategy):   ", `${underlyingAddress} (${underlyingName})`);
+    console.log("underlying (cdo):        ", `${underlyingAddressCDO} (${underlyingNameCDO})`);
     console.log("cdoImplementation:       ", cdoImplementationAddress);
     console.log("limit:                   ", limit.toString());
     console.log("governanceFund:          ", governanceFund);
@@ -118,7 +123,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     
     const initMethodCall = idleCDO.interface.encodeFunctionData("initialize", [
       limit,
-      underlyingAddress,
+      underlyingAddressCDO,
       governanceFund, // recovery address
       creator, // guardian
       networkContracts.rebalancer,
@@ -200,6 +205,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await helpers.prompt("continue? [y/n]", true);
   
       const deployParams = {
+        cdoUnderlying: deployToken.underlying,
         cloneFromProxy: cdoProxyAddressToClone,
         limit: BN(args.limit).mul(ONE_TOKEN(deployToken.decimals)).toString(), // limit
         governanceFund: networkContracts.treasuryMultisig, // recovery address
@@ -224,58 +230,13 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
     console.log()
 
-    // Set staking rewards if present
-    const stakingRewardsParams = [
-      idleCDO.address, // rewardDistributor
-      // TODO this allows only one token as reward, use multirewards contract
-      incentiveTokens[0], // reward token
-      'stakingToken',
-      creator, // owner / guardian
-      true // shouldTransfer
-    ];
-
-    let stakingRewardsAA = {address: addresses.addr0};
-    let stakingRewardsBB = {address: addresses.addr0};
-
-    if (args.aaStaking) {
-      stakingRewardsAA = await helpers.deployContract('StakingRewards', [], signer);
-      await stakingRewardsAA.connect(signer).initialize(
-        ...stakingRewardsParams.map(e => e == 'stakingToken' ? AAaddr : e)
-      );
-    }
-    
-    if (args.bbStaking) {
-      stakingRewardsBB = await helpers.deployContract('StakingRewards', [], signer);
-      await stakingRewardsBB.connect(signer).initialize(
-        ...stakingRewardsParams.map(e => e == 'stakingToken' ? BBaddr : e)
-      );
-    }
-
-    if (args.aaStaking || args.bbStaking) {
-      console.log("Setting staking rewards");
-      await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
-      console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
-      console.log(`staking reward contracts set`);
-    }
-
     const ays = await idleCDO.isAYSActive();
-    if (!args.isAYSActive && ays) {
-      console.log("Turning off AYS");
-      await idleCDO.connect(signer).setIsAYSActive(false);
-    } else if (args.isAYSActive && !ays) {
+    if (args.isAYSActive && !ays) {
       console.log("Turning on AYS");
       await idleCDO.connect(signer).setIsAYSActive(true);
     }
     console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
     
-    // // Set flag for not receiving stkAAVE if needed
-    // console.log('stkAAVE distribution: ', args.stkAAVEActive);
-    // if (!args.stkAAVEActive && !isMatic) {
-    //   console.log('Disabling stkAAVE distribution')
-    //   await idleCDO.connect(signer).setIsStkAAVEActive(false);
-    // }
-    // console.log();
-
     const feeReceiver = await idleCDO.feeReceiver();
     if (
         (!isMatic && feeReceiver == mainnetContracts.oldFeeReceiver) || 
