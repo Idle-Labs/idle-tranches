@@ -158,7 +158,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
     }
 
     function maxMint(address receiver) external view returns (uint256) {
-        return convertToShares(maxDeposit(receiver));
+        uint256 _maxDeposit = maxDeposit(receiver);
+        if (_maxDeposit == type(uint256).max) return type(uint256).max;
+        return convertToShares(_maxDeposit);
     }
 
     function maxWithdraw(address owner) external view returns (uint256) {
@@ -196,9 +198,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         uint256 beforeBal = _token.balanceOf(address(this));
 
         if (isAATranche) {
-            mintedShares = _idleCDO.depositAA(deposited);
+            mintedShares = _idleCDO.depositAA(amount);
         } else {
-            mintedShares = _idleCDO.depositBB(deposited);
+            mintedShares = _idleCDO.depositBB(amount);
         }
         uint256 afterBal = _token.balanceOf(address(this));
         deposited = beforeBal - afterBal;
