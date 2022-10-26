@@ -51,7 +51,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * from.
      */
     function convertToShares(uint256 assets) public view returns (uint256) {
-        return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.tranchePrice(address(this)));
+        return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.tranchePrice(tranche));
     }
 
     /**
@@ -59,7 +59,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * scenario where all the conditions are met.
      */
     function convertToAssets(uint256 shares) public view returns (uint256) {
-        return (shares * idleCDO.tranchePrice(address(this))) / ONE_TRANCHE_TOKEN;
+        return (shares * idleCDO.tranchePrice(tranche)) / ONE_TRANCHE_TOKEN;
     }
 
     /** @dev Allows an on-chain or off-chain user to simulate the effects of their deposit at the current block, given
