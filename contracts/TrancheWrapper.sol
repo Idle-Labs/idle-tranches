@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/IERC4626.sol";
 
 import "./IdleCDO.sol";
 
-contract TrancheWrapper is ERC20, IERC4626 {
-    uint256 internal ONE_TRANCHE_TOKEN = 1e18;
+contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
+    uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
     IdleCDO public immutable idleCDO;
     address public immutable token;
     address public immutable tranche;
     bool internal immutable isAATranche;
 
-    constructor(address _idleCDO, address _tranche) ERC20("TrancheWrapper", "TW") {
-        idleCDO = IdleCDO(_idleCDO);
-        tranche = _tranche;
+    constructor(IdleCDO _idleCDO, address _tranche)
+        ERC20(
+            string(abi.encodePacked(ERC20(_tranche).name(), "4626Adapter")),
+            string(abi.encodePacked(ERC20(_tranche).symbol(), "4626"))
+        )
+    {
+        idleCDO = _idleCDO;
+        tranche = _tranche; // 18 decimals
         token = idleCDO.token();
         isAATranche = idleCDO.AATranche() == _tranche;
     }
@@ -58,9 +64,6 @@ contract TrancheWrapper is ERC20, IERC4626 {
 
     /** @dev Allows an on-chain or off-chain user to simulate the effects of their deposit at the current block, given
      * current on-chain conditions.
-     *
-     * NOTE: any unfavorable discrepancy between convertToShares and previewDeposit SHOULD be considered slippage in
-     * share price or some other type of condition, meaning the depositor will lose assets by depositing.
      */
     function previewDeposit(uint256 assets) external view returns (uint256) {
         return convertToShares(assets);
@@ -84,30 +87,41 @@ contract TrancheWrapper is ERC20, IERC4626 {
 
     /**
      * @dev Mints shares Vault shares to receiver by depositing exactly amount of underlying tokens.
-     *
-     * NOTE: most implementations will require pre-approval of the Vault with the Vault’s underlying asset token.
      */
-    function deposit(uint256 assets, address receiver) public returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external nonReentrant returns (uint256 shares) {
         (assets, shares) = _deposit(assets, receiver, msg.sender);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
 
-    function mint(uint256 shares, address receiver) public returns (uint256 assets) {
-        assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
+    /**
+     * @dev Mints exactly shares Vault shares to receiver by depositing amount of underlying tokens.
+     * @notice revert if all of shares cannot be minted.
+     */
+    function mint(uint256 shares, address receiver) external nonReentrant returns (uint256) {
+        uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
 
-        (assets, shares) = _deposit(assets, receiver, msg.sender);
+        (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
+        require(shares <= mintedShares, "tw: all of shares cannot be minted");
 
-        emit Deposit(msg.sender, receiver, assets, shares);
+        emit Deposit(msg.sender, receiver, assetsUsed, mintedShares);
+        return assetsUsed;
     }
 
+    /**
+     * @dev Burns shares from owner and sends exactly assets of underlying tokens to receiver.
+     * @notice revert if all of assets cannot be withdrawn.
+     */
     // TODO: add allowance check to use owner argument
     function withdraw(
         uint256 assets,
         address receiver,
         address owner
-    ) public returns (uint256) {
-        (uint256 _withdrawn, uint256 _burntShares) = _withdraw(assets, receiver, msg.sender);
+    ) external nonReentrant returns (uint256) {
+        uint256 shares = previewWithdraw(assets); // ?? No need to check for rounding error, previewWithdraw rounds up.
+
+        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, msg.sender);
+        require(_withdrawn >= assets, "tw: all of assets cannot be withdrawn");
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
         return _burntShares;
@@ -118,11 +132,8 @@ contract TrancheWrapper is ERC20, IERC4626 {
         uint256 shares,
         address receiver,
         address owner
-    ) public returns (uint256) {
-        uint256 assets = previewRedeem(shares);
-        require(assets != 0, "ZERO_ASSETS");
-
-        (uint256 _withdrawn, uint256 _burntShares) = _withdraw(assets, receiver, msg.sender);
+    ) external nonReentrant returns (uint256) {
+        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, msg.sender);
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
         return _withdrawn;
@@ -139,9 +150,9 @@ contract TrancheWrapper is ERC20, IERC4626 {
     function maxDeposit(address receiver) public view returns (uint256) {
         IdleCDO _idleCDO = idleCDO;
 
-        uint256 _depositLimit = _idleCDO.limit();
-        uint256 _totalAssets = _idleCDO.getContractValue();
-        if (_depositLimit == 0) return type(uint256).max;
+        uint256 _depositLimit = _idleCDO.limit(); // TVL limit in underlying value
+        uint256 _totalAssets = _idleCDO.getContractValue(); // TVL in underlying value
+        if (_depositLimit == 0) return type(uint256).max; // 0 means unlimited
         if (_totalAssets >= _depositLimit) return 0;
         return _depositLimit - _totalAssets;
     }
@@ -162,6 +173,11 @@ contract TrancheWrapper is ERC20, IERC4626 {
         return balanceOf(owner);
     }
 
+    /// @notice Deposit underlying tokens into IdleCDO
+    /// @dev This function SHOULD be guarded to prevent potential reentrancy
+    /// @param amount Amount of underlying tokens to deposit
+    /// @param receiver receiver of tranche shares
+    /// @param depositor depositor of underlying tokens
     function _deposit(
         uint256 amount,
         address receiver,
@@ -190,17 +206,20 @@ contract TrancheWrapper is ERC20, IERC4626 {
         _mint(receiver, mintedShares);
     }
 
-    function _withdraw(
-        uint256 amount, // if `MAX_UINT256`, just withdraw everything
+    /// @notice Withdraw underlying tokens from IdleCDO
+    /// @dev This function SHOULD be guarded to prevent potential reentrancy
+    /// @param shares shares to withdraw
+    /// @param receiver receiver of underlying tokens withdrawn from IdleCDO
+    /// @param sender sender of tranche shares
+    function _redeem(
+        uint256 shares,
         address receiver,
         address sender
     ) internal returns (uint256 withdrawn, uint256 burntShares) {
         IdleCDO _idleCDO = idleCDO;
         IERC20 _tranche = IERC20(tranche);
 
-        uint256 shares = (amount * ONE_TRANCHE_TOKEN) / _idleCDO.tranchePrice(tranche);
-
-        // withdraw from vault and get total used shares
+        // withdraw from idleCDO
         uint256 beforeBal = _tranche.balanceOf(address(this));
 
         if (isAATranche) {
@@ -210,9 +229,8 @@ contract TrancheWrapper is ERC20, IERC4626 {
         }
 
         burntShares = beforeBal - _tranche.balanceOf(address(this));
+        _burn(sender, burntShares);
 
-        _burn(receiver, burntShares);
-
-        SafeERC20.safeTransfer(_token, receiver, withdrawn);
+        SafeERC20.safeTransfer(IERC20(token), receiver, withdrawn);
     }
 }
