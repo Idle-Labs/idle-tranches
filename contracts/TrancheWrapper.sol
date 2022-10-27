@@ -8,6 +8,8 @@ import "./interfaces/IERC4626.sol";
 
 import "./IdleCDO.sol";
 
+import "forge-std/Test.sol";
+
 contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
     uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
@@ -45,13 +47,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
     /**
      * @dev Returns the amount of shares that the Vault would exchange for the amount of assets provided, in an ideal
      * scenario where all the conditions are met.
-     *
-     * NOTE: This calculation MAY NOT reflect the “per-user” price-per-share, and instead should reflect the
-     * “average-user’s” price-per-share, meaning what the average user should expect to see when exchanging to and
-     * from.
      */
     function convertToShares(uint256 assets) public view returns (uint256) {
-        return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.tranchePrice(tranche));
+        return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(tranche));
     }
 
     /**
@@ -59,7 +57,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * scenario where all the conditions are met.
      */
     function convertToAssets(uint256 shares) public view returns (uint256) {
-        return (shares * idleCDO.tranchePrice(tranche)) / ONE_TRANCHE_TOKEN;
+        return (shares * idleCDO.virtualPrice(tranche)) / ONE_TRANCHE_TOKEN;
     }
 
     /** @dev Allows an on-chain or off-chain user to simulate the effects of their deposit at the current block, given
@@ -99,10 +97,11 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * @notice revert if all of shares cannot be minted.
      */
     function mint(uint256 shares, address receiver) external nonReentrant returns (uint256) {
+        require(shares != 0, "tw: shares == 0");
         uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
 
         (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
-        require(shares <= mintedShares, "tw: all of shares cannot be minted");
+        require(shares - 1 <= mintedShares, "tw: all of shares cannot be minted");
 
         emit Deposit(msg.sender, receiver, assetsUsed, mintedShares);
         return assetsUsed;
@@ -118,10 +117,11 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address receiver,
         address owner
     ) external nonReentrant returns (uint256) {
+        require(assets != 0, "tw: assets == 0");
         uint256 shares = previewWithdraw(assets); // ?? No need to check for rounding error, previewWithdraw rounds up.
 
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, msg.sender);
-        require(_withdrawn >= assets, "tw: all of assets cannot be withdrawn");
+        require(_withdrawn >= assets - 1, "tw: all of assets cannot be withdrawn");
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
         return _burntShares;

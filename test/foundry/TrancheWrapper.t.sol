@@ -26,6 +26,8 @@ contract TestTrancheWrapper is Test {
     uint256 internal decimals;
     uint256 internal ONE_SCALE;
     uint256 internal initialBal;
+    bytes internal extraData;
+    bytes internal extraDataSell;
 
     IERC20Detailed internal tranche;
     TrancheWrapper internal trancheWrapper;
@@ -82,11 +84,30 @@ contract TestTrancheWrapper is Test {
 
     function testSetupOk() public {
         assertEq(address(trancheWrapper.idleCDO()), address(idleCDO));
-        assertEq(trancheWrapper.tranche(), address(tranche));
         assertEq(address(idleCDO.token()), address(underlying));
         assertEq(trancheWrapper.totalSupply(), 0);
         assertEq(trancheWrapper.totalAssets(), idleCDO.getContractValue());
-        assertEq(trancheWrapper.convertToAssets(ONE_TRANCHE_TOKEN), idleCDO.tranchePrice(address(tranche)));
+        if (address(tranche) == address(AAtranche)) {
+            assertEq(trancheWrapper.tranche(), address(AAtranche));
+        } else {
+            assertEq(trancheWrapper.tranche(), address(BBtranche));
+        }
+    }
+
+    function testConversion() public {
+        uint256 assets = trancheWrapper.convertToAssets(1e18);
+        assertEq(assets, idleCDO.virtualPrice(address(tranche)));
+        assertEq(trancheWrapper.convertToShares(assets), 1e18);
+    }
+
+    function testPreview() public {
+        uint256 assets = idleCDO.virtualPrice(address(tranche));
+        uint256 shares = (1e18 * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+
+        assertEq(trancheWrapper.previewDeposit(1e18), shares);
+        assertEq(trancheWrapper.previewMint(ONE_TRANCHE_TOKEN), assets);
+        assertEq(trancheWrapper.previewWithdraw(1e18), shares);
+        assertEq(trancheWrapper.previewRedeem(ONE_TRANCHE_TOKEN), assets);
     }
 
     function testMaxDepositWhenLimitZero() public {
@@ -148,10 +169,9 @@ contract TestTrancheWrapper is Test {
         assertEq(trancheWrapper.maxRedeem(address(this)), 0, "cannot redeem when emergency shutdown");
     }
 
-    function testDeposits() public {
+    function testDeposit() public {
         uint256 amount = 10000 * ONE_SCALE;
 
-        uint256 expected = trancheWrapper.previewDeposit(amount);
         uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
 
         assertEq(tranche.balanceOf(address(trancheWrapper)), mintedShares, "tranche bal");
@@ -159,7 +179,79 @@ contract TestTrancheWrapper is Test {
 
         assertEq(trancheWrapper.balanceOf(address(this)), mintedShares, "wrapper bal");
         assertEq(trancheWrapper.totalSupply(), mintedShares, "wrapper totalSupply");
-        assertApproxEqAbs(trancheWrapper.convertToAssets(mintedShares), amount, 1, "conversion to assets");
-        assertEq(mintedShares, expected, "minted shares");
+    }
+
+    function testMint() public {
+        uint256 amount = 10000 * ONE_SCALE;
+
+        uint256 shares = (amount * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+        uint256 assetsUsed = trancheWrapper.mint(shares, address(this));
+
+        assertApproxEqAbs(assetsUsed, amount, 1, "tranche bal");
+        assertApproxEqAbs(tranche.balanceOf(address(trancheWrapper)), shares, 1, "tranche bal");
+        assertEq(underlying.balanceOf(address(this)), initialBal - assetsUsed, "underlying bal");
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), shares, 1, "wrapper bal");
+        assertApproxEqAbs(trancheWrapper.totalSupply(), shares, 1, "wrapper totalSupply");
+    }
+
+    function testRedeem() public {
+        uint256 amount = 10000 * ONE_SCALE;
+
+        uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
+
+        // skip rewards and deposit underlyings to the strategy
+        _cdoHarvest(true);
+        // claim rewards
+        _cdoHarvest(false);
+
+        uint256 withdrawAmount = trancheWrapper.redeem(mintedShares, address(this), address(this));
+
+        assertEq(tranche.balanceOf(address(trancheWrapper)), 0, "tranche bal");
+        assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal");
+
+        assertEq(trancheWrapper.balanceOf(address(this)), 0, "wrapper bal");
+        assertEq(trancheWrapper.totalSupply(), 0, "wrapper totalSupply");
+    }
+
+    function testWithdraw() public {
+        uint256 amount = 10000 * ONE_SCALE;
+
+        uint256 shares = trancheWrapper.previewMint(amount);
+        trancheWrapper.mint(shares, address(this));
+
+        // skip rewards and deposit underlyings to the strategy
+        _cdoHarvest(true);
+        // claim rewards
+        _cdoHarvest(false);
+
+        uint256 burntShares = trancheWrapper.withdraw(amount, address(this), address(this));
+
+        assertEq(tranche.balanceOf(address(trancheWrapper)), shares - burntShares, "tranche bal");
+        assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal");
+
+        assertEq(trancheWrapper.balanceOf(address(this)), 0, "wrapper bal");
+        assertEq(trancheWrapper.totalSupply(), 0, "wrapper totalSupply");
+    }
+
+    function _cdoHarvest(bool _skipRewards) internal {
+        address[] memory rewards = IIdleCDOStrategy(idleCDO.strategy()).getRewardTokens();
+        uint256 numOfRewards = rewards.length;
+        bool[] memory _skipFlags = new bool[](4);
+        bool[] memory _skipReward = new bool[](numOfRewards);
+        uint256[] memory _minAmount = new uint256[](numOfRewards);
+        uint256[] memory _sellAmounts = new uint256[](numOfRewards);
+        bytes[] memory _extraData = new bytes[](2);
+        if (!_skipRewards) {
+            _extraData[0] = extraData;
+            _extraData[1] = extraDataSell;
+        }
+        // skip fees distribution
+        _skipFlags[3] = _skipRewards;
+
+        vm.prank(idleCDO.rebalancer());
+        idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+
+        // linearly release all sold rewards
+        vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1);
     }
 }
