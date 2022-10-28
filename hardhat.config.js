@@ -99,7 +99,8 @@ module.exports = {
       //   // blockNumber: 15435009, // euler lev usdc strategy
       //   // blockNumber: 15576018, // euler lev usdc strat upgrade
       //   // blockNumber: 15617063, // stMatic strategy
-      //   blockNumber: 15718298, // cpfol dai strategy
+      //   // blockNumber: 15718298, // cpfol dai strategy
+      //   blockNumber: 15831007, // ribbon strategies
       // },
       // chainId: 137
     },
