@@ -118,9 +118,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address owner
     ) external nonReentrant returns (uint256) {
         require(assets != 0, "tw: assets == 0");
-        uint256 shares = previewWithdraw(assets); // ?? No need to check for rounding error, previewWithdraw rounds up.
+        uint256 shares = previewWithdraw(assets);
 
-        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, msg.sender);
+        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
         require(_withdrawn >= assets - 1, "tw: all of assets cannot be withdrawn");
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
@@ -133,7 +133,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address receiver,
         address owner
     ) external nonReentrant returns (uint256) {
-        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, msg.sender);
+        (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
         return _withdrawn;
@@ -231,8 +231,18 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         }
 
         burntShares = beforeBal - _tranche.balanceOf(address(this));
-        _burn(sender, burntShares);
-
+        _burnFrom(sender, burntShares);
         SafeERC20.safeTransfer(IERC20(token), receiver, withdrawn);
+    }
+
+    function _burnFrom(address account, uint256 amount) internal {
+        if (account != msg.sender) {
+            uint256 currentAllowance = allowance(account, msg.sender);
+            require(currentAllowance >= amount, "tw: burn amount exceeds allowance");
+            unchecked {
+                _approve(account, msg.sender, currentAllowance - amount);
+            }
+        }
+        _burn(account, amount);
     }
 }

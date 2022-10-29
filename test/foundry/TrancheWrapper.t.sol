@@ -36,6 +36,8 @@ contract TestTrancheWrapper is Test {
         // solhint-disable-next-line
         if (block.chainid == networkId) {
             _;
+        } else {
+            revert("Test can only be run on a forking network");
         }
     }
 
@@ -231,6 +233,48 @@ contract TestTrancheWrapper is Test {
 
         assertEq(trancheWrapper.balanceOf(address(this)), 0, "wrapper bal");
         assertEq(trancheWrapper.totalSupply(), 0, "wrapper totalSupply");
+    }
+
+    function testRevertWithAllowanceError() external {
+        trancheWrapper.deposit(1000 * ONE_SCALE, address(this));
+
+        vm.startPrank(address(0xbabe), address(0xbabe));
+
+        vm.expectRevert("tw: burn amount exceeds allowance");
+        trancheWrapper.redeem(10, address(0xbabe), address(this));
+
+        vm.roll(block.number + 1);
+
+        vm.expectRevert("tw: burn amount exceeds allowance");
+        trancheWrapper.withdraw(10, address(0xbabe), address(this));
+
+        vm.stopPrank();
+    }
+
+    function testRedeemInsteadOfOwner() external {
+        uint256 amount = 10000 * ONE_SCALE;
+        uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
+
+        trancheWrapper.approve(address(0xbabe), type(uint256).max);
+
+        // redeem 1000 shares
+        vm.prank(address(0xbabe), address(0xbabe)); // Sets the *next* call's msg.sender and tx.origin
+        uint256 withdrawAmount = trancheWrapper.redeem(1000, address(0xbabe), address(this));
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), mintedShares - 1000, 1, "wrapper bal");
+        assertApproxEqAbs(underlying.balanceOf(address(0xbabe)), withdrawAmount, 1, "underlying bal");
+    }
+
+    function testWithdrawInsteadOfOwner() external {
+        uint256 amount = 10000 * ONE_SCALE;
+        uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
+
+        trancheWrapper.approve(address(0xbabe), type(uint256).max);
+
+        // withdraw 100 amount of underlying
+        vm.prank(address(0xbabe), address(0xbabe));
+        uint256 burntShares = trancheWrapper.withdraw(100, address(0xbabe), address(this));
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), mintedShares - burntShares, 1, "wrapper bal");
+        assertApproxEqAbs(underlying.balanceOf(address(0xbabe)), 100, 1, "underlying bal");
     }
 
     function _cdoHarvest(bool _skipRewards) internal {
