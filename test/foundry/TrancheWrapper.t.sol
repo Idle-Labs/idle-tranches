@@ -12,8 +12,8 @@ contract TestTrancheWrapper is Test {
     uint256 internal constant MAINNET_CHIANID = 1;
     uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
-    address internal constant IDLE_CDO_ADDRESS = 0xd0DbcD556cA22d3f3c142e9a3220053FD7a247BC;
-    address internal constant IDLE_TRANCHE_ADDRESS = 0x730348a54bA58F64295154F0662A08Cbde1225c2;
+    address internal constant IDLE_CDO_ADDRESS = 0x46c1f702A6aAD1Fd810216A5fF15aaB1C62ca826;
+    address internal constant IDLE_TRANCHE_ADDRESS = 0x852c4d2823E98930388b5cE1ed106310b942bD5a;
 
     address public owner;
     IdleCDO internal idleCDO;
@@ -203,36 +203,49 @@ contract TestTrancheWrapper is Test {
 
         // skip rewards and deposit underlyings to the strategy
         _cdoHarvest(true);
-        // claim rewards
-        _cdoHarvest(false);
 
         uint256 withdrawAmount = trancheWrapper.redeem(mintedShares, address(this), address(this));
 
-        assertEq(tranche.balanceOf(address(trancheWrapper)), 0, "tranche bal");
-        assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal");
-
-        assertEq(trancheWrapper.balanceOf(address(this)), 0, "wrapper bal");
-        assertEq(trancheWrapper.totalSupply(), 0, "wrapper totalSupply");
+        assertApproxEqAbs(tranche.balanceOf(address(trancheWrapper)), 0, 1, "tranche bal");
+        assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal, 10, "underlying bal");
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), 0, 1, "wrapper bal");
+        assertApproxEqAbs(trancheWrapper.totalSupply(), 0, 1, "wrapper totalSupply");
     }
 
     function testWithdraw() public {
         uint256 amount = 10000 * ONE_SCALE;
 
-        uint256 shares = trancheWrapper.previewMint(amount);
-        trancheWrapper.mint(shares, address(this));
+        uint256 shares = (amount * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+        uint256 assetsUsed = trancheWrapper.mint(shares, address(this));
 
         // skip rewards and deposit underlyings to the strategy
         _cdoHarvest(true);
-        // claim rewards
-        _cdoHarvest(false);
 
-        uint256 burntShares = trancheWrapper.withdraw(amount, address(this), address(this));
+        uint256 burntShares = trancheWrapper.withdraw(assetsUsed, address(this), address(this));
 
-        assertEq(tranche.balanceOf(address(trancheWrapper)), shares - burntShares, "tranche bal");
-        assertGt(underlying.balanceOf(address(this)), initialBal, "underlying bal");
+        assertApproxEqAbs(tranche.balanceOf(address(trancheWrapper)), shares - burntShares, 1, "tranche bal");
+        assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal, 10, "underlying bal");
 
-        assertEq(trancheWrapper.balanceOf(address(this)), 0, "wrapper bal");
-        assertEq(trancheWrapper.totalSupply(), 0, "wrapper totalSupply");
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), shares - burntShares, 1, "wrapper bal");
+        assertApproxEqAbs(trancheWrapper.totalSupply(), shares - burntShares, 1, "wrapper totalSupply");
+    }
+
+    function testRedeemAll() public {
+        uint256 amount = 10000 * ONE_SCALE;
+        trancheWrapper.deposit(amount, address(this));
+        vm.roll(block.number + 1);
+
+        trancheWrapper.redeem(type(uint256).max, address(this), address(this));
+        assertEq(trancheWrapper.balanceOf(address(this)), 0, "all shares should be burned");
+    }
+
+    function testWithdrawAll() public {
+        uint256 amount = 10000 * ONE_SCALE;
+        trancheWrapper.deposit(amount, address(this));
+        vm.roll(block.number + 1);
+
+        trancheWrapper.withdraw(type(uint256).max, address(this), address(this));
+        assertEq(trancheWrapper.balanceOf(address(this)), 0, "all shares should be burned");
     }
 
     function testRevertWithAllowanceError() external {
@@ -284,16 +297,23 @@ contract TestTrancheWrapper is Test {
         bool[] memory _skipReward = new bool[](numOfRewards);
         uint256[] memory _minAmount = new uint256[](numOfRewards);
         uint256[] memory _sellAmounts = new uint256[](numOfRewards);
-        bytes[] memory _extraData = new bytes[](2);
-        if (!_skipRewards) {
-            _extraData[0] = extraData;
-            _extraData[1] = extraDataSell;
-        }
+        bytes memory _extraData = extraData;
+
         // skip fees distribution
         _skipFlags[3] = _skipRewards;
 
         vm.prank(idleCDO.rebalancer());
-        idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+        (bool success, bytes memory data) = address(idleCDO).call(
+            abi.encodeWithSignature(
+                "harvest(bool[],bool[],uint256[],uint256[],bytes)",
+                _skipFlags,
+                _skipReward,
+                _minAmount,
+                _sellAmounts,
+                _extraData
+            )
+        );
+        require(success, "harvest failed. this might be because the CDO is incomaptible with the old interface");
 
         // linearly release all sold rewards
         vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1);

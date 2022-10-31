@@ -101,38 +101,44 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
 
         (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
-        require(shares - 1 <= mintedShares, "tw: all of shares cannot be minted");
 
         emit Deposit(msg.sender, receiver, assetsUsed, mintedShares);
         return assetsUsed;
     }
 
-    /**
-     * @dev Burns shares from owner and sends exactly assets of underlying tokens to receiver.
-     * @notice revert if all of assets cannot be withdrawn.
-     */
-    // TODO: add allowance check to use owner argument
+    /// @dev Burns shares from owner and sends exactly assets of underlying tokens to receiver.
+    /// @notice Due to rounding errors, it is possible that less than amount of underlying tokens are sent.
+    /// @param assets amount of assets to redeem. If it is equal to type(uint256).max, redeem all shares
+    /// @param receiver address to send redeemed assets to
+    /// @param owner address to burn shares from
+    /// @return shares burned
     function withdraw(
         uint256 assets,
         address receiver,
         address owner
     ) external nonReentrant returns (uint256) {
         require(assets != 0, "tw: assets == 0");
-        uint256 shares = previewWithdraw(assets);
+        uint256 shares = (assets == type(uint256).max) ? balanceOf(owner) : previewWithdraw(assets);
 
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
-        require(_withdrawn >= assets - 1, "tw: all of assets cannot be withdrawn");
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
         return _burntShares;
     }
 
-    // TODO: add allowance check to use owner argument
+    /// @notice Redeems shares from owner and sends assets of underlying tokens to receiver.
+    /// @notice Due to rounding errors, redeem may return less than requested.
+    /// @param shares amount of shares to redeem. If shares == type(uint256).max, redeem all shares.
+    /// @param receiver address to send redeemed assets to
+    /// @param owner address to burn shares from
+    /// @return amount of assets withdrawn
     function redeem(
         uint256 shares,
         address receiver,
         address owner
     ) external nonReentrant returns (uint256) {
+        if (shares == type(uint256).max) shares = balanceOf(owner);
+
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
 
         emit Withdraw(msg.sender, receiver, owner, _withdrawn, _burntShares);
@@ -147,7 +153,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * @dev Returns the maximum amount of the underlying asset that can be deposited into the Vault for the receiver,
      * through a deposit call.
      */
-    function maxDeposit(address receiver) public view returns (uint256) {
+    function maxDeposit(
+        address /* receiver */
+    ) public view returns (uint256) {
         IdleCDO _idleCDO = idleCDO;
 
         uint256 _depositLimit = _idleCDO.limit(); // TVL limit in underlying value
