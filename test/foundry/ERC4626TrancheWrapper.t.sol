@@ -3,7 +3,9 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import {ERC4626Test} from "erc4626-tests/ERC4626.test.sol";
 
-import "../../contracts/strategies/euler/IdleEulerStrategy.sol";
+import "../../contracts/mocks/MockERC20.sol";
+import "../../contracts/mocks/MockIdleToken.sol";
+import "../../contracts/strategies/idle/IdleStrategy.sol";
 import "../../contracts/IdleCDO.sol";
 import "../../contracts/TrancheWrapper.sol";
 
@@ -34,11 +36,12 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
 
         __underlying__ = address(underlying);
         __vault__ = address(trancheWrapper);
-        __delta__ = 0;
+        __delta__ = 10;
 
         // fund
         uint256 initialBal = 1e10 * ONE_SCALE;
         deal(address(underlying), address(this), initialBal, true);
+        deal(address(underlying), address(strategy.strategyToken()), initialBal, true);
 
         // label
         vm.label(address(idleCDO), "idleCDO");
@@ -82,18 +85,20 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
         idleCDO.setIsAYSActive(true);
         idleCDO.setUnlentPerc(0);
         idleCDO.setFee(0);
+        idleCDO._setLimit(0);
 
-        IdleEulerStrategy(address(strategy)).setWhitelistedCDO(address(idleCDO));
+        IdleStrategy(address(strategy)).setWhitelistedCDO(address(idleCDO));
         vm.stopPrank();
     }
 
     function _deployStrategy(address _owner) internal returns (address _strategy, address _underlying) {
-        address eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
-        address lendingToken = 0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716; // eUSDC
-        _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-        _strategy = address(new IdleEulerStrategy());
+        _underlying = address(new MockERC20("MockDAI", "MockDAI"));
+        MockIdleToken idleToken = new MockIdleToken(_underlying);
+        idleToken.setTokenPriceWithFee(12**17);
+
+        _strategy = address(new IdleStrategy());
         stdstore.target(_strategy).sig(IIdleCDOStrategy.token.selector).checked_write(address(0));
-        IdleEulerStrategy(_strategy).initialize(lendingToken, _underlying, eulerMain, _owner);
+        IdleStrategy(_strategy).initialize(address(idleToken), _owner);
     }
 
     function _deployIdleCDO() internal returns (IdleCDO _cdo) {
