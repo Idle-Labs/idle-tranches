@@ -1,2 +1,14 @@
-forge-std/=lib/forge-std/src/
+@ensdomains/=node_modules/@ensdomains/
+@openzeppelin/=node_modules/@openzeppelin/
+@oz-upgradeable/=lib/best-yield-PYT-strategy/lib/openzeppelin-contracts-upgradeable/
+@solidity-parser/=node_modules/eth-gas-reporter/node_modules/@solidity-parser/
+@uniswap/=node_modules/@uniswap/
+base64-sol/=node_modules/base64-sol/
+best-yield-PYT-strategy/=lib/best-yield-PYT-strategy/src/
+contracts/=contracts/
 ds-test/=lib/ds-test/src/
+eth-gas-reporter/=node_modules/eth-gas-reporter/
+forge-std/=lib/forge-std/src/
+hardhat/=node_modules/hardhat/
+idle-finance-strategy/=lib/best-yield-PYT-strategy/src/
+openzeppelin-contracts-upgradeable/=lib/best-yield-PYT-strategy/lib/openzeppelin-contracts-upgradeable/

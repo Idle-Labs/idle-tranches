@@ -19,7 +19,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "./interfaces/IERC20Detailed.sol";
 import "./interfaces/ILendingProtocol.sol";
 
-contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUpgradeable {
+contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUpgradeable {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   uint256 internal constant ONE_18 = 10**18;
@@ -78,7 +78,9 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
   // ###############
 
   // initialize implementation
-  constructor() initializer {}
+  constructor() {
+    token = address(1);
+  }
 
     /**
    * It allows owner to manually initialize new contract implementation
@@ -111,6 +113,7 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
     address[] calldata _wrappers,
     uint256[] calldata _lastRebalancerAllocations
   ) external initializer {
+    require(token == address(0), '1');
     // Initialize inherited contracts
     ERC20Upgradeable.__ERC20_init(_name, _symbol);
     OwnableUpgradeable.__Ownable_init();
@@ -135,13 +138,13 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
   // onlyOwner
   // pause deposits
   function pause() external {
-    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG, '6');
+    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == owner(), '6');
     _pause();
   }
 
   // unpause deposits
   function unpause() external {
-    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG, '6');
+    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == owner(), '6');
     _unpause();
   }
 
@@ -307,6 +310,10 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
       avgApr += ILendingProtocol(protocolWrappers[protocolToken]).getAPR() * amounts[i];
     }
 
+    if (total == 0) {
+      return 0;
+    }
+
     avgApr = avgApr / total;
   }
 
@@ -366,7 +373,6 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
     returns (uint256 redeemedTokens) {
       _checkMintRedeemSameTx();
       _updateFeeInfo();
-
       if (_amount != 0) {
         uint256 price = _tokenPrice();
         uint256 valueToRedeem = _amount * price / ONE_18;
@@ -453,10 +459,14 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
   function _rebalance()
     internal whenNotPaused
     returns (bool) {
-      // send fees
-      _mint(feeAddress, unclaimedFees * ONE_18 / _tokenPrice());
-      // reset fee counter
-      unclaimedFees = 0;
+      _updateFeeInfo();
+      uint256 _unclaimedFees = unclaimedFees;
+      if (_unclaimedFees > 0) {
+        // send fees
+        _mint(feeAddress, _unclaimedFees * ONE_18 / _tokenPrice());
+        // reset fee counter
+        unclaimedFees = 0;
+      }
 
       // check if we need to rebalance by looking at the last allocations submitted by rebalancer
       uint256[] memory rebalancerLastAllocations = lastRebalancerAllocations;
@@ -479,7 +489,6 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
       }
 
       uint256 maxUnlentBalance = _getCurrentPoolValue() * maxUnlentPerc / FULL_ALLOC;
-
       if (areAllocationsEqual) {
         if (balance > maxUnlentBalance) {
           // mint the difference
@@ -559,12 +568,13 @@ contract IdleTokenGovernanceTranches is Initializable, ERC20Upgradeable, Reentra
     uint256 currAmount;
     address protWrapper;
     address[] memory _tokens = allAvailableTokens;
+    address _token = token;
     for (uint256 i = 0; i < protocolAmounts.length; i++) {
       currAmount = protocolAmounts[i];
       if (currAmount != 0) {
         protWrapper = protocolWrappers[_tokens[i]];
         // Transfer _amount underlying token (eg. DAI) to protWrapper
-        _transferTokens(token, protWrapper, currAmount);
+        _transferTokens(_token, protWrapper, currAmount);
         ILendingProtocol(protWrapper).mint();
       }
     }
