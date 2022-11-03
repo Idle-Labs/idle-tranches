@@ -77,7 +77,8 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   // Initialize methods copied from IdleTokenV3_1.sol, removed unused stuff
   // ###############
 
-  // initialize implementation
+  // Used to prevent initialization of the implementation contract
+  /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
     token = address(1);
   }
@@ -105,7 +106,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
     lastAllocations = _lastRebalancerAllocations;
   }
 
-  function initialize(
+  function _init(
     string calldata _name, // eg. IdleDAI
     string calldata _symbol, // eg. IDLEDAI
     address _token,

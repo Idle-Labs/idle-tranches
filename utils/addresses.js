@@ -973,6 +973,38 @@ exports.deployTokensPolygon = {
   },
 };
 
+exports.deployTokensBY = {
+  idleusdcjunior: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    symbol: 'idleUSDCBB',
+    name: 'IdleUSDC Junior tranches',
+    address: '0x1440469fba56ea663de7c29bbe8bca7ad5158647',
+    strategies: [
+      // clearpool strat
+      // {
+      //   strategyName: 'IdlePYTClear',
+      //   strategyParams: [
+      //     CDOs.cpwinusdc.BBTranche,
+      //     'idleToken',
+      //     CDOs.cpwinusdc.cdoAddr,
+      //   ]
+      // },
+      '0x7c7840251d70bCEa1402c4587A9e7E873d50B0FE',
+      // ribbon strat
+      // {
+      //   strategyName: 'IdlePYTClear',
+      //   strategyParams: [
+      //     CDOs.rfolusdc.BBTranche,
+      //     'idleToken',
+      //     CDOs.rfolusdc.cdoAddr,
+      //   ]
+      // },
+      '0xaCc3D71E85C53158848F1cD8dFCF59145639f2aD'
+    ]
+  },
+}
+
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
 exports.whale1 = '0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE'; // binance
 exports.whaleLDO = '0x09F82Ccd6baE2AeBe46bA7dd2cf08d87355ac430';

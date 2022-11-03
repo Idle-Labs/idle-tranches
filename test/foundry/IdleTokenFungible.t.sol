@@ -76,7 +76,7 @@ contract TestIdleTokenFungible is Test {
     stdstore.target(_idleToken).sig(idleToken.token.selector).checked_write(false);
   
     // initialize idleToken
-    idleToken.initialize(
+    idleToken._init(
       "Idle BY junior", "idleUSDCJunior", address(underlying), 
       _protocolTokens, _wrappers, _lastAlloc
     );
