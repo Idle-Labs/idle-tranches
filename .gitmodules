@@ -1,9 +1,9 @@
-[submodule "lib/forge-std"]
-	path = lib/forge-std
-	url = https://github.com/foundry-rs/forge-std
 [submodule "lib/ds-test"]
 	path = lib/ds-test
 	url = https://github.com/dapphub/ds-test
 [submodule "lib/best-yield-PYT-strategy"]
 	path = lib/best-yield-PYT-strategy
 	url = https://github.com/Idle-Finance/best-yield-PYT-strategy
+[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
