@@ -34,9 +34,9 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
         address tranche = idleCDO.AATranche();
         trancheWrapper = new TrancheWrapper(idleCDO, tranche);
 
-        __underlying__ = address(underlying);
-        __vault__ = address(trancheWrapper);
-        __delta__ = 10;
+        _underlying_ = address(underlying);
+        _vault_ = address(trancheWrapper);
+        _delta_ = 10;
 
         // fund
         uint256 initialBal = 1e10 * ONE_SCALE;
@@ -105,7 +105,7 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
         _cdo = new IdleCDO();
     }
 
-    function setupVault(Init memory init) public override {
+    function setUpVault(Init memory init) public override {
         // setup initial shares and assets for individual users
         for (uint256 i = 0; i < N; i++) {
             address user = init.user[i];
@@ -113,28 +113,28 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
 
             // shares
             uint256 shares = init.share[i];
-            try IERC20(__underlying__).transfer(user, shares) {} catch { vm.assume(false); } // prettier-ignore
-            _approve(__underlying__, user, __vault__, shares);
+            try IERC20(_underlying_).transfer(user, shares) {} catch { vm.assume(false); } // prettier-ignore
+            _approve(_underlying_, user, _vault_, shares);
             vm.prank(user);
-            try IERC4626(__vault__).deposit(shares, user) {} catch { vm.assume(false); } // prettier-ignore
+            try IERC4626(_vault_).deposit(shares, user) {} catch { vm.assume(false); } // prettier-ignore
             vm.roll(block.number + 1); // avoid the same tx from the same tx.origin and same block.number
 
             // assets
             uint256 assets = init.asset[i];
-            try IERC20(__underlying__).transfer(user, assets) {} catch {
+            try IERC20(_underlying_).transfer(user, assets) {} catch {
                 vm.assume(false);
             }
         }
 
         // setup initial yield for vault
-        setupYield(init);
+        setUpYield(init);
     }
 
-    function setupYield(Init memory init) public override {
+    function setUpYield(Init memory init) public override {
         if (init.yield >= 0) {
             // gain
             uint256 gain = uint256(init.yield);
-            try IERC20(__underlying__).transfer(__vault__, gain) {} catch { vm.assume(false); } // prettier-ignore
+            try IERC20(_underlying_).transfer(_vault_, gain) {} catch { vm.assume(false); } // prettier-ignore
         } else {
             vm.assume(false); // no loss
         }
