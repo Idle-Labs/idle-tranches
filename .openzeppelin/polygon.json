@@ -1,8 +1,8 @@
 {
   "manifestVersion": "3.2",
   "admin": {
-    "address": "0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11",
-    "txHash": "0x1b39ab5684c8ee4f5e4dcf618f6954094820b03d51b57b2e443172319832c226"
+    "address": "0x3D63c50AD04DD5aE394CAB562b7691DD5de7CF6f",
+    "txHash": "0xd52ddca85bcf97ce02d1ade9d51cf02293e11a17254337ef8f5990fad916ff77"
   },
   "proxies": [
     {
@@ -18,6 +18,11 @@
     {
       "address": "0x5322471a7E37Ac2B8902cFcba84d266b37D811A0",
       "txHash": "0x9af0e9fde76490a2b62cd8f73ce34bfcd8fb74b928a63e80d24d80c7c288884a",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x103A3b128991781EE2c8db0454cA99d67b257923",
+      "txHash": "0x835e0b3b3b368c6d213be4e21447cfc2506d095a36bab7f14d29349452a6eb06",
       "kind": "transparent"
     }
   ],
@@ -985,6 +990,108 @@
           },
           "t_array(t_uint256)50_storage": {
             "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "bf707142ae728c3824035ca9258c0857b049e1ec38c236f20342ee77266032cb": {
+      "address": "0x90c84237fDdf091b1E63f369AF122EB46000bc70",
+      "txHash": "0x5e138b8b9fa8354b6d20b47482f77cbf9b49e40c30b4fb788fedddf2bae48260",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "IdleRebalancerHelperJunior",
+            "label": "uniswapRouter",
+            "type": "t_contract(IUniswapV2Router02)1349",
+            "src": "contracts/utils/IdleRebalancerHelperJunior.sol:63"
+          },
+          {
+            "contract": "IdleRebalancerHelperJunior",
+            "label": "owner",
+            "type": "t_address",
+            "src": "contracts/utils/IdleRebalancerHelperJunior.sol:64"
+          },
+          {
+            "contract": "IdleRebalancerHelperJunior",
+            "label": "contractDatas",
+            "type": "t_mapping(t_address,t_struct(ContractData)1471_storage)",
+            "src": "contracts/utils/IdleRebalancerHelperJunior.sol:66"
+          },
+          {
+            "contract": "IdleRebalancerHelperJunior",
+            "label": "allContractDatas",
+            "type": "t_array(t_struct(ContractData)1471_storage)dyn_storage",
+            "src": "contracts/utils/IdleRebalancerHelperJunior.sol:67"
+          }
+        ],
+        "types": {
+          "t_contract(IUniswapV2Router02)1349": {
+            "label": "contract IUniswapV2Router02"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_address,t_struct(ContractData)1471_storage)": {
+            "label": "mapping(address => struct IdleRebalancerHelperJunior.ContractData)"
+          },
+          "t_struct(ContractData)1471_storage": {
+            "label": "struct IdleRebalancerHelperJunior.ContractData",
+            "members": [
+              {
+                "label": "token",
+                "type": "t_address"
+              },
+              {
+                "label": "protocolDatas",
+                "type": "t_array(t_struct(ClearLikeData)1482_storage)dyn_storage"
+              }
+            ]
+          },
+          "t_array(t_struct(ClearLikeData)1482_storage)dyn_storage": {
+            "label": "struct IdleRebalancerHelperJunior.ClearLikeData[]"
+          },
+          "t_struct(ClearLikeData)1482_storage": {
+            "label": "struct IdleRebalancerHelperJunior.ClearLikeData",
+            "members": [
+              {
+                "label": "token",
+                "type": "t_address"
+              },
+              {
+                "label": "cdo",
+                "type": "t_address"
+              },
+              {
+                "label": "tranche",
+                "type": "t_address"
+              },
+              {
+                "label": "cpTokenLike",
+                "type": "t_address"
+              },
+              {
+                "label": "reward",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_array(t_struct(ContractData)1471_storage)dyn_storage": {
+            "label": "struct IdleRebalancerHelperJunior.ContractData[]"
+          },
+          "t_bool": {
+            "label": "bool"
           }
         }
       }
