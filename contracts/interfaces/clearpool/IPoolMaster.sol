@@ -15,4 +15,11 @@ interface IPoolMaster {
     function getCurrentExchangeRate() external view returns (uint256);
 
     function rewardPerSecond() external view returns (uint256);
+    function interestRateModel() external view returns (address);
+    function borrows() external view returns (uint256);
+    function reserves() external view returns (uint256);
+    function insurance() external view returns (uint256);
+    function principal() external view returns (uint256);
+    function reserveFactor() external view returns (uint256);
+    function insuranceFactor() external view returns (uint256);
 }
