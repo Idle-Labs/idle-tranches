@@ -7,7 +7,7 @@ import "../../contracts/IdleCDO.sol";
 import "../../contracts/interfaces/IProxyAdmin.sol";
 import "forge-std/Test.sol";
 
-import {IdlePYTClear} from "idle-finance-strategy/ClearpoolStrategy.sol";
+import {IdlePYTClearJunior} from "idle-finance-strategy/ClearpoolStrategyJunior.sol";
 
 contract TestIdleTokenFungible is Test {
   using stdStorage for StdStorage;
@@ -31,17 +31,17 @@ contract TestIdleTokenFungible is Test {
   IERC20Detailed public underlying = IERC20Detailed(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
   // cpwinusdc
   IdleCDO public cdo1 = IdleCDO(0xDBCEE5AE2E9DAf0F5d93473e08780C9f45DfEb93);
-  // aa tranche
-  address public protocolToken1 = 0xb86264c21418aA75F7c337B1821CcB4Ff4d57673;
+  // bb tranche
+  address public protocolToken1 = 0x4D9d9AA17c3fcEA05F20a87fc1991A045561167d;
   IERC20Detailed public lendToken1 = IERC20Detailed(0xCb288b6d30738db7E3998159d192615769794B5b);
-  IdlePYTClear public wrap1;
+  IdlePYTClearJunior public wrap1;
 
   // rfolusdc
   IdleCDO public cdo2 = IdleCDO(0x4bC5E595d2e0536Ea989a7a9741e9EB5c3CAea33);
-  // aa tranche
-  address protocolToken2 = 0x5f45A578491A23AC5AEE218e2D405347a0FaFa8E;
+  // bb tranche
+  address protocolToken2 = 0x982E46e81E99fbBa3Fb8Af031A7ee8dF9041bb0C;
   IERC20Detailed public lendToken2 = IERC20Detailed(0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d);
-  IdlePYTClear public wrap2;
+  IdlePYTClearJunior public wrap2;
 
   function setUp() public virtual {
     // setup local fork at specific block
@@ -54,11 +54,11 @@ contract TestIdleTokenFungible is Test {
     address _idleToken = address(idleToken);
   
     // deploy and initialize wrappers 
-    wrap1 = new IdlePYTClear();
+    wrap1 = new IdlePYTClearJunior();
     stdstore.target(address(wrap1)).sig(wrap1.token.selector).checked_write(address(0));
     wrap1.initialize(protocolToken1, _idleToken, address(cdo1));
 
-    wrap2 = new IdlePYTClear();
+    wrap2 = new IdlePYTClearJunior();
     stdstore.target(address(wrap2)).sig(wrap2.token.selector).checked_write(address(0));
     wrap2.initialize(protocolToken2, _idleToken, address(cdo2));
 
@@ -223,7 +223,7 @@ contract TestIdleTokenFungible is Test {
 
     // send funds in lending provider via rebalance
     _rebalance(50000, 50000);
-    assertApproxEqAbs(idleToken.tokenPrice(), ONE_TOKEN, 2, 
+    assertApproxEqAbs(idleToken.tokenPrice(), ONE_TOKEN, 5, 
       'Token price changed after rebalance');
 
     // accrue some interest
@@ -244,7 +244,7 @@ contract TestIdleTokenFungible is Test {
 
     // redeem 
     idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
-    assertApproxEqAbs(priceAfterHarvest, idleToken.tokenPrice(), 2, 
+    assertApproxEqAbs(priceAfterHarvest, idleToken.tokenPrice(), 5, 
       'Token price changed after redeem');
 
     // avoid reentrancy block
@@ -303,8 +303,8 @@ contract TestIdleTokenFungible is Test {
     idleToken.mintIdleToken(ONE_TOKEN * 1_000_000, true, address(0));
     // funds in lending in both protocols
     _rebalance(50000, 50000);
-    uint256 cdo1Bal = IERC20Detailed(cdo1.AATranche()).balanceOf(address(idleToken));
-    uint256 cdo2Bal = IERC20Detailed(cdo2.AATranche()).balanceOf(address(idleToken));
+    uint256 cdo1Bal = IERC20Detailed(cdo1.BBTranche()).balanceOf(address(idleToken));
+    uint256 cdo2Bal = IERC20Detailed(cdo2.BBTranche()).balanceOf(address(idleToken));
     assertGt(cdo1Bal, 0, 'Cdo1 bal is 0');
     assertGt(cdo2Bal, 0, 'Cdo2 bal is 0');
     assertEq(underlying.balanceOf(address(idleToken)), 0, 'underlying bal is 0');
@@ -313,8 +313,8 @@ contract TestIdleTokenFungible is Test {
 
     // funds in lending all in first protocol
     _rebalance(100000, 0);
-    cdo1Bal = IERC20Detailed(cdo1.AATranche()).balanceOf(address(idleToken));
-    cdo2Bal = IERC20Detailed(cdo2.AATranche()).balanceOf(address(idleToken));
+    cdo1Bal = IERC20Detailed(cdo1.BBTranche()).balanceOf(address(idleToken));
+    cdo2Bal = IERC20Detailed(cdo2.BBTranche()).balanceOf(address(idleToken));
     assertGt(cdo1Bal, 0, 'Cdo1 bal is 0');
     assertLt(cdo2Bal, 1e18 * 0.00001, 'Cdo2 bal is not almost 0');
 
@@ -322,8 +322,8 @@ contract TestIdleTokenFungible is Test {
 
     // funds in lending all in second protocol
     _rebalance(0, 100000);
-    cdo1Bal = IERC20Detailed(cdo1.AATranche()).balanceOf(address(idleToken));
-    cdo2Bal = IERC20Detailed(cdo2.AATranche()).balanceOf(address(idleToken));
+    cdo1Bal = IERC20Detailed(cdo1.BBTranche()).balanceOf(address(idleToken));
+    cdo2Bal = IERC20Detailed(cdo2.BBTranche()).balanceOf(address(idleToken));
     assertGt(cdo2Bal, 0, 'Cdo1 bal is 0');
     assertLt(cdo1Bal, 1e18 * 0.00001, 'Cdo1 bal is not almost 0');
   }
@@ -396,8 +396,8 @@ contract TestIdleTokenFungible is Test {
     idleToken.mintIdleToken(amount, true, address(0));
     // funds in lending in both protocols
     _rebalance(50000, 50000);
-    uint256 cdo1Bal = IERC20Detailed(cdo1.AATranche()).balanceOf(address(idleToken));
-    uint256 cdo2Bal = IERC20Detailed(cdo2.AATranche()).balanceOf(address(idleToken));
+    uint256 cdo1Bal = IERC20Detailed(cdo1.BBTranche()).balanceOf(address(idleToken));
+    uint256 cdo2Bal = IERC20Detailed(cdo2.BBTranche()).balanceOf(address(idleToken));
     assertGt(cdo1Bal, 0, 'Cdo1 bal is 0');
     assertGt(cdo2Bal, 0, 'Cdo2 bal is 0');
     assertEq(underlying.balanceOf(address(idleToken)), amount / 10, 'underlying bal is not 10%');
