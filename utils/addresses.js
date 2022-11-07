@@ -981,7 +981,7 @@ exports.deployTokensBY = {
     underlying: mainnetContracts.USDC,
     symbol: 'idleUSDCBB',
     name: 'IdleUSDC Junior tranches',
-    address: '0x1440469fba56ea663de7c29bbe8bca7ad5158647',
+    address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
     strategies: [
       // clearpool strat
       // {
@@ -992,7 +992,7 @@ exports.deployTokensBY = {
       //     CDOs.cpwinusdc.cdoAddr,
       //   ]
       // },
-      '0x7c7840251d70bCEa1402c4587A9e7E873d50B0FE',
+      '0xff31c69a983bac080f23f21be965650758d19d18',
       // ribbon strat
       // {
       //   strategyName: 'IdlePYTClear',
@@ -1002,7 +1002,7 @@ exports.deployTokensBY = {
       //     CDOs.rfolusdc.cdoAddr,
       //   ]
       // },
-      '0xaCc3D71E85C53158848F1cD8dFCF59145639f2aD'
+      '0x0b34f266B8b2f000cd0b543Dea1fd002bF7ab4ff'
     ]
   },
 }
