@@ -30,7 +30,7 @@ contract IdleClearpoolPSMStrategy is
         address _underlyingToken,
         address _owner,
         address _uniswapV2Router
-    ) public override initializer {
+    ) public virtual override initializer {
         super.initialize(_cpToken, _underlyingToken, _owner, _uniswapV2Router);
 
         // approve psm and helper to spend DAI and USDC
@@ -91,6 +91,7 @@ contract IdleClearpoolPSMStrategy is
     /// @param _amount Amount of underlying tokens to deposit in DAI
     /// @return minted number of reward tokens minted
     function _depositToVault(uint256 _amount)
+        virtual
         override
         internal
         returns (uint256 minted)
