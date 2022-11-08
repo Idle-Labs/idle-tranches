@@ -9,9 +9,8 @@ import "../../contracts/TrancheWrapper.sol";
 contract TestTrancheWrapper is Test {
     using stdStorage for StdStorage;
 
-    uint256 internal constant MAINNET_CHIANID = 1;
+    uint256 internal constant BLOCK_FOR_TEST = 15_840_330;
     uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
-
     address internal constant IDLE_CDO_ADDRESS = 0x46c1f702A6aAD1Fd810216A5fF15aaB1C62ca826;
     address internal constant IDLE_TRANCHE_ADDRESS = 0x852c4d2823E98930388b5cE1ed106310b942bD5a;
 
@@ -32,16 +31,9 @@ contract TestTrancheWrapper is Test {
     IERC20Detailed internal tranche;
     TrancheWrapper internal trancheWrapper;
 
-    modifier runOnForkingNetwork(uint256 networkId) {
-        // solhint-disable-next-line
-        if (block.chainid == networkId) {
-            _;
-        } else {
-            revert("Test can only be run on a forking network");
-        }
-    }
+    function setUp() public virtual {
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), BLOCK_FOR_TEST));
 
-    function setUp() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
         idleCDO = IdleCDO(IDLE_CDO_ADDRESS);
         tranche = IERC20Detailed(IDLE_TRANCHE_ADDRESS);
 
@@ -204,7 +196,7 @@ contract TestTrancheWrapper is Test {
         // skip rewards and deposit underlyings to the strategy
         _cdoHarvest(true);
 
-        uint256 withdrawAmount = trancheWrapper.redeem(mintedShares, address(this), address(this));
+        trancheWrapper.redeem(mintedShares, address(this), address(this));
 
         assertApproxEqAbs(tranche.balanceOf(address(trancheWrapper)), 0, 1, "tranche bal");
         assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal, 10, "underlying bal");
@@ -303,7 +295,7 @@ contract TestTrancheWrapper is Test {
         _skipFlags[3] = _skipRewards;
 
         vm.prank(idleCDO.rebalancer());
-        (bool success, bytes memory data) = address(idleCDO).call(
+        (bool success, ) = address(idleCDO).call(
             abi.encodeWithSignature(
                 "harvest(bool[],bool[],uint256[],uint256[],bytes)",
                 _skipFlags,
