@@ -8,9 +8,9 @@ import "./interfaces/IERC4626.sol";
 
 import "./IdleCDO.sol";
 
-import "forge-std/Test.sol";
-
 contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
+    error AmountZero();
+
     uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
     IdleCDO public immutable idleCDO;
@@ -28,7 +28,21 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         tranche = _tranche; // 18 decimals
         token = idleCDO.token();
         isAATranche = idleCDO.AATranche() == _tranche;
+
+        IERC20(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
     }
+
+    // function initialize(
+    //     IdleCDO _idleCDO,
+    //     address _tranche
+    // ) external returns (uint256) {
+    //     idleCDO = _idleCDO;
+    //     tranche = _tranche; // 18 decimals
+    //     token = idleCDO.token();
+    //     isAATranche = idleCDO.AATranche() == _tranche;
+
+    //     IERC20(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
+    // }
 
     /**
      * @dev Returns the address of the underlying token used for the Vault for accounting, depositing, and withdrawing.
@@ -97,7 +111,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
      * @notice revert if all of shares cannot be minted.
      */
     function mint(uint256 shares, address receiver) external nonReentrant returns (uint256) {
-        require(shares != 0, "tw: shares == 0");
+        if (shares == 0) revert AmountZero();
         uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
 
         (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
@@ -117,7 +131,8 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address receiver,
         address owner
     ) external nonReentrant returns (uint256) {
-        require(assets != 0, "tw: assets == 0");
+        if (assets == 0) revert AmountZero();
+
         uint256 shares = (assets == type(uint256).max) ? balanceOf(owner) : previewWithdraw(assets);
 
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
@@ -197,11 +212,6 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         IERC20 _token = IERC20(token);
 
         SafeERC20.safeTransferFrom(_token, depositor, address(this), amount);
-
-        if (_token.allowance(address(this), address(_idleCDO)) < amount) {
-            _token.approve(address(_idleCDO), 0); // Avoid issues with some tokens requiring 0
-            _token.approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
-        }
 
         uint256 beforeBal = _token.balanceOf(address(this));
 
