@@ -104,9 +104,10 @@ module.exports = {
       //   // blockNumber: 15718298, // cpfol dai strategy
       //   // blockNumber: 15831007, // ribbon strategies
       //   // blockNumber: 15889000, // by on juniors deploy
-      //   blockNumber: 15890900, // by on juniors initialize
+      //   // blockNumber: 15890900, // by on juniors initialize
+      //   blockNumber: 15924713, // cpfolusd + rwinusd deploy
       // },
-      chainId: 137
+      // // chainId: 137
     },
     coverage: {
       url: "http://127.0.0.1:8545/",

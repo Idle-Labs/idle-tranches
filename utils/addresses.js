@@ -374,6 +374,19 @@ const CDOs = {
     AATranche: '0x1692F6574a6758ADfbD12544e209146dD4510BD7',
     BBTranche: '0xCb980b5A4f5BdB81d0B4b97A9eDe64578ba9D48A'
   },
+  cpfolusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x84B2dEaF87A398F25ec5833000F72B6a4906b5AC',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xDBd47989647Aa73f4A88B51f2B5Ff4054De1276a',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x84B2dEaF87A398F25ec5833000F72B6a4906b5AC',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xa0154A44C1C45bD007743FA622fd0Da4f6d67D57',
+    BBTranche: '0x7a625a2882C9Fc8DF1463d5E538a3F39B5DBD073'
+  },
   rfolusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -399,6 +412,19 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xd54E5C263298E60A5030Ce2C8ACa7981EaAaED4A',
     BBTranche: '0xD3E4C5C37Ba3185410550B836557B8FA51d5EA3b'
+  },
+  rwinusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x73f3fb86cb579eeea9d482df2e91b6770a42fd6a',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xf6B692CC9A5421E4C66D32511d65F94c64fbD043',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x73f3fb86cb579eeea9d482df2e91b6770a42fd6a',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3e041C9980Bc03011cc30491d0c4ccD53602F89B',
+    BBTranche: '0x65237B6Fc6E62B05B62f1EbE53eDAadcCd1684Ad'
   },
   truefiusdc: {
     decimals: 6,
@@ -671,6 +697,23 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: '',
   },
+  cpfolusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleClearpoolStrategy',
+    strategyParams: [
+      mainnetContracts.cpFOL_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.cpfolusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
+  },
 
   // Ribbon Lend
   rwindai: { // wintermute pool with DAI as underlying
@@ -689,6 +732,23 @@ exports.deployTokens = {
     limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.cpfoldai.cdoAddr,
+  },
+  rwinusdc: { // wintermute pool
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleRibbonStrategy',
+    strategyParams: [
+      mainnetContracts.rWIN_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.rwinusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
   },
   rfolusdc: { // folkvang pool
     decimals: 6,
