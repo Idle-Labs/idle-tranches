@@ -6,4 +6,4 @@
 	url = https://github.com/dapphub/ds-test
 [submodule "lib/erc4626-tests"]
 	path = lib/erc4626-tests
-	url = https://github.com/idle-tranches/erc4626-tests
+	url = https://github.com/idle-finance/erc4626-tests
