@@ -1062,7 +1062,11 @@ exports.deployTokensBY = {
       //     CDOs.rfolusdc.cdoAddr,
       //   ]
       // },
-      '0x0b34f266B8b2f000cd0b543Dea1fd002bF7ab4ff'
+      '0x0b34f266B8b2f000cd0b543Dea1fd002bF7ab4ff',
+      // wrapper for bb tranche of cpfolusdc
+      '0xf522E945dcC2b7836AAF39Dc1955662B03ca2029',
+      // wrapper for bb tranche of rwinusdc
+      '0xf0E2Af8434B9A39640f83A472Fff6ee14291939e',
     ]
   },
 }
