@@ -6,9 +6,13 @@ libs = ["node_modules", "lib"]
 test = 'test/foundry'
 
 optimizer_runs = 15000
-fuzz_runs = 1000
-fuzz_max_global_rejects = 1000000
-fuzz_max_local_rejects = 1000000
+
+[fuzz]
+runs = 1000
+max_test_rejects = 1000000
 
 [profile.optimized]
 solc = '0.8.10'
+
+[rpc_endpoints]
+mainnet = "${ETH_RPC_URL}"
