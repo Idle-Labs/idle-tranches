@@ -67,7 +67,8 @@ contract TestTrancheWrapper is Test {
     function _deployLocalContracts() internal virtual {
         // deploy trancheWrapper
         tranche = IERC20Detailed(idleCDO.AATranche());
-        trancheWrapper = new TrancheWrapper(idleCDO, address(tranche));
+        trancheWrapper = new TrancheWrapper();
+        trancheWrapper.initialize(idleCDO, address(tranche));
 
         vm.startPrank(owner);
         idleCDO.setIsAYSActive(true);
@@ -280,6 +281,24 @@ contract TestTrancheWrapper is Test {
         uint256 burntShares = trancheWrapper.withdraw(100, address(0xbabe), address(this));
         assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), mintedShares - burntShares, 1, "wrapper bal");
         assertApproxEqAbs(underlying.balanceOf(address(0xbabe)), 100, 1, "underlying bal");
+    }
+
+    function testRevertIfReinitialize() public {
+        vm.expectRevert("Initializable: contract is already initialized");
+        trancheWrapper.initialize(idleCDO, address(tranche));
+    }
+
+    function tesClone() public {
+        address instance = trancheWrapper.clone(idleCDO, address(tranche));
+        assertEq(address(TrancheWrapper(instance).idleCDO()), address(idleCDO), "idleCDO");
+        assertEq(TrancheWrapper(instance).tranche(), address(tranche), "tranche");
+        assertFalse(TrancheWrapper(instance).isOriginal(), "is not original");
+
+        vm.expectRevert("Initializable: contract is already initialized");
+        TrancheWrapper(instance).initialize(idleCDO, address(tranche));
+
+        vm.expectRevert("!clone");
+        TrancheWrapper(instance).clone(idleCDO, address(tranche));
     }
 
     function _cdoHarvest(bool _skipRewards) internal {

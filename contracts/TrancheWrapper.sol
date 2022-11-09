@@ -1,48 +1,61 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./interfaces/IERC4626.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/ClonesUpgradeable.sol";
+import "./interfaces/IERC4626Upgradeable.sol";
 
 import "./IdleCDO.sol";
 
-contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
+contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
     error AmountZero();
+
+    event CloneCreated(address indexed instance);
 
     uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
-    IdleCDO public immutable idleCDO;
-    address public immutable token;
-    address public immutable tranche;
-    bool internal immutable isAATranche;
+    /// @dev flag to check if the contract has been cloned via minimal proxy or not
+    /// @notice original contract set the flag to true.
+    bool public isOriginal;
 
-    constructor(IdleCDO _idleCDO, address _tranche)
-        ERC20(
-            string(abi.encodePacked(ERC20(_tranche).name(), "4626Adapter")),
-            string(abi.encodePacked(ERC20(_tranche).symbol(), "4626"))
-        )
-    {
+    IdleCDO public idleCDO;
+    address public token;
+    address public tranche;
+    bool internal isAATranche;
+
+    /// @dev constructor doesn't run if the contract is cloned via minimal proxy
+    ///      proxy executes the runtime code that does not include the constructor
+    constructor() {
+        isOriginal = true;
+    }
+
+    function initialize(IdleCDO _idleCDO, address _tranche) external initializer {
+        __ReentrancyGuard_init();
+        __ERC20_init(
+            string(abi.encodePacked(ERC20Upgradeable(_tranche).name(), "4626Adapter")),
+            string(abi.encodePacked(ERC20Upgradeable(_tranche).symbol(), "4626"))
+        );
         idleCDO = _idleCDO;
         tranche = _tranche; // 18 decimals
         token = idleCDO.token();
         isAATranche = idleCDO.AATranche() == _tranche;
 
-        IERC20(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
+        ERC20Upgradeable(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
     }
 
-    // function initialize(
-    //     IdleCDO _idleCDO,
-    //     address _tranche
-    // ) external returns (uint256) {
-    //     idleCDO = _idleCDO;
-    //     tranche = _tranche; // 18 decimals
-    //     token = idleCDO.token();
-    //     isAATranche = idleCDO.AATranche() == _tranche;
+    /// @dev clone the contract via minimal proxy. proxy contract must be deployed by the original contract.
+    /// @notice the clone is created with the same code of the original contract
+    function clone(IdleCDO _idleCDO, address _tranche) external returns (address instance) {
+        require(isOriginal, "!clone");
+        bytes32 salt = keccak256(abi.encodePacked(address(_idleCDO), _tranche));
+        instance = ClonesUpgradeable.cloneDeterministic(address(this), salt);
+        TrancheWrapper(instance).initialize(_idleCDO, _tranche);
 
-    //     IERC20(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
-    // }
+        emit CloneCreated(instance);
+    }
 
     /**
      * @dev Returns the address of the underlying token used for the Vault for accounting, depositing, and withdrawing.
@@ -209,9 +222,9 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address depositor
     ) internal returns (uint256 deposited, uint256 mintedShares) {
         IdleCDO _idleCDO = idleCDO;
-        IERC20 _token = IERC20(token);
+        ERC20Upgradeable _token = ERC20Upgradeable(token);
 
-        SafeERC20.safeTransferFrom(_token, depositor, address(this), amount);
+        SafeERC20Upgradeable.safeTransferFrom(_token, depositor, address(this), amount);
 
         uint256 beforeBal = _token.balanceOf(address(this));
 
@@ -237,7 +250,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
         address sender
     ) internal returns (uint256 withdrawn, uint256 burntShares) {
         IdleCDO _idleCDO = idleCDO;
-        IERC20 _tranche = IERC20(tranche);
+        ERC20Upgradeable _tranche = ERC20Upgradeable(tranche);
 
         // withdraw from idleCDO
         uint256 beforeBal = _tranche.balanceOf(address(this));
@@ -250,7 +263,7 @@ contract TrancheWrapper is ReentrancyGuard, ERC20, IERC4626 {
 
         burntShares = beforeBal - _tranche.balanceOf(address(this));
         _burnFrom(sender, burntShares);
-        SafeERC20.safeTransfer(IERC20(token), receiver, withdrawn);
+        SafeERC20Upgradeable.safeTransfer(ERC20Upgradeable(token), receiver, withdrawn);
     }
 
     function _burnFrom(address account, uint256 amount) internal {

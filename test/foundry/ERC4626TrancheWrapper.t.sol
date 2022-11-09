@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0 <0.9.0;
 
-import {ERC4626Test} from "erc4626-tests/ERC4626.test.sol";
+import {ERC4626Test, IERC4626} from "erc4626-tests/ERC4626.test.sol";
 
 import "../../contracts/mocks/MockERC20.sol";
 import "../../contracts/mocks/MockIdleToken.sol";
@@ -34,7 +34,8 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
 
         // deploy trancheWrapper
         address tranche = idleCDO.AATranche();
-        trancheWrapper = new TrancheWrapper(idleCDO, tranche);
+        trancheWrapper = new TrancheWrapper();
+        trancheWrapper.initialize(idleCDO, tranche);
 
         _underlying_ = address(underlying);
         _vault_ = address(trancheWrapper);
