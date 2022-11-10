@@ -234,6 +234,11 @@
       "address": "0x73f3fB86Cb579eEeA9d482df2E91B6770A42FD6a",
       "txHash": "0xc77f18f3ea25f41751b68a6220fc4de1a44afe2d2a9b14e98a15173758d12012",
       "kind": "transparent"
+    },
+    {
+      "address": "0x42c21C576588f1BeF340A26fa3932bA41528f2D3",
+      "txHash": "0xb1252a5d06228f87842fbc56ba4f2f28fae5754cbcadc60389fd70c8d9487187",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -12633,6 +12638,188 @@
           },
           "t_bool": {
             "label": "bool"
+          }
+        }
+      }
+    },
+    "bb3214282a3348c79fe756c2bb63eab136ec081910284b624d40c33e5016c124": {
+      "address": "0x7600d5A837Bc8acEe5c6C5E564e681dDaDbE059F",
+      "txHash": "0x132fb96eadaad23cd2faa556291563013a0118c7ae724f2e41ccbf94bc176179",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "label": "uniswapRouter",
+            "offset": 2,
+            "slot": "0",
+            "type": "t_contract(IUniswapV2Router02)12581",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:95"
+          },
+          {
+            "label": "owner",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:96"
+          },
+          {
+            "label": "contractDatas",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_mapping(t_address,t_struct(ContractData)28750_storage)",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:98"
+          },
+          {
+            "label": "allContractDatas",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_array(t_struct(ContractData)28750_storage)dyn_storage",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:99"
+          },
+          {
+            "label": "providerV2",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(AaveLendingPoolProviderV2)12796",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:101"
+          },
+          {
+            "label": "comptroller",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_address",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:102"
+          },
+          {
+            "label": "oracle",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_address",
+            "contract": "IdleBuddyCompAave",
+            "src": "contracts/utils/IdleBuddyCompAave.sol:103"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_struct(ClearLikeData)28761_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAave.ClearLikeData[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(ContractData)28750_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAave.ContractData[]",
+            "numberOfBytes": "32"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(AaveLendingPoolProviderV2)12796": {
+            "label": "contract AaveLendingPoolProviderV2",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV2Router02)12581": {
+            "label": "contract IUniswapV2Router02",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_struct(ContractData)28750_storage)": {
+            "label": "mapping(address => struct IdleBuddyCompAave.ContractData)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(ClearLikeData)28761_storage": {
+            "label": "struct IdleBuddyCompAave.ClearLikeData",
+            "members": [
+              {
+                "label": "token",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cdo",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "tranche",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "cpTokenLike",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "reward",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_struct(ContractData)28750_storage": {
+            "label": "struct IdleBuddyCompAave.ContractData",
+            "members": [
+              {
+                "label": "token",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "underlying",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "protocolDatas",
+                "type": "t_array(t_struct(ClearLikeData)28761_storage)dyn_storage",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "cTokenNew",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "aV2Token",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
           }
         }
       }
