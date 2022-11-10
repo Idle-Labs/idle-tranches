@@ -2,7 +2,7 @@ const ethers = require('ethers');
 
 const addr0 = '0x0000000000000000000000000000000000000000';
 const mainnetContracts = {
-  idleDAIBest:  "0x3fE7940616e5Bc47b0775a0dccf6237893353bB4",
+  idleDAIBest: "0x3fE7940616e5Bc47b0775a0dccf6237893353bB4",
   idleUSDCBest: "0x5274891bEC421B39D23760c04A6755eCB444797C",
   idleUSDTBest: "0xF34842d05A1c888Ca02769A633DF37177415C2f8",
   idleSUSDBest: "0xf52cdcd458bf455aed77751743180ec4a595fd3f",
@@ -11,7 +11,7 @@ const mainnetContracts = {
   idleWETHBest: "0xC8E6CA6E96a326dC448307A5fDE90a0b21fd7f80",
   idleRAIBest: "0x5C960a3DCC01BE8a0f49c02A8ceBCAcf5D07fABe",
   idleFEIBest: "0xb2d5CB72A621493fe83C6885E4A776279be595bC",
-  idleDAIRisk:  "0xa14eA0E11121e6E951E87c66AFe460A00BCD6A16",
+  idleDAIRisk: "0xa14eA0E11121e6E951E87c66AFe460A00BCD6A16",
   idleUSDCRisk: "0x3391bc034f2935ef0e1e41619445f998b2680d35",
   idleUSDTRisk: "0x28fAc5334C9f7262b3A3Fe707e250E01053e07b5",
   agEUR: '0x1a7e4e63778b4f12a199c062f3efdd288afcbce8',
@@ -98,7 +98,8 @@ const mainnetContracts = {
   proxyAdmin: '0x9438904ABC7d8944A6E2A89671fEf51C629af351',
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
-  idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e'
+  idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
+  erc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810'
 }
 
 // Polygon
@@ -133,6 +134,21 @@ exports.IdleTokens = {
     idleUSDCBest: "0x0de23D3bc385a74E2196cfE827C8a640B8774B9f",
   },
 };
+
+const erc4626Wrappers = {
+  cpfoldai: {
+    original: mainnetContracts.erc4626Wrapper,
+    cdo: CDOs.cpfoldai,
+    AATrancheWraper: '0x6CDCf560f228bFf4AbDa74E11842D3E1d5F15189',
+    BBTrancheWraper: '0xEd0532E47aa7E7774D2f4D2cE1cA66cD61C3451a',
+  },
+  cpwinusdc: {
+    original: mainnetContracts.erc4626Wrapper,
+    cdo: CDOs.cpwinusdc,
+    AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
+    BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
+  }
+}
 
 // Deployed CDOs with relative addresses
 const CDOs = {
@@ -552,7 +568,7 @@ exports.deployTokens = {
     cdo: CDOs.lido,
     ...baseCDOArgs
   },
-  
+
   // mstable
   mstable: {
     decimals: 18,
@@ -789,7 +805,7 @@ exports.deployTokens = {
   //     }
   //   }
   // }
-  
+
   // depositPosition: 
   // - for strategy like `ConvexStrategyMeta3Pool` (cvxlusd3crv, cvxmim3crv, ...) can be found by looking at 
   // Curve registry https://etherscan.io/address/0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5
@@ -960,7 +976,7 @@ exports.deployTokensPolygon = {
       polygonContracts.CXETH, // celsiusx tokenized ETH
       'owner', // owner address
       polygonContracts.CXETH_WETH_REWARDS, // stakingRewards
-      polygonContracts.quickRouter, 
+      polygonContracts.quickRouter,
     ],
     incentiveTokens: [polygonContracts.dQUICK],
     proxyCdoAddress: polygonCDOs.quickcxethweth.cdoAddr,
@@ -980,5 +996,6 @@ exports.addr0 = addr0;
 exports.idleDeployer = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
 exports.timelock = '0xD6dABBc2b275114a2366555d6C481EF08FDC2556';
 exports.CDOs = CDOs;
+exports.erc4626Wrappers = erc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.mainnetContracts = mainnetContracts;
