@@ -99,7 +99,7 @@ const mainnetContracts = {
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
-  trancheWrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810'
+  erc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810'
 }
 
 // Polygon
@@ -135,15 +135,15 @@ exports.IdleTokens = {
   },
 };
 
-const trancheWrappers = {
+const erc4626Wrappers = {
   cpfoldai: {
-    original: mainnetContracts.trancheWrapper,
+    original: mainnetContracts.erc4626Wrapper,
     cdo: CDOs.cpfoldai,
     AATrancheWraper: '0x6CDCf560f228bFf4AbDa74E11842D3E1d5F15189',
     BBTrancheWraper: '0xEd0532E47aa7E7774D2f4D2cE1cA66cD61C3451a',
   },
   cpwinusdc: {
-    original: mainnetContracts.trancheWrapper,
+    original: mainnetContracts.erc4626Wrapper,
     cdo: CDOs.cpwinusdc,
     AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
     BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
@@ -996,6 +996,6 @@ exports.addr0 = addr0;
 exports.idleDeployer = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
 exports.timelock = '0xD6dABBc2b275114a2366555d6C481EF08FDC2556';
 exports.CDOs = CDOs;
-exports.trancheWrappers = trancheWrappers;
+exports.erc4626Wrappers = erc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.mainnetContracts = mainnetContracts;
