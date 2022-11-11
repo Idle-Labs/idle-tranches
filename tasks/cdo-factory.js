@@ -236,7 +236,16 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setIsAYSActive(true);
     }
     console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
+
+    console.log(`Transfer ownership of strategy to DL multisig ${mainnetContracts.devLeagueMultisig}`);
+    await strategy.connect(signer).transferOwnership(mainnetContracts.devLeagueMultisig);
     
+    console.log(`Set guardian of CDO to DL multisig ${mainnetContracts.devLeagueMultisig}`);
+    await idleCDO.connect(signer).setGuardian(mainnetContracts.devLeagueMultisig);
+    
+    console.log(`Transfer ownership of CDO to TL multisig ${mainnetContracts.treasuryMultisig}`);
+    await idleCDO.connect(signer).transferOwnership(mainnetContracts.treasuryMultisig);
+
     const feeReceiver = await idleCDO.feeReceiver();
     if (
         (!isMatic && feeReceiver == mainnetContracts.oldFeeReceiver) || 

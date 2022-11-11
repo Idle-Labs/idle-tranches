@@ -20,11 +20,14 @@ const mainnetContracts = {
   FEI: '0x956F47F50A910163D8BF957Cf5846D573E7f87CA',
   cDAI: '0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643',
   USDC: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   eDAI: '0xe025E3ca2bE02316033184551D4d3Aa22024D9DC',
   eUSDT: '0x4d19F33948b99800B6113Ff3e83beC9b537C85d2',
   cUSDC: '0x39aa39c021dfbae8fac545936693ac917d5e7563',
+  CPOOL: '0x66761Fa41377003622aEE3c7675Fc7b5c1C2FaC5',
+  RBN: '0x6123B0049F904d730dB3C36a31167D9d4121fA6B',
   cpWIN_USDC: '0xCb288b6d30738db7E3998159d192615769794B5b',
   cpFOL_USDC: '0xe3D20A721522874D32548B4097d1afc6f024e45b',
   rWIN_USDC: '0x0aea75705be8281f4c24c3e954d1f8b1d0f8044c',
@@ -388,6 +391,19 @@ const CDOs = {
     AATranche: '0x1692F6574a6758ADfbD12544e209146dD4510BD7',
     BBTranche: '0xCb980b5A4f5BdB81d0B4b97A9eDe64578ba9D48A'
   },
+  cpfolusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x84B2dEaF87A398F25ec5833000F72B6a4906b5AC',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xDBd47989647Aa73f4A88B51f2B5Ff4054De1276a',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x84B2dEaF87A398F25ec5833000F72B6a4906b5AC',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xa0154A44C1C45bD007743FA622fd0Da4f6d67D57',
+    BBTranche: '0x7a625a2882C9Fc8DF1463d5E538a3F39B5DBD073'
+  },
   rfolusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -413,6 +429,19 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xd54E5C263298E60A5030Ce2C8ACa7981EaAaED4A',
     BBTranche: '0xD3E4C5C37Ba3185410550B836557B8FA51d5EA3b'
+  },
+  rwinusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x73f3fb86cb579eeea9d482df2e91b6770a42fd6a',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xf6B692CC9A5421E4C66D32511d65F94c64fbD043',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x73f3fb86cb579eeea9d482df2e91b6770a42fd6a',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3e041C9980Bc03011cc30491d0c4ccD53602F89B',
+    BBTranche: '0x65237B6Fc6E62B05B62f1EbE53eDAadcCd1684Ad'
   },
   truefiusdc: {
     decimals: 6,
@@ -685,6 +714,23 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: '',
   },
+  cpfolusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleClearpoolStrategy',
+    strategyParams: [
+      mainnetContracts.cpFOL_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.cpfolusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
+  },
 
   // Ribbon Lend
   rwindai: { // wintermute pool with DAI as underlying
@@ -703,6 +749,23 @@ exports.deployTokens = {
     limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.cpfoldai.cdoAddr,
+  },
+  rwinusdc: { // wintermute pool
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleRibbonStrategy',
+    strategyParams: [
+      mainnetContracts.rWIN_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.rwinusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
   },
   rfolusdc: { // folkvang pool
     decimals: 6,
@@ -988,6 +1051,42 @@ exports.deployTokensPolygon = {
     cdo: polygonCDOs.quickcxethweth,
   },
 };
+
+exports.deployTokensBY = {
+  idleusdcjunior: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    symbol: 'idleUSDCBB',
+    name: 'IdleUSDC Junior tranches',
+    address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
+    strategies: [
+      // clearpool strat
+      // {
+      //   strategyName: 'IdlePYTClear',
+      //   strategyParams: [
+      //     CDOs.cpwinusdc.BBTranche,
+      //     'idleToken',
+      //     CDOs.cpwinusdc.cdoAddr,
+      //   ]
+      // },
+      '0xff31c69a983bac080f23f21be965650758d19d18',
+      // ribbon strat
+      // {
+      //   strategyName: 'IdlePYTClear',
+      //   strategyParams: [
+      //     CDOs.rfolusdc.BBTranche,
+      //     'idleToken',
+      //     CDOs.rfolusdc.cdoAddr,
+      //   ]
+      // },
+      '0x0b34f266B8b2f000cd0b543Dea1fd002bF7ab4ff',
+      // wrapper for bb tranche of cpfolusdc
+      '0xf522E945dcC2b7836AAF39Dc1955662B03ca2029',
+      // wrapper for bb tranche of rwinusdc
+      '0xf0E2Af8434B9A39640f83A472Fff6ee14291939e',
+    ]
+  },
+}
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
 exports.whale1 = '0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE'; // binance

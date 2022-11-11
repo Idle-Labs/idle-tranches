@@ -150,21 +150,21 @@ contract IdleHarvestStrategy is Initializable, OwnableUpgradeable, ERC20Upgradea
 
     /// @notice Redeem Tokens
     /// @param _amount amount of strategy tokens to redeem
-    /// @return Amount of underlying tokens received
-    function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256) {
+    /// @return _val Amount of underlying tokens received
+    function redeem(uint256 _amount) external override onlyIdleCDO returns (uint256 _val) {
         if (_amount > 0) {
-            return _redeem(_amount, price());
+            _val = _redeem(_amount, price());
         }
     }
 
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
-    /// @return Amount of underlying tokens received
-    function redeemUnderlying(uint256 _amount) external onlyIdleCDO returns (uint256) {
+    /// @return _val Amount of underlying tokens received
+    function redeemUnderlying(uint256 _amount) external onlyIdleCDO returns (uint256 _val) {
         if (_amount > 0) {
             uint256 _price = price();
             uint256 _strategyTokens = (_amount * oneToken) / _price;
-            return _redeem(_strategyTokens, _price);
+            _val = _redeem(_strategyTokens, _price);
         }
     }
 
