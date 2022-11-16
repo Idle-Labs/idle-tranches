@@ -61,8 +61,8 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         // idleCDO.depositAA(10 * ONE_SCALE);
     }
 
-    function testInitialize() external override {
-        this.testInitialize();
+    function testInitialize() public override {
+        super.testInitialize();
         assertEq(idleCDO.isAYSActive(), false);
         assertEq(idleCDO.trancheAPRSplitRatio(), 0);
     }
