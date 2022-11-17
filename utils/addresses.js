@@ -138,21 +138,6 @@ exports.IdleTokens = {
   },
 };
 
-const erc4626Wrappers = {
-  cpfoldai: {
-    original: mainnetContracts.erc4626Wrapper,
-    cdo: CDOs.cpfoldai,
-    AATrancheWraper: '0x6CDCf560f228bFf4AbDa74E11842D3E1d5F15189',
-    BBTrancheWraper: '0xEd0532E47aa7E7774D2f4D2cE1cA66cD61C3451a',
-  },
-  cpwinusdc: {
-    original: mainnetContracts.erc4626Wrapper,
-    cdo: CDOs.cpwinusdc,
-    AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
-    BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
-  }
-}
-
 // Deployed CDOs with relative addresses
 const CDOs = {
   idleDAI: {
@@ -470,6 +455,21 @@ const CDOs = {
     BBTranche: '0x077212c69A66261CF7bD1fd3b5C5db7CfFA948Ee'
   },
 };
+
+const erc4626Wrappers = {
+  cpfoldai: {
+    original: mainnetContracts.erc4626Wrapper,
+    cdo: CDOs.cpfoldai,
+    AATrancheWraper: '0x6CDCf560f228bFf4AbDa74E11842D3E1d5F15189',
+    BBTrancheWraper: '0xEd0532E47aa7E7774D2f4D2cE1cA66cD61C3451a',
+  },
+  cpwinusdc: {
+    original: mainnetContracts.erc4626Wrapper,
+    cdo: CDOs.cpwinusdc,
+    AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
+    BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
+  }
+}
 
 const polygonCDOs = {
   quickcxethweth: {
@@ -1069,7 +1069,7 @@ exports.deployTokensBY = {
       //     CDOs.cpwinusdc.cdoAddr,
       //   ]
       // },
-      '0xff31c69a983bac080f23f21be965650758d19d18',
+      '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
       // ribbon strat
       // {
       //   strategyName: 'IdlePYTClear',
@@ -1079,11 +1079,11 @@ exports.deployTokensBY = {
       //     CDOs.rfolusdc.cdoAddr,
       //   ]
       // },
-      '0x0b34f266B8b2f000cd0b543Dea1fd002bF7ab4ff',
+      '0xD19f42Ce3b799a4D23176da193673b146968C934',
       // wrapper for bb tranche of cpfolusdc
-      '0xf522E945dcC2b7836AAF39Dc1955662B03ca2029',
+      '0xfE92E0973ff0267447f8C711d16A849837C73264',
       // wrapper for bb tranche of rwinusdc
-      '0xf0E2Af8434B9A39640f83A472Fff6ee14291939e',
+      '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
     ]
   },
 }
