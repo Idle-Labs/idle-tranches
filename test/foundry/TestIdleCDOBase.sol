@@ -218,7 +218,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.stopPrank();
   }
 
-  function testEmergencyShutdown() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testEmergencyShutdown() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -292,7 +292,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testAPRSplitRatioDeposits(
     uint16 _ratio
-  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     vm.assume(_ratio <= 1000);
     uint256 amount = 1000 * ONE_SCALE;
     // to have the same scale as FULL_ALLOC and avoid 
@@ -313,7 +313,7 @@ abstract contract TestIdleCDOBase is Test {
     uint16 _ratio,
     uint16 _redeemRatioAA,
     uint16 _redeemRatioBB
-  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     vm.assume(_ratio <= 1000 && _ratio > 0);
     // > 0 because it's a requirement of the withdraw
     vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);

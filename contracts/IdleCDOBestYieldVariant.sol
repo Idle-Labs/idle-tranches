@@ -8,7 +8,10 @@ import "./interfaces/IERC20Detailed.sol";
 /// @author Idle DAO, @massun-onibakuchi
 contract IdleCDOBestYieldVariant is IdleCDO {
     function _additionalInit() internal override {
-        delete isAYSActive; // disable yield split
+        isAYSActive = false; // disable yield split
+        // for clearity we set the flag to false, but indeed this flag doesn't work when not paused.
+        // it is not necessary because _withdrawAA() is disabled
+        allowAAWithdraw = false;
     }
 
     /// @notice this method is pausable
@@ -22,5 +25,10 @@ contract IdleCDOBestYieldVariant is IdleCDO {
             require(IERC20Detailed(_tranche).totalSupply() == 0, "disable depositAA");
         }
         _minted = super._deposit(_amount, _tranche, _referral);
+    }
+
+    function _withdraw(uint256 _amount, address _tranche) internal override returns (uint256 toRedeem) {
+        require(BBTranche == _tranche, "disable withdrawAA");
+        toRedeem = super._withdraw(_amount, _tranche);
     }
 }
