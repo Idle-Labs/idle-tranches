@@ -4,6 +4,7 @@ import "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/IdleCDO.sol";
 import "forge-std/Test.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 interface IIdleCDOStrategyEnhanced is IIdleCDOStrategy {
   function setWhitelistedCDO(address _cdo) external;
@@ -12,6 +13,7 @@ interface IIdleCDOStrategyEnhanced is IIdleCDOStrategy {
 
 abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
+  using SafeERC20Upgradeable for IERC20Detailed;
 
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
@@ -72,7 +74,7 @@ abstract contract TestIdleCDOBase is Test {
     // fund
     initialBal = 1000000 * ONE_SCALE;
     deal(address(underlying), address(this), initialBal, true);
-    underlying.approve(address(idleCDO), type(uint256).max);
+    underlying.safeApprove(address(idleCDO), type(uint256).max);
 
     // get initial aprs
     initialApr = strategy.getApr();
@@ -88,7 +90,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
-  function testInitialize() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialize() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
@@ -216,7 +218,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.stopPrank();
   }
 
-  function testEmergencyShutdown() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testEmergencyShutdown() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -290,7 +292,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testAPRSplitRatioDeposits(
     uint16 _ratio
-  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     vm.assume(_ratio <= 1000);
     uint256 amount = 1000 * ONE_SCALE;
     // to have the same scale as FULL_ALLOC and avoid 
@@ -311,7 +313,7 @@ abstract contract TestIdleCDOBase is Test {
     uint16 _ratio,
     uint16 _redeemRatioAA,
     uint16 _redeemRatioBB
-  ) external runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     vm.assume(_ratio <= 1000 && _ratio > 0);
     // > 0 because it's a requirement of the withdraw
     vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
