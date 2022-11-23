@@ -7,7 +7,7 @@ import "../../contracts/IdleCDO.sol";
 import "../../contracts/interfaces/IProxyAdmin.sol";
 import "forge-std/Test.sol";
 
-import {IdlePYTClearJunior} from "idle-finance-strategy/ClearpoolStrategyJunior.sol";
+import {IdlePYTClear} from "best-yield-PYT-strategy/ClearpoolStrategy.sol";
 
 contract TestIdleTokenFungible is Test {
   using stdStorage for StdStorage;
@@ -34,14 +34,14 @@ contract TestIdleTokenFungible is Test {
   // bb tranche
   address public protocolToken1 = 0x4D9d9AA17c3fcEA05F20a87fc1991A045561167d;
   IERC20Detailed public lendToken1 = IERC20Detailed(0xCb288b6d30738db7E3998159d192615769794B5b);
-  IdlePYTClearJunior public wrap1;
+  IdlePYTClear public wrap1;
 
   // rfolusdc
   IdleCDO public cdo2 = IdleCDO(0x4bC5E595d2e0536Ea989a7a9741e9EB5c3CAea33);
   // bb tranche
   address protocolToken2 = 0x982E46e81E99fbBa3Fb8Af031A7ee8dF9041bb0C;
   IERC20Detailed public lendToken2 = IERC20Detailed(0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d);
-  IdlePYTClearJunior public wrap2;
+  IdlePYTClear public wrap2;
 
   function setUp() public virtual {
     // setup local fork at specific block
@@ -54,11 +54,11 @@ contract TestIdleTokenFungible is Test {
     address _idleToken = address(idleToken);
   
     // deploy and initialize wrappers 
-    wrap1 = new IdlePYTClearJunior();
+    wrap1 = new IdlePYTClear();
     stdstore.target(address(wrap1)).sig(wrap1.token.selector).checked_write(address(0));
     wrap1.initialize(protocolToken1, _idleToken, address(cdo1));
 
-    wrap2 = new IdlePYTClearJunior();
+    wrap2 = new IdlePYTClear();
     stdstore.target(address(wrap2)).sig(wrap2.token.selector).checked_write(address(0));
     wrap2.initialize(protocolToken2, _idleToken, address(cdo2));
 

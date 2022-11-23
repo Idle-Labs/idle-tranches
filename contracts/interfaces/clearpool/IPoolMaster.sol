@@ -22,4 +22,5 @@ interface IPoolMaster {
     function principal() external view returns (uint256);
     function reserveFactor() external view returns (uint256);
     function insuranceFactor() external view returns (uint256);
+    function availableToWithdraw() external view returns (uint256);
 }

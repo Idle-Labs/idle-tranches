@@ -5,10 +5,9 @@
 @uniswap/=node_modules/@uniswap/
 base64-sol/=node_modules/base64-sol/
 best-yield-PYT-strategy/=lib/best-yield-PYT-strategy/src/
-contracts/=contracts/
 ds-test/=lib/ds-test/src/
+erc4626-tests/=lib/erc4626-tests/
 eth-gas-reporter/=node_modules/eth-gas-reporter/
 forge-std/=lib/forge-std/src/
 hardhat/=node_modules/hardhat/
-idle-finance-strategy/=lib/best-yield-PYT-strategy/src/
 openzeppelin-contracts-upgradeable/=lib/best-yield-PYT-strategy/lib/openzeppelin-contracts-upgradeable/
