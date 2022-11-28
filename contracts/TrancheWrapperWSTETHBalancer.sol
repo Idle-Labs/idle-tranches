@@ -18,6 +18,12 @@ import "./IdleCDO.sol";
 contract TrancheWrapperWSTETHBalancer is TrancheWrapper {
     address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
+    function initialize(IdleCDO _idleCDO, address _tranche) public override initializer {
+        super.initialize(_idleCDO, _tranche);
+        // approve wstETH to wrap our stETH
+        ERC20Upgradeable(token).approve(WSTETH, type(uint256).max);
+    }
+
     /**
      * @dev Returns the amount of assets that the Vault would exchange for the amount of shares provided, in an ideal
      * scenario where all the conditions are met.
@@ -26,6 +32,15 @@ contract TrancheWrapperWSTETHBalancer is TrancheWrapper {
         // shares * virtualPrice is an stETHAmount multiplied by 1e18 
         // we div this the wstETH price
         return (shares * idleCDO.virtualPrice(tranche)) / IWstETH(WSTETH).stEthPerToken();
+    }
+
+    /**
+     * @dev Returns the amount of shares that the Vault would exchange for the amount of assets provided, in an ideal
+     * scenario where all the conditions are met.
+     */
+    function convertToShares(uint256 assets) public override view returns (uint256) {
+        // assets is wsteth
+        return ((assets * IWstETH(WSTETH).stEthPerToken()) / idleCDO.virtualPrice(tranche));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -46,25 +61,24 @@ contract TrancheWrapperWSTETHBalancer is TrancheWrapper {
         // get wsteth in this contract
         ERC20Upgradeable _token = ERC20Upgradeable(WSTETH);
         SafeERC20Upgradeable.safeTransferFrom(_token, depositor, address(this), amount);
-        // unwrap them into stETH
+        // get wstETH balance
+        uint256 wBalBefore = _token.balanceOf(address(this));
+        // unwrap wstETH into stETH
         IWstETH(WSTETH).unwrap(amount);
+        // set amount of assets used
+        deposited = wBalBefore - ERC20Upgradeable(WSTETH).balanceOf(address(this));
 
         // set _token to stETH
         _token = ERC20Upgradeable(token);
         // get stETH amount received after wrap
         amount = _token.balanceOf(address(this));
 
-        // The rest is the same as in TrancheWrapper.sol
         IdleCDO _idleCDO = idleCDO;
-        uint256 beforeBal = amount;
-
         if (isAATranche) {
             mintedShares = _idleCDO.depositAA(amount);
         } else {
             mintedShares = _idleCDO.depositBB(amount);
         }
-        uint256 afterBal = _token.balanceOf(address(this));
-        deposited = beforeBal - afterBal;
 
         _mint(receiver, mintedShares);
     }

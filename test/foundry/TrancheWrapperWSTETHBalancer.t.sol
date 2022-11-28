@@ -4,7 +4,8 @@ pragma solidity 0.8.10;
 import "forge-std/Test.sol";
 
 import "../../contracts/interfaces/IERC20Detailed.sol";
-import "../../contracts/TrancheWrapper.sol";
+import "../../contracts/TrancheWrapperWSTETHBalancer.sol";
+import "../../contracts/interfaces/IWstETH.sol";
 
 contract TestTrancheWrapperWSTETHBalancer is Test {
     using stdStorage for StdStorage;
@@ -15,6 +16,7 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     address internal constant IDLE_CDO_ADDRESS = 0x34dCd573C5dE4672C8248cd12A99f875Ca112Ad8;
     // bb tranche
     address internal constant IDLE_TRANCHE_ADDRESS = 0x3a52fa30c33cAF05fAeE0f9c5Dfe5fd5fe8B3978;
+    address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     address public owner;
     IdleCDO internal idleCDO;
@@ -40,7 +42,8 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
         tranche = IERC20Detailed(IDLE_TRANCHE_ADDRESS);
 
         owner = idleCDO.owner();
-        underlying = IERC20Detailed(idleCDO.token());
+        underlying = IERC20Detailed(WSTETH);
+        // underlying = IERC20Detailed(idleCDO.token());
         decimals = underlying.decimals();
         ONE_SCALE = 10**decimals;
         strategy = IIdleCDOStrategy(idleCDO.strategy());
@@ -51,11 +54,10 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
         _deployLocalContracts();
 
         // fund
-        initialBal = 1000000 * ONE_SCALE;
+        initialBal = 100000 * ONE_SCALE;
 
-        // deal cheatcode does not work with stETH
-        vm.prank(0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2);
-        underlying.transfer(address(this), initialBal);
+        // deal wsteth to this contract
+        deal(address(underlying), address(this), initialBal);
         underlying.approve(address(trancheWrapper), type(uint256).max);
 
         // label
@@ -72,7 +74,7 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     function _deployLocalContracts() internal virtual {
         // deploy trancheWrapper
         tranche = IERC20Detailed(idleCDO.BBTranche());
-        trancheWrapper = new TrancheWrapper();
+        trancheWrapper = new TrancheWrapperWSTETHBalancer();
         trancheWrapper.initialize(idleCDO, address(tranche));
 
         vm.startPrank(owner);
@@ -84,7 +86,7 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
 
     function testSetupOk() public {
         assertEq(address(trancheWrapper.idleCDO()), address(idleCDO));
-        assertEq(address(idleCDO.token()), address(underlying));
+        assertEq(WSTETH, address(underlying));
         assertEq(trancheWrapper.totalSupply(), 0);
         assertEq(trancheWrapper.totalAssets(), idleCDO.getContractValue());
         if (address(tranche) == address(AAtranche)) {
@@ -95,14 +97,18 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testConversion() public {
-        uint256 assets = trancheWrapper.convertToAssets(1e18);
-        assertEq(assets, idleCDO.virtualPrice(address(tranche)));
-        assertEq(trancheWrapper.convertToShares(assets), 1e18);
+        // convertToAssets should return amount of underlyings, in this case wsteth
+        uint256 trancheTokens = idleCDO.virtualPrice(address(tranche)) * ONE_TRANCHE_TOKEN / IWstETH(WSTETH).stEthPerToken();
+        assertEq(trancheWrapper.convertToAssets(1e18), trancheTokens);
+        
+        // this is not used
+        assertApproxEqAbs(
+            trancheWrapper.convertToShares(trancheTokens), 1e18, 1);
     }
 
     function testPreview() public {
-        uint256 assets = idleCDO.virtualPrice(address(tranche));
-        uint256 shares = (1e18 * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+        uint256 assets = idleCDO.virtualPrice(address(tranche)) * ONE_TRANCHE_TOKEN / IWstETH(WSTETH).stEthPerToken();
+        uint256 shares = (1e18 * IWstETH(WSTETH).stEthPerToken()) / idleCDO.virtualPrice(address(tranche));
 
         assertEq(trancheWrapper.previewDeposit(1e18), shares);
         assertEq(trancheWrapper.previewMint(ONE_TRANCHE_TOKEN), assets);
@@ -153,12 +159,12 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testMaxWithdraw() public {
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = 10 * ONE_SCALE;
         uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
 
         uint256 assets = trancheWrapper.maxWithdraw(address(this));
         uint256 shares = trancheWrapper.maxRedeem(address(this));
-        assertApproxEqAbs(assets, amount, 1, "withdrawable aseets");
+        assertApproxEqAbs(assets, amount, 1, "withdrawable assets");
         assertEq(shares, mintedShares, "withdrawabl shares");
 
         // prevent withdraws
@@ -182,9 +188,9 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testMint() public {
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = 10 * ONE_SCALE;
 
-        uint256 shares = (amount * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+        uint256 shares = (amount * IWstETH(WSTETH).stEthPerToken()) / idleCDO.virtualPrice(address(tranche));
         uint256 assetsUsed = trancheWrapper.mint(shares, address(this));
 
         assertApproxEqAbs(assetsUsed, amount, 1, "tranche bal");
@@ -195,7 +201,7 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testRedeem() public {
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = 10 * ONE_SCALE;
 
         uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
 
@@ -211,9 +217,9 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testWithdraw() public {
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = 10 * ONE_SCALE;
 
-        uint256 shares = (amount * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(address(tranche));
+        uint256 shares = (amount * IWstETH(WSTETH).stEthPerToken()) / idleCDO.virtualPrice(address(tranche));
         uint256 assetsUsed = trancheWrapper.mint(shares, address(this));
 
         // skip rewards and deposit underlyings to the strategy
@@ -276,34 +282,22 @@ contract TestTrancheWrapperWSTETHBalancer is Test {
     }
 
     function testWithdrawInsteadOfOwner() external {
-        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amount = 100 * ONE_SCALE;
         uint256 mintedShares = trancheWrapper.deposit(amount, address(this));
 
         trancheWrapper.approve(address(0xbabe), type(uint256).max);
 
-        // withdraw 100 amount of underlying
+        // withdraw 10 amount of underlying
+        uint256 toWithdraw = 10*ONE_TRANCHE_TOKEN;
         vm.prank(address(0xbabe), address(0xbabe));
-        uint256 burntShares = trancheWrapper.withdraw(100, address(0xbabe), address(this));
-        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), mintedShares - burntShares, 1, "wrapper bal");
-        assertApproxEqAbs(underlying.balanceOf(address(0xbabe)), 100, 1, "underlying bal");
+        uint256 burntShares = trancheWrapper.withdraw(toWithdraw, address(0xbabe), address(this));
+        assertApproxEqAbs(trancheWrapper.balanceOf(address(this)), mintedShares - burntShares, 10, "wrapper bal");
+        assertApproxEqAbs(underlying.balanceOf(address(0xbabe)), toWithdraw, 10, "underlying bal");
     }
 
     function testRevertIfReinitialize() public {
         vm.expectRevert("Initializable: contract is already initialized");
         trancheWrapper.initialize(idleCDO, address(tranche));
-    }
-
-    function tesClone() public {
-        address instance = trancheWrapper.clone(idleCDO, address(tranche));
-        assertEq(address(TrancheWrapper(instance).idleCDO()), address(idleCDO), "idleCDO");
-        assertEq(TrancheWrapper(instance).tranche(), address(tranche), "tranche");
-        assertFalse(TrancheWrapper(instance).isOriginal(), "is not original");
-
-        vm.expectRevert("Initializable: contract is already initialized");
-        TrancheWrapper(instance).initialize(idleCDO, address(tranche));
-
-        vm.expectRevert("!clone");
-        TrancheWrapper(instance).clone(idleCDO, address(tranche));
     }
 
     function _cdoHarvest(bool _skipRewards) internal {
