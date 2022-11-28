@@ -3,7 +3,7 @@ pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
 
-import "../../contracts/interfaces/IIdleToken.sol";
+import "../../contracts/interfaces/IIdleTokenFungible.sol";
 import "../../contracts/IdleTokenFungible.sol";
 import "../../contracts/IdleTokenWrapper.sol";
 
@@ -18,7 +18,7 @@ contract TestIdleTokenWrapper is Test {
     address internal rebalancer;
     address internal owner;
     address[] internal allAvailableTokens;
-    IIdleToken internal idleToken;
+    IIdleTokenFungible internal idleToken;
     IERC20Detailed internal underlying;
     uint256 internal decimals;
     uint256 internal ONE_TOKEN;
@@ -30,7 +30,7 @@ contract TestIdleTokenWrapper is Test {
     function setUp() public virtual {
         vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), BLOCK_FOR_TEST));
 
-        idleToken = IIdleToken(IDLE_USDC_BB);
+        idleToken = IIdleTokenFungible(IDLE_USDC_BB);
 
         allAvailableTokens = idleToken.getAllAvailableTokens();
         rebalancer = idleToken.rebalancer();
@@ -82,7 +82,7 @@ contract TestIdleTokenWrapper is Test {
         uint256 shares = (amount * ONE_18) / idleToken.tokenPrice();
 
         assertEq(idleTokenWrapper.previewDeposit(amount), shares);
-        assertEq(idleTokenWrapper.previewMint(ONE_18), assets + 1); // rounding up
+        assertEq(idleTokenWrapper.previewMint(ONE_18), assets + 1);
         assertEq(idleTokenWrapper.previewWithdraw(amount), shares);
         assertEq(idleTokenWrapper.previewRedeem(ONE_18), assets);
     }
@@ -131,7 +131,6 @@ contract TestIdleTokenWrapper is Test {
 
     function testMint() public {
         uint256 amount = 10000 * ONE_TOKEN;
-        uint256 price = idleToken.tokenPrice();
 
         uint256 shares = (amount * ONE_18) / idleToken.tokenPrice();
         uint256 assetsUsed = idleTokenWrapper.mint(shares, address(this));
@@ -202,12 +201,12 @@ contract TestIdleTokenWrapper is Test {
 
         vm.startPrank(address(0xbabe), address(0xbabe));
 
-        vm.expectRevert("idleTokenWrapper: burn amount exceeds allowance");
+        vm.expectRevert(IdleTokenWrapper.InsufficientAllowance.selector);
         idleTokenWrapper.redeem(10, address(0xbabe), address(this));
 
         vm.roll(block.number + 1);
 
-        vm.expectRevert("idleTokenWrapper: burn amount exceeds allowance");
+        vm.expectRevert(IdleTokenWrapper.InsufficientAllowance.selector);
         idleTokenWrapper.withdraw(10, address(0xbabe), address(this));
 
         vm.stopPrank();

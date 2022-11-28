@@ -4,19 +4,22 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./interfaces/IERC4626Upgradeable.sol";
 
-import "../contracts/interfaces/IIdleToken.sol";
+import "../contracts/interfaces/IIdleTokenFungible.sol";
 
 contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
     error AmountZero();
+    error InsufficientAllowance();
 
     uint256 internal constant ONE_18 = 1e18;
+    address internal constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
 
-    IIdleToken public idleToken;
+    IIdleTokenFungible public idleToken;
     address public token;
 
-    function initialize(IIdleToken _idleToken) external initializer {
+    function initialize(IIdleTokenFungible _idleToken) external initializer {
         __ReentrancyGuard_init();
         __ERC20_init(
             string(abi.encodePacked(_idleToken.name(), "4626Adapter")),
@@ -71,6 +74,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
      */
     function previewMint(uint256 shares) public view returns (uint256) {
         return convertToAssets(shares) + 1;
+        // return Math.ceilDiv(shares * idleToken.tokenPrice(), ONE_18);
     }
 
     /**
@@ -161,24 +165,24 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
     function maxDeposit(
         address /* receiver */
     ) public view returns (uint256) {
-        return _vaultPaused() ? 0 : type(uint256).max;
+        return idleToken.paused() ? 0 : type(uint256).max;
     }
 
     function maxMint(
         address /* receiver */
     ) external view returns (uint256) {
-        return _vaultPaused() ? 0 : type(uint256).max;
+        return idleToken.paused() ? 0 : type(uint256).max;
     }
 
     function maxWithdraw(address owner) external view returns (uint256) {
-        return _vaultPaused() ? 0 : convertToAssets(balanceOf(owner));
+        return idleToken.paused() ? 0 : convertToAssets(balanceOf(owner));
     }
 
     function maxRedeem(address owner) external view returns (uint256) {
-        return _vaultPaused() ? 0 : balanceOf(owner);
+        return idleToken.paused() ? 0 : balanceOf(owner);
     }
 
-    /// @notice Deposit underlying tokens into IIdleToken
+    /// @notice Deposit underlying tokens into IIdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param amount Amount of underlying tokens to deposit
     /// @param receiver receiver of tranche shares
@@ -193,7 +197,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
         SafeERC20Upgradeable.safeTransferFrom(_token, depositor, address(this), amount);
 
         uint256 beforeBal = _token.balanceOf(address(this));
-        mintedShares = idleToken.mintIdleToken(amount, true, address(this));
+        mintedShares = idleToken.mintIdleToken(amount, true, TL_MULTISIG);
         uint256 afterBal = _token.balanceOf(address(this));
 
         deposited = beforeBal - afterBal;
@@ -201,17 +205,17 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
         _mint(receiver, mintedShares);
     }
 
-    /// @notice Withdraw underlying tokens from IIdleToken
+    /// @notice Withdraw underlying tokens from IIdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param shares shares to withdraw
-    /// @param receiver receiver of underlying tokens withdrawn from IIdleToken
+    /// @param receiver receiver of underlying tokens withdrawn from IIdleTokenFungible
     /// @param sender sender of tranche shares
     function _redeem(
         uint256 shares,
         address receiver,
         address sender
     ) internal returns (uint256 withdrawn, uint256 burntShares) {
-        IIdleToken _idleToken = idleToken;
+        IIdleTokenFungible _idleToken = idleToken;
 
         // withdraw from idleToken
         uint256 beforeBal = _idleToken.balanceOf(address(this));
@@ -225,17 +229,13 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
     function _burnFrom(address account, uint256 amount) internal {
         if (account != msg.sender) {
             uint256 currentAllowance = allowance(account, msg.sender);
-            require(currentAllowance >= amount, "idleTokenWrapper: burn amount exceeds allowance");
+            if (currentAllowance < amount) {
+                revert InsufficientAllowance();
+            }
             unchecked {
                 _approve(account, msg.sender, currentAllowance - amount);
             }
         }
         _burn(account, amount);
-    }
-
-    function _vaultPaused() internal view returns (bool) {
-        (bool success, bytes memory data) = address(idleToken).staticcall(abi.encodeWithSignature("paused()"));
-        require(success, "idleTokenWrapper: failed to call paused()");
-        return abi.decode(data, (bool));
     }
 }
