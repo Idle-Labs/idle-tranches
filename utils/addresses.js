@@ -103,7 +103,8 @@ const mainnetContracts = {
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
-  erc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810'
+  erc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810',
+  erc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
 }
 
 // Polygon
@@ -469,6 +470,11 @@ const erc4626Wrappers = {
     cdo: CDOs.cpwinusdc,
     AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
     BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
+  },
+  lido: {
+    original: mainnetContracts.erc4626WrapperBalancerVariant,
+    cdo: CDOs.lido,
+    BBTrancheWraper: mainnetContracts.erc4626WrapperBalancerVariant,
   }
 }
 
