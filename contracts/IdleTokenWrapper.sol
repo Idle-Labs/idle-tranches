@@ -4,9 +4,8 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
-import "./interfaces/IERC4626Upgradeable.sol";
 
+import "./interfaces/IERC4626Upgradeable.sol";
 import "../contracts/interfaces/IIdleTokenFungible.sol";
 
 contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
@@ -73,15 +72,14 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
      * NOTE: round up.
      */
     function previewMint(uint256 shares) public view returns (uint256) {
-        return convertToAssets(shares) + 1;
-        // return Math.ceilDiv(shares * idleToken.tokenPrice(), ONE_18);
+        return convertToAssets(shares);
     }
 
     /**
      * @dev Return the amount of shares a user has to redeem to receive a given amount of assets.
      */
     function previewWithdraw(uint256 assets) public view returns (uint256) {
-        return convertToShares(assets); // @check should be round up?
+        return convertToShares(assets);
     }
 
     function previewRedeem(uint256 shares) public view returns (uint256) {
@@ -107,7 +105,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
      */
     function mint(uint256 shares, address receiver) external nonReentrant returns (uint256) {
         if (shares == 0) revert AmountZero();
-        uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
+        uint256 assets = previewMint(shares);
 
         (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
 

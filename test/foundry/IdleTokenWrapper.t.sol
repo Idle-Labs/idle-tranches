@@ -82,7 +82,7 @@ contract TestIdleTokenWrapper is Test {
         uint256 shares = (amount * ONE_18) / idleToken.tokenPrice();
 
         assertEq(idleTokenWrapper.previewDeposit(amount), shares);
-        assertEq(idleTokenWrapper.previewMint(ONE_18), assets + 1);
+        assertApproxEqAbs(idleTokenWrapper.previewMint(ONE_18), assets, 1);
         assertEq(idleTokenWrapper.previewWithdraw(amount), shares);
         assertEq(idleTokenWrapper.previewRedeem(ONE_18), assets);
     }
