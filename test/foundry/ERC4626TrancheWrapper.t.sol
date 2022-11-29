@@ -97,7 +97,7 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
     function _deployStrategy(address _owner) internal returns (address _strategy, address _underlying) {
         _underlying = address(new MockERC20("MockDAI", "MockDAI"));
         MockIdleToken idleToken = new MockIdleToken(_underlying);
-        idleToken.setTokenPriceWithFee(12**17);
+        idleToken.setTokenPriceWithFee(1.2 * 10**18);
 
         _strategy = address(new IdleStrategy());
         stdstore.target(_strategy).sig(IIdleCDOStrategy.token.selector).checked_write(address(0));

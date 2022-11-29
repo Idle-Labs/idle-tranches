@@ -64,7 +64,7 @@ contract MockIdleToken is ERC20, MockERC20 {
   }
 
   function mintIdleToken(uint256 _amount, bool, address) external returns(uint256) {
-    IERC20(underlying).transferFrom(msg.sender, address(this), _amount * 10**18 / _tokenPriceWithFee);
+    IERC20(underlying).transferFrom(msg.sender, address(this),_amount);
     _mint(msg.sender, _amount * 10**18 / _tokenPriceWithFee);
     return _amount * 10**18 / _tokenPriceWithFee;
   }

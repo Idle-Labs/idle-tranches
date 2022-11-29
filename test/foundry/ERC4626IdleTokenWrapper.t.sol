@@ -45,7 +45,7 @@ contract TestERC4626IdleTokenWrapper is ERC4626Test {
 
         address _underlying = address(new MockERC20("Underlying", "UNDERLYING"));
         idleToken = address(new MockIdleToken(_underlying));
-        MockIdleToken(idleToken).setTokenPriceWithFee(12 * 10**17);
+        MockIdleToken(idleToken).setTokenPriceWithFee(1.2 * 10**18);
 
         underlying = IERC20Detailed(_underlying);
         decimals = underlying.decimals();
