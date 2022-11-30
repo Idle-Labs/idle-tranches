@@ -471,10 +471,15 @@ const erc4626Wrappers = {
     AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
     BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
   },
-  lido: {
+  lidoBal: {
     original: mainnetContracts.erc4626WrapperBalancerVariant,
     cdo: CDOs.lido,
     BBTrancheWraper: mainnetContracts.erc4626WrapperBalancerVariant,
+  },
+  lido: {
+    original: mainnetContracts.erc4626Wrapper,
+    cdo: CDOs.lido,
+    BBTrancheWraper: '0x79F05f75df6c156B2B98aC1FBfb3637fc1e6f048',
   }
 }
 
