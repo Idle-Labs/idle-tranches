@@ -8,12 +8,10 @@ import "../interfaces/IERC4626.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 abstract contract ERC4626Strategy is
     Initializable,
     OwnableUpgradeable,
-    ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
     IIdleCDOStrategy
 {
@@ -43,14 +41,10 @@ abstract contract ERC4626Strategy is
     }
 
     /// @notice can be only called once
-    /// @param _name name of this strategy ERC20 tokens
-    /// @param _symbol symbol of this strategy ERC20 tokens
     /// @param _strategyToken address of the vault token
     /// @param _token address of the underlying token
     /// @param _owner owner of this contract
     function _initialize(
-        string memory _name,
-        string memory _symbol,
         address _strategyToken,
         address _token,
         address _owner
@@ -65,9 +59,6 @@ abstract contract ERC4626Strategy is
         underlyingToken = IERC20Detailed(token);
         tokenDecimals = underlyingToken.decimals();
         oneToken = 10**(tokenDecimals); // underlying decimals
-        // NOTE: tokenized position has 18 decimals
-
-        ERC20Upgradeable.__ERC20_init(_name, _symbol);
         //------//-------//
 
         transferOwnership(_owner);
@@ -149,6 +140,9 @@ abstract contract ERC4626Strategy is
         require(_cdo != address(0), "IS_0");
         idleCDO = _cdo;
     }
+
+    /// @dev used by IdleCDO to retrieve rewards to sell (from IdleCDO directly)
+    function getRewardTokens() external view virtual returns (address[] memory) {}
 
     /// @notice Modifier to make sure that caller os only the idleCDO contract
     modifier onlyIdleCDO() {
