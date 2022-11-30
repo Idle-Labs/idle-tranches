@@ -32,7 +32,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         isOriginal = true;
     }
 
-    function initialize(IdleCDO _idleCDO, address _tranche) external initializer {
+    function initialize(IdleCDO _idleCDO, address _tranche) public virtual initializer {
         __ReentrancyGuard_init();
         __ERC20_init(
             string(abi.encodePacked(ERC20Upgradeable(_tranche).name(), "4626Adapter")),
@@ -75,7 +75,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
      * @dev Returns the amount of shares that the Vault would exchange for the amount of assets provided, in an ideal
      * scenario where all the conditions are met.
      */
-    function convertToShares(uint256 assets) public view returns (uint256) {
+    function convertToShares(uint256 assets) public virtual view returns (uint256) {
         return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(tranche));
     }
 
@@ -83,7 +83,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
      * @dev Returns the amount of assets that the Vault would exchange for the amount of shares provided, in an ideal
      * scenario where all the conditions are met.
      */
-    function convertToAssets(uint256 shares) public view returns (uint256) {
+    function convertToAssets(uint256 shares) public virtual view returns (uint256) {
         return (shares * idleCDO.virtualPrice(tranche)) / ONE_TRANCHE_TOKEN;
     }
 
@@ -220,7 +220,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         uint256 amount,
         address receiver,
         address depositor
-    ) internal returns (uint256 deposited, uint256 mintedShares) {
+    ) internal virtual returns (uint256 deposited, uint256 mintedShares) {
         IdleCDO _idleCDO = idleCDO;
         ERC20Upgradeable _token = ERC20Upgradeable(token);
 
@@ -248,7 +248,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         uint256 shares,
         address receiver,
         address sender
-    ) internal returns (uint256 withdrawn, uint256 burntShares) {
+    ) internal virtual returns (uint256 withdrawn, uint256 burntShares) {
         IdleCDO _idleCDO = idleCDO;
         ERC20Upgradeable _tranche = ERC20Upgradeable(tranche);
 
