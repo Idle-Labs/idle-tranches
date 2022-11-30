@@ -120,7 +120,7 @@ abstract contract ERC4626Strategy is
         return vault.convertToAssets(10**vault.decimals());
     }
 
-    function getApr() external view virtual returns (uint256 apr);
+    function getApr() external view virtual returns (uint256 apr) {}
 
     /// @notice This contract should not have funds at the end of each tx (except for stkAAVE), this method is just for leftovers
     /// @dev Emergency method
