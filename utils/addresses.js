@@ -63,6 +63,8 @@ const mainnetContracts = {
   LDO: '0x5a98fcbea516cf06857215779fd812ca3bef1b32',
   stETH: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84',
   wstETH: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+  frxETH: '0x5e8422345238f34275888049021821e8e08caa1f',
+  sfrxETH: '0xac3e018457b222d93114458476f3e3416abbe38f',
   mUSD: '0xe2f2a5C287993345a840Db3B0845fbC70f5935a5',
   imUSD: '0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19',
   mUSDVault: '0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B',
@@ -514,12 +516,13 @@ const polygonCDOs = {
 
 const baseCDOArgs = {
   incentiveTokens: [],
-  proxyCdoAddress: CDOs.idleDAI.cdoAddr,
+  proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
   AAStaking: false,
   BBStaking: false,
   stkAAVEActive: false,
-  limit: '0',
-  AARatio: '10000' // 100000 is 100% to AA
+  AARatio: '10000', // 100000 is 100% to AA
+  limit: '200000000',
+  isAYSActive: true
 }
 
 // CDOs with full params defined
@@ -607,6 +610,20 @@ exports.deployTokens = {
       'owner'
     ],
     cdo: CDOs.lido,
+    ...baseCDOArgs
+  },
+  // FraxETH
+  fraxeth: {
+    decimals: 18,
+    underlying: mainnetContracts.frxETH,
+    strategyName: 'FraxLSD',
+    strategyParams: [
+      mainnetContracts.sfrxETH, // strategy token
+      mainnetContracts.frxETH, // underlying
+      // mainnetContracts.deployer, // owner is set in the task
+      'owner'
+    ],
+    // cdo: CDOs.fraxeth,
     ...baseCDOArgs
   },
 
