@@ -69,10 +69,11 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
 
     /**
      * @dev Return the amount of assets a user has to provide to receive a certain amount of shares.
-     * NOTE: round up.
+     * @notice return as close to and no fewer than the exact amount of assets that would be deposited in a mint call in the same transaction.
+     * NOTE: rounds up.
      */
     function previewMint(uint256 shares) public view returns (uint256) {
-        return convertToAssets(shares);
+        return convertToAssets(shares) + 1;
     }
 
     /**
@@ -105,7 +106,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
      */
     function mint(uint256 shares, address receiver) external nonReentrant returns (uint256) {
         if (shares == 0) revert AmountZero();
-        uint256 assets = previewMint(shares);
+        uint256 assets = previewMint(shares); // No need to check for rounding error, previewMint rounds up.
 
         (uint256 assetsUsed, uint256 mintedShares) = _deposit(assets, receiver, msg.sender);
 
@@ -180,7 +181,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
         return idleToken.paused() ? 0 : balanceOf(owner);
     }
 
-    /// @notice Deposit underlying tokens into IIdleTokenFungible
+    /// @notice Deposit underlying tokens into IdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param amount Amount of underlying tokens to deposit
     /// @param receiver receiver of tranche shares
@@ -203,10 +204,10 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
         _mint(receiver, mintedShares);
     }
 
-    /// @notice Withdraw underlying tokens from IIdleTokenFungible
+    /// @notice Withdraw underlying tokens from IdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param shares shares to withdraw
-    /// @param receiver receiver of underlying tokens withdrawn from IIdleTokenFungible
+    /// @param receiver receiver of underlying tokens withdrawn from IdleTokenFungible
     /// @param sender sender of tranche shares
     function _redeem(
         uint256 shares,
