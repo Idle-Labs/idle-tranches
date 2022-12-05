@@ -4,57 +4,30 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/ClonesUpgradeable.sol";
+
 import "./interfaces/IERC4626Upgradeable.sol";
+import "../contracts/interfaces/IIdleTokenFungible.sol";
 
-import "./IdleCDO.sol";
-
-contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
+contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
     error AmountZero();
+    error InsufficientAllowance();
 
-    event CloneCreated(address indexed instance);
+    uint256 internal constant ONE_18 = 1e18;
+    address internal constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
 
-    uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
-
-    /// @dev flag to check if the contract has been cloned via minimal proxy or not
-    /// @notice original contract set the flag to true.
-    bool public isOriginal;
-
-    IdleCDO public idleCDO;
+    IIdleTokenFungible public idleToken;
     address public token;
-    address public tranche;
-    bool internal isAATranche;
 
-    /// @dev constructor doesn't run if the contract is cloned via minimal proxy
-    ///      proxy executes the runtime code that does not include the constructor
-    constructor() {
-        isOriginal = true;
-    }
-
-    function initialize(IdleCDO _idleCDO, address _tranche) public virtual initializer {
+    function initialize(IIdleTokenFungible _idleToken) external initializer {
         __ReentrancyGuard_init();
         __ERC20_init(
-            string(abi.encodePacked(ERC20Upgradeable(_tranche).name(), "4626Adapter")),
-            string(abi.encodePacked(ERC20Upgradeable(_tranche).symbol(), "4626"))
+            string(abi.encodePacked(_idleToken.name(), "4626Adapter")),
+            string(abi.encodePacked(_idleToken.symbol(), "4626"))
         );
-        idleCDO = _idleCDO;
-        tranche = _tranche; // 18 decimals
-        token = idleCDO.token();
-        isAATranche = idleCDO.AATranche() == _tranche;
+        idleToken = _idleToken;
+        token = _idleToken.token();
 
-        ERC20Upgradeable(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
-    }
-
-    /// @dev clone the contract via minimal proxy. proxy contract must be deployed by the original contract.
-    /// @notice the clone is created with the same code of the original contract
-    function clone(IdleCDO _idleCDO, address _tranche) external returns (address instance) {
-        require(isOriginal, "!clone");
-        bytes32 salt = keccak256(abi.encodePacked(address(_idleCDO), _tranche));
-        instance = ClonesUpgradeable.cloneDeterministic(address(this), salt);
-        TrancheWrapper(instance).initialize(_idleCDO, _tranche);
-
-        emit CloneCreated(instance);
+        ERC20Upgradeable(token).approve(address(_idleToken), type(uint256).max); // Vaults are trusted
     }
 
     /**
@@ -68,36 +41,44 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
      * @dev Returns the total amount of the underlying asset that is “managed” by Vault.
      */
     function totalAssets() external view returns (uint256) {
-        return idleCDO.getContractValue();
+        // price: value of 1 idleToken in underlying
+        // NOTE: the value is different from assets mangaed by the wrapper
+        return (idleToken.tokenPrice() * idleToken.totalSupply()) / ONE_18;
     }
 
     /**
      * @dev Returns the amount of shares that the Vault would exchange for the amount of assets provided, in an ideal
      * scenario where all the conditions are met.
+     * NOTE: `convertTo` functions are both always round down.
      */
-    function convertToShares(uint256 assets) public virtual view returns (uint256) {
-        return ((assets * ONE_TRANCHE_TOKEN) / idleCDO.virtualPrice(tranche));
+    function convertToShares(uint256 assets) public view returns (uint256) {
+        return ((assets * ONE_18) / idleToken.tokenPrice());
     }
 
     /**
      * @dev Returns the amount of assets that the Vault would exchange for the amount of shares provided, in an ideal
      * scenario where all the conditions are met.
      */
-    function convertToAssets(uint256 shares) public virtual view returns (uint256) {
-        return (shares * idleCDO.virtualPrice(tranche)) / ONE_TRANCHE_TOKEN;
+    function convertToAssets(uint256 shares) public view returns (uint256) {
+        return (shares * idleToken.tokenPrice()) / ONE_18;
     }
 
-    /** @dev Allows an on-chain or off-chain user to simulate the effects of their deposit at the current block, given
-     * current on-chain conditions.
-     */
     function previewDeposit(uint256 assets) external view returns (uint256) {
         return convertToShares(assets);
     }
 
+    /**
+     * @dev Return the amount of assets a user has to provide to receive a certain amount of shares.
+     * @notice return as close to and no fewer than the exact amount of assets that would be deposited in a mint call in the same transaction.
+     * NOTE: rounds up.
+     */
     function previewMint(uint256 shares) public view returns (uint256) {
-        return convertToAssets(shares);
+        return convertToAssets(shares) + 1;
     }
 
+    /**
+     * @dev Return the amount of shares a user has to redeem to receive a given amount of assets.
+     */
     function previewWithdraw(uint256 assets) public view returns (uint256) {
         return convertToShares(assets);
     }
@@ -145,7 +126,6 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         address owner
     ) external nonReentrant returns (uint256) {
         if (assets == 0) revert AmountZero();
-
         uint256 shares = (assets == type(uint256).max) ? balanceOf(owner) : previewWithdraw(assets);
 
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
@@ -184,34 +164,24 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
     function maxDeposit(
         address /* receiver */
     ) public view returns (uint256) {
-        IdleCDO _idleCDO = idleCDO;
-
-        uint256 _depositLimit = _idleCDO.limit(); // TVL limit in underlying value
-        uint256 _totalAssets = _idleCDO.getContractValue(); // TVL in underlying value
-        if (_depositLimit == 0) return type(uint256).max; // 0 means unlimited
-        if (_totalAssets >= _depositLimit) return 0;
-        return _depositLimit - _totalAssets;
+        return idleToken.paused() ? 0 : type(uint256).max;
     }
 
-    function maxMint(address receiver) external view returns (uint256) {
-        uint256 _maxDeposit = maxDeposit(receiver);
-        if (_maxDeposit == type(uint256).max) return type(uint256).max;
-        return convertToShares(_maxDeposit);
+    function maxMint(
+        address /* receiver */
+    ) external view returns (uint256) {
+        return idleToken.paused() ? 0 : type(uint256).max;
     }
 
     function maxWithdraw(address owner) external view returns (uint256) {
-        bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
-        if (!withdrawable) return 0;
-        return convertToAssets(balanceOf(owner));
+        return idleToken.paused() ? 0 : convertToAssets(balanceOf(owner));
     }
 
     function maxRedeem(address owner) external view returns (uint256) {
-        bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
-        if (!withdrawable) return 0;
-        return balanceOf(owner);
+        return idleToken.paused() ? 0 : balanceOf(owner);
     }
 
-    /// @notice Deposit underlying tokens into IdleCDO
+    /// @notice Deposit underlying tokens into IdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param amount Amount of underlying tokens to deposit
     /// @param receiver receiver of tranche shares
@@ -220,48 +190,37 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         uint256 amount,
         address receiver,
         address depositor
-    ) internal virtual returns (uint256 deposited, uint256 mintedShares) {
-        IdleCDO _idleCDO = idleCDO;
+    ) internal returns (uint256 deposited, uint256 mintedShares) {
         ERC20Upgradeable _token = ERC20Upgradeable(token);
 
         SafeERC20Upgradeable.safeTransferFrom(_token, depositor, address(this), amount);
 
         uint256 beforeBal = _token.balanceOf(address(this));
-
-        if (isAATranche) {
-            mintedShares = _idleCDO.depositAA(amount);
-        } else {
-            mintedShares = _idleCDO.depositBB(amount);
-        }
+        mintedShares = idleToken.mintIdleToken(amount, true, TL_MULTISIG);
         uint256 afterBal = _token.balanceOf(address(this));
+
         deposited = beforeBal - afterBal;
 
         _mint(receiver, mintedShares);
     }
 
-    /// @notice Withdraw underlying tokens from IdleCDO
+    /// @notice Withdraw underlying tokens from IdleTokenFungible
     /// @dev This function SHOULD be guarded to prevent potential reentrancy
     /// @param shares shares to withdraw
-    /// @param receiver receiver of underlying tokens withdrawn from IdleCDO
+    /// @param receiver receiver of underlying tokens withdrawn from IdleTokenFungible
     /// @param sender sender of tranche shares
     function _redeem(
         uint256 shares,
         address receiver,
         address sender
-    ) internal virtual returns (uint256 withdrawn, uint256 burntShares) {
-        IdleCDO _idleCDO = idleCDO;
-        ERC20Upgradeable _tranche = ERC20Upgradeable(tranche);
+    ) internal returns (uint256 withdrawn, uint256 burntShares) {
+        IIdleTokenFungible _idleToken = idleToken;
 
-        // withdraw from idleCDO
-        uint256 beforeBal = _tranche.balanceOf(address(this));
+        // withdraw from idleToken
+        uint256 beforeBal = _idleToken.balanceOf(address(this));
+        withdrawn = _idleToken.redeemIdleToken(shares);
+        burntShares = beforeBal - _idleToken.balanceOf(address(this));
 
-        if (isAATranche) {
-            withdrawn = _idleCDO.withdrawAA(shares);
-        } else {
-            withdrawn = _idleCDO.withdrawBB(shares);
-        }
-
-        burntShares = beforeBal - _tranche.balanceOf(address(this));
         _burnFrom(sender, burntShares);
         SafeERC20Upgradeable.safeTransfer(ERC20Upgradeable(token), receiver, withdrawn);
     }
@@ -269,7 +228,9 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
     function _burnFrom(address account, uint256 amount) internal {
         if (account != msg.sender) {
             uint256 currentAllowance = allowance(account, msg.sender);
-            require(currentAllowance >= amount, "tw: burn amount exceeds allowance");
+            if (currentAllowance < amount) {
+                revert InsufficientAllowance();
+            }
             unchecked {
                 _approve(account, msg.sender, currentAllowance - amount);
             }
