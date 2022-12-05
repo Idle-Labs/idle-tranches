@@ -103,8 +103,9 @@ const mainnetContracts = {
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
-  erc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810',
-  erc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
+  trancheErc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810',
+  trancheErc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
+  idleTokenErc4626Wrapper: '0x658a190730be0afb1ea39295f7ffee6d44aaefa7',
 }
 
 // Polygon
@@ -458,23 +459,31 @@ const CDOs = {
   },
 };
 
-const erc4626Wrappers = {
+const trancheErc4626Wrappers = {
   cpfoldai: {
-    original: mainnetContracts.erc4626Wrapper,
+    original: mainnetContracts.trancheErc4626Wrapper,
     cdo: CDOs.cpfoldai,
     AATrancheWraper: '0x6CDCf560f228bFf4AbDa74E11842D3E1d5F15189',
     BBTrancheWraper: '0xEd0532E47aa7E7774D2f4D2cE1cA66cD61C3451a',
   },
   cpwinusdc: {
-    original: mainnetContracts.erc4626Wrapper,
+    original: mainnetContracts.trancheErc4626Wrapper,
     cdo: CDOs.cpwinusdc,
     AATrancheWraper: '0x0BD58ca59f2C18F88882562bc8188d9f8939CA68',
     BBTrancheWraper: '0x43b9B5B8fbcb9AD21B54C44f422F3cA33712A3E3',
   },
   lido: {
-    original: mainnetContracts.erc4626WrapperBalancerVariant,
+    original: mainnetContracts.trancheErc4626WrapperBalancerVariant,
     cdo: CDOs.lido,
-    BBTrancheWraper: mainnetContracts.erc4626WrapperBalancerVariant,
+    BBTrancheWraper: mainnetContracts.trancheErc4626WrapperBalancerVariant,
+  },
+}
+
+const idleTokenErc4626Wrappers = {
+  idleusdcjunior: {
+    original: mainnetContracts.idleTokenErc4626Wrapper,
+    idleToken: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
+    idleTokenWrapper: '0xe4168948110AcA11aEb9D9E181D2C0501daFD2d3',
   }
 }
 
@@ -1102,6 +1111,7 @@ exports.addr0 = addr0;
 exports.idleDeployer = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
 exports.timelock = '0xD6dABBc2b275114a2366555d6C481EF08FDC2556';
 exports.CDOs = CDOs;
-exports.erc4626Wrappers = erc4626Wrappers;
+exports.trancheErc4626Wrappers = trancheErc4626Wrappers;
+exports.idleTokenErc4626Wrappers = idleTokenErc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.mainnetContracts = mainnetContracts;
