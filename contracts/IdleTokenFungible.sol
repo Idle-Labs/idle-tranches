@@ -429,9 +429,10 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
    * @return price value of 1 idleToken in underlying
    */
   function _tokenPrice() internal view returns (uint256 price) {
-    uint256 totSupply = totalSupply();
-    if (totSupply == 0) {
-      return 10**(tokenDecimals);
+    uint256 _totSupply = totalSupply();
+    uint256 _tokenDecimals = tokenDecimals;
+    if (_totSupply == 0) {
+      return 10**(_tokenDecimals);
     }
 
     address currToken;
@@ -446,8 +447,9 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
         i++;
       }
     }
-
-    price = (totNav - unclaimedFees) / totSupply; // idleToken price in token wei
+    // normalize fees to 18 decimals
+    uint256 _scaledFees = unclaimedFees * 10 ** (18 - _tokenDecimals);
+    price = (totNav - _scaledFees) / _totSupply; // idleToken price in token wei
   }
 
   /**
@@ -465,7 +467,8 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       if (_unclaimedFees > 0) {
         // send fees
         _mint(feeAddress, _unclaimedFees * ONE_18 / _tokenPrice());
-        // reset fee counter
+        // reset fee counter and update lastNAV
+        lastNAV += _unclaimedFees;
         unclaimedFees = 0;
       }
 
