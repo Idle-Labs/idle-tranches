@@ -435,21 +435,8 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       return 10**(_tokenDecimals);
     }
 
-    address currToken;
-    uint256 totNav = _contractBalanceOf(token) * ONE_18; // eventual underlying unlent balance
-    address[] memory _allAvailableTokens = allAvailableTokens;
-    uint256 _len = _allAvailableTokens.length;
-    for (uint256 i = 0; i < _len; ) {
-      currToken = _allAvailableTokens[i];
-      // NAV = price * poolSupply
-      totNav += _getPriceInToken(protocolWrappers[currToken]) * _contractBalanceOf(currToken);
-      unchecked {
-        i++;
-      }
-    }
-    // normalize fees to 18 decimals
-    uint256 _scaledFees = unclaimedFees * 10 ** (18 - _tokenDecimals);
-    price = (totNav - _scaledFees) / _totSupply; // idleToken price in token wei
+    uint256 totNav = _getCurrentPoolValue() - unclaimedFees;
+    price = (totNav - _calculateFees(totNav)) * ONE_18 / _totSupply; // idleToken price in token wei
   }
 
   /**
@@ -465,8 +452,8 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       _updateFeeInfo();
       uint256 _unclaimedFees = unclaimedFees;
       if (_unclaimedFees > 0) {
-        // send fees
-        _mint(feeAddress, _unclaimedFees * ONE_18 / _tokenPrice());
+        // send fees (lastNAV was just updated in _updateFeeInfo)
+        _mint(feeAddress, _unclaimedFees * totalSupply() / lastNAV);
         // reset fee counter and update lastNAV
         lastNAV += _unclaimedFees;
         unclaimedFees = 0;
@@ -547,16 +534,25 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
    * Calculate gain and save eventual fees in unclaimedFees
    */
   function _updateFeeInfo() internal {
-    uint256 _lastNAV = lastNAV;
-    uint256 _unclaimedFees = unclaimedFees;
-    uint256 _currNAV = _getCurrentPoolValue() - _unclaimedFees;
-    uint256 _fees;
-    if (_currNAV > _lastNAV) {
-      _fees = (_currNAV - _lastNAV) * fee / FULL_ALLOC;
-      unclaimedFees = _unclaimedFees + _fees;
+    // remove fees
+    uint256 _currNAV = _getCurrentPoolValue() - unclaimedFees;
+    uint256 _fees = _calculateFees(_currNAV);
+    if (_fees > 0) {
+      unclaimedFees += _fees;
     }
-
     lastNAV = _currNAV - _fees;
+  }
+
+  /**
+   * Calculate fees, _currNAV should have fee already accounted excluded
+   */
+  function _calculateFees(uint256 _currNAV) internal view returns (uint256 _fees) {
+    // lastNAV is without fees
+    uint256 _lastNAV = lastNAV;
+    if (_currNAV > _lastNAV) {
+      // calculate new fees (TVLs without old fees)
+      _fees = (_currNAV - _lastNAV) * fee / FULL_ALLOC;
+    }
   }
 
   /**
@@ -690,9 +686,12 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       // Get balance of every protocol implemented
       address currentToken;
       address[] memory _tokens = allAvailableTokens;
-      for (uint256 i = 0; i < _tokens.length; i++) {
+      for (uint256 i = 0; i < _tokens.length; ) {
         currentToken = _tokens[i];
         total += _getPriceInToken(protocolWrappers[currentToken]) * _contractBalanceOf(currentToken) / ONE_18;
+        unchecked {
+          i++;
+        }
       }
 
       // add unlent balance
