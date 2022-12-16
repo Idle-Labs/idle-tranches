@@ -66,7 +66,6 @@ module.exports = {
       "contracts/IdleCDOPoLidoVariant.sol": minimalSizeConfig,
       "contracts/strategies/euler/IdleLeveragedEulerStrategy.sol": highRunConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
-      "contracts/IdleTokenFungible.sol": highRunConfig,
     }
   },
   networks: {
@@ -105,7 +104,7 @@ module.exports = {
       //   // blockNumber: 15831007, // ribbon strategies
       //   // blockNumber: 15889000, // by on juniors deploy
       //   // blockNumber: 15890900, // by on juniors initialize
-      //   blockNumber: 15924713, // cpfolusd + rwinusd deploy
+      //   blockNumber: 16168419, // cpfolusd + rwinusd deploy
       // },
       // // chainId: 137
     },

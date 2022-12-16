@@ -1074,39 +1074,39 @@ exports.deployTokensPolygon = {
 };
 
 exports.deployTokensBY = {
-  idleusdcjunior: {
-    decimals: 6,
-    underlying: mainnetContracts.USDC,
-    symbol: 'idleUSDCBB',
-    name: 'IdleUSDC Junior tranches',
-    address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
-    strategies: [
-      // clearpool strat
-      // {
-      //   strategyName: 'IdlePYTClear',
-      //   strategyParams: [
-      //     CDOs.cpwinusdc.BBTranche,
-      //     'idleToken',
-      //     CDOs.cpwinusdc.cdoAddr,
-      //   ]
-      // },
-      '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
-      // ribbon strat
-      // {
-      //   strategyName: 'IdlePYTClear',
-      //   strategyParams: [
-      //     CDOs.rfolusdc.BBTranche,
-      //     'idleToken',
-      //     CDOs.rfolusdc.cdoAddr,
-      //   ]
-      // },
-      '0xD19f42Ce3b799a4D23176da193673b146968C934',
-      // wrapper for bb tranche of cpfolusdc
-      '0xfE92E0973ff0267447f8C711d16A849837C73264',
-      // wrapper for bb tranche of rwinusdc
-      '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
-    ]
-  },
+  // idleusdcjunior: {
+  //   decimals: 6,
+  //   underlying: mainnetContracts.USDC,
+  //   symbol: 'idleUSDCBB',
+  //   name: 'IdleUSDC Junior tranches',
+  //   address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
+  //   strategies: [
+  //     // clearpool strat
+  //     // {
+  //     //   strategyName: 'IdlePYTClear',
+  //     //   strategyParams: [
+  //     //     CDOs.cpwinusdc.BBTranche,
+  //     //     'idleToken',
+  //     //     CDOs.cpwinusdc.cdoAddr,
+  //     //   ]
+  //     // },
+  //     '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
+  //     // ribbon strat
+  //     // {
+  //     //   strategyName: 'IdlePYTClear',
+  //     //   strategyParams: [
+  //     //     CDOs.rfolusdc.BBTranche,
+  //     //     'idleToken',
+  //     //     CDOs.rfolusdc.cdoAddr,
+  //     //   ]
+  //     // },
+  //     '0xD19f42Ce3b799a4D23176da193673b146968C934',
+  //     // wrapper for bb tranche of cpfolusdc
+  //     '0xfE92E0973ff0267447f8C711d16A849837C73264',
+  //     // wrapper for bb tranche of rwinusdc
+  //     '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
+  //   ]
+  // },
 }
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer

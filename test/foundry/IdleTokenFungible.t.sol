@@ -429,6 +429,24 @@ contract TestIdleTokenFungible is Test {
     assertEq(idleToken.unclaimedFees(), 0, 'unclaimedFees not resetted');
   }
 
+  function testMintFees() external {
+    vm.prank(idleToken.owner());
+    idleToken.setFee(10000);
+
+    idleToken.mintIdleToken(ONE_TOKEN * 1_000, true, address(0));
+    // funds in lending earning some interest for 1 year (~10USDC of fees)
+    _rebalance(100000, 0);
+    _harvestCDO(address(cdo1));
+    vm.warp(block.timestamp + 365 days);
+ 
+    uint256 tokenPricePre = idleToken.tokenPrice();
+    // rebalance to mint fees
+    _rebalance(100000, 0);
+    uint256 tokenPricePost = idleToken.tokenPrice();
+    assertGe(tokenPricePost, tokenPricePre, 'Token price decreased');
+    assertGt(idleToken.balanceOf(idleToken.feeAddress()), 0, 'no fees distributed');
+  }
+
   function _harvestCDO(address _cdo) internal {
     IdleCDO idleCDO = IdleCDO(_cdo);
     uint256 numOfRewards = 1;
