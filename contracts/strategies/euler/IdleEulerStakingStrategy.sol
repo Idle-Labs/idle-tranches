@@ -34,6 +34,8 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// ###### End of storage IdleEulerStakingStrategy
 
+    error InsufficientBalance();
+
     // ###################
     // Initializer
     // ###################
@@ -88,7 +90,9 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
             // Mint shares 1:1 ratio
             shares = eToken.balanceOf(address(this)) - eTokenBalanceBefore;
-            stakingRewards.stake(shares);
+            if (address(stakingRewards) != address(0)) {
+                stakingRewards.stake(shares);
+            }
 
             _mint(msg.sender, shares);
         }
@@ -116,6 +120,9 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     {
         // Check if we have enough balance
         if (_amountToWithdraw > eToken.balanceOfUnderlying(address(this))) {
+            // This should never happen.
+            if (address(stakingRewards) == address(0)) revert InsufficientBalance();
+
             uint256 amontToUnstake = _amountToWithdraw - eToken.balanceOfUnderlying(address(this));
             // Unstake from StakingRewards contract
             stakingRewards.withdraw(eToken.convertUnderlyingToBalance(amontToUnstake));
@@ -130,10 +137,11 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     }
 
     /// @return rewards rewards[0] : mintedUnderlying
-    function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards){
+    function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
         // Get rewards from StakingRewards contract
         // Swap rewards to underlying
     }
+
     // ###################
     // Views
     // ###################
@@ -177,6 +185,11 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     // ###################
     // Protected
     // ###################
+
+    ///@notice Claim rewards and withdraw all from StakingRewards contract
+    function exitStaking() external onlyOwner {
+        stakingRewards.exit();
+    }
 
     function setStakingRewards(address _stakingRewards) external onlyOwner {
         stakingRewards = IStakingRewards(_stakingRewards);
