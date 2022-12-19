@@ -64,7 +64,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlyingToken);
 
-        underlyingToken.safeApprove(_stakingRewards, type(uint256).max);
+        IEToken(_eToken).safeApprove(_stakingRewards, type(uint256).max);
     }
 
     // ###################
