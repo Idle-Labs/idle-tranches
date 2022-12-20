@@ -9,6 +9,7 @@ import "../../interfaces/IStakingRewards.sol";
 
 import "../BaseStrategy.sol";
 
+
 /// @author Euler Finance
 /// @title IdleEulerStrategy
 /// @notice IIdleCDOStrategy to deploy funds in Idle Finance
@@ -135,15 +136,20 @@ contract IdleEulerStakingStrategy is BaseStrategy {
             // This should never happen.
             if (address(stakingRewards) == address(0)) revert InsufficientBalance();
 
-            uint256 amontToUnstake = _amountToWithdraw - eToken.balanceOfUnderlying(address(this));
+            uint256 amountToUnstake = _amountToWithdraw - eToken.balanceOfUnderlying(address(this));
             // Unstake from StakingRewards contract
-            stakingRewards.withdraw(eToken.convertUnderlyingToBalance(amontToUnstake));
+            stakingRewards.withdraw(eToken.convertUnderlyingToBalance(amountToUnstake));
+        }
+
+        uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
+        // fix rounding error
+        if (_amountToWithdraw == balanceInUnderlying + 1) {
+            _amountToWithdraw = balanceInUnderlying;
         }
         // Withdraw from Euler
         uint256 underlyingBalanceBefore = underlyingToken.balanceOf(address(this));
         eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
         amountWithdrawn = underlyingToken.balanceOf(address(this)) - underlyingBalanceBefore;
-
         // Send tokens to the destination
         underlyingToken.safeTransfer(_destination, amountWithdrawn);
     }
