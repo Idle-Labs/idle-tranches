@@ -44,10 +44,13 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @dev Initialize the upgradable contract
     /// @param _eToken address of the eToken
     /// @param _underlyingToken address of the underlying token
+    /// @param _eulerMain Euler main contract address
+    /// @param _stakingRewards stakingRewards contract address
     /// @param _owner owner address
     function initialize(
         address _eToken,
         address _underlyingToken,
+        address _eulerMain,
         address _stakingRewards,
         address _owner
     ) public initializer {
@@ -59,11 +62,10 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         );
         eToken = IEToken(_eToken);
         stakingRewards = IStakingRewards(_stakingRewards);
-        releaseBlocksPeriod = 108900; // ~15 days in blocks (counting 11.9 sec per block with PoS)
 
-        // Enter the collateral market (collateral's address, *not* the eToken address)
-        EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlyingToken);
-
+        // approve Euler protocol uint256 max for deposits
+        underlyingToken.safeApprove(_eulerMain, type(uint256).max);
+        // approve stakingRewards contract uint256 max for staking
         IERC20Detailed(_eToken).safeApprove(_stakingRewards, type(uint256).max);
     }
 
