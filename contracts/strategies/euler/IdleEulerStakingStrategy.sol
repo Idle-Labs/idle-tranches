@@ -64,7 +64,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         // Enter the collateral market (collateral's address, *not* the eToken address)
         EULER_MARKETS.enterMarket(SUB_ACCOUNT_ID, _underlyingToken);
 
-        IEToken(_eToken).safeApprove(_stakingRewards, type(uint256).max);
+        IERC20Detailed(_eToken).safeApprove(_stakingRewards, type(uint256).max);
     }
 
     // ###################
@@ -96,6 +96,16 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
             _mint(msg.sender, shares);
         }
+    }
+
+    function redeemRewards(bytes calldata data)
+        public
+        override
+        onlyIdleCDO
+        nonReentrant
+        returns (uint256[] memory rewards)
+    {
+        rewards = _redeemRewards(data);
     }
 
     // ###################
@@ -139,7 +149,11 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @return rewards rewards[0] : mintedUnderlying
     function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
         // Get rewards from StakingRewards contract
-        // Swap rewards to underlying
+        stakingRewards.getReward();
+        // transfer rewards to the IdleCDO contract
+        rewards = new uint256[](1);
+        rewards[0] = EUL.balanceOf(address(this));
+        EUL.safeTransfer(idleCDO, rewards[0]);
     }
 
     // ###################
@@ -153,28 +167,28 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         return eToken.convertBalanceToUnderlying(10**eTokenDecimals);
     }
 
-    // /// @dev Returns supply apr for providing liquidity minus reserveFee
-    // /// @return apr net apr (fees should already be excluded)
-    // function getApr() external view override returns (uint256 apr) {
-    //     // Use the markets module:
-    //     IMarkets markets = IMarkets(EULER_MARKETS);
-    //     IDToken dToken = IDToken(markets.underlyingToDToken(token));
-    //     uint256 borrowSPY = uint256(int256(markets.interestRate(token)));
-    //     uint256 totalBorrows = dToken.totalSupply();
-    //     uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
-    //     uint32 reserveFee = markets.reserveFee(token);
-    //     // (borrowAPY, supplyAPY)
-    //     (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
-    //         borrowSPY,
-    //         totalBorrows,
-    //         totalBalancesUnderlying,
-    //         reserveFee
-    //     );
-    //     // apr is eg 0.024300334 * 1e27 for 2.43% apr
-    //     // while the method needs to return the value in the format 2.43 * 1e18
-    //     // so we do apr / 1e9 * 100 -> apr / 1e7
-    //     apr = apr / 1e7;
-    // }
+    /// @dev Returns supply apr for providing liquidity minus reserveFee
+    /// @return apr net apr (fees should already be excluded)
+    function getApr() external view override returns (uint256 apr) {
+        // Use the markets module:
+        IMarkets markets = IMarkets(EULER_MARKETS);
+        IDToken dToken = IDToken(markets.underlyingToDToken(token));
+        uint256 borrowSPY = uint256(int256(markets.interestRate(token)));
+        uint256 totalBorrows = dToken.totalSupply();
+        uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
+        uint32 reserveFee = markets.reserveFee(token);
+        // (borrowAPY, supplyAPY)
+        (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
+            borrowSPY,
+            totalBorrows,
+            totalBalancesUnderlying,
+            reserveFee
+        );
+        // apr is eg 0.024300334 * 1e27 for 2.43% apr
+        // while the method needs to return the value in the format 2.43 * 1e18
+        // so we do apr / 1e9 * 100 -> apr / 1e7
+        apr = apr / 1e7;
+    }
 
     /// @return tokens array of reward token addresses
     function getRewardTokens() external view override returns (address[] memory tokens) {

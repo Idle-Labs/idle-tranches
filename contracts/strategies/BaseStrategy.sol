@@ -262,7 +262,7 @@ abstract contract BaseStrategy is
         }
     }
 
-    function getApr() external view returns (uint256 apr) {
+    function getApr() external view virtual returns (uint256 apr) {
         apr = lastApr;
     }
 
