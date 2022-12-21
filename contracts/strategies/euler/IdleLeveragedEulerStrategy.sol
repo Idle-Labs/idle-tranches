@@ -27,8 +27,6 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
     /// @notice Euler Governance Token
     IERC20Detailed internal constant EUL = IERC20Detailed(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b);
 
-    uint256 internal constant EXP_SCALE = 1e18;
-
     uint256 internal constant ONE_FACTOR_SCALE = 1_000_000_000;
 
     uint256 internal constant CONFIG_FACTOR_SCALE = 4_000_000_000;
