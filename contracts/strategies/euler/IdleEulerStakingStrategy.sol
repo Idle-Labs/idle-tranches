@@ -132,7 +132,6 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @dev Unused but needed for BaseStrategy
     function _deposit(uint256 _amount) internal override returns (uint256 amountUsed) {}
 
-
     /// @param _amountToWithdraw in underlyings
     /// @param _destination address where to send underlyings
     /// @return amountWithdrawn returns the amount withdrawn
@@ -146,6 +145,11 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
         // Unstake from StakingRewards
         stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
+
+        uint256 underlyingsInEuler = eToken.balanceOfUnderlying(address(this));
+        if (_amountToWithdraw > underlyingsInEuler) {
+            _amountToWithdraw = underlyingsInEuler;
+        }
 
         // Withdraw from Euler
         uint256 underlyingBalanceBefore = _underlyingToken.balanceOf(address(this));
