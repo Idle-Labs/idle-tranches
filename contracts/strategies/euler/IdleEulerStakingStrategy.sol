@@ -9,10 +9,9 @@ import "../../interfaces/IStakingRewards.sol";
 
 import "../BaseStrategy.sol";
 
-
-/// @author Euler Finance
-/// @title IdleEulerStrategy
-/// @notice IIdleCDOStrategy to deploy funds in Idle Finance
+/// @author Euler Finance + Idle Finance
+/// @title IdleEulerStakingStrategy
+/// @notice IIdleCDOStrategy to deploy funds in Euler Finance and then stake eToken in Euler staking contracts
 /// @dev This contract should not have any funds at the end of each tx.
 /// The contract is upgradable, to add storage slots, add them after the last `###### End of storage VXX`
 contract IdleEulerStakingStrategy is BaseStrategy {
@@ -35,8 +34,6 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// ###### End of storage IdleEulerStakingStrategy
 
-    error InsufficientBalance();
-
     // ###################
     // Initializer
     // ###################
@@ -56,8 +53,8 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         address _owner
     ) public initializer {
         _initialize(
-            string(abi.encodePacked("Idle ", IERC20Detailed(_underlyingToken).name(), " Euler Staking Strategy")),
-            string(abi.encodePacked("idleEulStak", IERC20Detailed(_underlyingToken).symbol())),
+            string(abi.encodePacked("Idle Euler ", IERC20Detailed(_eToken).name(), " Staking Strategy")),
+            string(abi.encodePacked("idleEulStk_", IERC20Detailed(_eToken).symbol())),
             _underlyingToken,
             _owner
         );
@@ -83,13 +80,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
             // Send tokens to the strategy
             underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
-            // Calls our internal deposit function
-            _amount = _deposit(_amount);
-
-            // Adjust with actual staked amount
-            if (_amount != 0) {
-                totalTokensStaked += _amount;
-            }
+            eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
             // Mint shares 1:1 ratio
             shares = eToken.balanceOf(address(this)) - eTokenBalanceBefore;
@@ -111,51 +102,61 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         rewards = _redeemRewards(data);
     }
 
+    /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
+    /// @param _shares amount of strategyTokens to redeem
+    /// @return amountRedeemed  amount of underlyings redeemed
+    function redeem(uint256 _shares) external override onlyIdleCDO returns (uint256 amountRedeemed) {
+        if (_shares != 0) {
+            _burn(msg.sender, _shares);
+            // Withdraw amount needed
+            amountRedeemed = _withdraw((_shares * price()) / EXP_SCALE, msg.sender);
+        }
+    }
+
+    /// @notice Redeem Tokens
+    /// @param _amount amount of underlying tokens to redeem
+    /// @return amountRedeemed Amount of underlying tokens received
+    function redeemUnderlying(uint256 _amount) external override onlyIdleCDO returns (uint256 amountRedeemed) {
+        uint256 _shares = (_amount * EXP_SCALE) / price();
+        if (_shares != 0) {
+            _burn(msg.sender, _shares);
+            // Withdraw amount needed
+            amountRedeemed = _withdraw(_amount, msg.sender);
+        }
+    }
+
     // ###################
     // Internal
     // ###################
 
-    /// @dev makes the actual deposit into the `strategy`
-    /// @param _amount amount of underlying `token` to deposit
-    function _deposit(uint256 _amount) internal override returns (uint256 amountUsed) {
-        /// deposit _amount of `token` in Euler
-        uint256 underlyingBalanceBefore = underlyingToken.balanceOf(address(this));
-        eToken.deposit(SUB_ACCOUNT_ID, _amount);
-        amountUsed = underlyingBalanceBefore - underlyingToken.balanceOf(address(this));
-    }
+    /// @dev Unused but needed for BaseStrategy
+    function _deposit(uint256 _amount) internal override returns (uint256 amountUsed) {}
 
-    /// @dev makes the actual withdraw from the 'strategy'
+
+    /// @param _amountToWithdraw in underlyings
+    /// @param _destination address where to send underlyings
     /// @return amountWithdrawn returns the amount withdrawn
     function _withdraw(uint256 _amountToWithdraw, address _destination)
         internal
         override
         returns (uint256 amountWithdrawn)
     {
-        // Check if we have enough balance
-        if (_amountToWithdraw > eToken.balanceOfUnderlying(address(this))) {
-            // This should never happen.
-            if (address(stakingRewards) == address(0)) revert InsufficientBalance();
+        IEToken _eToken = eToken;
+        IERC20Detailed _underlyingToken = underlyingToken;
 
-            uint256 amountToUnstake = _amountToWithdraw - eToken.balanceOfUnderlying(address(this));
-            // Unstake from StakingRewards contract
-            stakingRewards.withdraw(eToken.convertUnderlyingToBalance(amountToUnstake));
-        }
+        // Unstake from StakingRewards
+        stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
 
-        uint256 balanceInUnderlying = eToken.balanceOfUnderlying(address(this));
-        // fix rounding error
-        if (_amountToWithdraw == balanceInUnderlying + 1) {
-            _amountToWithdraw = balanceInUnderlying;
-        }
         // Withdraw from Euler
-        uint256 underlyingBalanceBefore = underlyingToken.balanceOf(address(this));
-        eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
-        amountWithdrawn = underlyingToken.balanceOf(address(this)) - underlyingBalanceBefore;
+        uint256 underlyingBalanceBefore = _underlyingToken.balanceOf(address(this));
+        _eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
+        amountWithdrawn = _underlyingToken.balanceOf(address(this)) - underlyingBalanceBefore;
         // Send tokens to the destination
-        underlyingToken.safeTransfer(_destination, amountWithdrawn);
+        _underlyingToken.safeTransfer(_destination, amountWithdrawn);
     }
 
-    /// @return rewards rewards[0] : mintedUnderlying
-    function _redeemRewards(bytes calldata data) internal override returns (uint256[] memory rewards) {
+    /// @return rewards rewards[0] : rewards redeemed
+    function _redeemRewards(bytes calldata) internal override returns (uint256[] memory rewards) {
         // Get rewards from StakingRewards contract
         stakingRewards.getReward();
         // transfer rewards to the IdleCDO contract
@@ -174,6 +175,8 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         // return price of 1 eToken in underlying
         return eToken.convertBalanceToUnderlying(10**eTokenDecimals);
     }
+
+    // TODO add staking apr 
 
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
@@ -199,7 +202,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     }
 
     /// @return tokens array of reward token addresses
-    function getRewardTokens() external view override returns (address[] memory tokens) {
+    function getRewardTokens() external pure override returns (address[] memory tokens) {
         tokens = new address[](1);
         tokens[0] = address(EUL);
     }
@@ -214,6 +217,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     }
 
     function setStakingRewards(address _stakingRewards) external onlyOwner {
+        require(_stakingRewards != address(0), '0');
         stakingRewards = IStakingRewards(_stakingRewards);
     }
 }

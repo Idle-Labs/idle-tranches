@@ -18,7 +18,7 @@ abstract contract BaseStrategy is
 {
     using SafeERC20Upgradeable for IERC20Detailed;
 
-    uint256 private constant EXP_SCALE = 1e18;
+    uint256 internal constant EXP_SCALE = 1e18;
 
     /// @notice one year, used to calculate the APR
     uint256 private constant YEAR = 365 days;
