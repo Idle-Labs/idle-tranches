@@ -142,9 +142,12 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     {
         IEToken _eToken = eToken;
         IERC20Detailed _underlyingToken = underlyingToken;
+        IStakingRewards _stakingRewards = stakingRewards;
 
-        // Unstake from StakingRewards
-        stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
+        if (address(_stakingRewards) != address(0)) {
+            // Unstake from StakingRewards
+            _stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
+        }
 
         uint256 underlyingsInEuler = eToken.balanceOfUnderlying(address(this));
         if (_amountToWithdraw > underlyingsInEuler) {
@@ -161,8 +164,11 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// @return rewards rewards[0] : rewards redeemed
     function _redeemRewards(bytes calldata) internal override returns (uint256[] memory rewards) {
-        // Get rewards from StakingRewards contract
-        stakingRewards.getReward();
+        IStakingRewards _stakingRewards = stakingRewards;
+        if (address(_stakingRewards) != address(0)) {
+            // Get rewards from StakingRewards contract
+            stakingRewards.getReward();
+        }
         // transfer rewards to the IdleCDO contract
         rewards = new uint256[](1);
         rewards[0] = EUL.balanceOf(address(this));
@@ -221,7 +227,6 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     }
 
     function setStakingRewards(address _stakingRewards) external onlyOwner {
-        require(_stakingRewards != address(0), '0');
         stakingRewards = IStakingRewards(_stakingRewards);
     }
 }
