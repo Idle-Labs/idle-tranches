@@ -6,6 +6,9 @@ import "../../interfaces/euler/IDToken.sol";
 import "../../interfaces/euler/IMarkets.sol";
 import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/IStakingRewards.sol";
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
+import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
 
 import "../BaseStrategy.sol";
 
@@ -20,6 +23,8 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// ###### End of storage BaseStrategy
 
     /// @notice Euler account id
+    address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant UNI_V3_FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
     uint256 internal constant SUB_ACCOUNT_ID = 0;
     /// @notice Euler Governance Token
     IERC20Detailed internal constant EUL = IERC20Detailed(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b);
@@ -186,8 +191,6 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         return eToken.convertBalanceToUnderlying(10**eTokenDecimals);
     }
 
-    // TODO add staking apr 
-
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
     function getApr() external view override returns (uint256 apr) {
@@ -209,6 +212,49 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         // while the method needs to return the value in the format 2.43 * 1e18
         // so we do apr / 1e9 * 100 -> apr / 1e7
         apr = apr / 1e7;
+        apr = apr + _getStakingApr();
+    }
+
+    /// @dev Calculates staking apr
+    /// @return _apr 
+    function _getStakingApr() internal view returns (uint256 _apr) {
+        IStakingRewards _stakingRewards = stakingRewards;
+        uint256 _tokenDec = tokenDecimals;
+
+        // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
+        uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
+        if (address(underlyingToken) != WETH) {
+            // 0.05% fee pool. This returns a price with tokenDecimals
+            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(underlyingToken), uint24(500));
+            eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
+        }
+
+        // USDC as example (6 decimals)
+        // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
+        uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
+        uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
+        // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
+        uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * price() / 10**(_tokenDec));
+        // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
+        _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
+    }
+
+    /// @notice this price is not safe from flash loan attacks, but it is used only for showing the apr on the UI
+    function _getPriceUniV3(address tokenIn, address tokenOut, uint24 _fee)
+        internal
+        view
+        returns (uint256 _price)
+    {
+        IUniswapV3Pool pool = IUniswapV3Pool(IUniswapV3Factory(UNI_V3_FACTORY).getPool(tokenIn, tokenOut, _fee));
+        (uint160 sqrtPriceX96,,,,,,) =  pool.slot0();
+        uint256 _scaledPrice = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+        if (tokenOut == pool.token0()) {
+            // token1Price -> ratio of token0 over token1
+            _price = FullMath.mulDiv(2**192, EXP_SCALE, _scaledPrice);
+        } else {
+            // token0Price -> ratio of token1 over token0 
+            _price = FullMath.mulDiv(EXP_SCALE, _scaledPrice, 2**192);
+        }
     }
 
     /// @return tokens array of reward token addresses
