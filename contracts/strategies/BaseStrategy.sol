@@ -18,7 +18,7 @@ abstract contract BaseStrategy is
 {
     using SafeERC20Upgradeable for IERC20Detailed;
 
-    uint256 private constant EXP_SCALE = 1e18;
+    uint256 internal constant EXP_SCALE = 1e18;
 
     /// @notice one year, used to calculate the APR
     uint256 private constant YEAR = 365 days;
@@ -111,7 +111,7 @@ abstract contract BaseStrategy is
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
     /// @return shares strategyTokens minted
-    function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 shares) {
+    function deposit(uint256 _amount) external virtual override onlyIdleCDO returns (uint256 shares) {
         if (_amount != 0) {
             // Get current price
             uint256 _price = price();
@@ -136,7 +136,7 @@ abstract contract BaseStrategy is
     /// @dev msg.sender should approve this contract first to spend `_amount` of `strategyToken`
     /// @param _shares amount of strategyTokens to redeem
     /// @return amountRedeemed  amount of underlyings redeemed
-    function redeem(uint256 _shares) external override onlyIdleCDO returns (uint256 amountRedeemed) {
+    function redeem(uint256 _shares) external virtual override onlyIdleCDO returns (uint256 amountRedeemed) {
         if (_shares != 0) {
             amountRedeemed = _positionWithdraw(_shares, msg.sender, price(), 0);
         }
@@ -164,7 +164,7 @@ abstract contract BaseStrategy is
         address _destination,
         uint256 _underlyingPerShare,
         uint256 _minUnderlying
-    ) internal returns (uint256 amountWithdrawn) {
+    ) internal virtual returns (uint256 amountWithdrawn) {
         uint256 amountNeeded = (_shares * _underlyingPerShare) / EXP_SCALE;
 
         _burn(msg.sender, _shares);
@@ -262,7 +262,7 @@ abstract contract BaseStrategy is
         }
     }
 
-    function getApr() external view returns (uint256 apr) {
+    function getApr() external view virtual returns (uint256 apr) {
         apr = lastApr;
     }
 

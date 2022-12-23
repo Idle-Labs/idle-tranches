@@ -74,6 +74,9 @@ abstract contract TestIdleCDOBase is Test {
     // fund
     initialBal = 1000000 * ONE_SCALE;
     deal(address(underlying), address(this), initialBal, true);
+    // vm.prank(0x8EB8a3b98659Cce290402893d0123abb75E3ab28); // avax bridge
+    // underlying.safeTransfer(address(this), initialBal / 1000); -> for weth
+  
     underlying.safeApprove(address(idleCDO), type(uint256).max);
 
     // get initial aprs
