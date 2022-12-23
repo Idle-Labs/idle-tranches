@@ -8,6 +8,8 @@ import "../../interfaces/euler/IEulerGeneralView.sol";
 import "../../interfaces/IStakingRewards.sol";
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
+// One line change is needed for solidity 0.8.X to make it compile check here 
+// https://ethereum.stackexchange.com/questions/96642/unary-operator-minus-cannot-be-applied-to-type-uint256
 import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
 
 import "../BaseStrategy.sol";
