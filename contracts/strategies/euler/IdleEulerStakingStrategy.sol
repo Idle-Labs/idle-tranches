@@ -83,16 +83,18 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @return shares strategyTokens minted
     function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 shares) {
         if (_amount != 0) {
-            uint256 eTokenBalanceBefore = eToken.balanceOf(address(this));
+            IEToken _eToken = eToken;
+            IStakingRewards _stakingRewards = stakingRewards;
+            uint256 eTokenBalanceBefore = _eToken.balanceOf(address(this));
             // Send tokens to the strategy
             underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
-            eToken.deposit(SUB_ACCOUNT_ID, _amount);
+            _eToken.deposit(SUB_ACCOUNT_ID, _amount);
 
             // Mint shares 1:1 ratio
-            shares = eToken.balanceOf(address(this)) - eTokenBalanceBefore;
-            if (address(stakingRewards) != address(0)) {
-                stakingRewards.stake(shares);
+            shares = _eToken.balanceOf(address(this)) - eTokenBalanceBefore;
+            if (address(_stakingRewards) != address(0)) {
+                _stakingRewards.stake(shares);
             }
 
             _mint(msg.sender, shares);
@@ -156,7 +158,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
             _stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
         }
 
-        uint256 underlyingsInEuler = eToken.balanceOfUnderlying(address(this));
+        uint256 underlyingsInEuler = _eToken.balanceOfUnderlying(address(this));
         if (_amountToWithdraw > underlyingsInEuler) {
             _amountToWithdraw = underlyingsInEuler;
         }
@@ -174,7 +176,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         IStakingRewards _stakingRewards = stakingRewards;
         if (address(_stakingRewards) != address(0)) {
             // Get rewards from StakingRewards contract
-            stakingRewards.getReward();
+            _stakingRewards.getReward();
         }
         // transfer rewards to the IdleCDO contract
         rewards = new uint256[](1);
@@ -188,21 +190,23 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// @return net price in underlyings of 1 strategyToken
     function price() public view override returns (uint256) {
-        uint256 eTokenDecimals = eToken.decimals();
+        IEToken _eToken = eToken;
+        uint256 eTokenDecimals = _eToken.decimals();
         // return price of 1 eToken in underlying
-        return eToken.convertBalanceToUnderlying(10**eTokenDecimals);
+        return _eToken.convertBalanceToUnderlying(10**eTokenDecimals);
     }
 
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
     function getApr() external view override returns (uint256 apr) {
         // Use the markets module:
+        address _token = token;
         IMarkets markets = IMarkets(EULER_MARKETS);
-        IDToken dToken = IDToken(markets.underlyingToDToken(token));
-        uint256 borrowSPY = uint256(int256(markets.interestRate(token)));
+        IDToken dToken = IDToken(markets.underlyingToDToken(_token));
+        uint256 borrowSPY = uint256(int256(markets.interestRate(_token)));
         uint256 totalBorrows = dToken.totalSupply();
         uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
-        uint32 reserveFee = markets.reserveFee(token);
+        uint32 reserveFee = markets.reserveFee(_token);
         // (borrowAPY, supplyAPY)
         (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
             borrowSPY,
@@ -213,21 +217,22 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         // apr is eg 0.024300334 * 1e27 for 2.43% apr
         // while the method needs to return the value in the format 2.43 * 1e18
         // so we do apr / 1e9 * 100 -> apr / 1e7
-        apr = apr / 1e7;
-        apr = apr + _getStakingApr();
+        // then we add the staking apr
+        apr = apr / 1e7 + _getStakingApr();
     }
 
     /// @dev Calculates staking apr
     /// @return _apr 
     function _getStakingApr() internal view returns (uint256 _apr) {
         IStakingRewards _stakingRewards = stakingRewards;
+        IERC20Detailed _underlying = underlyingToken;
         uint256 _tokenDec = tokenDecimals;
 
         // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
         uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
-        if (address(underlyingToken) != WETH) {
+        if (address(_underlying) != WETH) {
             // 0.05% fee pool. This returns a price with tokenDecimals
-            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(underlyingToken), uint24(500));
+            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
             eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
         }
 
