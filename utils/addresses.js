@@ -22,10 +22,16 @@ const mainnetContracts = {
   USDC: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
   aDAI: '0x028171bCA77440897B824Ca71D1c56caC55b68A3',
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
-  eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
+  // euler
+  eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
+  eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
   eDAI: '0xe025E3ca2bE02316033184551D4d3Aa22024D9DC',
   eUSDT: '0x4d19F33948b99800B6113Ff3e83beC9b537C85d2',
+  eUSDCStaking: '0xE5aFE81e63f0A52a3a03B922b30f73B8ce74D570',
+  eUSDTStaking: '0x7882F919e3acCa984babd70529100F937d90F860',
+  eWETHStaking: '0x229443bf7F1297192394B7127427DB172a5bDe9E',
+  // clearpool / ribbon
   cUSDC: '0x39aa39c021dfbae8fac545936693ac917d5e7563',
   CPOOL: '0x66761Fa41377003622aEE3c7675Fc7b5c1C2FaC5',
   RBN: '0x6123B0049F904d730dB3C36a31167D9d4121fA6B',
@@ -33,6 +39,7 @@ const mainnetContracts = {
   cpFOL_USDC: '0xe3D20A721522874D32548B4097d1afc6f024e45b',
   rWIN_USDC: '0x0aea75705be8281f4c24c3e954d1f8b1d0f8044c',
   rFOL_USDC: '0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d',
+  // truefi
   tfUSDC: '0xA991356d261fbaF194463aF6DF8f0464F8f1c742',
   tfUSDCMultifarm: '0xec6c3FD795D6e6f202825Ddb56E01b3c128b0b10',
   USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
@@ -313,6 +320,19 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x1e095cbF663491f15cC1bDb5919E701b27dDE90C',
     BBTranche: '0xe11679CDb4587FeE907d69e9eC4a7d3F0c2bcf3B'
+  },
+  eulerusdcstaking: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x0FE4Fc1301aFe4aFE8C3ac288c3E13cDaCe71b04',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xf615a552c000B114DdAa09636BBF4205De49333c',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x0FE4Fc1301aFe4aFE8C3ac288c3E13cDaCe71b04',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x1AF0294524093BFdF5DA5135853dC2fC678C12f7',
+    BBTranche: '0x271db794317B44827EfE81DeC6193fFc277050F6'
   },
   eulerdai: {
     decimals: 18,
@@ -652,6 +672,25 @@ exports.deployTokens = {
     AARatio: '20000',
     isAYSActive: true,
   },
+  eulerusdcstaking: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleEulerStakingStrategy',
+    strategyParams: [
+      mainnetContracts.eUSDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      mainnetContracts.eulerMain, // _euler
+      mainnetContracts.eUSDCStaking, // _stakingRewards
+      'owner', // owner address
+    ],
+    // cdo: CDOs.eulerusdcstaking,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '50000000',
+    isAYSActive: true,
+    // cpwinusdc has the latest implementation
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
+  },
   eulerusdt: {
     decimals: 6,
     underlying: mainnetContracts.USDT,
@@ -662,11 +701,49 @@ exports.deployTokens = {
       mainnetContracts.eulerMain, // _euler
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerusdt,
+    cdo: CDOs.eulerusdt,
     ...baseCDOArgs,
     AARatio: '20000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
+  },
+  eulerusdtstaking: {
+    decimals: 6,
+    underlying: mainnetContracts.USDT,
+    strategyName: 'IdleEulerStakingStrategy',
+    strategyParams: [
+      mainnetContracts.eUSDT, // _strategyToken
+      mainnetContracts.USDT, // _underlyingToken
+      mainnetContracts.eulerMain, // _euler
+      mainnetContracts.eUSDTStaking, // _stakingRewards
+      'owner', // owner address
+    ],
+    // cdo: CDOs.eulerusdtstaking,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '50000000',
+    isAYSActive: true,
+    // cpwinusdc has the latest implementation
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
+  },
+  eulewethstaking: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'IdleEulerStakingStrategy',
+    strategyParams: [
+      mainnetContracts.eWETH, // _strategyToken
+      mainnetContracts.WETH, // _underlyingToken
+      mainnetContracts.eulerMain, // _euler
+      mainnetContracts.eWETHStaking, // _stakingRewards
+      'owner', // owner address
+    ],
+    // cdo: CDOs.eulewethstaking,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '50000000',
+    isAYSActive: true,
+    // cpwinusdc has the latest implementation
+    proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
   },
   eulerdai: {
     decimals: 18,
