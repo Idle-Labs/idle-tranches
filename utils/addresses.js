@@ -360,6 +360,32 @@ const CDOs = {
     AATranche: '0xE0f126236d2a5b13f26e72cBb1D1ff5f297dDa07',
     BBTranche: '0xb1EC065abF6783BCCe003B8d6B9f947129504854'
   },
+  eulerusdtstaking: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xaf141907c3185bee2d451b5a72b89232b0340652',
+    underlying: mainnetContracts.USDT,
+    cdoAddr: '0x860B1d25903DbDFFEC579d30012dA268aEB0d621',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0xaf141907c3185bee2d451b5a72b89232b0340652',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6796FCd41e4fb26855Bb9BDD7Cad41128Da1Fd59',
+    BBTranche: '0x00B80FCCA0fE4fDc3940295AA213738435B0f94e'
+  },
+  eulerwethstaking: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x2D29c277Ac61376Fb011DCAFCe03EA3C9485f4c2',
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xec964d06cD71a68531fC9D083a142C48441F391C',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x2D29c277Ac61376Fb011DCAFCe03EA3C9485f4c2',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x2B7Da260F101Fb259710c0a4f2EfEf59f41C0810',
+    BBTranche: '0x2e80225f383F858E8737199D3496c5Cf827670a5'
+  },
   eulerageur: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -718,7 +744,7 @@ exports.deployTokens = {
       mainnetContracts.eUSDTStaking, // _stakingRewards
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerusdtstaking,
+    cdo: CDOs.eulerusdtstaking,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '50000000',
@@ -726,7 +752,7 @@ exports.deployTokens = {
     // cpwinusdc has the latest implementation
     proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
   },
-  eulewethstaking: {
+  eulerwethstaking: {
     decimals: 18,
     underlying: mainnetContracts.WETH,
     strategyName: 'IdleEulerStakingStrategy',
@@ -737,7 +763,7 @@ exports.deployTokens = {
       mainnetContracts.eWETHStaking, // _stakingRewards
       'owner', // owner address
     ],
-    // cdo: CDOs.eulewethstaking,
+    cdo: CDOs.eulerwethstaking,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '50000000',
