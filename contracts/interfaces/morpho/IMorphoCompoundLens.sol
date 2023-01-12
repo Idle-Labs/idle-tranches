@@ -15,4 +15,24 @@ interface IMorphoCompoundLens {
             uint256 p2pSupplyAmount,
             uint256 poolSupplyAmount
         );
+
+    function getUserHealthFactor(address _user, address[] calldata _updatedMarkets) external view returns (uint256);
+
+    function getCurrentSupplyBalanceInOf(address _poolToken, address _user)
+        external
+        view
+        returns (
+            uint256 balanceOnPool,
+            uint256 balanceInP2P,
+            uint256 totalBalance
+        );
+
+    function getCurrentBorrowBalanceInOf(address _poolToken, address _user)
+        external
+        view
+        returns (
+            uint256 balanceOnPool,
+            uint256 balanceInP2P,
+            uint256 totalBalance
+        );
 }
