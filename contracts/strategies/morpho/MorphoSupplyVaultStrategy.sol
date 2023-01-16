@@ -17,15 +17,13 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
     address public rewardToken;
 
     function initialize(
-        string memory _name,
-        string memory _symbol,
         address _strategyToken,
         address _token,
         address _owner,
         address _poolToken,
         address _rewardToken
     ) public {
-        _initialize(_name, _symbol, _strategyToken, _token, _owner);
+        _initialize(_strategyToken, _token, _owner);
         poolToken = _poolToken;
         rewardToken = _rewardToken;
     }

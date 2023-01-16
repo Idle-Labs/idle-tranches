@@ -30,8 +30,6 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         // initialize
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
         MorphoCompoundSupplyVaultStrategy(_strategy).initialize(
-            "Idle MorphoCompoundSupplyVaultStrategy DAI",
-            "IdleMorphoSupplyVaultStrategy[DAI]",
             address(strategyToken),
             _underlying,
             _owner,
@@ -86,8 +84,6 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
     function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         MorphoCompoundSupplyVaultStrategy(address(strategy)).initialize(
-            "Idle MorphoCompoundSupplyVaultStrategy DAI",
-            "IdleMorphoSupplyVaultStrategy[DAI]",
             mcDAI,
             address(underlying),
             owner,
