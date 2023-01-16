@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "../../interfaces/IERC20Detailed.sol";
 import "../../interfaces/morpho/IMorphoSupplyVault.sol";
+import "../../interfaces/morpho/IMorphoAaveV2Lens.sol";
+import "../../interfaces/morpho/IMorphoCompoundLens.sol";
 import "../ERC4626Strategy.sol";
 
 abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
-    using SafeERC20 for IERC20;
+    using SafeERC20Upgradeable for IERC20Detailed;
+    /// @notice address of the MorphoSupplyVault
+    IMorphoAaveV2Lens public AAVE_LENS;
+    /// @notice address of the MorphoSupplyVault
+    IMorphoCompoundLens public COMPOUND_LENS;
 
     /// @notice pool token address (e.g. aDAI, cDAI)
     address public poolToken;
@@ -23,6 +29,8 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
         address _poolToken,
         address _rewardToken
     ) public {
+        AAVE_LENS = IMorphoAaveV2Lens(0x507fA343d0A90786d86C7cd885f5C49263A91FF4);
+        COMPOUND_LENS = IMorphoCompoundLens(0x930f1b46e1D081Ec1524efD95752bE3eCe51EF67);
         _initialize(_strategyToken, _token, _owner);
         poolToken = _poolToken;
         rewardToken = _rewardToken;
@@ -40,7 +48,7 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
             rewards = new uint256[](1);
             rewards[0] = rewardsAmount;
             // send rewards to the idleCDO
-            IERC20(_rewardToken).safeTransfer(idleCDO, rewardsAmount);
+            IERC20Detailed(_rewardToken).safeTransfer(idleCDO, rewardsAmount);
         }
     }
 
