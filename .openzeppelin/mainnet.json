@@ -246,8 +246,8 @@
       "kind": "transparent"
     },
     {
-      "address": "0x1E9e77E8c4507093d3D508B98df3B5656C21169b",
-      "txHash": "0x87daf31708b85996c297549249892c582af09473d36a1b35c78447ecadd156a4",
+      "address": "0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e",
+      "txHash": "0x3d00bec3649835706ba004757305da520c248133fd36893c20b7a63e828aee65",
       "kind": "transparent"
     },
     {
@@ -258,6 +258,11 @@
     {
       "address": "0x2D29c277Ac61376Fb011DCAFCe03EA3C9485f4c2",
       "txHash": "0xc86e9a64632f7e27d36fc284aecf3101a63b048e05b403866c2dbdc68a2fabfb",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x6c14a1A28dD6DaE5734fD960BaC0B89a6b401CFD",
+      "txHash": "0x935800702ead787004857f62335e91e6463e475ea4a871382c5775519cabb2c9",
       "kind": "transparent"
     }
   ],
@@ -13590,6 +13595,184 @@
           "t_string_storage": {
             "label": "string",
             "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          }
+        }
+      }
+    },
+    "df640172cd4a6d464da42c5a2379d2d7955da916bc8957842e5df8a309b7d463": {
+      "address": "0xEDA9f23294473D69F0943744925a8bE9c1FC354F",
+      "txHash": "0x912874e896d0fc9f43e08fff237d25972afaeca0ce7d8ba0be9c3cb67073e955",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:22"
+          },
+          {
+            "label": "strategyToken",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_address",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:25"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "153",
+            "type": "t_uint256",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:28"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "154",
+            "type": "t_uint256",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:31"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "155",
+            "type": "t_contract(IERC20Detailed)14510",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:34"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "156",
+            "type": "t_address",
+            "contract": "ERC4626Strategy",
+            "src": "contracts/strategies/ERC4626Strategy.sol:37"
+          },
+          {
+            "label": "AAVE_LENS",
+            "offset": 0,
+            "slot": "157",
+            "type": "t_contract(IMorphoAaveV2Lens)18016",
+            "contract": "MorphoSupplyVaultStrategy",
+            "src": "contracts/strategies/morpho/MorphoSupplyVaultStrategy.sol:14"
+          },
+          {
+            "label": "COMPOUND_LENS",
+            "offset": 0,
+            "slot": "158",
+            "type": "t_contract(IMorphoCompoundLens)18031",
+            "contract": "MorphoSupplyVaultStrategy",
+            "src": "contracts/strategies/morpho/MorphoSupplyVaultStrategy.sol:16"
+          },
+          {
+            "label": "poolToken",
+            "offset": 0,
+            "slot": "159",
+            "type": "t_address",
+            "contract": "MorphoSupplyVaultStrategy",
+            "src": "contracts/strategies/morpho/MorphoSupplyVaultStrategy.sol:19"
+          },
+          {
+            "label": "rewardToken",
+            "offset": 0,
+            "slot": "160",
+            "type": "t_address",
+            "contract": "MorphoSupplyVaultStrategy",
+            "src": "contracts/strategies/morpho/MorphoSupplyVaultStrategy.sol:23"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)14510": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMorphoAaveV2Lens)18016": {
+            "label": "contract IMorphoAaveV2Lens",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMorphoCompoundLens)18031": {
+            "label": "contract IMorphoCompoundLens",
+            "numberOfBytes": "20"
           },
           "t_uint256": {
             "label": "uint256",

@@ -106,7 +106,8 @@ module.exports = {
       //   // blockNumber: 15890900, // by on juniors initialize
       //   // blockNumber: 15924713, // cpfolusd + rwinusd deploy
       //   // blockNumber: 16246541, // eUSDCStaking PYT deploy
-      //   blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
+      //   // blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
+      //   blockNumber: 16419858, // Morpho maUSDC
       // },
       // // chainId: 137
     },

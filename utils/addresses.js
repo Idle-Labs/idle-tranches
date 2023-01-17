@@ -23,6 +23,9 @@ const mainnetContracts = {
   aDAI: '0x028171bCA77440897B824Ca71D1c56caC55b68A3',
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
+  // morpho, check https://github.com/morpho-dao/morpho-tokenized-vaults#morpho-aave-v2-ethereum
+  maUSDC: '0xa5269a8e31b93ff27b887b56720a25f844db0529',
+  MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
@@ -502,6 +505,18 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xAEf4FCC4E5F2dc270760063446d4116D24704Ad1',
     BBTranche: '0x077212c69A66261CF7bD1fd3b5C5db7CfFA948Ee'
+  },
+  morphoaaveusdc: {
+    decimals: 6,
+    strategyToken: mainnetContracts.maUSDC,
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x9C13Ff045C0a994AF765585970A5818E1dB580F8',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x6c14a1a28dd6dae5734fd960bac0b89a6b401cfd',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x376B2dCF9eBd3067BB89eb6D1020FbE604092212',
+    BBTranche: '0x86a40De6d77331788Ba24a85221fb8DBFcBC9bF0'
   },
 };
 
@@ -1150,6 +1165,26 @@ exports.deployTokens = {
     cdo: CDOs.cvxpbtccrv,
     ...baseCDOArgs,
   },
+
+  // Morpho
+  morphoaaveusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'MorphoAaveV2SupplyVaultStrategy',
+    strategyParams: [
+      mainnetContracts.maUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.aUSDC,
+      // mainnetContracts.MORPHO,
+      addr0, // MORPHO is non transferrable yet
+    ],
+    cdo: CDOs.morphoaaveusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
+  },
 };
 
 exports.deployTokensPolygon = {
@@ -1177,39 +1212,45 @@ exports.deployTokensPolygon = {
 };
 
 exports.deployTokensBY = {
-  // idleusdcjunior: {
-  //   decimals: 6,
-  //   underlying: mainnetContracts.USDC,
-  //   symbol: 'idleUSDCBB',
-  //   name: 'IdleUSDC Junior tranches',
-  //   address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
-  //   strategies: [
-  //     // clearpool strat
-  //     // {
-  //     //   strategyName: 'IdlePYTClear',
-  //     //   strategyParams: [
-  //     //     CDOs.cpwinusdc.BBTranche,
-  //     //     'idleToken',
-  //     //     CDOs.cpwinusdc.cdoAddr,
-  //     //   ]
-  //     // },
-  //     '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
-  //     // ribbon strat
-  //     // {
-  //     //   strategyName: 'IdlePYTClear',
-  //     //   strategyParams: [
-  //     //     CDOs.rfolusdc.BBTranche,
-  //     //     'idleToken',
-  //     //     CDOs.rfolusdc.cdoAddr,
-  //     //   ]
-  //     // },
-  //     '0xD19f42Ce3b799a4D23176da193673b146968C934',
-  //     // wrapper for bb tranche of cpfolusdc
-  //     '0xfE92E0973ff0267447f8C711d16A849837C73264',
-  //     // wrapper for bb tranche of rwinusdc
-  //     '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
-  //   ]
-  // },
+  idleusdcjunior: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    symbol: 'idleUSDCJunior',
+    name: 'IdleUSDC Junior',
+    address: '0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e',
+    strategies: [
+      // BB tranche of eUSDCStaking PYT
+      '0xcf93471A82241c2bE469D83d960932721b098FFB',
+      // BB tranche of maUSDC PYT
+      '0x9db5a6bd77572748e541a0cf42f787f5fe03049e'
+    ],
+    // strategies: [
+    //   // clearpool strat
+    //   // {
+    //   //   strategyName: 'IdlePYTClear',
+    //   //   strategyParams: [
+    //   //     CDOs.cpwinusdc.BBTranche,
+    //   //     'idleToken',
+    //   //     CDOs.cpwinusdc.cdoAddr,
+    //   //   ]
+    //   // },
+    //   '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
+    //   // ribbon strat
+    //   // {
+    //   //   strategyName: 'IdlePYTClear',
+    //   //   strategyParams: [
+    //   //     CDOs.rfolusdc.BBTranche,
+    //   //     'idleToken',
+    //   //     CDOs.rfolusdc.cdoAddr,
+    //   //   ]
+    //   // },
+    //   '0xD19f42Ce3b799a4D23176da193673b146968C934',
+    //   // wrapper for bb tranche of cpfolusdc
+    //   '0xfE92E0973ff0267447f8C711d16A849837C73264',
+    //   // wrapper for bb tranche of rwinusdc
+    //   '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
+    // ]
+  },
 }
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
