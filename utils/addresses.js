@@ -1179,7 +1179,7 @@ exports.deployTokens = {
       // mainnetContracts.MORPHO,
       addr0, // MORPHO is non transferrable yet
     ],
-    // cdo: CDOs.morphoaaveusdc,
+    cdo: CDOs.morphoaaveusdc,
     ...baseCDOArgs,
     AARatio: '20000',
     isAYSActive: true,
@@ -1217,13 +1217,12 @@ exports.deployTokensBY = {
     underlying: mainnetContracts.USDC,
     symbol: 'idleUSDCJunior',
     name: 'IdleUSDC Junior',
-    // WIP need initialization
     address: '0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e',
-    // address: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
     strategies: [
       // BB tranche of eUSDCStaking PYT
       '0xcf93471A82241c2bE469D83d960932721b098FFB',
-      
+      // BB tranche of maUSDC PYT
+      '0x9db5a6bd77572748e541a0cf42f787f5fe03049e'
     ],
     // strategies: [
     //   // clearpool strat
