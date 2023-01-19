@@ -211,7 +211,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
     // juniors lost 100% as they need to cover seniors
-    assertEq(1, postBBPrice, 'Full loss for junior tranche');
+    assertEq(0, postBBPrice, 'Full loss for junior tranche');
     // seniors are covered
     assertApproxEqAbs(
       preAAPrice * 97000/100000,
@@ -287,7 +287,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
     // juniors lost 100% as they need to cover seniors
-    assertEq(1, postBBPrice, 'Full loss for junior tranche');
+    assertEq(0, postBBPrice, 'Full loss for junior tranche');
     // seniors are covered
     assertApproxEqAbs(
       preAAPrice * 92000/100000,
@@ -317,7 +317,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     IdleCDOAutoLossVariant(address(idleCDO)).updateAccounting();
 
     assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
-    assertEq(idleCDO.priceBB(), 1, 'BB saved price updated');
+    assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
 
     vm.clearMockedCalls();
   }

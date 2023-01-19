@@ -14,6 +14,16 @@ import "./strategies/euler/IdleLeveragedEulerStrategy.sol";
 /// @dev In this variant the `_checkDefault` calculates if strategy price decreased 
 /// more than X% with X configurable. `_virtualPriceAuxVariant` is also modified to redistribute
 /// loss to junior holders only
+/// Main scenarios covered:
+/// - if there is a loss on the lending protocol (ie strategy price decrease) up to a configurable percentage, the loss is
+///     - totally absorbed by junior holders if they have enough TVL
+///     - otherwise a default error (4) is raised and deposits/redeems are blocked
+/// - if there is a loss on the lending protocol (ie strategy price decrease) more than the configured percentage all deposits and redeems 
+///   are blocked and a default error (4) is raised
+/// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above 
+///   applies, the only difference is that the max decrease percentage is not considered
+/// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked. 
+/// For this reason a protected updateAccounting method has been added which should be used to distributed the loss after a default event
 contract IdleCDOAutoLossVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
   // This variable will get appended at the end of the IdleCDOStorage
@@ -122,11 +132,11 @@ contract IdleCDOAutoLossVariant is IdleCDO {
         } else {
           // otherwise all loss minus junior tvl to senior
           if (!_isAATranche) {
-            // juniors have no more claim (we set price to *1 wei* to avoid 0), gain is set to -juniorTVL
-            return (1, -_juniorTVL);
+            // juniors have no more claim price is set to 0, gain is set to -juniorTVL
+            return (0, -_juniorTVL);
           }
-          // seniors get the loss - oldjuniorTVL (- *1 wei* for each tranche junior tranche token)
-          _totalTrancheGain = _newJuniorTVL - int256(IdleCDOTranche(_BBTranche).totalSupply() / ONE_TRANCHE_TOKEN);
+          // seniors get the loss - old junior TVL
+          _totalTrancheGain = _newJuniorTVL;
         }
       }
     }
