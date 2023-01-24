@@ -951,6 +951,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev can be called by both the owner and the guardian
   function emergencyShutdown() external {
     _checkOnlyOwnerOrGuardian();
+    _emergencyShutdown();
+  }
+
+  function _emergencyShutdown() internal {
     // prevent deposits
     _pause();
     // prevent withdraws
