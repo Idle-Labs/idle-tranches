@@ -543,6 +543,11 @@ const trancheErc4626Wrappers = {
     cdo: CDOs.lido,
     BBTrancheWraper: '0x79F05f75df6c156B2B98aC1FBfb3637fc1e6f048',
   },
+  eulerusdcstaking: {
+    original: mainnetContracts.trancheErc4626Wrapper,
+    cdo: CDOs.eulerusdcstaking,
+    BBTrancheWraper: '0xc6Ff7AA2CFF3ba1A4a8BC2C324e819c28D7e0495',
+  },
 }
 
 const idleTokenErc4626Wrappers = {
@@ -724,7 +729,7 @@ exports.deployTokens = {
       mainnetContracts.eUSDCStaking, // _stakingRewards
       'owner', // owner address
     ],
-    // cdo: CDOs.eulerusdcstaking,
+    cdo: CDOs.eulerusdcstaking,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '50000000',
