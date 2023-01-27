@@ -64,7 +64,7 @@ abstract contract ERC4626Strategy is
 
         transferOwnership(_owner);
 
-        IERC20Detailed(_token).approve(_strategyToken, type(uint256).max);
+        IERC20Detailed(_token).safeApprove(_strategyToken, type(uint256).max);
     }
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
