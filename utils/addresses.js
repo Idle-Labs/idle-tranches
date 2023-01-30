@@ -25,6 +25,8 @@ const mainnetContracts = {
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   // morpho, check https://github.com/morpho-dao/morpho-tokenized-vaults#morpho-aave-v2-ethereum
   maUSDC: '0xa5269a8e31b93ff27b887b56720a25f844db0529',
+  maUSDT: '0xafe7131a57e44f832cb2de78ade38cad644aac2f',
+  maDAI: '0x36f8d0d0573ae92326827c4a82fe4ce4c244cab6',
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
@@ -520,6 +522,30 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x376B2dCF9eBd3067BB89eb6D1020FbE604092212',
     BBTranche: '0x86a40De6d77331788Ba24a85221fb8DBFcBC9bF0'
+  },
+  morphoaavedai: {
+    decimals: 18,
+    strategyToken: mainnetContracts.maDAI,
+    underlying: mainnetContracts.DAI,
+    cdoAddr: '0xDB82dDcb7e2E4ac3d13eBD1516CBfDb7b7CE0ffc',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x9182A7C9D9858d54816baC7e3C049B26d3fc56bB',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x69d87d0056256e3df7Be9b4c8D6429B4b8207C5E',
+    BBTranche: '0xB098AF638aF0c4Fa3edb1A24f807E9c22dA0fE73'
+  },
+  morphoaaveusdt: {
+    decimals: 6,
+    strategyToken: mainnetContracts.maUSDT,
+    underlying: mainnetContracts.USDT,
+    cdoAddr: '0x440ceAd9C0A0f4ddA1C81b892BeDc9284Fc190dd',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x57E142278E93d721F3eBD52EC5D2D28484862f32',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x745e005a5dF03bDE0e55be811350acD6316894E1',
+    BBTranche: '0xF0C177229Ae1cd41BF48dF6241fae3e6A14A6967'
   },
 };
 
@@ -1193,6 +1219,42 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
   },
+  morphoaavedai: {
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    strategyName: 'MorphoAaveV2SupplyVaultStrategy',
+    strategyParams: [
+      mainnetContracts.maDAI,
+      mainnetContracts.DAI,
+      'owner', // owner address
+      mainnetContracts.aDAI,
+      // mainnetContracts.MORPHO,
+      addr0, // MORPHO is non transferrable yet
+    ],
+    cdo: CDOs.morphoaavedai,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
+  },
+  morphoaaveusdt: {
+    decimals: 6,
+    underlying: mainnetContracts.USDT,
+    strategyName: 'MorphoAaveV2SupplyVaultStrategy',
+    strategyParams: [
+      mainnetContracts.maUSDT,
+      mainnetContracts.USDT,
+      'owner', // owner address
+      mainnetContracts.aUSDT,
+      // mainnetContracts.MORPHO,
+      addr0, // MORPHO is non transferrable yet
+    ],
+    cdo: CDOs.morphoaaveusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
+  },
 };
 
 exports.deployTokensPolygon = {
@@ -1232,32 +1294,32 @@ exports.deployTokensBY = {
       // BB tranche of maUSDC PYT
       '0x9db5a6bd77572748e541a0cf42f787f5fe03049e'
     ],
-    // strategies: [
-    //   // clearpool strat
-    //   // {
-    //   //   strategyName: 'IdlePYTClear',
-    //   //   strategyParams: [
-    //   //     CDOs.cpwinusdc.BBTranche,
-    //   //     'idleToken',
-    //   //     CDOs.cpwinusdc.cdoAddr,
-    //   //   ]
-    //   // },
-    //   '0x7eC173d5bE66c83487f16f1ca304AC72639e80d4',
-    //   // ribbon strat
-    //   // {
-    //   //   strategyName: 'IdlePYTClear',
-    //   //   strategyParams: [
-    //   //     CDOs.rfolusdc.BBTranche,
-    //   //     'idleToken',
-    //   //     CDOs.rfolusdc.cdoAddr,
-    //   //   ]
-    //   // },
-    //   '0xD19f42Ce3b799a4D23176da193673b146968C934',
-    //   // wrapper for bb tranche of cpfolusdc
-    //   '0xfE92E0973ff0267447f8C711d16A849837C73264',
-    //   // wrapper for bb tranche of rwinusdc
-    //   '0x3225cb1d7bDFddEA35178FD1667D8BD62afb0DDe',
-    // ]
+  },
+  idleusdctjunior: {
+    decimals: 6,
+    underlying: mainnetContracts.USDT,
+    symbol: 'idleUSDTJunior',
+    name: 'IdleUSDT Junior',
+    address: '',
+    strategies: [
+      // BB tranche of eUSDTStaking PYT
+      '',
+      // BB tranche of maUSDT PYT
+      ''
+    ],
+  },
+  idledaijunior: {
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    symbol: 'idleDAIJunior',
+    name: 'IdleDAI Junior',
+    address: '',
+    strategies: [
+      // BB tranche of eDAIStaking PYT
+      '',
+      // BB tranche of maDAI PYT
+      ''
+    ],
   },
 }
 
