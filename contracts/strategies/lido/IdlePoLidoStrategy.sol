@@ -40,6 +40,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
     IStMATIC public constant stMatic = IStMATIC(0x9ee91F9f426fA633d227f7a9b000E28b9dfd8599);
 
     address public whitelistedCDO;
+    address public constant TREASURY = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
 
     /// ###### End of storage V1
 
@@ -83,7 +84,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
             /// get MATIC from msg.sender
             MATIC.safeTransferFrom(msg.sender, address(this), _amount);
             // mints stMATIC
-            minted = stMatic.submit(_amount);
+            minted = stMatic.submit(_amount, TREASURY);
             /// transfer stMATIC to msg.sender
             stMatic.safeTransfer(msg.sender, minted);
         }
@@ -123,7 +124,7 @@ contract IdlePoLidoStrategy is Initializable, OwnableUpgradeable, ReentrancyGuar
             stMatic.safeTransferFrom(msg.sender, address(this), _amount);
 
             // send request to withdraw stMATIC and receive an nft which can be used later to claim the amount.
-            stMatic.requestWithdraw(_amount);
+            stMatic.requestWithdraw(_amount, TREASURY);
 
             IPoLidoNFT poLidoNFT = stMatic.poLidoNFT();
             // transfer nft to msg.sender
