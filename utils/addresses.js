@@ -1340,19 +1340,19 @@ exports.deployTokensBY = {
       '0x5Ac8094308918C3566330EEAe7cf4becaDACEc3E'
     ],
   },
-  // idledaijunior: {
-  //   decimals: 18,
-  //   underlying: mainnetContracts.DAI,
-  //   symbol: 'idleDAIJunior',
-  //   name: 'IdleDAI Junior',
-  //   address: '0xeC9482040e6483B7459CC0Db05d51dfA3D3068E1',
-  //   strategies: [
-  //     // BB tranche of eDAIStaking PYT
-  //     '',
-  //     // BB tranche of maDAI PYT
-  //     '0x37Dd9A73a84bb0EF562C17b3f7aD34001FEdAf38'
-  //   ],
-  // },
+  idledaijunior: {
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    symbol: 'idleDAIJunior',
+    name: 'IdleDAI Junior',
+    address: '0xeC9482040e6483B7459CC0Db05d51dfA3D3068E1',
+    strategies: [
+      // BB tranche of eDAIStaking PYT
+      '0x7188A402Ebd2638d6CccB855019727616a81bBd9',
+      // BB tranche of maDAI PYT
+      '0x37Dd9A73a84bb0EF562C17b3f7aD34001FEdAf38'
+    ],
+  },
 }
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
