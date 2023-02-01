@@ -243,9 +243,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`Set guardian of CDO to DL multisig ${mainnetContracts.devLeagueMultisig}`);
     await idleCDO.connect(signer).setGuardian(mainnetContracts.devLeagueMultisig);
     
-    console.log(`Transfer ownership of CDO to TL multisig ${mainnetContracts.treasuryMultisig}`);
-    await idleCDO.connect(signer).transferOwnership(mainnetContracts.treasuryMultisig);
-
     const feeReceiver = await idleCDO.feeReceiver();
     if (
         (!isMatic && feeReceiver == mainnetContracts.oldFeeReceiver) || 
@@ -259,6 +256,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log('Setting unlent to 0')
       await idleCDO.connect(signer).setUnlentPerc(0);
     }
+
+    console.log(`Transfer ownership of CDO to TL multisig ${mainnetContracts.treasuryMultisig}`);
+    await idleCDO.connect(signer).transferOwnership(mainnetContracts.treasuryMultisig);
 
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
