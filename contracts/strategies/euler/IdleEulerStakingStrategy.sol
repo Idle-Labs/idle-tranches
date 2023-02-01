@@ -58,7 +58,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         address _eulerMain,
         address _stakingRewards,
         address _owner
-    ) public initializer {
+    ) public virtual initializer {
         _initialize(
             string(abi.encodePacked("Idle Euler ", IERC20Detailed(_eToken).name(), " Staking Strategy")),
             string(abi.encodePacked("idleEulStk_", IERC20Detailed(_eToken).symbol())),
@@ -81,7 +81,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
     /// @return shares strategyTokens minted
-    function deposit(uint256 _amount) external override onlyIdleCDO returns (uint256 shares) {
+    function deposit(uint256 _amount) external virtual override onlyIdleCDO returns (uint256 shares) {
         if (_amount != 0) {
             IEToken _eToken = eToken;
             IStakingRewards _stakingRewards = stakingRewards;
@@ -146,6 +146,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @return amountWithdrawn returns the amount withdrawn
     function _withdraw(uint256 _amountToWithdraw, address _destination)
         internal
+        virtual
         override
         returns (uint256 amountWithdrawn)
     {
@@ -189,7 +190,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     // ###################
 
     /// @return net price in underlyings of 1 strategyToken
-    function price() public view override returns (uint256) {
+    function price() public view virtual override returns (uint256) {
         IEToken _eToken = eToken;
         uint256 eTokenDecimals = _eToken.decimals();
         // return price of 1 eToken in underlying
