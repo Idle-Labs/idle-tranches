@@ -107,7 +107,8 @@ module.exports = {
       //   // blockNumber: 15924713, // cpfolusd + rwinusd deploy
       //   // blockNumber: 16246541, // eUSDCStaking PYT deploy
       //   // blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
-      //   blockNumber: 16419858, // Morpho maUSDC
+      //   // blockNumber: 16419858, // Morpho maUSDC
+      //   blockNumber: 16533362, // Euler staking DAI
       // },
       // // chainId: 137
     },

@@ -355,6 +355,19 @@ const CDOs = {
     AATranche: '0x852c4d2823E98930388b5cE1ed106310b942bD5a',
     BBTranche: '0x6629baA8C7c6a84290Bf9a885825E3540875219D'
   },
+  eulerdaistaking: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x62aa57dd00c3d77f984379892c857bef58fc7722',
+    underlying: mainnetContracts.DAI,
+    cdoAddr: '0x264E1552Ee99f57a7D9E1bD1130a478266870C39',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x62aa57dd00c3d77f984379892c857bef58fc7722',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x62Eb6a8c7A555eae3e0B17D42CA9A3299af2787E',
+    BBTranche: '0x56263BDE26b72b3e3D26d8e03399a275Aa8Bbfb2'
+  },
   eulerusdt: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -835,6 +848,25 @@ exports.deployTokens = {
     AARatio: '20000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdc.cdoAddr,
+  },
+  eulerdaistaking: {
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    strategyName: 'IdleEulerStakingStrategyPSM',
+    strategyParams: [
+      mainnetContracts.eUSDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      mainnetContracts.eulerMain, // _euler
+      mainnetContracts.eUSDCStaking, // _stakingRewards
+      'owner', // owner address
+    ],
+    cdo: CDOs.eulerdaistaking,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '50000000',
+    isAYSActive: true,
+    // cpwinusdc has the latest implementation
+    proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
   },
   eulerageur: {
     decimals: 18,
