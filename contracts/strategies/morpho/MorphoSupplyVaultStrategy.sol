@@ -10,9 +10,9 @@ import "../ERC4626Strategy.sol";
 
 abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
     using SafeERC20Upgradeable for IERC20Detailed;
-    /// @notice address of the MorphoSupplyVault
+    /// @notice address of the Morpho Aave V2 Lens
     IMorphoAaveV2Lens public AAVE_LENS;
-    /// @notice address of the MorphoSupplyVault
+    /// @notice address of the Morpho Compound Lens
     IMorphoCompoundLens public COMPOUND_LENS;
 
     /// @notice pool token address (e.g. aDAI, cDAI)
