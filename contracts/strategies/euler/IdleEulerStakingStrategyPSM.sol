@@ -43,7 +43,7 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
     /// @return _price of 1 eToken (eUSDC) in underlying (DAI)
     function price() public view override returns (uint256 _price) {
         // we ask to convert a scaled eToken balance (multiplied by 10**12 so to have 18 decimals)
-        // We pass a scaled amount instead of doing the `* 10**12` to avoid rounding issues 
+        // We pass a scaled amount instead of doing the `* 10**12` after the conversion to avoid rounding issues 
         _price = eToken.convertBalanceToUnderlying(10**18 * 10**12);
     }
 
