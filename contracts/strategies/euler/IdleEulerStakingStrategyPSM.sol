@@ -40,10 +40,11 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
     }
 
     /// @notice return the price from the strategy token contract
-    /// @return _price
+    /// @return _price of 1 eToken (eUSDC) in underlying (DAI)
     function price() public view override returns (uint256 _price) {
-        // 18 decimals, ie DAI decimals
-        _price = super.price() * 10**12; // 12 => 18 - tokenDecimals which for usdc is 6
+        // we ask to convert a scaled eToken balance (multiplied by 10**12 so to have 18 decimals)
+        // We pass a scaled amount instead of doing the `* 10**12` to avoid rounding issues 
+        _price = eToken.convertBalanceToUnderlying(10**18 * 10**12);
     }
 
      /// @notice Deposit the underlying token to vault
@@ -56,14 +57,17 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
         returns (uint256 shares)
     {
         if (_amount > 0) {
+            // convert amount of DAI in USDC, 1-to-1
+            // everything after 6th decimals is truncated to avoid tranferring too much
+            _amount = _amount / 10**12; // 12 => 18 - tokenDecimals which for usdc is 6
             IERC20Detailed(DAI).safeTransferFrom(
                 msg.sender,
                 address(this),
-                _amount
+                // to avoid rounding issues everything after 6th decimal was truncated
+                // so now we multiply by 10**12 to get back the amount in DAI
+                _amount * 10**12 
             );
-            // convert amount of DAI in USDC, 1-to-1
             // Maker expect amount to be in `gem` (ie USDC in this case)
-            _amount = _amount / 10**12; // 12 => 18 - tokenDecimals which for usdc is 6
             sellDAI(_amount);
             IEToken _eToken = eToken;
             IStakingRewards _stakingRewards = stakingRewards;
@@ -74,7 +78,7 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
             // stake in euler
             if (address(_stakingRewards) != address(0)) {
                 _stakingRewards.stake(shares);
-            }
+            }            
             // Mint shares 1:1 ratio, shares have 18 decimals like eUSDC
             _mint(msg.sender, shares);
         }
