@@ -13,6 +13,7 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     IPSM public constant DAIPSM = IPSM(0x89B78CfA322F6C5dE0aBcEecab66Aee45393cC5A);
+    uint256 public constant SCALE_FACTOR = 10**12;
     // ###################
     // Initializer
     // ###################
@@ -44,7 +45,7 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
     function price() public view override returns (uint256 _price) {
         // we ask to convert a scaled eToken balance (multiplied by 10**12 so to have 18 decimals)
         // We pass a scaled amount instead of doing the `* 10**12` after the conversion to avoid rounding issues 
-        _price = eToken.convertBalanceToUnderlying(10**18 * 10**12);
+        _price = eToken.convertBalanceToUnderlying(10**18 * SCALE_FACTOR);
     }
 
      /// @notice Deposit the underlying token to vault
@@ -59,13 +60,13 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
         if (_amount > 0) {
             // convert amount of DAI in USDC, 1-to-1
             // everything after 6th decimals is truncated to avoid tranferring too much
-            _amount = _amount / 10**12; // 12 => 18 - tokenDecimals which for usdc is 6
+            _amount = _amount / SCALE_FACTOR; // 12 => 18 - tokenDecimals which for usdc is 6
             IERC20Detailed(DAI).safeTransferFrom(
                 msg.sender,
                 address(this),
                 // to avoid rounding issues everything after 6th decimal was truncated
                 // so now we multiply by 10**12 to get back the amount in DAI
-                _amount * 10**12 
+                _amount * SCALE_FACTOR 
             );
             // Maker expect amount to be in `gem` (ie USDC in this case)
             sellDAI(_amount);
@@ -84,6 +85,32 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
         }
     }
 
+    /// @dev Calculates staking apr. Here stakingAPR is calculated using USDC so we scale down the price by 10**12
+    /// @return _apr 
+    function _getStakingApr() internal override view returns (uint256 _apr) {
+        IStakingRewards _stakingRewards = stakingRewards;
+        IERC20Detailed _underlying = underlyingToken;
+        uint256 _tokenDec = tokenDecimals;
+        uint256 _price = price() / SCALE_FACTOR; 
+
+        // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
+        uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
+        if (address(_underlying) != WETH) {
+            // 0.05% fee pool. This returns a price with tokenDecimals
+            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
+            eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
+        }
+
+        // USDC as example (6 decimals)
+        // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
+        uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
+        uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
+        // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
+        uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * _price / 10**(_tokenDec));
+        // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
+        _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
+    }
+
     /// @param _amountToWithdraw in underlyings (DAI)
     /// @param _destination address where to send underlyings
     /// @return amountWithdrawn returns the amount withdrawn
@@ -97,7 +124,7 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
         IStakingRewards _stakingRewards = stakingRewards;
 
         // _amountToWithdraw has 18 decimals and we need to pass an amount in underlyings (USDC) so 6 decimals
-        _amountToWithdraw = _amountToWithdraw / 10**12;
+        _amountToWithdraw = _amountToWithdraw / SCALE_FACTOR;
 
         if (address(_stakingRewards) != address(0)) {
             // Unstake from StakingRewards

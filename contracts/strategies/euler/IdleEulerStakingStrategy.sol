@@ -224,7 +224,7 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// @dev Calculates staking apr
     /// @return _apr 
-    function _getStakingApr() internal view returns (uint256 _apr) {
+    function _getStakingApr() internal virtual view returns (uint256 _apr) {
         IStakingRewards _stakingRewards = stakingRewards;
         IERC20Detailed _underlying = underlyingToken;
         uint256 _tokenDec = tokenDecimals;
