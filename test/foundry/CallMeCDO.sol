@@ -16,7 +16,8 @@ import "../../contracts/strategies/euler/IdleEulerStakingStrategyPSM.sol";
 contract CallMeCDO is Test {
   using stdStorage for StdStorage;
   // ######## PARAMS ###################
-  uint256 public blockForTest = 16541740;
+  uint256 public blockForTest = 16578413;
+  // uint256 public blockForTest = 16541740;
   address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   // dai
   address public constant cdo = 0x264E1552Ee99f57a7D9E1bD1130a478266870C39;
@@ -59,6 +60,21 @@ contract CallMeCDO is Test {
     assertGe(aa1, aa, 'AA price should increase or stay the same');
     assertGe(bb1, bb, 'BB price should increase or stay the same');
     assertGe(strat1, strat, 'Strat price should increase or stay the same');
+  }
+
+  function testGenericCDOApr() external  {
+    _upgradeContract(IdleCDO(cdo).strategy(), address(new IdleEulerStakingStrategyPSM()));
+
+    IdleCDO _cdo = IdleCDO(cdo);
+    // uint256 aa = _cdo.getApr(_cdo.AATranche());
+    // uint256 bb = _cdo.getApr(_cdo.BBTranche());
+    uint256 strat = IIdleCDOStrategy(_cdo.strategy()).getApr();
+    // console.log('AA   ', aa);
+    // console.log('BB   ', bb);
+    console.log('strat', strat);
+    // assertGe(aa, 0, 'AA apr should be >= 0');
+    // assertGe(bb, 0, 'BB apr should be >= 0');
+    assertGe(strat, 0, 'Strat apr should be >= 0');
   }
 
   // UTILS

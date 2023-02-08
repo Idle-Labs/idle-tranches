@@ -313,6 +313,18 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setIsAYSActive(true);
   }
 
+  function testsetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.prank(address(1));
+    vm.expectRevert(bytes("6")); // not authorized
+    idleCDO.setMinAprSplitAYS(5000);
+    vm.expectRevert(bytes("7")); // not authorized
+    idleCDO.setMinAprSplitAYS(100001);
+    vm.prank(owner);
+    idleCDO.setMinAprSplitAYS(80000);
+
+    assertEq(idleCDO.minAprSplitAYS(), 80000, "minAprSplitAYS is correct");
+  }
+
   function testAPRSplitRatioDeposits(
     uint16 _ratio
   ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
@@ -448,14 +460,14 @@ abstract contract TestIdleCDOBase is Test {
     return false;
   }
 
-  function _calcNewAPRSplit(uint256 ratio) internal pure returns (uint256 _new){
+  function _calcNewAPRSplit(uint256 ratio) internal view returns (uint256 _new){
     uint256 aux;
     if (ratio >= AA_RATIO_LIM_UP) {
       aux = AA_RATIO_LIM_UP;
-    } else if (ratio > AA_RATIO_LIM_DOWN) {
+    } else if (ratio > idleCDO.minAprSplitAYS()) {
       aux = ratio;
     } else {
-      aux = AA_RATIO_LIM_DOWN;
+      aux = idleCDO.minAprSplitAYS();
     }
     _new = aux * ratio / FULL_ALLOC;
   }
