@@ -121,6 +121,7 @@ const mainnetContracts = {
   trancheErc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810',
   trancheErc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
   idleTokenErc4626Wrapper: '0x658a190730be0afb1ea39295f7ffee6d44aaefa7',
+  idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
 }
 
 // Polygon
@@ -595,9 +596,19 @@ const trancheErc4626Wrappers = {
 const idleTokenErc4626Wrappers = {
   idleusdcjunior: {
     original: mainnetContracts.idleTokenErc4626Wrapper,
-    idleToken: '0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2',
-    idleTokenWrapper: '0xe4168948110AcA11aEb9D9E181D2C0501daFD2d3',
-  }
+    idleToken: '0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e',
+    idleTokenWrapper: '0xc3dA79e0De523eEf7AC1e4ca9aBFE3aAc9973133',
+  },
+  idleusdtjunior: {
+    original: mainnetContracts.idleTokenErc4626WrapperUSDT,
+    idleToken: '0xfa3AfC9a194BaBD56e743fA3b7aA2CcbED3eAaad',
+    idleTokenWrapper: mainnetContracts.idleTokenErc4626WrapperUSDT,
+  },
+  idledaijunior: {
+    original: mainnetContracts.idleTokenErc4626Wrapper,
+    idleToken: '0xeC9482040e6483B7459CC0Db05d51dfA3D3068E1',
+    idleTokenWrapper: '0x0c80F31B840C6564e6c5E18f386FaD96b63514cA',
+  },
 }
 
 const polygonCDOs = {

@@ -9,6 +9,7 @@ import "./interfaces/IERC4626Upgradeable.sol";
 import "../contracts/interfaces/IIdleTokenFungible.sol";
 
 contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
+    using SafeERC20Upgradeable for ERC20Upgradeable;
     error AmountZero();
     error InsufficientAllowance();
 
@@ -27,7 +28,7 @@ contract IdleTokenWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4
         idleToken = _idleToken;
         token = _idleToken.token();
 
-        ERC20Upgradeable(token).approve(address(_idleToken), type(uint256).max); // Vaults are trusted
+        ERC20Upgradeable(token).safeApprove(address(_idleToken), type(uint256).max); // Vaults are trusted
     }
 
     /**
