@@ -62,21 +62,6 @@ contract CallMeCDO is Test {
     assertGe(strat1, strat, 'Strat price should increase or stay the same');
   }
 
-  function testGenericCDOApr() external  {
-    _upgradeContract(IdleCDO(cdo).strategy(), address(new IdleEulerStakingStrategyPSM()));
-
-    IdleCDO _cdo = IdleCDO(cdo);
-    // uint256 aa = _cdo.getApr(_cdo.AATranche());
-    // uint256 bb = _cdo.getApr(_cdo.BBTranche());
-    uint256 strat = IIdleCDOStrategy(_cdo.strategy()).getApr();
-    // console.log('AA   ', aa);
-    // console.log('BB   ', bb);
-    console.log('strat', strat);
-    // assertGe(aa, 0, 'AA apr should be >= 0');
-    // assertGe(bb, 0, 'BB apr should be >= 0');
-    assertGe(strat, 0, 'Strat apr should be >= 0');
-  }
-
   // UTILS
   function _cdoHarvest(IdleCDO _cdo, bool _skipRewards) internal {
     uint256 numOfRewards = IIdleCDOStrategy(IdleCDO(cdo).strategy()).getRewardTokens().length;

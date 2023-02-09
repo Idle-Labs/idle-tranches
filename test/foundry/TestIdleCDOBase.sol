@@ -313,11 +313,12 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setIsAYSActive(true);
   }
 
-  function testsetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testSetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setMinAprSplitAYS(5000);
-    vm.expectRevert(bytes("7")); // not authorized
+    vm.prank(owner);
+    vm.expectRevert(bytes("7")); // too high
     idleCDO.setMinAprSplitAYS(100001);
     vm.prank(owner);
     idleCDO.setMinAprSplitAYS(80000);
