@@ -6,14 +6,18 @@ import "forge-std/Test.sol";
 import "../../contracts/interfaces/IIdleTokenFungible.sol";
 import "../../contracts/IdleTokenFungible.sol";
 import "../../contracts/IdleTokenWrapper.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 contract TestIdleTokenWrapper is Test {
     using stdStorage for StdStorage;
+    using SafeERC20Upgradeable for IERC20Detailed;
 
-    uint256 internal constant BLOCK_FOR_TEST = 16_000_342;
+    uint256 internal constant BLOCK_FOR_TEST = 16590720;
     uint256 internal constant ONE_18 = 1e18;
-    // IdleTokenFungible: IdleUSDC Junior tranches (idleUSDCBB)
-    address internal constant IDLE_USDC_BB = 0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2;
+    // // IdleTokenFungible: IdleUSDC Junior tranches (idleUSDCBB)
+    // address internal constant IDLE_TOKEN = 0xF6954B03d6a94Ba9e8C80CBE5824f22a401EE5D2;
+    // IdleTokenFungible: IdleUSDT Junior tranches (idleUSDTBB)
+    address internal constant IDLE_TOKEN = 0xfa3AfC9a194BaBD56e743fA3b7aA2CcbED3eAaad;
 
     address internal rebalancer;
     address internal owner;
@@ -30,7 +34,7 @@ contract TestIdleTokenWrapper is Test {
     function setUp() public virtual {
         vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), BLOCK_FOR_TEST));
 
-        idleToken = IIdleTokenFungible(IDLE_USDC_BB);
+        idleToken = IIdleTokenFungible(IDLE_TOKEN);
 
         allAvailableTokens = idleToken.getAllAvailableTokens();
         rebalancer = idleToken.rebalancer();
@@ -44,7 +48,7 @@ contract TestIdleTokenWrapper is Test {
         // fund
         initialBal = 1000000 * ONE_TOKEN;
         deal(address(underlying), address(this), initialBal, true);
-        underlying.approve(address(idleTokenWrapper), type(uint256).max);
+        underlying.safeApprove(address(idleTokenWrapper), type(uint256).max);
 
         // remove fees and unlent perc for easy testing
         vm.startPrank(idleToken.owner());
