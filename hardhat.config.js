@@ -66,6 +66,15 @@ module.exports = {
       "contracts/IdleCDOPoLidoVariant.sol": minimalSizeConfig,
       "contracts/strategies/euler/IdleLeveragedEulerStrategy.sol": highRunConfig,
       "contracts/polygon/IdleCDOPolygon.sol": overrideConfig,
+      "contracts/utils/IdleBuddyCompAavePYT.sol": {
+        version: "0.8.10",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 800
+          }
+        }
+      },
     }
   },
   networks: {
@@ -108,9 +117,9 @@ module.exports = {
       //   // blockNumber: 16246541, // eUSDCStaking PYT deploy
       //   // blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
       //   // blockNumber: 16419858, // Morpho maUSDC
-      //   blockNumber: 16533362, // Euler staking DAI
+      //   blockNumber: 16533689, // Euler staking DAI
       // },
-      // // chainId: 137
+      // chainId: 137
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
