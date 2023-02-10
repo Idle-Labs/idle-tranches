@@ -12,14 +12,14 @@ There are no locking period or epochs and users are free to enter and exit at an
 https://docs.idle.finance/developers/perpetual-yield-tranches
 
 ## Architecture
-The main contract which will be used by users is `IdleCDO` which allow to deposits underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
+The main contract which will be used by users is `IdleCDO` which allows to deposit underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
 
-The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possibile. Other tokens (eg IDLE or LDO that won't be sold or tokens that have no liquid markets) will get redistributed via [Idle Gauges](https://github.com/Idle-Finance/idle-gauges) with a `Multirewards` contract
+The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possible. Other tokens (eg IDLE or LDO that won't be sold or tokens that have no liquid markets) will get redistributed via [Idle Gauges](https://github.com/Idle-Finance/idle-gauges) with a `Multirewards` contract
 
 These are the main contracts used:
 
 - **IdleCDO.sol**: contract which holds all the users pooled assets (both underlyings, eg DAI, and interest bearing tokens, eg cDAI or aDAI) and entry point for the user to mint tranche tokens and burn them to redeem principal + interest.
-When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their choosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 6400) blocks, to increase the value of all tranche holders, and part of the gov tokens will be sent to StakingRewards contracts, if those are set. On redeem users will burn their tranche tokens and get underlyings back.
+When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their chosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 6400) blocks, to increase the value of all tranche holders, and part of the gov tokens will be sent to StakingRewards contracts, if those are set. On redeem users will burn their tranche tokens and get underlyings back.
 
 - **IdleCDOTranche.sol**: ERC20 representing a specific (either AA or BB) tranche token. Only IdleCDO contract can mint and burn tranche tokens.
 
@@ -129,7 +129,7 @@ npx hardhat coverage
 ```
 
 ## Code Contributions
-Note this repo was built using hardhat so most tests and script are in js. Foundry was also recently integrated and we encourage all new contributions and features to be tested using the foundry toolkit.
+Note this repo was built using hardhat so most tests and scripts are in js. Foundry was also recently integrated and we encourage all new contributions and features to be tested using the foundry toolkit.
 
 We welcome new contributors and code contributions with open arms! Please be sure to follow our contribution [guidelines](https://github.com/Idle-Labs/idle-tranches/blob/master/CONTRIBUTING.md) when proposing any new code. Idle Finance is a
 decentralized protocol managed by a decentralized governance, any new code contributions are more likely to be accepted into future deployments and proposals if they have been openly discussed within the community first in our forum https://gov.idle.finance/
