@@ -110,6 +110,8 @@ contract IdleCDOStorage {
   // Add new variables here. For each storage slot
   // used, reduce the __gap length by 1. 
   // ####################### 
+  // Min apr ratio for AA tranches when using AYS
+  uint256 public minAprSplitAYS;
   // uint256 public test;
 
 
@@ -123,8 +125,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[50] private __gap;
-  // uint256[49] private __gap; -> after adding `test`
+  uint256[49] private __gap;
+  // uint256[48] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }

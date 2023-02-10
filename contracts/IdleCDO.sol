@@ -108,6 +108,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
+    minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
 
     _additionalInit();
   }
@@ -466,10 +467,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       uint256 aux;
       if (tvlAARatio >= AA_RATIO_LIM_UP) {
         aux = AA_RATIO_LIM_UP;
-      } else if (tvlAARatio > AA_RATIO_LIM_DOWN) {
+      } else if (tvlAARatio > minAprSplitAYS) {
         aux = tvlAARatio;
       } else {
-        aux = AA_RATIO_LIM_DOWN;
+        aux = minAprSplitAYS;
       }
       trancheAPRSplitRatio = aux * tvlAARatio / FULL_ALLOC;
     }
@@ -525,48 +526,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _redeemedTokens = _amount;
     }
   }
-
-  /// [DEPRECATED]
-  /// @notice sends rewards to the tranche rewards staking contracts
-  /// @dev this method is called only during harvests
-  function _updateIncentives() internal {
-  //   // Read state variables only once to save gas
-  //   address _BBStaking = BBStaking;
-  //   address _AAStaking = AAStaking;
-  //   bool _isBBStakingActive = _BBStaking != address(0);
-
-  //   // Split rewards according to trancheAPRSplitRatio in case the ratio between
-  //   // AA and BB is already ideal
-  //   if (_AAStaking != address(0)) {
-  //     // NOTE: the order is important here, first there must be the deposit for AA rewards,
-  //     // if staking contract for AA is present
-  //     _depositIncentiveToken(_AAStaking, _isBBStakingActive ? trancheAPRSplitRatio : FULL_ALLOC);
-  //   }
-
-  //   if (_isBBStakingActive) {
-  //     // NOTE: here we should use FULL_ALLOC directly and not (FULL_ALLOC - _trancheAPRSplitRatio)
-  //     // because contract balance for incentive tokens is fetched at each _depositIncentiveToken
-  //     // and the balance for AA is already transferred
-  //     _depositIncentiveToken(_BBStaking, FULL_ALLOC);
-  //   }
-  }
-
-  // /// @notice sends requested ratio of reward to a specific IdleCDOTrancheRewards contract
-  // /// @param _stakingContract address which will receive incentive Rewards
-  // /// @param _ratio ratio of the incentive token balance to send
-  // function _depositIncentiveToken(address _stakingContract, uint256 _ratio) internal {
-  //   address[] memory _incentiveTokens = incentiveTokens;
-  //   for (uint256 i = 0; i < _incentiveTokens.length; i++) {
-  //     address _incentiveToken = _incentiveTokens[i];
-  //     // calculates the requested _ratio of the current contract balance of
-  //     // _incentiveToken to be sent to the IdleCDOTrancheRewards contract
-  //     uint256 _reward = _contractTokenBalance(_incentiveToken) * _ratio / FULL_ALLOC;
-  //     if (_reward > 0) {
-  //       // call depositReward to actually let the IdleCDOTrancheRewards get the reward
-  //       IIdleCDOTrancheRewards(_stakingContract).depositReward(_incentiveToken, _reward);
-  //     }
-  //   }
-  // }
 
   /// @notice method used to sell `_rewardToken` for `_token` on uniswap
   /// @param _rewardToken address of the token to sell
@@ -731,7 +690,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   ///   [2] _redeemedRewards array with amounts of rewards redeemed
   function harvest(
     // _skipFlags[0] _skipRedeem,
-    // _skipFlags[1] _skipIncentivesUpdate,
+    // _skipFlags[1] _skipIncentivesUpdate, [DEPRECATED]
     // _skipFlags[2] _skipFeeDeposit,
     // _skipFlags[3] _skipRedeem && _skipIncentivesUpdate && _skipFeeDeposit,
     bool[] calldata _skipFlags,
@@ -769,11 +728,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       if (!_skipFlags[2]) {
         // Get fees in the form of totalSupply diluition
         _depositFees();
-      }
-
-      if (!_skipFlags[1]) {
-        // Update tranche incentives distribution and send rewards to staking contracts
-        _updateIncentives();
       }
     }
 
@@ -853,6 +807,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setLiquidationTolerance(uint256 _diff) external {
     _checkOnlyOwner();
     liquidationTolerance = _diff;
+  }
+
+  /// @param _aprSplit apr split for AA, considering FULL_ALLOC = 100%
+  function setMinAprSplitAYS(uint256 _aprSplit) external {
+    _checkOnlyOwner();
+    require((minAprSplitAYS = _aprSplit) <= FULL_ALLOC, '7');
+    minAprSplitAYS = _aprSplit;
   }
 
   /// @param _fee new fee
