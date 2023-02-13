@@ -8,8 +8,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 import "./interfaces/IIdleCDOStrategy.sol";
 import "./interfaces/IERC20Detailed.sol";
-import "./interfaces/IIdleCDOTrancheRewards.sol";
-import "./interfaces/IStakedAave.sol";
 
 import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
@@ -53,14 +51,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
   /// @param // deprecated
-  /// @param _incentiveTokens array of addresses for incentive tokens
+  /// @param // deprecated _incentiveTokens array of addresses for incentive tokens
   function initialize(
     uint256 _limit, address _guardedToken, address _governanceFund, address _owner, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
     uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
     uint256, // Deprecated
-    address[] memory _incentiveTokens
+    address[] memory // Deprecated
   ) external initializer {
     require(token == address(0), '1');
     require(_rebalancer != address(0) && _strategy != address(0) && _guardedToken != address(0), "0");
@@ -86,7 +84,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     oneToken = _oneToken;
     uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    incentiveTokens = _incentiveTokens;
+    // incentiveTokens = _incentiveTokens; [DEPRECATED]
     priceAA = _oneToken;
     priceBB = _oneToken;
     unlentPerc = 2000; // 2%
@@ -103,18 +101,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // Save current strategy price
     lastStrategyPrice = _strategyPrice();
     // Fee params
-    fee = 15000; // 10% performance fee
+    fee = 15000; // 15% performance fee
     feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
     guardian = _owner;
     // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
     minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
 
-    maxDecreaseDefault = 5000; // 5% decrease for default
+    maxDecreaseDefault = 5000; // 5% decrease for triggering a default
     _additionalInit();
   }
 
-  /// @notice used by child contracts if anything needs to be done on/after init
+  /// @notice used by child contracts (cdo variants) if anything needs to be done on/after init
   function _additionalInit() internal virtual {}
 
   // ###############
@@ -176,20 +174,20 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // ###############
 
   /// @param _tranche tranche address
-  /// @return tranche price
+  /// @return tranche price, in underlyings, at the last interaction (not considering interest earned 
+  /// since last interaction)
   function tranchePrice(address _tranche) external view returns (uint256) {
     return _tranchePrice(_tranche);
   }
 
-  /// @notice calculates the current total value locked (in `token` terms)
-  /// @dev unclaimed rewards (gov tokens) are not counted.
-  /// NOTE: `unclaimedFees` are not included in the contract value
-  /// NOTE2: fees that *will* be taken (in the next _updateAccounting call) are counted
+  /// @notice calculates the current net TVL (in `token` terms)
+  /// @dev unclaimed rewards (gov tokens) and `unclaimedFees` are not counted. 
+  /// Harvested rewards are counted only if enough blocks have passed (`_lockedRewards`)
   function getContractValue() public override view returns (uint256) {
     address _strategyToken = strategyToken;
     uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
-    // TVL is the sum of unlent balance in the contract + the balance in lending - the reduction for harvested rewards - unclaimedFees
-    // the balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
+    // TVL is the sum of unlent balance in the contract + the balance in lending - harvested but locked rewards - unclaimedFees
+    // Balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
     // TVL = (strategyTokens * strategy token price) + unlent balance - lockedRewards - unclaimedFees
     return (_contractTokenBalance(_strategyToken) * _strategyPrice() / (10**(strategyTokenDecimals))) +
             _contractTokenBalance(token) -
@@ -230,7 +228,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     );
   }
 
-  /// @notice returns an array of tokens used to incentive tranches via IIdleCDOTrancheRewards
+  /// @notice [DEPRECATED]
   /// @return array with addresses of incentiveTokens (can be empty)
   function getIncentiveTokens() external view returns (address[] memory) {
     return incentiveTokens;
@@ -295,17 +293,17 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     (uint256 _priceBB, int256 _totalBBGain) = _virtualPriceAux(BBTranche, nav, _lastNAV, _lastNAVBB, _aprSplitRatio);
     lastNAVAA = uint256(int256(_lastNAVAA) + _totalAAGain);
 
-    // if we have a loss for juniors and the loss is gte lastNAV we trigger a default
+    // if we have a loss and it's gte last junior NAV we trigger a default
     if (_totalBBGain < 0 && -_totalBBGain >= int256(_lastNAVBB)) {
-      // revert with 'default' error (4) if skipDefaultCheck is false, as seniors will have a loss not covered. 
+      // revert with 'default' error (4) if skipDefaultCheck is false, as seniors will have a loss too not covered. 
       // `updateAccounting` should be manually called to distribute loss
       require(skipDefaultCheck, "4");
       // This path will be called when a default happens and guardian calls
       // `updateAccounting` after setting skipDefaultCheck
-      // We set lastNAVBB to 0
       lastNAVBB = 0;
       _emergencyShutdown();
     } else {
+      // we add the gain to last saved NAV
       lastNAVBB = uint256(int256(_lastNAVBB) + _totalBBGain);
     }
     priceAA = _priceAA;
@@ -330,7 +328,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted and the
   /// total gain/loss for a specific tranche
   /// @dev Main scenarios covered:
-  /// - if there is a loss on the lending protocol (ie strategy price decrease) up to maxDecreaseDefault, the loss is
+  /// - if there is a loss on the lending protocol (ie strategy price decrease) up to maxDecreaseDefault (_checkDefault method), the loss is
   ///     - totally absorbed by junior holders if they have enough TVL and deposits/redeems work as normal
   ///     - otherwise a 'default' error (4) is raised and deposits/redeems are blocked
   /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems 
@@ -434,24 +432,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _depositFees() internal {
     uint256 _amount = unclaimedFees;
     if (_amount > 0) {
-      address stakingRewards = AAStaking;
-      bool isStakingRewardsActive = stakingRewards != address(0);
-      address _feeReceiver = feeReceiver;
-
-      // mint tranches tokens to this contract
-      uint256 _minted = _mintShares(
-        _amount,
-        isStakingRewardsActive ? address(this) : _feeReceiver,
-        // Mint AA tranche tokens as fees
-        AATranche
-      );
+      // mint tranches tokens (always AA) to this contract
+      _mintShares(_amount, feeReceiver, AATranche);
       // reset unclaimedFees counter
       unclaimedFees = 0;
-
-      // auto stake fees in staking contract for feeReceiver
-      if (isStakingRewardsActive) {
-        IIdleCDOTrancheRewards(stakingRewards).stakeFor(_feeReceiver, _minted);
-      }
     }
   }
 
@@ -635,7 +619,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     internal
     returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256 _totSold) {
     // Fetch state variables once to save gas
-    address[] memory _incentiveTokens = incentiveTokens;
     // get all rewards addresses
     address[] memory _rewards = _strategy.getRewardTokens();
     address _rewardToken;
@@ -650,7 +633,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     for (uint256 i = 0; i < _rewards.length; i++) {
       _rewardToken = _rewards[i];
       // check if it should be sold or not
-      if (_skipReward[i] || _includesAddress(_incentiveTokens, _rewardToken)) { continue; }
+      if (_skipReward[i]) { continue; }
       // do not sell stkAAVE but only AAVE if present
       if (_rewardToken == stkAave) {
         _rewardToken = AAVE;
@@ -709,14 +692,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // Protected
   // ###################
 
-  /// @notice This method is used to lend user funds in the lending provider through the IIdleCDOStrategy and update tranches incentives.
+  /// @notice This method is used to lend user funds in the lending provider through an IIdleCDOStrategy
   /// The method:
   /// - redeems rewards (if any) from the lending provider
-  /// - converts the rewards NOT present in the `incentiveTokens` array, in underlyings through uniswap v2
+  /// - converts the rewards in underlyings through uniswap v2 or v3
   /// - calls _updateAccounting to update the accounting of the system with the new underlyings received
-  /// - it then convert fees in tranche tokens and stake tranche tokens in the IdleCDOTrancheRewards if any
-  /// - sends the correct amount of `incentiveTokens` to the each of the IdleCDOTrancheRewards contracts
-  /// - Finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
+  /// - it then convert fees in tranche tokens
+  /// - finally it deposits the (initial unlent balance + the underlyings get from uniswap - fees) in the
   ///   lending provider through the IIdleCDOStrategy `deposit` call
   /// The method will be called by an external, whitelisted, keeper bot which will call the method sistematically (eg once a day)
   /// @dev can be called only by the rebalancer or the owner
@@ -859,7 +841,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     liquidationTolerance = _diff;
   }
 
-  /// @param _aprSplit apr split for AA, considering FULL_ALLOC = 100%
+  /// @param _aprSplit min apr split for AA, considering FULL_ALLOC = 100%
   function setMinAprSplitAYS(uint256 _aprSplit) external {
     _checkOnlyOwner();
     require((minAprSplitAYS = _aprSplit) <= FULL_ALLOC, '7');
@@ -891,13 +873,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
   }
 
-  /// @dev it's REQUIRED to transfer out any incentive tokens accrued before
-  /// @param _incentiveTokens array with new incentive tokens
-  function setIncentiveTokens(address[] memory _incentiveTokens) external {
-    _checkOnlyOwner();
-    incentiveTokens = _incentiveTokens;
-  }
-
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the
   /// AA and BB tranches. This can be called at any time as is called automatically on each deposit/redeem. It's here
   /// just to be called when a default happened, as deposits/redeems are paused, but we need to update
@@ -906,7 +881,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _checkOnlyOwnerOrGuardian();
     skipDefaultCheck = true;
     _updateAccounting();
-    // update accounting can set `skipDefaultCheck` to true in case of default
+    // _updateAccounting can set `skipDefaultCheck` to true in case of default
     // but this can be manually be reset to true if needed
     skipDefaultCheck = false;
   }
@@ -944,14 +919,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     revertIfTooLow = true;
   }
 
-  /// @notice Pauses deposits and redeems
+  /// @notice Pauses deposits
   /// @dev can be called by both the owner and the guardian
   function pause() external  {
     _checkOnlyOwnerOrGuardian();
     _pause();
   }
 
-  /// @notice Unpauses deposits and redeems
+  /// @notice Unpauses deposits
   /// @dev can be called by both the owner and the guardian
   function unpause() external {
     _checkOnlyOwnerOrGuardian();
@@ -1001,21 +976,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkSameTx() internal view {
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "8");
-  }
-
-  /// @dev this method is only used to check whether a token is an incentive tokens or not
-  /// in the harvest call. The maximum number of element in the array will be a small number (eg at most 3-5)
-  /// @param _array array of addresses to search for an element
-  /// @param _val address of an element to find
-  /// @return flag if the _token is an incentive token or not
-  function _includesAddress(address[] memory _array, address _val) internal pure returns (bool) {
-    for (uint256 i = 0; i < _array.length; i++) {
-      if (_array[i] == _val) {
-        return true;
-      }
-    }
-    // explicit return to fix linter
-    return false;
   }
 
   /// @notice concat 2 strings in a single one
