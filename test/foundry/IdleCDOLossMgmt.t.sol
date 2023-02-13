@@ -2,57 +2,29 @@
 pragma solidity 0.8.10;
 import "../../contracts/interfaces/ICToken.sol";
 import "../../contracts/strategies/idle/IdleStrategy.sol";
-import "../../contracts/IdleCDOAutoLossVariant.sol";
+import "../../contracts/IdleCDO.sol";
 import "./TestIdleCDOBase.sol";
 
-// NOTE: IMPORTANT tests are made at block 16368877 where idleUSDC had all deposited in compound
+// @notice: These tests are exclusively for the IdleCDO loss mgmt, these are separate from TestIdleCDOBase
+// so to avoid having to simulate losses in all derived tests. Tests are with an IdleCDO that deposits 
+// in idleUSDC.
+// @dev: IMPORTANT tests are made at block 16368877 where idleUSDC had all deposited in compound
 // this is crucial for the test as to mock a default we decrease `exchangeRateStored` of the corresponding
 // cToken associated with the idleToken. If another block is used make sure to mock the correct call.
 // It's not enough to mock strategy.price() otherwise on redeems the wrong number of strategyTokens will be burned
 
-contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
+contract TestIdleCDOLossMgmt is TestIdleCDOBase {
   using stdStorage for StdStorage;
   using SafeERC20Upgradeable for IERC20Detailed;
 
   // Idle-USDC Best-Yield v4
   address internal constant UNDERLYING = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant idleToken = 0x5274891bEC421B39D23760c04A6755eCB444797C;
-  // NOTE check *NOTE* at beginning of the contract
   address internal constant cToken = 0x39AA39c021dfbaE8faC545936693aC917d5E7563;
 
   function _selectFork() public override {
     // IdleUSDC deposited all in compund
     vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16368877));
-  }
-
-  function _deployLocalContracts() internal override returns (IdleCDO _cdo) {
-    address _owner = address(0xdeadbad);
-    address _rebalancer = address(0xbaddead);
-    (address _strategy, address _underlying) = _deployStrategy(_owner);
-
-    // deploy idleCDO and tranches
-    _cdo = _deployCDO();
-    stdstore.target(address(_cdo)).sig(_cdo.token.selector).checked_write(address(0));
-    address[] memory incentiveTokens = new address[](0);
-    _cdo.initialize(
-      0,
-      _underlying,
-      address(this), // governanceFund,
-      _owner, // owner,
-      _rebalancer, // rebalancer,
-      _strategy, // strategy
-      20000, // apr split
-      0, // deprecated
-      incentiveTokens
-    );
-
-    vm.startPrank(_owner);
-    _cdo.setUnlentPerc(0);
-    _cdo.setFee(0);
-    _cdo.setIsAYSActive(true);
-    vm.stopPrank();
-
-    _postDeploy(address(_cdo), _owner);
   }
 
   function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
@@ -62,10 +34,6 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     _strategy = address(strategy);
     stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
     IdleStrategy(_strategy).initialize(idleToken, _owner);
-  }
-
-  function _deployCDO() internal override returns (IdleCDO _cdo) {
-    _cdo = new IdleCDOAutoLossVariant();
   }
 
   function _postDeploy(address _cdo, address _owner) internal override {
@@ -81,25 +49,20 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
   // ############ TESTS ################
   // ###################################
 
-  function testInitialize() public override {
-    super.testInitialize();
-    assertEq(IdleCDOAutoLossVariant(address(idleCDO)).maxDecreaseDefault(), 5000);
-  }
+  function testOnlyIdleCDO() public override {}
 
-  function testOnlyIdleCDO() public override runOnForkingNetwork(MAINNET_CHIANID) {}
-
-  function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+  function testCantReinitialize() external override {
       vm.expectRevert(bytes("Initializable: contract is already initialized"));
       IdleStrategy(address(strategy)).initialize(idleToken, owner);
   }
 
-  function testDepositWithLossCovered() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDepositWithLossCovered() external {
     uint256 amount = 10000 * ONE_SCALE;
     // fee is set to 10% and release block period to 0
     (uint256 preAAPrice, uint256 preBBPrice) = _doDepositsWithInterest(amount, amount);
 
     uint256 currPrice = strategy.price();
-    uint256 maxDecrease = IdleCDOAutoLossVariant(address(idleCDO)).maxDecreaseDefault();
+    uint256 maxDecrease = IdleCDO(address(idleCDO)).maxDecreaseDefault();
     uint256 unclaimedFees = idleCDO.unclaimedFees();
     // now let's simulate a loss by decreasing strategy price
     // curr price - 5%
@@ -137,8 +100,8 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     vm.clearMockedCalls();
   }
 
-  function testRedeemWithLossCovered() external runOnForkingNetwork(MAINNET_CHIANID) {
-    uint256 maxDecrease = IdleCDOAutoLossVariant(address(idleCDO)).maxDecreaseDefault();
+  function testRedeemWithLossCovered() external {
+    uint256 maxDecrease = IdleCDO(address(idleCDO)).maxDecreaseDefault();
     uint256 amount = 10000 * ONE_SCALE;
     // fee is set to 10% and release block period to 0, AARatio 66%
     (uint256 preAAPrice, uint256 preBBPrice) = _doDepositsWithInterest(amount * 2, amount);
@@ -190,7 +153,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     vm.clearMockedCalls();
   }
 
-  function testDepositRedeemWithLossShutdown() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDepositRedeemWithLossShutdown() external {
     uint256 amount = 10000 * ONE_SCALE;
     // fee is set to 10% and release block period to 0
 
@@ -198,7 +161,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     (uint256 preAAPrice, uint256 preBBPrice) = _doDepositsWithInterest(amount - amount / 50, amount / 50);
 
     uint256 currPrice = strategy.price();
-    uint256 maxDecrease = IdleCDOAutoLossVariant(address(idleCDO)).maxDecreaseDefault();
+    uint256 maxDecrease = IdleCDO(address(idleCDO)).maxDecreaseDefault();
     uint256 unclaimedFees = idleCDO.unclaimedFees();
     // now let's simulate a loss by decreasing strategy price
     // curr price - 5%, this will trigger a default because the loss is >= junior tvl
@@ -239,7 +202,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     vm.stopPrank();
 
     vm.prank(idleCDO.owner());
-    IdleCDOAutoLossVariant(address(idleCDO)).updateAccounting();
+    IdleCDO(address(idleCDO)).updateAccounting();
     // loss is now distributed and shutdown triggered
 
     uint256 postDepositAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -252,7 +215,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     assertEq(idleCDO.unclaimedFees(), unclaimedFees, 'Fees did not increase');
     assertEq(idleCDO.allowAAWithdraw(), false, 'Default flag for senior set');
     assertEq(idleCDO.allowBBWithdraw(), false, 'Default flag for senior set');
-    assertEq(idleCDO.lastNAVBB(), IERC20Detailed(address(BBtranche)).totalSupply() / 1e18, 'Default flag for senior set');
+    assertEq(idleCDO.lastNAVBB(), 0, 'Last junior TVL should be 0');
 
     // deposits/redeems are disabled
     vm.expectRevert(bytes("Pausable: paused"));
@@ -267,7 +230,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     vm.clearMockedCalls();
   }
 
-  function testCheckMaxDecreaseDefault() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testCheckMaxDecreaseDefault() external {
     uint256 amount = 10000 * ONE_SCALE;
     // fee is set to 10% and release block period to 0
 
@@ -275,7 +238,7 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     (uint256 preAAPrice, ) = _doDepositsWithInterest(amount - amount / 50, amount / 50);
 
     uint256 currPrice = strategy.price();
-    uint256 maxDecrease = IdleCDOAutoLossVariant(address(idleCDO)).maxDecreaseDefault();
+    uint256 maxDecrease = IdleCDO(address(idleCDO)).maxDecreaseDefault();
     // now let's simulate a loss by decreasing strategy price
     // curr price - 10%, this will trigger a default
     vm.mockCall(
@@ -309,12 +272,12 @@ contract TestIdleCDOAutoLossVariant is TestIdleCDOBase {
     // distribute loss, as non owner
     vm.startPrank(address(232323));
     vm.expectRevert(bytes("6"));
-    IdleCDOAutoLossVariant(address(idleCDO)).updateAccounting();
+    IdleCDO(address(idleCDO)).updateAccounting();
     vm.stopPrank();
   
     // effectively distribute loss
     vm.prank(idleCDO.owner());
-    IdleCDOAutoLossVariant(address(idleCDO)).updateAccounting();
+    IdleCDO(address(idleCDO)).updateAccounting();
 
     assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
     assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
