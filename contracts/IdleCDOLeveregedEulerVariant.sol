@@ -16,33 +16,12 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
   // This variable will get appended at the end of the IdleCDOStorage
   // be careful when upgrading
-  uint256 public maxDecreaseDefault;
   uint256 public lastAAPrice;
   uint256 public lastBBPrice;
 
   function _additionalInit() internal override {
-    maxDecreaseDefault = 5000; // 5%
     lastAAPrice = oneToken;
     lastBBPrice = oneToken;
-  }
-
-  /// @dev check if any loan for the pool is defaulted
-  function _checkDefault() override internal view {
-    uint256 _lastPrice = lastStrategyPrice;
-
-    // calculate max % decrease
-    if (!skipDefaultCheck) {
-      require(_lastPrice - (_lastPrice * maxDecreaseDefault / FULL_ALLOC) <= _strategyPrice(), "4");
-    }
-  }
-
-  /// @notice set the max value, in % where `100000` = 100%, of accettable price decrease for the strategy
-  /// @dev automatically reverts if strategyPrice decreased more than `_maxDecreaseDefault`
-  /// @param _maxDecreaseDefault in tranche tokens
-  function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external {
-    _checkOnlyOwner();
-    require(_maxDecreaseDefault < FULL_ALLOC);
-    maxDecreaseDefault = _maxDecreaseDefault;
   }
 
   /// @notice mint tranche tokens and updates tranche last NAV and lastXXPrice if needed

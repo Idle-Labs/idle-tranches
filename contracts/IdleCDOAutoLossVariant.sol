@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 import "./IdleCDO.sol";
-import "./strategies/euler/IdleLeveragedEulerStrategy.sol";
 
 /// @title IdleCDO variant for automatically spread any losses, up to a threshold, 
 /// directly to junior holders. Based on IdleCDOLeveregedEulerVarial.sol
@@ -26,30 +25,6 @@ import "./strategies/euler/IdleLeveragedEulerStrategy.sol";
 /// For this reason a protected updateAccounting method has been added which should be used to distributed the loss after a default event
 contract IdleCDOAutoLossVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
-  // This variable will get appended at the end of the IdleCDOStorage
-  // be careful when upgrading
-  uint256 public maxDecreaseDefault;
-
-  function _additionalInit() internal override {
-    maxDecreaseDefault = 5000; // 5%
-  }
-
-  /// @dev check if strategy price decreased more than `maxDecreaseDefault` %
-  function _checkDefault() override internal view {
-    if (!skipDefaultCheck) {
-      // calculate if % of decrease of strategyPrice is within maxDecreaseDefault
-      require(lastStrategyPrice * (FULL_ALLOC - maxDecreaseDefault) / FULL_ALLOC <= _strategyPrice(), "4");
-    }
-  }
-
-  /// @notice set the max value, in % where `100000` = 100%, of accettable price decrease for the strategy
-  /// @dev automatically reverts if strategyPrice decreased more than `_maxDecreaseDefault`
-  /// @param _maxDecreaseDefault in tranche tokens
-  function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external {
-    _checkOnlyOwner();
-    require(_maxDecreaseDefault < FULL_ALLOC);
-    maxDecreaseDefault = _maxDecreaseDefault;
-  }
 
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted
   /// ie the interest/loss generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX/harvest)

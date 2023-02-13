@@ -110,6 +110,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     isAYSActive = true; // adaptive yield split
     minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
 
+    maxDecreaseDefault = 5000; // 5% decrease for default
     _additionalInit();
   }
 
@@ -497,7 +498,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _checkDefault() virtual internal {
     uint256 currPrice = _strategyPrice();
     if (!skipDefaultCheck) {
-      require(lastStrategyPrice <= currPrice, "4");
+      // calculate if % of decrease of strategyPrice is within maxDecreaseDefault
+      require(lastStrategyPrice * (FULL_ALLOC - maxDecreaseDefault) / FULL_ALLOC <= currPrice, "4");
     }
     lastStrategyPrice = currPrice;
   }
@@ -754,6 +756,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // ###################
   // onlyOwner
   // ###################
+
+  /// @dev automatically reverts if strategyPrice decreased more than `_maxDecreaseDefault`
+  /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
+  function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external {
+    _checkOnlyOwner();
+    require(_maxDecreaseDefault < FULL_ALLOC);
+    maxDecreaseDefault = _maxDecreaseDefault;
+  }
 
   /// @param _active flag to allow Adaptive Yield Split
   function setIsAYSActive(bool _active) external {
