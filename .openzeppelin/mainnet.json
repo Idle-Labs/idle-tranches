@@ -2488,102 +2488,134 @@
       "layout": {
         "storage": [
           {
-            "contract": "Initializable",
             "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
             "type": "t_bool",
+            "contract": "Initializable",
             "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
           },
           {
-            "contract": "Initializable",
             "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
             "type": "t_bool",
+            "contract": "Initializable",
             "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
           },
           {
-            "contract": "ContextUpgradeable",
             "label": "__gap",
+            "offset": 0,
+            "slot": "1",
             "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
             "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
           },
           {
-            "contract": "OwnableUpgradeable",
             "label": "_owner",
+            "offset": 0,
+            "slot": "51",
             "type": "t_address",
+            "contract": "OwnableUpgradeable",
             "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
           },
           {
-            "contract": "OwnableUpgradeable",
             "label": "__gap",
+            "offset": 0,
+            "slot": "52",
             "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
             "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
           },
           {
-            "contract": "ReentrancyGuardUpgradeable",
             "label": "_status",
+            "offset": 0,
+            "slot": "101",
             "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
             "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
           },
           {
-            "contract": "ReentrancyGuardUpgradeable",
             "label": "__gap",
+            "offset": 0,
+            "slot": "102",
             "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
             "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "strategyToken",
+            "offset": 0,
+            "slot": "151",
             "type": "t_address",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:28"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "token",
+            "offset": 0,
+            "slot": "152",
             "type": "t_address",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:30"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "oneToken",
+            "offset": 0,
+            "slot": "153",
             "type": "t_uint256",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:32"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "154",
             "type": "t_uint256",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:34"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "lido",
-            "type": "t_contract(ILido)8415",
+            "offset": 0,
+            "slot": "155",
+            "type": "t_contract(ILido)15878",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:37"
           },
           {
-            "contract": "IdleLidoStrategy",
             "label": "whitelistedCDO",
+            "offset": 0,
+            "slot": "156",
             "type": "t_address",
+            "contract": "IdleLidoStrategy",
             "src": "contracts/strategies/lido/IdleLidoStrategy.sol:39"
           }
         ],
         "types": {
           "t_address": {
-            "label": "address"
-          },
-          "t_uint256": {
-            "label": "uint256"
-          },
-          "t_contract(ILido)8415": {
-            "label": "contract ILido"
+            "label": "address",
+            "numberOfBytes": "20"
           },
           "t_array(t_uint256)49_storage": {
-            "label": "uint256[49]"
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
           },
           "t_array(t_uint256)50_storage": {
-            "label": "uint256[50]"
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
           },
           "t_bool": {
-            "label": "bool"
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(ILido)15878": {
+            "label": "contract ILido",
+            "numberOfBytes": "20"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
           }
         }
       }
@@ -15042,6 +15074,484 @@
           },
           "t_bool": {
             "label": "bool"
+          }
+        }
+      }
+    },
+    "02d8a24d065fb568df1b0a58e9d3903fc3c7d466440f3b0cbc4c45bae2120dd6": {
+      "address": "0x3b43870ABF343AA999997F97e48648557301Fcb2",
+      "txHash": "0x9ae6fd8eef9ad63affc4cbde6354d010fded9fa867d9855dc5b9001d445a4383",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "label": "strategyToken",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:28"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_address",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:30"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "153",
+            "type": "t_uint256",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:32"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "154",
+            "type": "t_uint256",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:34"
+          },
+          {
+            "label": "lido",
+            "offset": 0,
+            "slot": "155",
+            "type": "t_contract(ILido)15894",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:37"
+          },
+          {
+            "label": "whitelistedCDO",
+            "offset": 0,
+            "slot": "156",
+            "type": "t_address",
+            "contract": "IdleLidoStrategy",
+            "src": "contracts/strategies/lido/IdleLidoStrategy.sol:39"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(ILido)15894": {
+            "label": "contract ILido",
+            "numberOfBytes": "20"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          }
+        }
+      }
+    },
+    "a7b35a45ec12ef06e533106920e6598c7a93c68c5d84d59d823599b1573fc329": {
+      "address": "0x46DE3A3dA932F1CbC151Db76AC1BeE935611544e",
+      "txHash": "0x1aab96efcd488d3379d354c2a7760417a18da5dfa3edb620dbf5b84291d5244d",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "_paused",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:28"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:96"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:20"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:74"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:37"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:67"
+          },
+          {
+            "contract": "GuardedLaunchUpgradable",
+            "label": "limit",
+            "type": "t_uint256",
+            "src": "contracts/GuardedLaunchUpgradable.sol:23"
+          },
+          {
+            "contract": "GuardedLaunchUpgradable",
+            "label": "governanceRecoveryFund",
+            "type": "t_address",
+            "src": "contracts/GuardedLaunchUpgradable.sol:25"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "_lastCallerBlock",
+            "type": "t_bytes32",
+            "src": "contracts/IdleCDOStorage.sol:14"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "latestHarvestBlock",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:16"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "weth",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:18"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "incentiveTokens",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/IdleCDOStorage.sol:20"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "token",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:22"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "guardian",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:24"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:26"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "rebalancer",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:28"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "uniswapRouterV2",
+            "type": "t_contract(IUniswapV2Router02)2006",
+            "src": "contracts/IdleCDOStorage.sol:30"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "allowAAWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:33"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "allowBBWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:35"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "revertIfTooLow",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:38"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "skipDefaultCheck",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:40"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "strategy",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:43"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:45"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "AATranche",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:47"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "BBTranche",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:49"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "AAStaking",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:51"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "BBStaking",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:53"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "trancheAPRSplitRatio",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:57"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "trancheIdealWeightRatio",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:60"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "priceAA",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:62"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "priceBB",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:64"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastNAVAA",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:66"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastNAVBB",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:68"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastStrategyPrice",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:70"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "unclaimedFees",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:72"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "unlentPerc",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:74"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "fee",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:77"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "feeReceiver",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:79"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "idealRange",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:82"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "releaseBlocksPeriod",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:84"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "harvestedRewards",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:86"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "isStkAAVEActive",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:92"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "referral",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:94"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "feeSplit",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:96"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "isAYSActive",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:99"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "liquidationTolerance",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:108"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "minAprSplitAYS",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:114"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "contracts/IdleCDOStorage.sol:128"
+          }
+        ],
+        "types": {
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_contract(IUniswapV2Router02)2006": {
+            "label": "contract IUniswapV2Router02"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
           }
         }
       }
