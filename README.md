@@ -19,7 +19,7 @@ The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending p
 These are the main contracts used:
 
 - **IdleCDO.sol**: contract which holds all the users pooled assets (both underlyings, eg DAI, and interest bearing tokens, eg cDAI or aDAI) and entry point for the user to mint tranche tokens and burn them to redeem principal + interest.
-When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their chosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call some predefined rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 6400) blocks, to increase the value of all tranche holders, and part of the gov tokens will be sent to StakingRewards contracts, if those are set. On redeem users will burn their tranche tokens and get underlyings back.
+When users deposit into the CDO they will: update the global accounting of the system (ie split accrued rewards) and mint their chosen tranche tokens. Funds won't get put in lending right away. The `harvest` method will be called periodically to put new deposits in lending, get fees and update the accounting. During the harvest call  rewards will be sold into the market (via uniswap) and released linearly over x (currently set a 6400) blocks, to increase the value of all tranche holders. On redeem users will burn their tranche tokens and get underlyings back.
 
 - **IdleCDOTranche.sol**: ERC20 representing a specific (either AA or BB) tranche token. Only IdleCDO contract can mint and burn tranche tokens.
 

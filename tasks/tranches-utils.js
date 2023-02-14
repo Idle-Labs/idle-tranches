@@ -9,75 +9,6 @@ const mainnetContracts = addresses.IdleTokens.mainnet;
 const ICurveRegistryAbi = require("../abi/ICurveRegistry.json");
 
 /**
- * @name deploy
- * eg `npx hardhat deploy --cdoname idledai`
- */
-task("deploy", "Deploy IdleCDO, IdleStrategy and Staking contract for rewards with default parameters")
-  .addParam('cdoname')
-  .setAction(async (args) => {
-    // Run 'compile' task
-    await run("compile");
-    const deployToken = addresses.deployTokens[args.cdoname];
-
-    const signer = await helpers.getSigner();
-    const creator = await signer.getAddress();
-
-    if (deployToken.cdo && deployToken.cdo.cdoAddr && hre.network == 'mainnet') {
-      console.log(`CDO Already deployed here ${deployToken.cdo.cdoAddr}`);
-      return;
-    }
-    await helpers.prompt("continue? [y/n]", true);
-
-    const incentiveTokens = [mainnetContracts.IDLE];
-    const strategy = await helpers.deployUpgradableContract('IdleStrategy', [deployToken.strategyParams[0], creator], signer);
-    const idleCDO = await helpers.deployUpgradableContract(
-      'IdleCDO',
-      [
-        BN('500000').mul(ONE_TOKEN(deployToken.decimals)), // limit
-        deployToken.underlying,
-        mainnetContracts.treasuryMultisig, // recovery address
-        creator, // guardian
-        mainnetContracts.rebalancer,
-        strategy.address,
-        BN('10000'), // apr split: 10% interest to AA and 90% BB
-        BN('50000'), // ideal value: 50% AA and 50% BB tranches
-        incentiveTokens
-      ],
-      signer
-    );
-    await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
-    const AAaddr = await idleCDO.AATranche();
-    const BBaddr = await idleCDO.BBTranche();
-    console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
-
-    const stakingCoolingPeriod = BN(1500);
-    const stakingRewardsParams = [
-      incentiveTokens,
-      creator, // owner / guardian
-      idleCDO.address,
-      mainnetContracts.devLeagueMultisig, // recovery address
-      stakingCoolingPeriod
-    ];
-    const stakingRewardsAA = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [AAaddr, ...stakingRewardsParams], signer
-    );
-
-    // Uncomment if staking rewards contract is present for junior holders too
-    //
-    // const stakingRewardsBB = await helpers.deployUpgradableContract(
-    //   'IdleCDOTrancheRewards', [BBaddr, ...stakingRewardsParams], signer
-    // );
-    // await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
-
-    await idleCDO.connect(signer).setStakingRewards(stakingRewardsAA.address, addresses.addr0);
-
-    console.log(`stakingRewardsAA: ${await idleCDO.AAStaking()}, stakingRewardsBB: ${await idleCDO.BBStaking()}`);
-    console.log(`staking reward contract set`);
-    console.log();
-    return {idleCDO, strategy, AAaddr, BBaddr};
-  });
-
-/**
  * @name info
  */
 task("info", "IdleCDO info")
@@ -136,24 +67,6 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
   });
 
 /**
- * @name upgrade-rewards
- */
-task("upgrade-rewards", "Upgrade IdleCDOTrancheRewards contract")
-  .addParam('cdoname')
-  .setAction(async (args) => {
-    await run("upgrade-with-multisig", {
-      cdoname: args.cdoname,
-      contractName: 'IdleCDOTrancheRewards',
-      contractKey: 'AArewards'
-    });
-    await run("upgrade-with-multisig", {
-      cdoname: args.cdoname,
-      contractName: 'IdleCDOTrancheRewards',
-      contractKey: 'BBrewards'
-    });
-  });
-
-/**
  * @name upgrade-strategy
  */
 task("upgrade-strategy", "Upgrade IdleCDO strategy")
@@ -198,22 +111,6 @@ task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
     }
     await helpers.prompt("continue? [y/n]", true);
     const signer = await run('get-signer-or-fake');
-
-    const AARewardsAddress = deployToken.cdo.AArewards;
-    if (AARewardsAddress && AARewardsAddress !== addresses.addr0) {
-      console.log('Transfer ownership of AARewards');
-      let AARewards = await ethers.getContractAt("IdleCDOTrancheRewards", AARewardsAddress);
-      await AARewards.connect(signer).transferOwnership(to);
-      console.log('New Owner', await AARewards.owner());
-    }
-
-    const BBRewardsAddress = deployToken.cdo.BBrewards;
-    if (BBRewardsAddress && BBRewardsAddress !== addresses.addr0) {
-      console.log('Transfer ownership of BBRewards');
-      let BBRewards = await ethers.getContractAt("IdleCDOTrancheRewards", BBRewardsAddress);
-      await BBRewards.connect(signer).transferOwnership(to);
-      console.log('New Owner', await BBRewards.owner());
-    }
 
     console.log('Transfer ownership of IdleCDOStrategy');
     let strategy = await ethers.getContractAt("IdleStrategy", strategyAddress);
@@ -315,77 +212,6 @@ task("change-rewards", "Update rewards IdleCDO instance")
 
     console.log('AA ideal apr', BN(await cdo.getIdealApr(deployToken.cdo.AATranche)).toString());
     console.log('BB ideal apr', BN(await cdo.getIdealApr(deployToken.cdo.BBTranche)).toString());
-  });
-
-/**
- * @name deploy-reward-contract
- */
-task("deploy-reward-contract", "Deploy a new StakingRewards contract instanct for senior tranches of an IdleCDO instance")
-  .addParam('cdoname')
-  .addParam('reward')
-  .addOptionalParam('shouldTransfer')
-  .setAction(async (args) => {
-    const deployToken = addresses.deployTokens[args.cdoname];
-    let cdo = await ethers.getContractAt("IdleCDO", deployToken.cdo.cdoAddr);
-    const signer = await helpers.getSigner();
-    const creator = await signer.getAddress();
-    
-    if (!deployToken.cdo.cdoAddr || !args.reward || !mainnetContracts.treasuryMultisig || !mainnetContracts.devLeagueMultisig) {
-      console.log('Missing params');
-      return;
-    }
-
-    const shouldTransfer = !!args.shouldTransfer;
-    console.log('Should transfer rewards from reward distributor: ', shouldTransfer);
-
-    const initParams = [
-      // address _rewardsDistribution,
-      // deployToken.cdo.cdoAddr,
-      mainnetContracts.treasuryMultisig,
-      // address _rewardsToken,
-      args.reward,
-      // address _stakingToken
-      await cdo.AATranche(),
-      // address owner
-      mainnetContracts.devLeagueMultisig,
-      // _shouldTransfer
-      shouldTransfer
-    ];
-
-    let stakingRewardsInstance = mainnetContracts.snxStakingRewards;
-    if (!stakingRewardsInstance) {
-      let stakingRewards = await helpers.deployContract('StakingRewards', [], signer);
-      await stakingRewards.connect(signer).initialize(...initParams);
-      console.log('StakingRewards deployed and initialized at', stakingRewards.address);
-      stakingRewardsInstance = stakingRewards.addresses;
-      return;
-    }
-
-    const proxyFactory = await ethers.getContractAt("MinimalInitializableProxyFactory", mainnetContracts.minimalInitializableProxyFactory);
-    let res = await proxyFactory.connect(signer).create(stakingRewardsInstance);
-    res = await res.wait();
-    const newCloneAddr = res.events[0].args.proxy;
-    console.log('Staking rewards clone deployed at: ', newCloneAddr);
-
-    const newClone = await ethers.getContractAt("StakingRewards", newCloneAddr);
-    await newClone.connect(signer).initialize(...initParams);
-    console.log('Staking rewards clone owner: ', await newClone.owner());
-
-    if ((await newClone.owner()).toLowerCase() != mainnetContracts.devLeagueMultisig.toLowerCase()) {
-      console.error('Something is wrong with the new clone, owner is wrong');
-      return;
-    }
-    
-    if (shouldTransfer) {
-      console.log('Setting staking rewards on IdleCDO contract');
-      // Upgrade reward contract with multisig
-      const multisig = await run('get-multisig-or-fake');
-      cdo = cdo.connect(multisig);
-      // Only Senior (AA) tranches will get rewards
-      await cdo.setStakingRewards(newCloneAddr, addresses.addr0);
-      console.log('AA staking ', await cdo.AAStaking());
-      console.log('BB staking ', await cdo.BBStaking());
-    }
   });
 
 /**

@@ -427,7 +427,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @notice convert fees (`unclaimedFees`) in AA tranche tokens
-  /// Tranche tokens are then automatically staked in the relative IdleCDOTrancheRewards contact if present
   /// @dev this will be called only during harvests
   function _depositFees() internal {
     uint256 _amount = unclaimedFees;
