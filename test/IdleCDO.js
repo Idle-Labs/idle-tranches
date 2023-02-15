@@ -81,21 +81,6 @@ describe("IdleCDO", function () {
     AA = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
     BB = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
 
-    const stakingRewardsParams = [
-      incentiveTokens,
-      owner.address, // owner / guardian
-      idleCDO.address,
-      owner.address, // recovery address
-      10, // cooling period
-    ];
-    stakingRewardsAA = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [AA.address, ...stakingRewardsParams], owner
-    );
-    stakingRewardsBB = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [BB.address, ...stakingRewardsParams], owner
-    );
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
-
     await idleCDO.setUnlentPerc(BN('0'));
     await idleCDO.setIsAYSActive(false);
     await idleCDO.setFee(BN('10000'));
@@ -1011,56 +996,6 @@ describe("IdleCDO", function () {
       idleCDO.connect(BBBuyer).setReleaseBlocksPeriod(val)
     ).to.be.revertedWith("6");
   });
-  it("setStakingRewards should set the relative addresses for incentiveTokens", async () => {
-    await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
-    expect(await idleCDO.AAStaking()).to.be.equal(RandomAddr);
-    expect(await idleCDO.BBStaking()).to.be.equal(Random2Addr);
-
-    expect(await AA.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await BB.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-
-    await idleCDO.setStakingRewards(AABuyerAddr, AABuyer2Addr);
-
-    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(0);
-    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(0);
-    expect(await AA.allowance(idleCDO.address, RandomAddr)).to.be.equal(0);
-    expect(await BB.allowance(idleCDO.address, Random2Addr)).to.be.equal(0);
-
-    await expect(
-      idleCDO.connect(BBBuyer).setStakingRewards(RandomAddr, Random2Addr)
-    ).to.be.revertedWith("6");
-  });
-  it("setStakingRewards to 0 addresses", async () => {
-    // set staking contract to some address
-    await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
-    expect(await idleCDO.AAStaking()).to.be.equal(RandomAddr);
-    expect(await idleCDO.BBStaking()).to.be.equal(Random2Addr);
-    // check allowance increase
-    expect(await AA.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await BB.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-    // set staking contracts to address 0
-    await idleCDO.setStakingRewards(addr0, addr0);
-    expect(await idleCDO.AAStaking()).to.be.equal(addr0);
-    expect(await idleCDO.BBStaking()).to.be.equal(addr0);
-    // check allowance decrease
-    expect(await AA.allowance(idleCDO.address, RandomAddr)).to.be.equal(0);
-    expect(await BB.allowance(idleCDO.address, Random2Addr)).to.be.equal(0);
-    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(0);
-    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(0);
-
-    await idleCDO.setStakingRewards(RandomAddr, Random2Addr);
-    expect(await idleCDO.AAStaking()).to.be.equal(RandomAddr);
-    expect(await idleCDO.BBStaking()).to.be.equal(Random2Addr);
-
-    expect(await AA.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await BB.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, RandomAddr)).to.be.equal(MAX_UINT);
-    expect(await incentiveToken.allowance(idleCDO.address, Random2Addr)).to.be.equal(MAX_UINT);
-  });
   it("emergencyShutdown should pause everything", async () => {
     const _amountAA = BN('1000').mul(one);
     const _amountBB = BN('1000').mul(one);
@@ -1300,7 +1235,6 @@ describe("IdleCDO", function () {
     await idleCDO.harvest([false, true, false, false && true && false], [true], [BN('0')], [BN('0')], ['0x', '0x']);
 
     // check balance in tranche rewards staking contract
-    expect(await stakingRewardsAA.usersStakes(RandomAddr)).to.be.equal(expected);
     expect(await idleCDO.unclaimedFees()).to.be.equal(0);
     const navAAafter = await idleCDO.lastNAVAA();
     // 1360 + 200 gain in AA from fees = 1560

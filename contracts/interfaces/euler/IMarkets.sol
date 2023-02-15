@@ -14,11 +14,13 @@ interface IMarkets {
     /// @param underlying Token address
     /// @return DToken address, or address(0) if not activated
     function underlyingToDToken(address underlying) external view returns (address);
+    function underlyingToEToken(address underlying) external view returns (address);
 
     /// @notice Retrieves the current interest rate for an asset
     /// @param underlying Token address
     /// @return The interest rate in yield-per-second, scaled by 10**27
     function interestRate(address underlying) external view returns (int96);
+    function interestRateModel(address underlying) external view returns (uint256);
 
     /// @notice Retrieves the reserve fee in effect for an asset
     /// @param underlying Token address

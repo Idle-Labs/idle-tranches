@@ -75,12 +75,14 @@ interface IStMATIC is IERC20Detailed {
     /// @notice Send MATIC to the StMATIC contract and mints stMATIC to msg.sender.
     /// @dev  The user has first to approve the amount to the StMATIC contract.
     /// @param _amount Amount of MATIC to send.
-    function submit(uint256 _amount) external returns (uint256);
+    /// @param ref referral
+    function submit(uint256 _amount, address ref) external returns (uint256);
 
     /// @notice Allows users to request withdrawal of an amount of Matic tokens depending on the amount submitted of stMATIC.
     /// @dev This will mint a Lido NFT token which can be used later to claim the amount.
     /// @param _amount Amount to withdraw in stMATIC.
-    function requestWithdraw(uint256 _amount) external;
+    /// @param ref referral
+    function requestWithdraw(uint256 _amount, address ref) external;
 
     /// @notice Allows users to claim their tokens from the validators.
     /// @dev This requires user to have an NFT that was minted during the requestWithdraw transaction.

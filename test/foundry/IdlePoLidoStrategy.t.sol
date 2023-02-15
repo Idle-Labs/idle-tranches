@@ -21,6 +21,10 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     IPoLidoNFT internal poLidoNFT;
+    function _selectFork() public override {
+        // IdleUSDC deposited all in compund
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16527983));
+    }
 
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         poLidoNFT = stMatic.poLidoNFT();
@@ -46,7 +50,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         _cdo.setUnlentPerc(0); // NOTE: set unlentPerc zero to avoid left matic in the contract
     }
 
-    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testCantReinitialize() external override {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         IdlePoLidoStrategy(address(strategy)).initialize(owner);
     }
@@ -61,7 +65,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         vm.stopPrank();
     }
 
-    function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testDeposits() external override {
         uint256 amount = 10000 * ONE_SCALE;
         // AARatio 50%
         idleCDO.depositAA(amount);
@@ -108,14 +112,14 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         vm.clearMockedCalls();
     }
 
-    function testRedeemRewards() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeemRewards() external override {
         // rewards are managed manually so we only test that the correct reward token address is set
         address[] memory _rewards = strategy.getRewardTokens();
         assertEq(_rewards[0], LDO, "Wrong reward address");
         assertEq(_rewards.length, 1, "Wrong reward number");
     }
 
-    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeems() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
@@ -142,7 +146,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
     }
 
-    function testOnlyIdleCDO() public override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testOnlyIdleCDO() public override {
         vm.prank(address(0xbabe));
         vm.expectRevert(bytes("Only IdleCDO can call"));
         strategy.deposit(1e10);
@@ -152,7 +156,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         strategy.redeem(1e10);
     }
 
-    function testRestoreOperations() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRestoreOperations() external override {
         uint256 amount = 1000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);

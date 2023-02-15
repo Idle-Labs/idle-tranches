@@ -57,7 +57,9 @@ abstract contract TestIdleCDOBase is Test {
     }
   }
 
-  function setUp() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function setUp() public virtual {
+    _selectFork();
+
     idleCDO = _deployLocalContracts();
 
     owner = idleCDO.owner();
@@ -93,6 +95,8 @@ abstract contract TestIdleCDOBase is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
+  function _selectFork() public virtual {}
+
   function testInitialize() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
@@ -100,9 +104,12 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
+    assertEq(idleCDO.maxDecreaseDefault(), 5000);
   }
 
   function testCantReinitialize() external virtual;
+
+  function _pokeLendingProtocol() internal virtual {}
 
   function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
@@ -134,9 +141,17 @@ abstract contract TestIdleCDOBase is Test {
     _cdoHarvest(false);
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
 
+    uint256 releasePeriod = _strategyReleaseBlocksPeriod();
     // Skip 7 day forward to accrue interest
     skip(7 days);
-    vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
+    if (releasePeriod == 0) {
+      // 7 days in blocks
+      vm.roll(block.number + 7 * 7200);
+    } else {
+      vm.roll(block.number + releasePeriod + 1);
+    }
+
+    _pokeLendingProtocol();
 
     assertGt(strategy.price(), strategyPrice, "strategy price");
 
@@ -152,11 +167,17 @@ abstract contract TestIdleCDOBase is Test {
 
     // funds in lending
     _cdoHarvest(true);
-    skip(7 days); 
-    vm.roll(block.number + 1);
 
-    idleCDO.withdrawAA(IERC20Detailed(address(AAtranche)).balanceOf(address(this)));
-    idleCDO.withdrawBB(IERC20Detailed(address(BBtranche)).balanceOf(address(this)));
+    skip(7 days);
+    vm.roll(block.number + 7 * 7200);
+
+    _pokeLendingProtocol();
+
+    // redeem all
+    uint256 resAA = idleCDO.withdrawAA(0);
+    assertGt(resAA, amount, 'AA gained something');
+    uint256 resBB = idleCDO.withdrawBB(0);
+    assertGt(resBB, amount, 'BB gained something');
   
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
@@ -293,6 +314,19 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setIsAYSActive(true);
   }
 
+  function testSetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.prank(address(1));
+    vm.expectRevert(bytes("6")); // not authorized
+    idleCDO.setMinAprSplitAYS(5000);
+    vm.prank(owner);
+    vm.expectRevert(bytes("7")); // too high
+    idleCDO.setMinAprSplitAYS(100001);
+    vm.prank(owner);
+    idleCDO.setMinAprSplitAYS(80000);
+
+    assertEq(idleCDO.minAprSplitAYS(), 80000, "minAprSplitAYS is correct");
+  }
+
   function testAPRSplitRatioDeposits(
     uint16 _ratio
   ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
@@ -374,8 +408,8 @@ abstract contract TestIdleCDOBase is Test {
   }
 
   function _deployLocalContracts() internal virtual returns (IdleCDO _cdo) {
-    address _owner = address(2);
-    address _rebalancer = address(3);
+    address _owner = address(0xdeadbad);
+    address _rebalancer = address(0xbaddead);
     (address _strategy, address _underlying) = _deployStrategy(_owner);
     
     // deploy idleCDO and tranches
@@ -428,14 +462,14 @@ abstract contract TestIdleCDOBase is Test {
     return false;
   }
 
-  function _calcNewAPRSplit(uint256 ratio) internal pure returns (uint256 _new){
+  function _calcNewAPRSplit(uint256 ratio) internal view returns (uint256 _new){
     uint256 aux;
     if (ratio >= AA_RATIO_LIM_UP) {
       aux = AA_RATIO_LIM_UP;
-    } else if (ratio > AA_RATIO_LIM_DOWN) {
+    } else if (ratio > idleCDO.minAprSplitAYS()) {
       aux = ratio;
     } else {
-      aux = AA_RATIO_LIM_DOWN;
+      aux = idleCDO.minAprSplitAYS();
     }
     _new = aux * ratio / FULL_ALLOC;
   }
