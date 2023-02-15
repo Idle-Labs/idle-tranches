@@ -91,20 +91,6 @@ describe("IdleLidoCDO", function () {
     AA = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
     BB = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
 
-    stakingRewards = await helpers.deployContract('StakingRewards', [], owner);
-    await stakingRewards.connect(owner).initialize(
-      // address _rewardsDistribution,
-      owner.address,
-      // address _rewardsToken,
-      weth.address,
-      // address _stakingToken
-      AA.address,
-      // owner
-      owner.address,
-      // _shouldTransfer
-      false
-    );
-
     await idleCDO.setIsStkAAVEActive(false);
     await idleCDO.setFeeReceiver(feeCollectorAddr);
 
@@ -226,71 +212,6 @@ describe("IdleLidoCDO", function () {
     await helpers.withdrawWithGain('BB', idleCDO, BBBuyerAddr, _amount.div(BN('2')));
     await rebalanceFull(idleCDO, owner.address, true, false);
     await helpers.withdrawWithGain('AA', idleCDO, AABuyer2Addr, _amount);
-  });
-
-  it("distributes rewards via transfer", async () => {
-    const _amount = BN('10').mul(ONE_TOKEN(18));
-    // Buy AA tranche with `amount` underlying
-    const aaTrancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
-    // Stake AA tranche
-    const bal = await AA.balanceOf(AABuyerAddr);
-    await AA.connect(AABuyer).approve(stakingRewards.address, bal)
-    await stakingRewards.connect(AABuyer).stake(bal);
-    // Deposit WETH rewards in staking contract and check effects
-    const sevenDaysSec = 604800;
-    const rewardAmount = BN('100').mul(ONE_TOKEN(18));
-    await weth.connect(owner).transfer(stakingRewards.address, rewardAmount);
-    const block = await ethers.provider.getBlock(await ethers.provider.getBlockNumber());
-    const timestamp = block.timestamp;
-    await stakingRewards.connect(owner).depositReward(weth.address, rewardAmount);
-    // Check effects
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.equal(BN('0'));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec / 2)]);
-    await ethers.provider.send("evm_mine");
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec * 1.5)]);
-    await ethers.provider.send("evm_mine");
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('100').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    await stakingRewards.connect(AABuyer).exit();
-    expect(await weth.balanceOf(AABuyerAddr)).to.be.closeTo(rewardAmount, ONE_TOKEN(18).div(BN('10')));
-  });
-
-  it("distributes rewards via transfer multiple users", async () => {
-    const _amount = BN('10').mul(ONE_TOKEN(18));
-    // Buy AA tranche with `amount` underlying
-    const aaTrancheBal = await helpers.deposit('AA', idleCDO, AABuyerAddr, _amount);
-    const aaTrancheBal2 = await helpers.deposit('AA', idleCDO, AABuyer2Addr, _amount);
-    // Stake AA tranche user1
-    const bal = await AA.balanceOf(AABuyerAddr);
-    await AA.connect(AABuyer).approve(stakingRewards.address, bal)
-    await stakingRewards.connect(AABuyer).stake(bal);
-
-    const bal2 = await AA.balanceOf(AABuyer2Addr);
-    await AA.connect(AABuyer2).approve(stakingRewards.address, bal)
-    await stakingRewards.connect(AABuyer2).stake(bal);
-
-    // Deposit WETH rewards in staking contract and check effects
-    const sevenDaysSec = 604800;
-    const rewardAmount = BN('100').mul(ONE_TOKEN(18));
-    await weth.connect(owner).transfer(stakingRewards.address, rewardAmount);
-    const block = await ethers.provider.getBlock(await ethers.provider.getBlockNumber());
-    const timestamp = block.timestamp;
-    await stakingRewards.connect(owner).depositReward(weth.address, rewardAmount);
-    // Check effects
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.equal(BN('0'));
-    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.equal(BN('0'));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec / 2)]);
-    await ethers.provider.send("evm_mine");
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('25').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.closeTo(BN('25').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(timestamp + sevenDaysSec * 1.5)]);
-    await ethers.provider.send("evm_mine");
-    expect(await stakingRewards.earned(AABuyerAddr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    expect(await stakingRewards.earned(AABuyer2Addr)).to.be.closeTo(BN('50').mul(ONE_TOKEN(18)), ONE_TOKEN(18));
-    await stakingRewards.connect(AABuyer).exit();
-    await stakingRewards.connect(AABuyer2).exit();
-    expect(await weth.balanceOf(AABuyerAddr)).to.be.closeTo(rewardAmount.div(BN('2')), ONE_TOKEN(18).div(BN('10')));
-    expect(await weth.balanceOf(AABuyer2Addr)).to.be.closeTo(rewardAmount.div(BN('2')), ONE_TOKEN(18).div(BN('10')));
   });
 
   const rebalanceFull = async (idleCDO, address, skipIncentivesUpdate, skipFeeDeposit) => {

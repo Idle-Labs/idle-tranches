@@ -16,7 +16,7 @@ contract IdleCDOStorage {
   uint256 internal latestHarvestBlock;
   // WETH address
   address public weth;
-  // tokens used to incentivize the idle tranche ideal ratio
+  // [DEPRECATED] tokens used to incentivize the idle tranche ideal ratio
   address[] public incentiveTokens;
   // underlying token (eg DAI)
   address public token;
@@ -47,15 +47,15 @@ contract IdleCDOStorage {
   address public AATranche;
   // address of BB Tranche token contract
   address public BBTranche;
-  // address of AA Staking reward token contract
+  // [DEPRECATED] address of AA Staking reward token contract
   address public AAStaking;
-  // address of BB Staking reward token contract
+  // [DEPRECATED] address of BB Staking reward token contract
   address public BBStaking;
 
   // Apr split ratio for AA tranches
   // (relative to FULL_ALLOC so 50% => 50000 => 50% of the interest to tranche AA)
   uint256 public trancheAPRSplitRatio; //
-  // Ideal tranche split ratio in `token` value
+  // [DEPRECATED] Ideal tranche split ratio in `token` value
   // (relative to FULL_ALLOC so 50% => 50000 means 50% of tranches (in value) should be AA)
   uint256 public trancheIdealWeightRatio;
   // Price for minting AA tranche, in underlyings
@@ -78,7 +78,7 @@ contract IdleCDOStorage {
   // address of the fee receiver
   address public feeReceiver;
 
-  // trancheIdealWeightRatio ± idealRanges, used in updateIncentives
+  // [DEPRECATED] trancheIdealWeightRatio ± idealRanges, used in updateIncentives
   uint256 public idealRange;
   // period, in blocks, for progressively releasing harvested rewards to users
   uint256 public releaseBlocksPeriod;
@@ -88,7 +88,7 @@ contract IdleCDOStorage {
   address internal constant stkAave = address(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
   // aave address
   address internal constant AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-  // if the cdo receive stkAAVE
+  // [DEPRECATED] if the cdo receive stkAAVE
   bool internal isStkAAVEActive;
   // referral address of the strategy developer
   address public referral;
@@ -112,6 +112,8 @@ contract IdleCDOStorage {
   // ####################### 
   // Min apr ratio for AA tranches when using AYS
   uint256 public minAprSplitAYS;
+  // Max strategy price decrease before triggering a default
+  uint256 public maxDecreaseDefault;
   // uint256 public test;
 
 
@@ -125,8 +127,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[49] private __gap;
-  // uint256[48] private __gap; -> after adding `test`
+  uint256[48] private __gap;
+  // uint256[47] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }

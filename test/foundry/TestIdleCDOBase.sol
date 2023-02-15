@@ -104,6 +104,7 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
+    assertEq(idleCDO.maxDecreaseDefault(), 5000);
   }
 
   function testCantReinitialize() external virtual;

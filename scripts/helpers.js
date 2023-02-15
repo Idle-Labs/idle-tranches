@@ -296,25 +296,10 @@ const depositAndStake = async (type, idleCDO, addr, amount) => {
   const trancheBal = await deposit(type, idleCDO, addr, amount);
   const stakingRewardsAddr = await idleCDO[type == 'AA' ? 'AAStaking' : 'BBStaking']();
   let staked = 0;
-  if (stakingRewardsAddr && stakingRewardsAddr != addresses.addr0) {
-    log(`🟩 Stake ${type}, addr: ${addr}, trancheBal: ${trancheBal}`);
-    const stakingRewards = await ethers.getContractAt("IdleCDOTrancheRewards", stakingRewardsAddr);
-    const trancheAddr = await idleCDO[type == 'AA' ? 'AATranche' : 'BBTranche']()
-    const tranche = await ethers.getContractAt("IdleCDOTranche", trancheAddr);
-    await sudoCall(addr, tranche, 'approve', [stakingRewardsAddr, amount]);
-    await sudoCall(addr, stakingRewards, 'stake', [trancheBal]);
-    staked = await stakingRewards.usersStakes(addr);
-  }
   return [trancheBal, BN(staked)];
 }
 
 const withdrawAndUnstakeWithGain = async (type, idleCDO, addr, initialAmount) => {
-  const stakingRewardsAddr = await idleCDO[type == 'AA' ? 'AAStaking' : 'BBStaking']();
-  const stakingRewards = await ethers.getContractAt("IdleCDOTrancheRewards", stakingRewardsAddr);
-  const staked = await stakingRewards.usersStakes(addr);
-  log(`🟩 Staked ${type}, addr: ${addr}, amount: ${staked}`);
-  await sudoCall(addr, stakingRewards, 'unstake', [staked]);
-  // const trancheBal = BN(await (type == 'AA' ? AAContract : BBContract).balanceOf(addr));
   return await withdrawWithGain(type, idleCDO, addr, initialAmount);
 }
 

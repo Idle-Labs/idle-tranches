@@ -92,22 +92,6 @@ describe("IdleConvexCDO", function () {
     AA = await ethers.getContractAt("IdleCDOTranche", await idleCDO.AATranche());
     BB = await ethers.getContractAt("IdleCDOTranche", await idleCDO.BBTranche());
 
-    const stakingRewardsParams = [
-      incentiveTokens,
-      owner.address, // owner / guardian
-      idleCDO.address,
-      owner.address, // recovery address
-      10, // cooling period
-    ];
-    stakingRewardsAA = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [AA.address, ...stakingRewardsParams], owner
-    );
-    stakingRewardsBB = await helpers.deployUpgradableContract(
-      'IdleCDOTrancheRewards', [BB.address, ...stakingRewardsParams], owner
-    );
-
-    // await idleCDO.setUnlentPerc(BN('0'));
-    await idleCDO.setStakingRewards(stakingRewardsAA.address, stakingRewardsBB.address);
     await idleCDO.setIsStkAAVEActive(false);
     await idleCDO.setFeeReceiver(feeCollectorAddr);
   });
