@@ -57,7 +57,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   // last saved net asset value (in `token`)
   uint256 public lastNAV;
   // unclaimed fees in `token`
-  uint256 public unclaimedFees;
+  uint256 public unclaimedFees; // DEPRECATED
   address public constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
   address public constant DL_MULTISIG = 0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b;
 
@@ -190,6 +190,12 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
    */
   function setFee(uint256 _fee)
     external onlyOwner {
+      // if we are changing fee we should calc the unclaimed fees of the 
+      // current period. If new fees are 0 we don't get the old fees
+      if (_fee > 0) {
+        _updateFeeInfo();
+      }
+      // set new fees
       // 100000 == 100% -> 10000 == 10%
       require((fee = _fee) <= FULL_ALLOC / 5, "5");
   }
@@ -435,7 +441,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       return 10**(_tokenDecimals);
     }
 
-    uint256 totNav = _getCurrentPoolValue() - unclaimedFees;
+    uint256 totNav = _getCurrentPoolValue();
     price = (totNav - _calculateFees(totNav)) * ONE_18 / _totSupply; // idleToken price in token wei
   }
 
@@ -450,14 +456,6 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
     internal whenNotPaused
     returns (bool) {
       _updateFeeInfo();
-      uint256 _unclaimedFees = unclaimedFees;
-      if (_unclaimedFees > 0) {
-        // send fees (lastNAV was just updated in _updateFeeInfo)
-        _mint(feeAddress, _unclaimedFees * totalSupply() / lastNAV);
-        // reset fee counter and update lastNAV
-        lastNAV += _unclaimedFees;
-        unclaimedFees = 0;
-      }
 
       // check if we need to rebalance by looking at the last allocations submitted by rebalancer
       uint256[] memory rebalancerLastAllocations = lastRebalancerAllocations;
@@ -531,16 +529,16 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   }
 
   /**
-   * Calculate gain and save eventual fees in unclaimedFees
+   * Calculate gain and mint eventual fees
    */
   function _updateFeeInfo() internal {
-    // remove fees
-    uint256 _currNAV = _getCurrentPoolValue() - unclaimedFees;
+    // currNAV includes fees
+    uint256 _currNAV = _getCurrentPoolValue();
     uint256 _fees = _calculateFees(_currNAV);
     if (_fees > 0) {
-      unclaimedFees += _fees;
+      _mint(feeAddress, _fees * totalSupply() / (_currNAV - _fees));
     }
-    lastNAV = _currNAV - _fees;
+    lastNAV = _currNAV;
   }
 
   /**

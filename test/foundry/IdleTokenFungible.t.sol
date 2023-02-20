@@ -334,7 +334,6 @@ contract TestIdleTokenFungible is Test {
     
     uint256 amount = ONE_TOKEN * 1_000_000;
     idleToken.mintIdleToken(amount, true, address(0));
-    assertEq(idleToken.unclaimedFees(), 0, 'unclaimedFees are not 0');
     assertEq(idleToken.lastNAV(), amount, 'lastNav after mint is not correct');
     // funds in lending
     _rebalance(100000, 0);
@@ -343,15 +342,15 @@ contract TestIdleTokenFungible is Test {
     _harvestCDO(address(cdo1));
     vm.warp(block.timestamp + 2 days);
 
-    // do another mint to accrue fees in unclaimedFees
+    // do another mint to mint fees
     idleToken.mintIdleToken(amount, true, address(0));
-    uint256 unclaimedFees = idleToken.unclaimedFees();
-    assertGt(unclaimedFees, 0, 'unclaimedFees are 0');
+    uint256 fees = idleToken.balanceOf(idleToken.feeAddress());
+    assertGt(fees, 0, 'Fees not minted');
     assertApproxEqAbs(
       idleToken.lastNAV(),
-      // 2 deposits of `amount` + gain (which is unclaimedFees * 10) - unclaimed 
-      amount * 2 + (unclaimedFees * 10) - unclaimedFees, 
-      10,
+      // 2 deposits of `amount` + gain (which is feebal, in idleToken, * 10 * tokenPrice)
+      amount * 2 + (fees * idleToken.tokenPrice() / 1e18) * 10, 
+      400,
       'lastNAV is not correct'
     );
   }
@@ -364,7 +363,7 @@ contract TestIdleTokenFungible is Test {
     idleToken.mintIdleToken(amount, true, address(0));
     // deposit with another user to have non 0 balance after redeem
     vm.prank(dude);
-    idleToken.mintIdleToken(amount, true, address(0));
+    idleToken.mintIdleToken(ONE_TOKEN, true, address(0));
 
     // funds in lending
     _rebalance(100000, 0);
@@ -373,17 +372,17 @@ contract TestIdleTokenFungible is Test {
     _harvestCDO(address(cdo1));
     vm.warp(block.timestamp + 2 days);
 
-    // redeem to accrue unclaimedFees
+    uint256 pricePre = idleToken.tokenPrice();
+    // redeem to mint fees
     idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
-    uint256 unclaimedFees = idleToken.unclaimedFees();
-    assertGt(unclaimedFees, 0, 'unclaimedFees are 0');
-
+    uint256 fees = idleToken.balanceOf(idleToken.feeAddress());
+    assertGt(fees, 0, 'Fees not minted');
+    assertGe(idleToken.tokenPrice(), pricePre, 'tokenPrice did not increase');
+    uint256 feesUnderlying = fees * idleToken.tokenPrice() / 1e18;
     assertApproxEqAbs(
       idleToken.lastNAV(),
-      // dude `amount` + gain on his amount (which is unclaimedFees * 10 / 2 as 
-      // there were also another user with equal amount deposited) - unclaimed 
-      amount + ((unclaimedFees * 10) / 2) - unclaimedFees, 
-      10,
+      ONE_TOKEN + feesUnderlying, // + interest gained for ONE_TOKEN
+      500,
       'lastNAV is not correct'
     );
   }
