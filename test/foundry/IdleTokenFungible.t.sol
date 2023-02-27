@@ -128,6 +128,17 @@ contract TestIdleTokenFungible is Test {
     assertEq(idleToken.lastAllocations(1), 0);
   }
 
+  function testSkipRedeemMinAmount() external {
+    vm.prank(address(0x1));
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    idleToken.setSkipRedeemMinAmount(true);
+
+    vm.prank(idleToken.owner());
+    idleToken.setSkipRedeemMinAmount(true);
+
+    assertEq(idleToken.skipRedeemMinAmount(), true);
+  }
+
   function testPause() external {
     vm.prank(address(0x1));
     vm.expectRevert(bytes("6"));
@@ -244,7 +255,7 @@ contract TestIdleTokenFungible is Test {
 
     // redeem 
     idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
-    assertApproxEqAbs(priceAfterHarvest, idleToken.tokenPrice(), 5, 
+    assertGe(idleToken.tokenPrice(), priceAfterHarvest, 
       'Token price changed after redeem');
 
     // avoid reentrancy block
@@ -280,6 +291,7 @@ contract TestIdleTokenFungible is Test {
     idleToken.mintIdleToken(amount, true, address(0));
 
     // deposit with another user to have non 0 balance after redeem
+    uint256 dudeBalUnderl = underlying.balanceOf(dude);
     vm.prank(dude);
     idleToken.mintIdleToken(amount, true, address(0));
 
@@ -287,6 +299,7 @@ contract TestIdleTokenFungible is Test {
     _rebalance(50000, 50000);
     // accrue some interest
     _harvestCDO(address(cdo1));
+    uint256 price = idleToken.tokenPrice();
     vm.warp(block.timestamp + 2 days);
 
     idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
@@ -295,8 +308,13 @@ contract TestIdleTokenFungible is Test {
 
     uint256 dudeBal = idleToken.balanceOf(dude);
     vm.prank(dude);
-    idleToken.redeemIdleToken(dudeBal);
-    assertEq(idleToken.lastNAV(), 0, 'lastNAV is not 0');
+    idleToken.redeemIdleToken(dudeBal/2);
+    assertGt(idleToken.lastNAV(), amount/2, 'lastNAV is > than the amount deposited by dude');
+    assertGt(idleToken.tokenPrice(), price, 'Token price did not increase');
+    vm.prank(dude);
+    idleToken.redeemIdleToken(dudeBal/2);
+    assertEq(idleToken.tokenPrice(), 1e6, 'Token price is not 1');
+    assertGt(underlying.balanceOf(dude), dudeBalUnderl, 'Dude balance did not increase');
   }
 
   function testRebalance() external {
@@ -370,19 +388,30 @@ contract TestIdleTokenFungible is Test {
 
     // accrue some interest
     _harvestCDO(address(cdo1));
+    uint256 poolValPre = idleToken.tokenPrice() * idleToken.totalSupply() / 1e18;
     vm.warp(block.timestamp + 2 days);
-
     uint256 pricePre = idleToken.tokenPrice();
+    uint256 poolValPost = pricePre * idleToken.totalSupply() / 1e18;
+    uint256 gain = poolValPost - poolValPre;
+    gain = gain + gain / 9; // ~10% fee
     // redeem to mint fees
     idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
     uint256 fees = idleToken.balanceOf(idleToken.feeAddress());
     assertGt(fees, 0, 'Fees not minted');
-    assertGe(idleToken.tokenPrice(), pricePre, 'tokenPrice did not increase');
+    uint256 pricePost = idleToken.tokenPrice();
+    assertApproxEqRel(
+      fees,
+      gain / 10 * 1e18 / pricePost, // + interest gained for ONE_TOKEN
+      1e17, // 0.1%
+      'Fees not correct'
+    );
+
+    assertGe(pricePost, pricePre, 'tokenPrice decreased');
     uint256 feesUnderlying = fees * idleToken.tokenPrice() / 1e18;
-    assertApproxEqAbs(
+    assertApproxEqRel(
       idleToken.lastNAV(),
-      ONE_TOKEN + feesUnderlying, // + interest gained for ONE_TOKEN
-      500,
+      ONE_TOKEN + feesUnderlying, // ONE_TOKEN from `dude` + interest gained for ONE_TOKEN + fees
+      1e15, // 0.001%
       'lastNAV is not correct'
     );
   }

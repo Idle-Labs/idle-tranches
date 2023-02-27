@@ -2,7 +2,8 @@
  * @title: Idle Token fully fungible, without gov tokens mgmt and with fees managed at contract level
  * @dev: code is copied from IdleTokenGovernance + IdleTokenHelper + IdleTokenV3_1 from this repo 
  * https://github.com/Idle-Labs/idle-contracts and all governance tokens ref have been stripped out
- * other changes: safemath removed, upgraded to recent oz contracts
+ * other changes: safemath removed, upgraded to recent oz contracts, upgrade to _redeemHelper to allow
+ * to redeem from a single protocol.
  * @summary: ERC20 that holds pooled user funds together
  *           Each token rapresent a share of the underlying pools
  *           and with each token user have the right to redeem a portion of these pools
@@ -60,6 +61,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   uint256 public unclaimedFees; // DEPRECATED
   address public constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
   address public constant DL_MULTISIG = 0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b;
+  bool public skipRedeemMinAmount;
 
   // ERROR MESSAGES:
   // 0 = is 0
@@ -218,6 +220,16 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   function setMaxUnlentPerc(uint256 _perc)
     external onlyOwner {
       require((maxUnlentPerc = _perc) <= 100000, "5");
+  }
+
+  /**
+   * It allows owner to set the skip redeem min amount flag
+   *
+   * @param _flag : wheter to skip redeem min amount check or not
+   */
+  function setSkipRedeemMinAmount(bool _flag)
+    external onlyOwner {
+      skipRedeemMinAmount = _flag;
   }
 
   /**
@@ -384,11 +396,14 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
         uint256 price = _tokenPrice();
         uint256 valueToRedeem = _amount * price / ONE_18;
         uint256 balanceUnderlying = _contractBalanceOf(token);
-
         if (valueToRedeem > balanceUnderlying) {
-          redeemedTokens = _redeemHelper(_amount, balanceUnderlying);
+          redeemedTokens = _redeemHelper(valueToRedeem - balanceUnderlying) + balanceUnderlying;
         } else {
           redeemedTokens = valueToRedeem;
+        }
+        if (!skipRedeemMinAmount) {
+        // keep 100 wei as buffer
+          require(redeemedTokens > valueToRedeem - 100, '3');
         }
         // update lastNAV
         lastNAV -= redeemedTokens;
@@ -399,21 +414,51 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       }
   }
 
-  function _redeemHelper(uint256 _amount, uint256 _balanceUnderlying) private returns (uint256 redeemedTokens) {
+  /**
+   * Here we calc the pool share one can withdraw given the amount of IdleToken they want to burn
+   *
+   * @param _amount : amount in underlyings
+   * @return redeemedTokens : amount of underlying tokens redeemed
+   */
+  function _redeemHelper(uint256 _amount) private returns (uint256 redeemedTokens) {
     address currToken;
-    uint256 idleSupply = totalSupply();
     address[] memory _allAvailableTokens = allAvailableTokens;
+    uint256 availableLiquidity;
+    uint256 toRedeem = _amount;
+    uint256 protTokens;
+    uint256 protTokensToRedeem;
+    ILendingProtocol protocol;
 
+    // we try to redeem in order of 'allAvailableTokens' until we have _amount
+    // the final amount redeemed could be less than the requested `_amount`, 
+    // but this is checked in _redeemIdleToken
     for (uint256 i = 0; i < _allAvailableTokens.length; i++) {
       currToken = _allAvailableTokens[i];
-      redeemedTokens += _redeemProtocolTokens(
-        currToken,
-        // _amount * protocolPoolBalance / idleSupply
-        _amount * _contractBalanceOf(currToken) / idleSupply // amount to redeem
-      );
+      // we check if we have liquidity deposited
+      protocol = ILendingProtocol(protocolWrappers[currToken]);
+      protTokens = _contractBalanceOf(currToken);
+      if (protTokens == 0) {
+        continue;
+      }
+      // and if the liquidity available in lending protocol is enough
+      availableLiquidity = protocol.availableLiquidity();
+      if (availableLiquidity < toRedeem) {
+        // remove 1% to be sure it's really available (eg for compound-like protocols)
+        toRedeem = availableLiquidity * (FULL_ALLOC-1000) / FULL_ALLOC;
+      }
+        // convert underlying (`toRedeem`) to protocol token
+      protTokensToRedeem = toRedeem * ONE_18 / protocol.getPriceInToken();
+      // check if we have enough balance
+      if (protTokensToRedeem > protTokens) {
+        protTokensToRedeem = protTokens;
+      }
+      redeemedTokens += _redeemProtocolTokens(currToken, protTokensToRedeem);
+      // if we have enough tokens or we are close to the requested amount
+      if (redeemedTokens >= _amount - 100 || redeemedTokens > toRedeem) {
+        break;
+      }
+      toRedeem -= redeemedTokens;
     }
-    // and get a portion of the eventual unlent balance
-    redeemedTokens += _amount * _balanceUnderlying / idleSupply;
   }
 
   /**
