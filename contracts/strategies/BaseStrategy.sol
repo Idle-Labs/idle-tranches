@@ -21,7 +21,7 @@ abstract contract BaseStrategy is
     uint256 internal constant EXP_SCALE = 1e18;
 
     /// @notice one year, used to calculate the APR
-    uint256 private constant YEAR = 365 days;
+    uint256 internal constant YEAR = 365 days;
 
     /// @notice underlying token address (ex: DAI)
     address public override token;
@@ -97,6 +97,10 @@ abstract contract BaseStrategy is
         transferOwnership(_owner);
     }
 
+    /// ##########################################
+    /// ################ ABSTRACT ################
+    /// ##########################################
+
     /// @dev makes the actual deposit into the `strategy`
     /// @param _amount amount of tokens to deposit
     function _deposit(uint256 _amount) internal virtual returns (uint256 amountUsed);
@@ -107,6 +111,12 @@ abstract contract BaseStrategy is
         internal
         virtual
         returns (uint256 amountWithdrawn);
+
+    /// @return rewards rewards[0] : mintedUnderlying
+    function _redeemRewards(bytes calldata data) internal virtual returns (uint256[] memory rewards);
+
+    /// ##########################################
+    /// ##########################################
 
     /// @dev msg.sender should approve this contract first to spend `_amount` of `token`
     /// @param _amount amount of `token` to deposit
@@ -199,7 +209,7 @@ abstract contract BaseStrategy is
         }
 
         // reinvest the generated/minted underlying to the the `strategy`
-        uint256 underlyingsStaked = _reinvest(mintedUnderlyings);
+        uint256 underlyingsStaked = _deposit(mintedUnderlyings);
         // save the block in which rewards are swapped and the amount
         latestHarvestBlock = uint128(block.number);
         totalTokensLocked = underlyingsStaked;
@@ -209,15 +219,8 @@ abstract contract BaseStrategy is
         _updateApr(underlyingsStaked);
     }
 
-    /// @dev reinvest underlyings` to the `strategy`
-    ///      this method should be used in the `_redeemRewards` method
-    ///      Ussually don't mint new shares.
-    function _reinvest(uint256 underlyings) internal virtual returns (uint256 underlyingsStaked) {
-        underlyingsStaked = _deposit(underlyings);
-    }
-
-    /// @return rewards rewards[0] : mintedUnderlying
-    function _redeemRewards(bytes calldata data) internal virtual returns (uint256[] memory rewards);
+    /// @return tokens array of reward token addresses
+    function getRewardTokens() external view virtual override returns (address[] memory tokens) {}
 
     /// @notice update last saved apr
     /// @param _gain amount of underlying tokens to mint/redeem

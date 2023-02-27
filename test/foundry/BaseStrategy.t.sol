@@ -57,6 +57,7 @@ contract TestStrategy is BaseStrategy {
 
     function getRewardTokens()
         external
+        override
         view
         returns (address[] memory rewards)
     {
