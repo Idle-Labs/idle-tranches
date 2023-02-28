@@ -27,6 +27,7 @@ const mainnetContracts = {
   maUSDC: '0xa5269a8e31b93ff27b887b56720a25f844db0529',
   maUSDT: '0xafe7131a57e44f832cb2de78ade38cad644aac2f',
   maDAI: '0x36f8d0d0573ae92326827c4a82fe4ce4c244cab6',
+  maWETH: '0x490bbbc2485e99989ba39b34802fafa58e26aba4',
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
@@ -560,6 +561,18 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x745e005a5dF03bDE0e55be811350acD6316894E1',
     BBTranche: '0xF0C177229Ae1cd41BF48dF6241fae3e6A14A6967'
+  },
+  morphoaaveweth: {
+    decimals: 18,
+    strategyToken: mainnetContracts.maWETH,
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xb3F717a5064D2CBE1b8999Fdfd3F8f3DA98339a6',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x9708B5398382EE064A8E718972670351F1c2c860',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6c0c8708e2FD507B7057762739cb04cF01b98d7b',
+    BBTranche: '0xd69c52E6AF3aE708EE4b3d3e7C0C5b4CF4d6244B'
   },
 };
 
@@ -1293,6 +1306,24 @@ exports.deployTokens = {
       addr0, // MORPHO is non transferrable yet
     ],
     cdo: CDOs.morphoaaveusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
+  },
+  morphoaaveweth: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'MorphoAaveV2SupplyVaultStrategy',
+    strategyParams: [
+      mainnetContracts.maWETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.aWETH,
+      // mainnetContracts.MORPHO,
+      addr0, // MORPHO is non transferrable yet
+    ],
+    cdo: CDOs.morphoaaveweth,
     ...baseCDOArgs,
     AARatio: '20000',
     isAYSActive: true,
