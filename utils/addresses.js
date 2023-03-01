@@ -110,6 +110,10 @@ const mainnetContracts = {
   latestIdleStrategyImpl: '0xd04843ac2ae7cfb7fe9ff6ff43c808af7a030527',
   // 8/3/2022 ConvexStrategyMeta3Pool
   latestConvexStrategyImpl: '0x6042d559acf454f73d8c0319386e46f65ee77fd7',
+  // 2022
+  idleTokenImpl: '0x1247b148062179cd6156f68d9a1019f671f955c1',
+  // 1/3/2023
+  idleTokenSingleRedeemImpl: '0xbdbc6d788d8090d3b72c6d5a1f763d5b56eeb907',
   latestConvexStrategy3eurImpl: '0x8f889dc453750c91c921bd6fb9a33a8a579b1baa',
   cdoFactory: '0x3C9916BB9498f637e2Fa86C2028e26275Dc9A631',
   snxStakingRewards: '0x4A07723BB06BF9307E4E1998834832728e6cDb49',
@@ -603,6 +607,11 @@ const trancheErc4626Wrappers = {
     original: mainnetContracts.trancheErc4626Wrapper,
     cdo: CDOs.eulerusdcstaking,
     BBTrancheWraper: '0xc6Ff7AA2CFF3ba1A4a8BC2C324e819c28D7e0495',
+  },
+  eulerageur: {
+    original: mainnetContracts.trancheErc4626Wrapper,
+    cdo: CDOs.eulerageur,
+    BBTrancheWraper: '0x6aB3CF01b27e507953365DDF70f97da99471706B',
   },
 }
 
@@ -1393,6 +1402,19 @@ exports.deployTokensBY = {
       '0x7188A402Ebd2638d6CccB855019727616a81bBd9',
       // BB tranche of maDAI PYT
       '0x37Dd9A73a84bb0EF562C17b3f7aD34001FEdAf38'
+    ],
+  },
+  idlewethjunior: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    symbol: 'idleWETHJunior',
+    name: 'IdleWETH Junior',
+    address: '0x62A0369c6BB00054E589D12aaD7ad81eD789514b',
+    strategies: [
+      // BB tranche of eWETHStaking PYT
+      '0xD57017632c1e6819370107d8Db4b1D372213a168',
+      // BB tranche of maWETH PYT
+      '0x9750c398993862Ebc9C5A30a9F8Be78Daa440677'
     ],
   },
 }
