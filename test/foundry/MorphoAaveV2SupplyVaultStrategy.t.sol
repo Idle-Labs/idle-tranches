@@ -11,14 +11,21 @@ import "./TestIdleCDOBase.sol";
 contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
     using stdStorage for StdStorage;
 
+    address internal constant MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address internal constant ADAI = 0x028171bCA77440897B824Ca71D1c56caC55b68A3;
     // Morpho-Aave Dai Stablecoin Supply Vault
     // https://github.com/morpho-dao/morpho-tokenized-vaults
     address internal constant maDAI = 0x36F8d0D0573ae92326827C4a82Fe4CE4C244cAb6;
     address internal constant morphoProxy = 0x777777c9898D384F785Ee44Acfe945efDFf5f3E0;
+    address internal constant morphoDistributor = 0x60345417a227ad7E312eAa1B5EC5CD1Fe5E2Cdc6;
 
-    function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
+    function _deployStrategy(address _owner)
+        internal
+        override
+        runOnForkingNetwork(MAINNET_CHIANID)
+        returns (address _strategy, address _underlying)
+    {
         _underlying = DAI;
         strategyToken = IERC20Detailed(maDAI);
         strategy = new MorphoAaveV2SupplyVaultStrategy();
@@ -32,7 +39,8 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
             _underlying,
             _owner,
             ADAI,
-            address(0)
+            address(0),
+            morphoDistributor
         );
 
         vm.label(morphoProxy, "MorphoProxy");
@@ -64,12 +72,12 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
         assertGt(strategy.price(), strategyPrice, "strategy price");
         // claim rewards
         _cdoHarvest(false);
-        assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
+        assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");
 
         // Skip 7 day forward to accrue interest
         skip(7 days);
         vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
-        
+
         // Poke morpho contract with a deposit to increase strategyPrice
         _pokeMorpho();
         assertGt(strategy.price(), strategyPrice, "strategy price");
@@ -85,7 +93,8 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
             address(underlying),
             owner,
             ADAI,
-            address(0)
+            address(0),
+            morphoDistributor
         );
     }
 
@@ -96,6 +105,6 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
         vm.startPrank(user);
         IERC20Detailed(DAI).approve(maDAI, type(uint256).max);
         IERC4626(maDAI).deposit(userAmount, user);
-        vm.stopPrank();  
+        vm.stopPrank();
     }
 }

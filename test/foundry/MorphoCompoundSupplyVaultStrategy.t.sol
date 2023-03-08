@@ -13,10 +13,13 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
 
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address internal constant CDAI = 0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643;
+    address internal constant MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
+
     // Morpho-Compound Dai Stablecoin Supply Vault
     // https://github.com/morpho-dao/morpho-tokenized-vaults
     address internal constant mcDAI = 0x8F88EaE3e1c01d60bccdc3DB3CBD5362Dd55d707;
     address internal constant morphoProxy = 0x777777c9898D384F785Ee44Acfe945efDFf5f3E0;
+    address internal constant morphoDistributor = 0x60345417a227ad7E312eAa1B5EC5CD1Fe5E2Cdc6;
 
     address internal constant COMP_LENS = 0x930f1b46e1D081Ec1524efD95752bE3eCe51EF67;
 
@@ -34,7 +37,8 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
             _underlying,
             _owner,
             CDAI,
-            address(0)
+            address(0),
+            morphoDistributor
         );
 
         vm.label(morphoProxy, "MorphoProxy");
@@ -67,12 +71,12 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         assertGt(strategy.price(), strategyPrice, "strategy price");
         // claim rewards
         _cdoHarvest(false);
-        assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
+        assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");
 
         // Skip 7 day forward to accrue interest
         skip(7 days);
         vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
-        
+
         // Poke morpho contract with a deposit to increase strategyPrice
         _pokeMorpho();
         assertGt(strategy.price(), strategyPrice, "strategy price");
@@ -88,7 +92,8 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
             address(underlying),
             owner,
             CDAI,
-            address(0)
+            address(0),
+            morphoDistributor
         );
     }
 
@@ -99,6 +104,6 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         vm.startPrank(user);
         IERC20Detailed(DAI).approve(mcDAI, type(uint256).max);
         IERC4626(mcDAI).deposit(userAmount, user);
-        vm.stopPrank();  
+        vm.stopPrank();
     }
 }
