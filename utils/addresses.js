@@ -43,6 +43,7 @@ const mainnetContracts = {
   RBN: '0x6123B0049F904d730dB3C36a31167D9d4121fA6B',
   cpWIN_USDC: '0xCb288b6d30738db7E3998159d192615769794B5b',
   cpFOL_USDC: '0xe3D20A721522874D32548B4097d1afc6f024e45b',
+  cpPOR_USDC: '0x4a90c14335e81829d7cb0002605f555b8a784106',
   rWIN_USDC: '0x0aea75705be8281f4c24c3e954d1f8b1d0f8044c',
   rFOL_USDC: '0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d',
   // truefi
@@ -464,6 +465,32 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xa0154A44C1C45bD007743FA622fd0Da4f6d67D57',
     BBTranche: '0x7a625a2882C9Fc8DF1463d5E538a3F39B5DBD073'
+  },
+  cpporusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x931c080c7ed6b3c6988576654e5d56753dc92181',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x1329E8DB9Ed7a44726572D44729427F132Fa290D',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x931c080c7ed6b3c6988576654e5d56753dc92181',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x9CAcd44cfDf22731bc99FaCf3531C809d56BD4A2',
+    BBTranche: '0xf85Fd280B301c0A6232d515001dA8B6c8503D714'
+  },
+  cppordai: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x3687c0F8760371fc1BD1c7bc28695c388CdEd5a0',
+    underlying: mainnetContracts.DAI,
+    cdoAddr: '0x5dcA0B3Ed7594A6613c1A2acd367d56E1f74F92D',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x3687c0F8760371fc1BD1c7bc28695c388CdEd5a0',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x43eD68703006add5F99ce36b5182392362369C1c',
+    BBTranche: '0x38D36353D07CfB92650822D9c31fB4AdA1c73D6E'
   },
   rfolusdc: {
     decimals: 6,
@@ -968,6 +995,40 @@ exports.deployTokens = {
     limit: '200000000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.cpwinusdc.cdoAddr,
+  },
+  cpporusdc: { // portofino pool
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleClearpoolStrategy',
+    strategyParams: [
+      mainnetContracts.cpPOR_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.cpporusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.lido.cdoAddr,
+  },
+  cppordai: { // wintermute pool with DAI as underlying
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    strategyName: 'IdleClearpoolPSMStrategy',
+    strategyParams: [
+      mainnetContracts.cpPOR_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.cppordai,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '200000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.lido.cdoAddr,
   },
 
   // Ribbon Lend
