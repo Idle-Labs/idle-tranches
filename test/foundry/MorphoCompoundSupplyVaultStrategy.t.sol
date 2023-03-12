@@ -6,6 +6,7 @@ import "forge-std/Test.sol";
 
 import "../../contracts/strategies/morpho/MorphoCompoundSupplyVaultStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
+import "../../contracts/mocks/MockRewardsDistributor.sol";
 import "./TestIdleCDOBase.sol";
 
 contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
@@ -21,6 +22,9 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
     address internal constant morphoProxy = 0x777777c9898D384F785Ee44Acfe945efDFf5f3E0;
     address internal constant morphoDistributor = 0x60345417a227ad7E312eAa1B5EC5CD1Fe5E2Cdc6;
 
+    // COMP token
+    address internal rewardToken = 0xfa5E1B628EFB17C024ca76f65B45Faf6B3128CA5;
+
     address internal constant COMP_LENS = 0x930f1b46e1D081Ec1524efD95752bE3eCe51EF67;
 
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
@@ -29,6 +33,9 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         strategy = new MorphoCompoundSupplyVaultStrategy();
 
         _strategy = address(strategy);
+
+        // override distributor code with mock
+        vm.etch(morphoDistributor, address(new MockRewardsDistributor()).code);
 
         // initialize
         stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
@@ -43,11 +50,17 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
 
         vm.label(morphoProxy, "MorphoProxy");
         vm.label(COMP_LENS, "CompLens");
+        vm.label(morphoDistributor, "MorphoDistributor");
     }
 
     function _postDeploy(address _cdo, address _owner) internal override {
         vm.prank(_owner);
         MorphoCompoundSupplyVaultStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
+
+        // fund distributor with morpho tokens
+        deal(MORPHO, morphoDistributor, 1000 * 1e18, true);
+        // address account, uint256 claimable, bytes32[] memory proof
+        extraData = abi.encode(_cdo, 1000 * 1e18, new bytes32[](0));
     }
 
     function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
@@ -95,6 +108,73 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
             address(0),
             morphoDistributor
         );
+    }
+
+    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+
+        skip(7 days);
+        vm.roll(block.number + 7 * 7200);
+
+        // Poke morpho contract with a deposit to increase strategyPrice
+        _pokeMorpho();
+
+        // redeem all
+        uint256 resAA = idleCDO.withdrawAA(0);
+        assertGt(resAA, amount, "AA gained something");
+        uint256 resBB = idleCDO.withdrawBB(0);
+        assertGt(resBB, amount, "BB gained something");
+
+        assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
+        assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
+        assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    }
+
+    function testRedeemRewards() external virtual override runOnForkingNetwork(MAINNET_CHIANID) {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+        skip(7 days);
+        vm.roll(block.number + 1);
+
+        // sell some rewards
+        uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));
+        _cdoHarvest(false);
+
+        uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
+        // NOTE: right now MORPHO is not transferable
+        assertGt(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal");
+        assertEq(pricePost, pricePre, "virtual price equal");
+    }
+
+    function _cdoHarvest(bool _skipRewards) internal override {
+        uint256 numOfRewards = rewards.length;
+        bool[] memory _skipFlags = new bool[](4);
+        bool[] memory _skipReward = new bool[](numOfRewards);
+        uint256[] memory _minAmount = new uint256[](numOfRewards);
+        uint256[] memory _sellAmounts = new uint256[](numOfRewards);
+        bytes[] memory _extraData = new bytes[](2);
+        if (!_skipRewards) {
+            _extraData[0] = extraData;
+            _extraData[1] = extraDataSell;
+            // skip selling rewards (MORPHO) because MORPHO is not transferable
+            _skipReward[0] = true;
+        }
+        // skip fees distribution
+        _skipFlags[3] = _skipRewards;
+
+        vm.prank(idleCDO.rebalancer());
+        idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+
+        // linearly release all sold rewards
+        vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1);
     }
 
     function _pokeMorpho() internal {

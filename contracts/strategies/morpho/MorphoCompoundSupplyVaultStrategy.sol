@@ -18,24 +18,22 @@ contract MorphoCompoundSupplyVaultStrategy is MorphoSupplyVaultStrategy {
         returns (uint256[] memory rewards)
     {
         address _rewardToken = rewardToken;
-
-        rewards = new uint256[](_rewardToken != address(0) ? 2 : 1);
+        rewards = new uint256[](_rewardToken != address(0) ? 2 : 1); // MORPHO + rewardToken
 
         // claim MORPHO rewards
         if (address(distributor) != address(0) && data.length != 0) {
-            (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
-
-            uint256 claimed = _claimMorpho(claimable, proof);
-            rewards[0] = claimed;
-
-            // transfer MORPHO to idleCDO
-            MORPHO.safeTransfer(idleCDO, claimed);
+            (address account, uint256 claimable, bytes32[] memory proof) = abi.decode(
+                data,
+                (address, uint256, bytes32[])
+            );
+            // NOTE: MORPHO is not transferable
+            rewards[0] = _claimMorpho(account, claimable, proof); // index 0 is always MORPHO
         }
 
         // claim rewards (e.g. COMP)
         // if rewardToken is not set, skip redeeming rewards
         if (_rewardToken != address(0)) {
-            uint256 reward = IMorphoSupplyVault(strategyToken).claimRewards(address(this));
+            uint256 reward = IMorphoSupplyVault(strategyToken).claimRewards(address(idleCDO));
             rewards[1] = reward;
             // send rewards to the idleCDO
             IERC20Detailed(_rewardToken).safeTransfer(idleCDO, reward);

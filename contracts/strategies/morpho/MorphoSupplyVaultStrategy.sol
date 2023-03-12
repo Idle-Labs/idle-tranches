@@ -55,14 +55,17 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
         nonReentrant
         returns (uint256[] memory rewards)
     {
+        // MORPHO + rewardToken
         rewards = new uint256[](rewardToken != address(0) ? 2 : 1);
 
+        // claim MORPHO rewards
         if (address(distributor) != address(0) && data.length != 0) {
-            (uint256 claimable, bytes32[] memory proof) = abi.decode(data, (uint256, bytes32[]));
-            // claim MORPHO rewards
-            rewards[0] = _claimMorpho(claimable, proof); // index 0 is always MORPHO
-            // transfer MORPHO to idleCDO
-            MORPHO.safeTransfer(idleCDO, rewards[0]);
+            (address account, uint256 claimable, bytes32[] memory proof) = abi.decode(
+                data,
+                (address, uint256, bytes32[])
+            );
+            // NOTE: MORPHO is not transferable
+            rewards[0] = _claimMorpho(account, claimable, proof); // index 0 is always MORPHO
         }
     }
 
@@ -84,9 +87,16 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
         rewardToken = _rewardToken;
     }
 
-    function _claimMorpho(uint256 claimable, bytes32[] memory proof) internal returns (uint256 claimed) {
-        // claim MORPHO by verifying a merkle root
-        distributor.claim(address(this), claimable, proof);
-        claimed = MORPHO.balanceOf(address(this));
+    /// @notice claim MORPHO by verifying a merkle root
+    /// @param account account to claim MORPHO for
+    /// @param claimable amount of MORPHO to claim
+    function _claimMorpho(
+        address account,
+        uint256 claimable,
+        bytes32[] memory proof
+    ) internal returns (uint256 claimed) {
+        uint256 balBefore = MORPHO.balanceOf(address(account));
+        distributor.claim(account, claimable, proof);
+        claimed = MORPHO.balanceOf(address(account)) - balBefore;
     }
 }
