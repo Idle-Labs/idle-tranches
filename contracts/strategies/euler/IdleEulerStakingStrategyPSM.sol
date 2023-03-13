@@ -42,10 +42,15 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
 
     /// @notice return the price from the strategy token contract
     /// @return _price of 1 eToken (eUSDC) in underlying (DAI)
-    function price() public view override returns (uint256 _price) {
-        // we ask to convert a scaled eToken balance (multiplied by 10**12 so to have 18 decimals)
-        // We pass a scaled amount instead of doing the `* 10**12` after the conversion to avoid rounding issues 
-        _price = eToken.convertBalanceToUnderlying(10**18 * SCALE_FACTOR);
+    function price() public view virtual override returns (uint256) {
+        IEToken _eToken = eToken;
+        // if it fails it means that Euler is paused, so it should be safe to set price to 1
+        // as deposits and redeems are not allowed
+        try _eToken.convertBalanceToUnderlying(10**18 * SCALE_FACTOR) returns (uint256 _price) {
+            return _price;
+        } catch {
+            return 1e18;
+        }
     }
 
      /// @notice Deposit the underlying token to vault

@@ -192,11 +192,14 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @return net price in underlyings of 1 strategyToken
     function price() public view virtual override returns (uint256) {
         IEToken _eToken = eToken;
-        uint256 eTokenDecimals = _eToken.decimals();
-        // return price of 1 eToken in underlying
-        return _eToken.convertBalanceToUnderlying(10**eTokenDecimals);
+        // if it fails it means that Euler is paused, so it should be safe to set price to 1
+        // as deposits and redeems are not allowed
+        try _eToken.decimals() returns (uint256 _decimals) {
+            return _eToken.convertBalanceToUnderlying(10**_decimals);
+        } catch {
+            return 10**tokenDecimals;
+        }
     }
-
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
     function getApr() external view override returns (uint256 apr) {
