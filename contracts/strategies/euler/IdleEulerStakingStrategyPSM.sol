@@ -93,27 +93,27 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
     /// @dev Calculates staking apr. Here stakingAPR is calculated using USDC so we scale down the price by 10**12
     /// @return _apr 
     function _getStakingApr() internal override view returns (uint256 _apr) {
-        IStakingRewards _stakingRewards = stakingRewards;
-        IERC20Detailed _underlying = underlyingToken;
-        uint256 _tokenDec = tokenDecimals;
-        uint256 _price = price() / SCALE_FACTOR; 
+        // IStakingRewards _stakingRewards = stakingRewards;
+        // IERC20Detailed _underlying = underlyingToken;
+        // uint256 _tokenDec = tokenDecimals;
+        // uint256 _price = price() / SCALE_FACTOR; 
 
-        // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
-        uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
-        if (address(_underlying) != WETH) {
-            // 0.05% fee pool. This returns a price with tokenDecimals
-            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
-            eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
-        }
+        // // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
+        // uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
+        // if (address(_underlying) != WETH) {
+        //     // 0.05% fee pool. This returns a price with tokenDecimals
+        //     uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
+        //     eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
+        // }
 
-        // USDC as example (6 decimals)
-        // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
-        uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
-        uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
-        // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
-        uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * _price / 10**(_tokenDec));
-        // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
-        _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
+        // // USDC as example (6 decimals)
+        // // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
+        // uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
+        // uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
+        // // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
+        // uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * _price / 10**(_tokenDec));
+        // // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
+        // _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
     }
 
     /// @param _amountToWithdraw in underlyings (DAI)

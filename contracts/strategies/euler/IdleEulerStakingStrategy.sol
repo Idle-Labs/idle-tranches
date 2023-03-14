@@ -203,51 +203,51 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
     function getApr() external view override returns (uint256 apr) {
-        // Use the markets module:
-        address _token = token;
-        IMarkets markets = IMarkets(EULER_MARKETS);
-        IDToken dToken = IDToken(markets.underlyingToDToken(_token));
-        uint256 borrowSPY = uint256(int256(markets.interestRate(_token)));
-        uint256 totalBorrows = dToken.totalSupply();
-        uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
-        uint32 reserveFee = markets.reserveFee(_token);
-        // (borrowAPY, supplyAPY)
-        (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
-            borrowSPY,
-            totalBorrows,
-            totalBalancesUnderlying,
-            reserveFee
-        );
-        // apr is eg 0.024300334 * 1e27 for 2.43% apr
-        // while the method needs to return the value in the format 2.43 * 1e18
-        // so we do apr / 1e9 * 100 -> apr / 1e7
-        // then we add the staking apr
-        apr = apr / 1e7 + _getStakingApr();
+        // // Use the markets module:
+        // address _token = token;
+        // IMarkets markets = IMarkets(EULER_MARKETS);
+        // IDToken dToken = IDToken(markets.underlyingToDToken(_token));
+        // uint256 borrowSPY = uint256(int256(markets.interestRate(_token)));
+        // uint256 totalBorrows = dToken.totalSupply();
+        // uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
+        // uint32 reserveFee = markets.reserveFee(_token);
+        // // (borrowAPY, supplyAPY)
+        // (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
+        //     borrowSPY,
+        //     totalBorrows,
+        //     totalBalancesUnderlying,
+        //     reserveFee
+        // );
+        // // apr is eg 0.024300334 * 1e27 for 2.43% apr
+        // // while the method needs to return the value in the format 2.43 * 1e18
+        // // so we do apr / 1e9 * 100 -> apr / 1e7
+        // // then we add the staking apr
+        // apr = apr / 1e7 + _getStakingApr();
     }
 
     /// @dev Calculates staking apr
     /// @return _apr 
     function _getStakingApr() internal virtual view returns (uint256 _apr) {
-        IStakingRewards _stakingRewards = stakingRewards;
-        IERC20Detailed _underlying = underlyingToken;
-        uint256 _tokenDec = tokenDecimals;
+        // IStakingRewards _stakingRewards = stakingRewards;
+        // IERC20Detailed _underlying = underlyingToken;
+        // uint256 _tokenDec = tokenDecimals;
 
-        // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
-        uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
-        if (address(_underlying) != WETH) {
-            // 0.05% fee pool. This returns a price with tokenDecimals
-            uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
-            eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
-        }
+        // // get quote of 1 EUL in underlyings, 1% fee pool for EUL. 
+        // uint256 eulPrice = _getPriceUniV3(address(EUL), WETH, uint24(10000));
+        // if (address(_underlying) != WETH) {
+        //     // 0.05% fee pool. This returns a price with tokenDecimals
+        //     uint256 wethToUnderlying = _getPriceUniV3(WETH, address(_underlying), uint24(500));
+        //     eulPrice = eulPrice * wethToUnderlying / EXP_SCALE; // in underlyings
+        // }
 
-        // USDC as example (6 decimals)
-        // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
-        uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
-        uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
-        // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
-        uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * price() / 10**(_tokenDec));
-        // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
-        _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
+        // // USDC as example (6 decimals)
+        // // underlyingsPerPoolYear = EULPerSec * EULPrice * 365 days / 1e18 => 1e6
+        // uint256 underlyingsPerPoolYear = _stakingRewards.rewardRate() * eulPrice * 365 days / EXP_SCALE;
+        // uint256 eTokensStaked = eToken.balanceOf(address(_stakingRewards));
+        // // underlyings_per_year_per_token  = underlyings_per_year_whole_pool * 1e18 / (eTokensStaked * eTokenPrice / 1e6) => 1e6 
+        // uint256 underlyingsPerTokenYear = underlyingsPerPoolYear * EXP_SCALE / (eTokensStaked * price() / 10**(_tokenDec));
+        // // we normalize underlyingsPerTokenYear and multiply by 100 to get the apr % with 18 decimals
+        // _apr = underlyingsPerTokenYear * 10**(18-_tokenDec) * 100;
     }
 
     /// @notice this price is not safe from flash loan attacks, but it is used only for showing the apr on the UI
