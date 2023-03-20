@@ -941,6 +941,37 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     revertIfTooLow = true;
   }
 
+  /// @notice allow redeems of remaining funds, if any, after default/losses
+  /// @dev can be called by the owner only
+  function setRedemptionRates() external {
+    _checkOnlyOwner();
+
+    // liquidate all ibTokens
+    uint256 _amount = IERC20Detailed(strategyToken).balanceOf(address(this)) * _strategyPrice() / ONE_TRANCHE_TOKEN;
+    _liquidate(_amount, false);
+
+    address _AATranche = AATranche;
+    uint256 _AASupply = IERC20(_AATranche).totalSupply();
+    uint256 _lastAAPrice = _tranchePrice(_AATranche);
+    // Get all underlyings in the contract
+    uint256 _underlyingBalance = IERC20(token).balanceOf(address(this));
+    // Set redeem price as if everything is going to AA 
+    uint256 redeemPrice = _underlyingBalance * ONE_TRANCHE_TOKEN / _AASupply;
+    // Check if rate is too high compared to the last saved price
+    if (redeemPrice > _lastAAPrice) {
+      // if yes set it to the last saved price
+      redeemPrice = _lastAAPrice;
+      // calculate funds for AA and BB
+      uint256 fundsAA = _AASupply * redeemPrice / ONE_TRANCHE_TOKEN;
+      uint256 fundsBB = _underlyingBalance - fundsAA;
+      // set final redeem prices
+      priceBB = fundsBB * ONE_TRANCHE_TOKEN / IERC20(BBTranche).totalSupply();
+    } else {
+      priceBB = 0;
+    }
+    priceAA = redeemPrice;
+  }
+
   /// @notice Pauses deposits and redeems
   /// @dev can be called by both the owner and the guardian
   function pause() external  {
