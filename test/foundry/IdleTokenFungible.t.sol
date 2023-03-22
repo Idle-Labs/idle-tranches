@@ -285,6 +285,52 @@ contract TestIdleTokenFungible is Test {
     assertGt(idleToken.balanceOf(address(this)), idleToken.balanceOf(dude), 'Minted amount is not less than first mint');
   }
 
+  function testRedeemIdleTokenLowLiquidity() public {
+    uint256 amount = ONE_TOKEN * 1_000_000;
+    idleToken.mintIdleToken(amount, true, address(0));
+
+    // deposit with another user to have non 0 balance after redeem
+    vm.prank(dude);
+    idleToken.mintIdleToken(amount, true, address(0));
+
+    // funds in lending
+    _rebalance(50000, 50000);
+    // accrue some interest
+    _harvestCDO(address(cdo1));
+    vm.warp(block.timestamp + 2 days);
+
+    // set available liquidity for first protocol to a small value 
+    // we deposited 1M in each protocol, so we set available liquidity 
+    // to 500k on first protocol
+    vm.mockCall(
+      address(wrap1),
+      abi.encodeWithSelector(IdlePYTClear.availableLiquidity.selector),
+      abi.encode(500_000 * 1e6) // USDC
+    );
+
+    uint256 balPre = underlying.balanceOf(address(this));
+    idleToken.redeemIdleToken(idleToken.balanceOf(address(this)));
+    assertGe(underlying.balanceOf(address(this)), balPre + amount, 'Balance is not increased after redeem');
+    vm.clearMockedCalls();
+
+    // Test another redeem
+    // set available liquidity for second protocol to a small value 
+    // we deposited 1M in each protocol, so we set available liquidity 
+    // to 500k on second protocol
+    vm.mockCall(
+      address(wrap2),
+      abi.encodeWithSelector(IdlePYTClear.availableLiquidity.selector),
+      abi.encode(500_000 * 1e6) // USDC
+    );
+
+    balPre = underlying.balanceOf(dude);
+    uint256 idleTokenAmount = idleToken.balanceOf(address(this));
+    vm.prank(dude);
+    idleToken.redeemIdleToken(idleTokenAmount);
+    assertGe(underlying.balanceOf(address(this)), balPre + amount, 'Balance is not increased after redeem');
+    vm.clearMockedCalls();
+  }
+
   function testRedeemIdleToken() public {
     uint256 balPre = underlying.balanceOf(address(this));
     uint256 amount = ONE_TOKEN * 1_000_000;

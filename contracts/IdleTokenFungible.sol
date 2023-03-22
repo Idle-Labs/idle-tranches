@@ -457,7 +457,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
       if (redeemedTokens >= _amount - 100 || redeemedTokens > toRedeem) {
         break;
       }
-      toRedeem -= redeemedTokens;
+      toRedeem = _amount - redeemedTokens;
     }
   }
 
