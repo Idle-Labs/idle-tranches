@@ -55,8 +55,8 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
         nonReentrant
         returns (uint256[] memory rewards)
     {
-        // MORPHO + rewardToken
-        rewards = new uint256[](rewardToken != address(0) ? 2 : 1);
+        address _rewardToken = rewardToken;
+        rewards = new uint256[](_rewardToken != address(0) ? 2 : 1); // MORPHO + rewardToken
 
         // claim MORPHO rewards
         if (address(distributor) != address(0) && data.length != 0) {
@@ -64,8 +64,16 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
                 data,
                 (address, uint256, bytes32[])
             );
-            // NOTE: MORPHO is not transferable
+            // NOTE: MORPHO is not transferable atm
             rewards[0] = _claimMorpho(account, claimable, proof); // index 0 is always MORPHO
+        }
+
+        // claim rewards (e.g. COMP)
+        // if rewardToken is not set, skip redeeming rewards
+        if (_rewardToken != address(0)) {
+            // claim rewards instead of the idleCDO
+            uint256 reward = IMorphoSupplyVault(strategyToken).claimRewards(address(idleCDO));
+            rewards[1] = reward;
         }
     }
 
@@ -80,6 +88,13 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
             rewards = new address[](1);
             rewards[0] = address(MORPHO);
         }
+    }
+
+    /// @notice transfer MORPHO to the idleCDO
+    /// @dev Anyone can call this function
+    function transferMorpho() public {
+        uint256 bal = MORPHO.balanceOf(address(this));
+        MORPHO.safeTransfer(address(idleCDO), bal);
     }
 
     /// @dev set to address(0) to skip `redeemRewards`

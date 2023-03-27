@@ -10,36 +10,6 @@ contract MorphoCompoundSupplyVaultStrategy is MorphoSupplyVaultStrategy {
     /// average block time is 12.06 secs after the merge
     uint256 public constant NBLOCKS_PER_YEAR = 2614925; // 24*365*3600 / 12.06
 
-    function redeemRewards(bytes calldata data)
-        public
-        override
-        onlyIdleCDO
-        nonReentrant
-        returns (uint256[] memory rewards)
-    {
-        address _rewardToken = rewardToken;
-        rewards = new uint256[](_rewardToken != address(0) ? 2 : 1); // MORPHO + rewardToken
-
-        // claim MORPHO rewards
-        if (address(distributor) != address(0) && data.length != 0) {
-            (address account, uint256 claimable, bytes32[] memory proof) = abi.decode(
-                data,
-                (address, uint256, bytes32[])
-            );
-            // NOTE: MORPHO is not transferable
-            rewards[0] = _claimMorpho(account, claimable, proof); // index 0 is always MORPHO
-        }
-
-        // claim rewards (e.g. COMP)
-        // if rewardToken is not set, skip redeeming rewards
-        if (_rewardToken != address(0)) {
-            uint256 reward = IMorphoSupplyVault(strategyToken).claimRewards(address(idleCDO));
-            rewards[1] = reward;
-            // send rewards to the idleCDO
-            IERC20Detailed(_rewardToken).safeTransfer(idleCDO, reward);
-        }
-    }
-
     function getApr() external view override returns (uint256 apr) {
         //  The market's average supply rate per block (in wad).
         (uint256 ratePerBlock, , ) = COMPOUND_LENS.getAverageSupplyRatePerBlock(poolToken);

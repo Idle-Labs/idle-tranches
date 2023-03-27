@@ -23,7 +23,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
     address internal constant morphoDistributor = 0x60345417a227ad7E312eAa1B5EC5CD1Fe5E2Cdc6;
 
     // COMP token
-    address internal rewardToken = 0xfa5E1B628EFB17C024ca76f65B45Faf6B3128CA5;
+    address internal rewardToken = 0xc00e94Cb662C3520282E6f5717214004A7f26888;
 
     address internal constant COMP_LENS = 0x930f1b46e1D081Ec1524efD95752bE3eCe51EF67;
 
@@ -44,7 +44,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
             _underlying,
             _owner,
             CDAI,
-            address(0),
+            rewardToken,
             morphoDistributor
         );
 
@@ -151,7 +151,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
         // NOTE: right now MORPHO is not transferable
         assertGt(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal");
-        assertEq(pricePost, pricePre, "virtual price equal");
+        assertGt(pricePost, pricePre, "virtual price increased");
     }
 
     function _cdoHarvest(bool _skipRewards) internal override {
