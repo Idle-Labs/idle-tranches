@@ -386,7 +386,7 @@ abstract contract TestIdleCDOBase is Test {
     );
   }
 
-  function _cdoHarvest(bool _skipRewards) internal {
+  function _cdoHarvest(bool _skipRewards) internal virtual {
     uint256 numOfRewards = rewards.length;
     bool[] memory _skipFlags = new bool[](4);
     bool[] memory _skipReward = new bool[](numOfRewards);
