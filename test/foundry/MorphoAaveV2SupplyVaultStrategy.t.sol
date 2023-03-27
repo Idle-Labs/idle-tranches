@@ -21,6 +21,11 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
     address internal constant morphoProxy = 0x777777c9898D384F785Ee44Acfe945efDFf5f3E0;
     address internal constant morphoDistributor = 0x60345417a227ad7E312eAa1B5EC5CD1Fe5E2Cdc6;
 
+    function setUp() public override {
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16917511));
+        super.setUp();
+    }
+
     function _deployStrategy(address _owner)
         internal
         override

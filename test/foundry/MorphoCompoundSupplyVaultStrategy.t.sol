@@ -27,6 +27,11 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
 
     address internal constant COMP_LENS = 0x930f1b46e1D081Ec1524efD95752bE3eCe51EF67;
 
+    function setUp() public override {
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16917511));
+        super.setUp();
+    }
+
     function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
         _underlying = DAI;
         strategyToken = IERC20Detailed(mcDAI);
