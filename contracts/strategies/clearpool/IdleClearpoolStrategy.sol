@@ -50,6 +50,9 @@ contract IdleClearpoolStrategy is
 
     /// @notice UniswapV2 router, used for APY calculation
     IUniswapV2Router02 public uniswapRouter;
+    
+    address private constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -158,10 +161,19 @@ contract IdleClearpoolStrategy is
     }
 
     function _tokenToUnderlyingRate() internal virtual view returns (uint256) {
-        address[] memory path = new address[](2);
-        (path[0], path[1]) = (govToken, token);
-        uint256[] memory amountsOut = uniswapRouter.getAmountsOut(10**18, path);
-        return amountsOut[1];
+        address _token = token;
+        if (_token == USDC) {
+            address[] memory path = new address[](2);
+            (path[0], path[1]) = (govToken, _token);
+            uint256[] memory amountsOut = uniswapRouter.getAmountsOut(10**18, path);
+            return amountsOut[1];
+        } else {
+            address[] memory path = new address[](3);
+            // in uniV2 the only pool is CPOOL/USDC
+            (path[0], path[1], path[2]) = (govToken, USDC, _token);
+            uint256[] memory amountsOut = uniswapRouter.getAmountsOut(10**18, path);
+            return amountsOut[2];
+        }
     }
 
     /// @notice Redeem Tokens
