@@ -40,5 +40,14 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         InstadappLiteETHV2Strategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
+    function _fundTokens() internal override {
+        // https://etherscan.io/address/0x41318419CFa25396b47A94896FfA2C77c6434040
+        address whale = 0x41318419CFa25396b47A94896FfA2C77c6434040;
+        initialBal = underlying.balanceOf(whale);
+        require(initialBal > 10000 * ONE_SCALE, "whale doesn't have enough tokens");
+        vm.prank(0x41318419CFa25396b47A94896FfA2C77c6434040);
+        underlying.transfer(address(this), initialBal);
+    }
+
     function testCantReinitialize() external virtual override {}
 }
