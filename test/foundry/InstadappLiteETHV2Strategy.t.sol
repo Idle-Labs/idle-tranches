@@ -40,6 +40,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         InstadappLiteETHV2Strategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
+    /// override to fund the strategy with tokens
+    /// `deal` doesn't work as expected for some reason
     function _fundTokens() internal override {
         // https://etherscan.io/address/0x41318419CFa25396b47A94896FfA2C77c6434040
         address whale = 0x41318419CFa25396b47A94896FfA2C77c6434040;
@@ -49,5 +51,11 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         underlying.transfer(address(this), initialBal);
     }
 
-    function testCantReinitialize() external virtual override {}
+    function testCantReinitialize() external override {}
+
+    // function _pokeLendingProtocol() internal override {
+    //     vm.prank(0x10F37Ceb965B477bA09d23FF725E0a0f1cdb83a5);
+    //     (bool success, ) = ETHV2Vault.call(abi.encodeWithSignature("updateExchangePrice()"));
+    //     require(success, "updateExchangePrice failed");
+    // }
 }
