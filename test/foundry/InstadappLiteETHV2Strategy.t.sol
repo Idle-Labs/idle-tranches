@@ -53,9 +53,9 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
 
     function testCantReinitialize() external override {}
 
-    // function _pokeLendingProtocol() internal override {
-    //     vm.prank(0x10F37Ceb965B477bA09d23FF725E0a0f1cdb83a5);
-    //     (bool success, ) = ETHV2Vault.call(abi.encodeWithSignature("updateExchangePrice()"));
-    //     require(success, "updateExchangePrice failed");
-    // }
+    function _pokeLendingProtocol() internal override {
+        vm.prank(0x10F37Ceb965B477bA09d23FF725E0a0f1cdb83a5);
+        (bool success, ) = ETHV2Vault.call(abi.encodeWithSignature("updateExchangePrice()"));
+        require(success, "updateExchangePrice failed");
+    }
 }
