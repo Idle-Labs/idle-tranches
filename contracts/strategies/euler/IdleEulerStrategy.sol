@@ -130,11 +130,11 @@ contract IdleEulerStrategy is
         override
         returns (uint256 redeemed)
     {
-        if (_amount > 0) {
-            // get eTokens from the user
-            eToken.transferFrom(msg.sender, address(this), _amount);
-            redeemed = _redeem(eToken.convertBalanceToUnderlying(_amount));
-        }
+        // if (_amount > 0) {
+        //     // get eTokens from the user
+        //     eToken.transferFrom(msg.sender, address(this), _amount);
+        //     redeemed = _redeem(eToken.convertBalanceToUnderlying(_amount));
+        // }
     }
 
     /// @notice Anyone can call this because this contract holds no stETH and so no 'old' rewards
@@ -156,23 +156,23 @@ contract IdleEulerStrategy is
         override
         returns (uint256 redeemed)
     {
-        if (_amount > 0) {
-            // get eTokens from the user
-            eToken.transferFrom(
-                msg.sender,
-                address(this),
-                eToken.convertUnderlyingToBalance(_amount)
-            );
+        // if (_amount > 0) {
+        //     // get eTokens from the user
+        //     eToken.transferFrom(
+        //         msg.sender,
+        //         address(this),
+        //         eToken.convertUnderlyingToBalance(_amount)
+        //     );
 
-            // after converting underlying amount to eToken to collect from user
-            // the underlying amount could exceed eToken balance upon calling withdraw
-            // and revert with 'e/insufficient-balance'
-            if (eToken.balanceOfUnderlying(address(this)) < _amount) {
-                redeemed = _redeem(eToken.balanceOfUnderlying(address(this)));
-            } else {
-                redeemed = _redeem(_amount);
-            }
-        }
+        //     // after converting underlying amount to eToken to collect from user
+        //     // the underlying amount could exceed eToken balance upon calling withdraw
+        //     // and revert with 'e/insufficient-balance'
+        //     if (eToken.balanceOfUnderlying(address(this)) < _amount) {
+        //         redeemed = _redeem(eToken.balanceOfUnderlying(address(this)));
+        //     } else {
+        //         redeemed = _redeem(_amount);
+        //     }
+        // }
     }
 
     // ###################
@@ -180,21 +180,21 @@ contract IdleEulerStrategy is
     // ###################
 
     function _redeem(uint256 _amount) internal returns (uint256 redeemed) {
-        uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(
-            address(this)
-        );
+        // uint256 underlyingTokenBalanceBefore = underlyingToken.balanceOf(
+        //     address(this)
+        // );
 
-        eToken.withdraw(0, _amount);
+        // eToken.withdraw(0, _amount);
 
-        uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(
-            address(this)
-        );
-        redeemed = underlyingTokenBalanceAfter - underlyingTokenBalanceBefore;
+        // uint256 underlyingTokenBalanceAfter = underlyingToken.balanceOf(
+        //     address(this)
+        // );
+        // redeemed = underlyingTokenBalanceAfter - underlyingTokenBalanceBefore;
 
-        // transfer redeemed underlying tokens to msg.sender
-        underlyingToken.safeTransfer(msg.sender, redeemed);
-        // transfer gov tokens to msg.sender
-        // _withdrawGovToken(msg.sender);
+        // // transfer redeemed underlying tokens to msg.sender
+        // underlyingToken.safeTransfer(msg.sender, redeemed);
+        // // transfer gov tokens to msg.sender
+        // // _withdrawGovToken(msg.sender);
     }
 
     // ###################
@@ -203,32 +203,32 @@ contract IdleEulerStrategy is
 
     /// @return net price in underlyings of 1 strategyToken
     function price() public view override returns (uint256) {
-        uint256 decimals = eToken.decimals();
-        // return price of 1 eToken in underlying
-        return eToken.convertBalanceToUnderlying(10**decimals);
+        // uint256 decimals = eToken.decimals();
+        // // return price of 1 eToken in underlying
+        // return eToken.convertBalanceToUnderlying(10**decimals);
     }
 
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)
     function getApr() external view override returns (uint256 apr) {
-        // Use the markets module:
-        IMarkets markets = IMarkets(EULER_MARKETS);
-        IDToken dToken = IDToken(markets.underlyingToDToken(token));
-        uint256 borrowSPY = uint256(int256(markets.interestRate(token)));
-        uint256 totalBorrows = dToken.totalSupply();
-        uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
-        uint32 reserveFee = markets.reserveFee(token);
-        // (borrowAPY, supplyAPY)
-        (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
-            borrowSPY,
-            totalBorrows,
-            totalBalancesUnderlying,
-            reserveFee
-        );
-        // apr is eg 0.024300334 * 1e27 for 2.43% apr
-        // while the method needs to return the value in the format 2.43 * 1e18
-        // so we do apr / 1e9 * 100 -> apr / 1e7
-        apr = apr / 1e7;
+        // // Use the markets module:
+        // IMarkets markets = IMarkets(EULER_MARKETS);
+        // IDToken dToken = IDToken(markets.underlyingToDToken(token));
+        // uint256 borrowSPY = uint256(int256(markets.interestRate(token)));
+        // uint256 totalBorrows = dToken.totalSupply();
+        // uint256 totalBalancesUnderlying = eToken.totalSupplyUnderlying();
+        // uint32 reserveFee = markets.reserveFee(token);
+        // // (borrowAPY, supplyAPY)
+        // (, apr) = IEulerGeneralView(EULER_GENERAL_VIEW).computeAPYs(
+        //     borrowSPY,
+        //     totalBorrows,
+        //     totalBalancesUnderlying,
+        //     reserveFee
+        // );
+        // // apr is eg 0.024300334 * 1e27 for 2.43% apr
+        // // while the method needs to return the value in the format 2.43 * 1e18
+        // // so we do apr / 1e9 * 100 -> apr / 1e7
+        // apr = apr / 1e7;
     }
 
     /// @return tokens array of reward token addresses

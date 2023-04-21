@@ -115,23 +115,23 @@ contract IdleEulerStakingStrategy is BaseStrategy {
     /// @param _shares amount of strategyTokens to redeem
     /// @return amountRedeemed  amount of underlyings redeemed
     function redeem(uint256 _shares) external override onlyIdleCDO returns (uint256 amountRedeemed) {
-        if (_shares != 0) {
-            _burn(msg.sender, _shares);
-            // Withdraw amount needed
-            amountRedeemed = _withdraw((_shares * price()) / EXP_SCALE, msg.sender);
-        }
+        // if (_shares != 0) {
+        //     _burn(msg.sender, _shares);
+        //     // Withdraw amount needed
+        //     amountRedeemed = _withdraw((_shares * price()) / EXP_SCALE, msg.sender);
+        // }
     }
 
     /// @notice Redeem Tokens
     /// @param _amount amount of underlying tokens to redeem
     /// @return amountRedeemed Amount of underlying tokens received
     function redeemUnderlying(uint256 _amount) external override onlyIdleCDO returns (uint256 amountRedeemed) {
-        uint256 _shares = (_amount * EXP_SCALE) / price();
-        if (_shares != 0) {
-            _burn(msg.sender, _shares);
-            // Withdraw amount needed
-            amountRedeemed = _withdraw(_amount, msg.sender);
-        }
+        // uint256 _shares = (_amount * EXP_SCALE) / price();
+        // if (_shares != 0) {
+        //     _burn(msg.sender, _shares);
+        //     // Withdraw amount needed
+        //     amountRedeemed = _withdraw(_amount, msg.sender);
+        // }
     }
 
     // ###################
@@ -150,26 +150,26 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         override
         returns (uint256 amountWithdrawn)
     {
-        IEToken _eToken = eToken;
-        IERC20Detailed _underlyingToken = underlyingToken;
-        IStakingRewards _stakingRewards = stakingRewards;
+        // IEToken _eToken = eToken;
+        // IERC20Detailed _underlyingToken = underlyingToken;
+        // IStakingRewards _stakingRewards = stakingRewards;
 
-        if (address(_stakingRewards) != address(0)) {
-            // Unstake from StakingRewards
-            _stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
-        }
+        // if (address(_stakingRewards) != address(0)) {
+        //     // Unstake from StakingRewards
+        //     _stakingRewards.withdraw(_eToken.convertUnderlyingToBalance(_amountToWithdraw));
+        // }
 
-        uint256 underlyingsInEuler = _eToken.balanceOfUnderlying(address(this));
-        if (_amountToWithdraw > underlyingsInEuler) {
-            _amountToWithdraw = underlyingsInEuler;
-        }
+        // uint256 underlyingsInEuler = _eToken.balanceOfUnderlying(address(this));
+        // if (_amountToWithdraw > underlyingsInEuler) {
+        //     _amountToWithdraw = underlyingsInEuler;
+        // }
 
-        // Withdraw from Euler
-        uint256 underlyingBalanceBefore = _underlyingToken.balanceOf(address(this));
-        _eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
-        amountWithdrawn = _underlyingToken.balanceOf(address(this)) - underlyingBalanceBefore;
-        // Send tokens to the destination
-        _underlyingToken.safeTransfer(_destination, amountWithdrawn);
+        // // Withdraw from Euler
+        // uint256 underlyingBalanceBefore = _underlyingToken.balanceOf(address(this));
+        // _eToken.withdraw(SUB_ACCOUNT_ID, _amountToWithdraw);
+        // amountWithdrawn = _underlyingToken.balanceOf(address(this)) - underlyingBalanceBefore;
+        // // Send tokens to the destination
+        // _underlyingToken.safeTransfer(_destination, amountWithdrawn);
     }
 
     /// @return rewards rewards[0] : rewards redeemed
@@ -191,14 +191,14 @@ contract IdleEulerStakingStrategy is BaseStrategy {
 
     /// @return net price in underlyings of 1 strategyToken
     function price() public view virtual override returns (uint256) {
-        IEToken _eToken = eToken;
-        // if it fails it means that Euler is paused, so it should be safe to set price to 1
-        // as deposits and redeems are not allowed
-        try _eToken.decimals() returns (uint256 _decimals) {
-            return _eToken.convertBalanceToUnderlying(10**_decimals);
-        } catch {
-            return 10**tokenDecimals;
-        }
+        // IEToken _eToken = eToken;
+        // // if it fails it means that Euler is paused, so it should be safe to set price to 1
+        // // as deposits and redeems are not allowed
+        // try _eToken.decimals() returns (uint256 _decimals) {
+        //     return _eToken.convertBalanceToUnderlying(10**_decimals);
+        // } catch {
+        //     return 10**tokenDecimals;
+        // }
     }
     /// @dev Returns supply apr for providing liquidity minus reserveFee
     /// @return apr net apr (fees should already be excluded)

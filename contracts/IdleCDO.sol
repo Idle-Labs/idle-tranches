@@ -185,13 +185,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// NOTE: `unclaimedFees` are not included in the contract value
   /// NOTE2: fees that *will* be taken (in the next _updateAccounting call) are counted
   function getContractValue() public override view returns (uint256) {
-    address _strategyToken = strategyToken;
-    uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
-    // TVL is the sum of unlent balance in the contract + the balance in lending - the reduction for harvested rewards - unclaimedFees
-    // the balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
-    // TVL = (strategyTokens * strategy token price) + unlent balance - lockedRewards - unclaimedFees
-    return (_contractTokenBalance(_strategyToken) * _strategyPrice() / (10**(strategyTokenDecimals))) +
-            _contractTokenBalance(token) -
+    // EULER FIX: we removed all calls to eTokens (both balanceOf and decimals) as
+    // underlyings will be sent to the contract directly
+    return _contractTokenBalance(token) -
             _lockedRewards() -
             unclaimedFees;
   }
@@ -939,37 +935,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // Allow deposits/withdraws but checks for lending protocol default
     skipDefaultCheck = false;
     revertIfTooLow = true;
-  }
-
-  /// @notice allow redeems of remaining funds, if any, after default/losses
-  /// @dev can be called by the owner only
-  function setRedemptionRates() external {
-    _checkOnlyOwner();
-
-    // liquidate all ibTokens
-    uint256 _amount = IERC20Detailed(strategyToken).balanceOf(address(this)) * _strategyPrice() / ONE_TRANCHE_TOKEN;
-    _liquidate(_amount, false);
-
-    address _AATranche = AATranche;
-    uint256 _AASupply = IERC20(_AATranche).totalSupply();
-    uint256 _lastAAPrice = _tranchePrice(_AATranche);
-    // Get all underlyings in the contract
-    uint256 _underlyingBalance = IERC20(token).balanceOf(address(this));
-    // Set redeem price as if everything is going to AA 
-    uint256 redeemPrice = _underlyingBalance * ONE_TRANCHE_TOKEN / _AASupply;
-    // Check if rate is too high compared to the last saved price
-    if (redeemPrice > _lastAAPrice) {
-      // if yes set it to the last saved price
-      redeemPrice = _lastAAPrice;
-      // calculate funds for AA and BB
-      uint256 fundsAA = _AASupply * redeemPrice / ONE_TRANCHE_TOKEN;
-      uint256 fundsBB = _underlyingBalance - fundsAA;
-      // set final redeem prices
-      priceBB = fundsBB * ONE_TRANCHE_TOKEN / IERC20(BBTranche).totalSupply();
-    } else {
-      priceBB = 0;
-    }
-    priceAA = redeemPrice;
   }
 
   /// @notice Pauses deposits and redeems
