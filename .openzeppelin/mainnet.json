@@ -17692,6 +17692,212 @@
           }
         }
       }
+    },
+    "93f1e624e49e6eaf6aa6a71ff2d46c49173b2670a04c71126193683220db5702": {
+      "address": "0xE6FF21224b386Ae7eB162bBf973E1DFB471a6eD5",
+      "txHash": "0xf5c1a32c9cb9fa4e635b8d1db7587d6b77fd89b803f100ed9988d4ca7b7475f7",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "owner",
+            "type": "t_address",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:66"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "contractDatas",
+            "type": "t_mapping(t_address,t_struct(ContractData)7703_storage)",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:68"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "allContractDatas",
+            "type": "t_array(t_struct(ContractData)7703_storage)dyn_storage",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:69"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "isEulerDisabled",
+            "type": "t_bool",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:71"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_address,t_struct(ContractData)7703_storage)": {
+            "label": "mapping(address => struct IdleBuddyCompAavePYTStructs.ContractData)"
+          },
+          "t_struct(ContractData)7703_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData",
+            "members": [
+              {
+                "label": "underlying",
+                "type": "t_address"
+              },
+              {
+                "label": "cTokenNew",
+                "type": "t_address"
+              },
+              {
+                "label": "aV2Token",
+                "type": "t_address"
+              },
+              {
+                "label": "eToken",
+                "type": "t_address"
+              },
+              {
+                "label": "maToken",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearWinTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytEulerStakingTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytMorphoAaveTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearPorTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearFasTranche",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_array(t_struct(ContractData)7703_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData[]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
+    },
+    "94247a38e02b3a282a91317b2207a5dd4ceec5162d6fcedd4ce815761d0a743e": {
+      "address": "0xA9b29062aBF9bfa213c63440955f5DE091Ad541F",
+      "txHash": "0xfef82738c9ef1dfbcbf9bad36d5bdebe4bf44fd29bd94411f84751c68cd1535e",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:25"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:30"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "owner",
+            "type": "t_address",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:70"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "contractDatas",
+            "type": "t_mapping(t_address,t_struct(ContractData)7163_storage)",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:72"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "allContractDatas",
+            "type": "t_array(t_struct(ContractData)7163_storage)dyn_storage",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:73"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "isEulerDisabled",
+            "type": "t_bool",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:75"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_address,t_struct(ContractData)7163_storage)": {
+            "label": "mapping(address => struct IdleBuddyCompAavePYTStructs.ContractData)"
+          },
+          "t_struct(ContractData)7163_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData",
+            "members": [
+              {
+                "label": "underlying",
+                "type": "t_address"
+              },
+              {
+                "label": "cTokenNew",
+                "type": "t_address"
+              },
+              {
+                "label": "aV2Token",
+                "type": "t_address"
+              },
+              {
+                "label": "eToken",
+                "type": "t_address"
+              },
+              {
+                "label": "maToken",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearWinTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytEulerStakingTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytMorphoAaveTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearPorTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearFasTranche",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_array(t_struct(ContractData)7163_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData[]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
     }
   }
 }

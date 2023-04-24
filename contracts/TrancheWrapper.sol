@@ -11,6 +11,7 @@ import "./interfaces/IERC4626Upgradeable.sol";
 import "./IdleCDO.sol";
 
 contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC4626Upgradeable {
+    using SafeERC20Upgradeable for ERC20Upgradeable;
     error AmountZero();
 
     event CloneCreated(address indexed instance);
@@ -43,7 +44,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         token = idleCDO.token();
         isAATranche = idleCDO.AATranche() == _tranche;
 
-        ERC20Upgradeable(token).approve(address(_idleCDO), type(uint256).max); // Vaults are trusted
+        ERC20Upgradeable(token).safeApprove(address(_idleCDO), type(uint256).max); // Vaults are trusted
     }
 
     /// @dev clone the contract via minimal proxy. proxy contract must be deployed by the original contract.
