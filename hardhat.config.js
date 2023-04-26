@@ -71,7 +71,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 800
+            runs: 8000
           }
         }
       },
@@ -117,7 +117,8 @@ module.exports = {
       //   // blockNumber: 16246541, // eUSDCStaking PYT deploy
       //   // blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
       //   // blockNumber: 16419858, // Morpho maUSDC
-      //   blockNumber: 16533689, // Euler staking DAI
+      //   // blockNumber: 16976228, // Euler staking DAI
+      //   blockNumber: 17081600, // Euler staking DAI
       // },
       // chainId: 137
     },

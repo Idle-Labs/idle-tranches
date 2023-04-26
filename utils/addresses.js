@@ -126,6 +126,7 @@ const mainnetContracts = {
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
   trancheErc4626Wrapper: '0xB286a43F3EfF9059117f58EE2472d1c902416810',
+  trancheErc4626WrapperUSDT: '0xcf96f4b91c6d424fb34aa9a33855b5c8ed1fe66d',
   trancheErc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
   idleTokenErc4626Wrapper: '0x658a190730be0afb1ea39295f7ffee6d44aaefa7',
   idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
@@ -622,6 +623,25 @@ const CDOs = {
 };
 
 const trancheErc4626Wrappers = {
+  // trancheErc4626WrapperUSDT is used for new wrappers as it uses safeApprove
+  cppordai: {
+    original: mainnetContracts.trancheErc4626WrapperUSDT,
+    cdo: CDOs.cppoldai,
+    AATrancheWraper: '0x79c4fE26f3b2809fD29Ec8588242036b8136f32D',
+    BBTrancheWraper: '0xA9F908DA2E3Ec7475a743e97Bb5B06081B688aE4',
+  },
+  cpporusdc: {
+    original: mainnetContracts.trancheErc4626WrapperUSDT,
+    cdo: CDOs.cpporusdc,
+    AATrancheWraper: '0x291eEcab3a2d3f403745968C14edBB227d183636',
+    BBTrancheWraper: '0xa35B7A9fe5DC4cD51bA47ACdf67B0f41c893329A',
+  },
+  cpfasusdt: {
+    original: mainnetContracts.trancheErc4626WrapperUSDT,
+    cdo: CDOs.cpfasusdt,
+    AATrancheWraper: mainnetContracts.trancheErc4626WrapperUSDT,
+    BBTrancheWraper: '0x28bC4D9aD73A761049c773038c344F54D906B152',
+  },
   cpfoldai: {
     original: mainnetContracts.trancheErc4626Wrapper,
     cdo: CDOs.cpfoldai,
@@ -1490,9 +1510,11 @@ exports.deployTokensBY = {
     address: '0xeC9482040e6483B7459CC0Db05d51dfA3D3068E1',
     strategies: [
       // BB tranche of eDAIStaking PYT
-      '0x7188A402Ebd2638d6CccB855019727616a81bBd9',
+      // '0x7188A402Ebd2638d6CccB855019727616a81bBd9',
       // BB tranche of maDAI PYT
-      '0x37Dd9A73a84bb0EF562C17b3f7aD34001FEdAf38'
+      '0x37Dd9A73a84bb0EF562C17b3f7aD34001FEdAf38',
+      // BB tranche of cpPOR-DAI PYT
+      '0xBC4c00f28b3023620db7ce398F6df0ac3Bdf952C'
     ],
   },
   idlewethjunior: {
@@ -1507,7 +1529,7 @@ exports.deployTokensBY = {
       // BB tranche of maWETH PYT
       '0x9750c398993862Ebc9C5A30a9F8Be78Daa440677'
     ],
-  },
+  }
 }
 
 exports.whale = '0xba12222222228d8ba445958a75a0704d566bf2c8'; // balancer
