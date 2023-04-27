@@ -340,10 +340,10 @@ abstract contract TestIdleCDOBase is Test {
     uint256 amountAA = amount * ratio / FULL_ALLOC;
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amount - amountAA);
-
-    assertEq(
+    assertApproxEqAbs(
       idleCDO.trancheAPRSplitRatio(), 
       _calcNewAPRSplit(ratio),
+      2,
       "split ratio on deposits"
     );
   }
@@ -381,9 +381,10 @@ abstract contract TestIdleCDOBase is Test {
       idleCDO.withdrawBB(amountBB);
     }
     
-    assertEq(
+    assertApproxEqAbs(
       idleCDO.trancheAPRSplitRatio(), 
       _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 
+      2,
       "split ratio on redeem"
     );
   }

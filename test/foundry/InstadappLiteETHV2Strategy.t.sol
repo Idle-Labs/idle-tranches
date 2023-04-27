@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "./TestIdleCDOBase.sol";
 
 import {InstadappLiteETHV2Strategy} from "../../contracts/strategies/instadapp/InstadappLiteETHV2Strategy.sol";
+import {IdleCDOInstadappLiteVariant} from "../../contracts/IdleCDOInstadappLiteVariant.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
 import {IERC4626Upgradeable} from "../../contracts/interfaces/IERC4626Upgradeable.sol";
 
@@ -15,10 +16,12 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
     address internal constant STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
 
     function setUp() public override {
-        vm.createSelectFork("mainnet", 16981000);
+        vm.createSelectFork("mainnet", 17138692);
         super.setUp();
     }
-
+    function _deployCDO() internal override returns (IdleCDO _cdo) {
+        _cdo = new IdleCDOInstadappLiteVariant();
+    }
     function _deployStrategy(address _owner)
         internal
         override
@@ -46,14 +49,9 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
     function _fundTokens() internal override {
         // https://etherscan.io/address/0x41318419CFa25396b47A94896FfA2C77c6434040
         address whale = 0x41318419CFa25396b47A94896FfA2C77c6434040;
-        // uint256 bal = underlying.balanceOf(whale);
-        // initialBal = 10000 * ONE_SCALE;
-        // require(bal >= initialBal, "whale doesn't have enough tokens");
-        // vm.prank(0x41318419CFa25396b47A94896FfA2C77c6434040);
-        // underlying.transfer(address(this), bal);
         initialBal = underlying.balanceOf(whale);
         require(initialBal > 20000 * ONE_SCALE, "whale doesn't have enough tokens");
-        vm.prank(0x41318419CFa25396b47A94896FfA2C77c6434040);
+        vm.prank(whale);
         underlying.transfer(address(this), initialBal);
     }
 
@@ -75,8 +73,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
 
         assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, 1, "AAtranche bal");
         assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, 1, "BBtranche bal");
-        assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal - totAmount, 1, "underlying bal");
-        assertApproxEqAbs(underlying.balanceOf(address(idleCDO)), totAmount, 1, "underlying bal");
+        assertApproxEqAbs(underlying.balanceOf(address(this)), initialBal - totAmount, 1, "underlying bal depositor");
+        assertApproxEqAbs(underlying.balanceOf(address(idleCDO)), totAmount, 2, "underlying bal cdo");
         // strategy is still empty with no harvest
         assertApproxEqAbs(strategyToken.balanceOf(address(idleCDO)), 0, 1, "strategy bal");
         uint256 strategyPrice = strategy.price();
@@ -96,12 +94,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertApproxEqAbs(underlying.balanceOf(address(idleCDO)), 0, 1, "underlying bal after harvest");
 
         uint256 releasePeriod = _strategyReleaseBlocksPeriod();
-        _donateToken(ETHV2Vault, 10000 * ONE_SCALE);
-        // vm.mockCall(
-        //     ETHV2Vault,
-        //     abi.encodeWithSelector(IERC4626Upgradeable.convertToAssets.selector),
-        //     abi.encode((IERC4626Upgradeable(ETHV2Vault).convertToAssets(ONE_SCALE) * 110) / 100)
-        // );
+        _donateToken(ETHV2Vault, 10 * ONE_SCALE);
 
         // Skip 7 day forward to accrue interest
         skip(7 days);

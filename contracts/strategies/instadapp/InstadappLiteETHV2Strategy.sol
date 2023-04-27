@@ -30,13 +30,12 @@ contract InstadappLiteETHV2Strategy is ERC4626Strategy {
         // ETHV2Vault price is updated only at the time of rebalance
         // if _lastPrice == zero, then apr returns zero as well
         if (_lastPriceTimestamp > block.timestamp) {
-            uint256 price = price();
+            uint256 _price = price();
             // update
-            lastPrice = price;
+            lastPrice = _price;
             lastPriceTimestamp = block.timestamp;
-            lastApr = _computeApr(block.timestamp, price, _lastPriceTimestamp, _lastPrice);
+            lastApr = _computeApr(block.timestamp, _price, _lastPriceTimestamp, _lastPrice);
         }
-
         if (_amount != 0) {
             // Send tokens to the strategy
             IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
