@@ -7,11 +7,11 @@ import "./IdleCDO.sol";
 
 /// @title IdleCDO variant
 contract IdleCDOInstadappLiteVariant is IdleCDO {
-    /// 100 = 1%
+    /// 10000 = 100%
     uint256 liquidationToleranceBps;
 
     function _additionalInit() internal override {
-        liquidationToleranceBps = 50; 
+        liquidationToleranceBps = 50; // 0.5%
     }
 
     /// @dev this should liquidate at least _amount of `token` from the lending provider or revertIfNeeded
@@ -30,4 +30,8 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
             _redeemedTokens = _amount;
         }
     }
+
+    // function setLiquidationTolerance(uint256 _diff) external override {
+    //     revert("IdleCDOInstadappLiteVariant: setLiquidationTolerance not supported");
+    // }
 }
