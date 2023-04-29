@@ -7,7 +7,7 @@ import "./IdleCDO.sol";
 
 /// @title IdleCDO variant
 contract IdleCDOInstadappLiteVariant is IdleCDO {
-    /// 10000 = 100%
+    /// @notice the tolerance for the liquidation in basis points. 10000 = 100%
     uint256 liquidationToleranceBps;
 
     function _additionalInit() internal override {
@@ -31,7 +31,8 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         }
     }
 
-    // function setLiquidationTolerance(uint256 _diff) external override {
-    //     revert("IdleCDOInstadappLiteVariant: setLiquidationTolerance not supported");
-    // }
+    function setLiquidationToleranceBps(uint256 _diffBps) external {
+        _checkOnlyOwner();
+        liquidationToleranceBps = _diffBps;
+    }
 }

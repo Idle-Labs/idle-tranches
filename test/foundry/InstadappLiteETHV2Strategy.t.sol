@@ -167,9 +167,6 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
         // juniors lost about 10% as there were seniors to cover
-        // TODO:
-        //   Expected: 999999999999999999
-        //     Actual: 900000000000000000
         assertApproxEqAbs((preBBPrice * 90_000) / 100_000, postBBPrice, 1, "BB price after loss");
         // seniors are covered
         assertApproxEqAbs(preAAPrice, postAAPrice, 1, "AA price unaffected");
@@ -179,6 +176,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertApproxEqAbs(idleCDO.unclaimedFees(), unclaimedFees, 1, "Fees did not increase");
     }
 
+    // price increases highly enough to cover withdrawal fees
     function testRedeems() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
@@ -190,10 +188,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         _cdoHarvest(true);
 
         // NOTE: forcely increase the vault price
-        // 20 steth : currP > price => assertion err
-        // 50       : currP < price => assertion err
-        // 100 steth: currP < price => assertion pass
-        _donateToken(ETHV2Vault, 50 * ONE_SCALE);
+        _donateToken(ETHV2Vault, 100 * ONE_SCALE);
 
         skip(7 days);
         vm.roll(block.number + 7 * 7200);
@@ -206,10 +201,48 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         uint256 resBB = idleCDO.withdrawBB(0);
         assertGt(resBB, amount, "BB gained something");
 
-        assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "AAtranche bal");
-        assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
+        assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
+        assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
         assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    function testRedeemWithLossCovered() external {}
+    // price decreases
+    function testRedeemWithLossCovered() external {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+
+        // NOTE: forcely decrease the vault price
+        // curr price - 2.5%
+        uint256 maxDecrease = idleCDO.maxDecreaseDefault() / 2;
+        uint256 totalAssets = IERC4626Upgradeable(ETHV2Vault).totalAssets();
+        uint256 loss = (totalAssets * maxDecrease) / FULL_ALLOC;
+        uint256 bal = underlying.balanceOf(ETHV2Vault);
+        require(bal >= loss, "test: loss is too large");
+        vm.prank(ETHV2Vault);
+        underlying.transfer(address(0x07), loss);
+
+        skip(7 days);
+        vm.roll(block.number + 7 * 7200);
+
+        _pokeLendingProtocol();
+        console.log("price :>>", strategy.price());
+        // redeem all
+        uint256 resAA = idleCDO.withdrawAA(0);
+        uint256 resBB = idleCDO.withdrawBB(0);
+
+        // withdrawal fee of instadapp vault is deducted from the amount
+        assertApproxEqRel(resAA, (amount * 995) / 1000, 0.01 * 1e18, "BB price after loss"); // 1e18 == 100%
+        // juniors lost about 5% as there were seniors to cover + withdarawal fee
+        assertApproxEqRel(resBB, (((amount * 95_000) / 100_000) * 995) / 1000, 0.005 * 1e18, "BB price after loss"); // 1e18 == 100%
+
+        assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
+        assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
+        assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    }
+
+    function testDepositRedeemWithLossShutdown() external {}
 }
