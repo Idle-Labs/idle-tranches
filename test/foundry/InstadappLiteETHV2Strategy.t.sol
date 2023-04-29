@@ -135,8 +135,6 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
 
         uint256 totAmount = amount * 2;
 
-        uint256 currPrice = strategy.price();
-        console.log("currPrice :>>", currPrice);
         uint256 maxDecrease = idleCDO.maxDecreaseDefault();
         uint256 unclaimedFees = idleCDO.unclaimedFees();
         assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, 1, "AAtranche bal");
@@ -153,7 +151,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         uint256 bal = underlying.balanceOf(ETHV2Vault);
         require(bal >= loss, "test: loss is too large");
         vm.prank(ETHV2Vault);
-        underlying.transfer(address(0x07), loss);
+        underlying.transfer(address(0xdead), loss);
 
         // Skip 7 day forward to accrue interest
         // 7 days in blocks
@@ -161,13 +159,13 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.roll(block.number + 7 * 7200);
 
         _pokeLendingProtocol();
-        uint256 price = strategy.price();
-        console.log("price :>>", price);
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+        console.log("postAAPrice :>>", postAAPrice);
+        console.log("postBBPrice :>>", postBBPrice);
         // juniors lost about 10% as there were seniors to cover
-        assertApproxEqAbs((preBBPrice * 90_000) / 100_000, postBBPrice, 1, "BB price after loss");
+        assertApproxEqAbs(postBBPrice, (preBBPrice * 90_000) / 100_000, 1, "BB price after loss");
         // seniors are covered
         assertApproxEqAbs(preAAPrice, postAAPrice, 1, "AA price unaffected");
         assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 1, "AA price not updated until new interaction");
@@ -223,7 +221,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         uint256 bal = underlying.balanceOf(ETHV2Vault);
         require(bal >= loss, "test: loss is too large");
         vm.prank(ETHV2Vault);
-        underlying.transfer(address(0x07), loss);
+        underlying.transfer(address(0xdead), loss);
 
         skip(7 days);
         vm.roll(block.number + 7 * 7200);
@@ -244,5 +242,69 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    function testDepositRedeemWithLossShutdown() external {}
+    function testDepositRedeemWithLossShutdown() external {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount - amount / 50);
+        idleCDO.depositBB(amount / 50);
+
+        uint256 unclaimedFees = idleCDO.unclaimedFees();
+        // now let's simulate a loss by decreasing strategy price
+        // curr price - 5%, this will trigger a default because the loss is >= junior tvl
+        uint256 maxDecrease = idleCDO.maxDecreaseDefault();
+        uint256 totalAssets = IERC4626Upgradeable(ETHV2Vault).totalAssets();
+        uint256 loss = (totalAssets * maxDecrease) / FULL_ALLOC;
+        uint256 bal = underlying.balanceOf(ETHV2Vault);
+        require(bal >= loss, "test: loss is too large");
+        vm.prank(ETHV2Vault);
+        underlying.transfer(address(0xdead), loss);
+
+        skip(7 days);
+        vm.roll(block.number + 30 * 7200); // 7 days in blocks
+
+        _pokeLendingProtocol();
+
+        uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
+        uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+
+        address newUser = address(0xcafe);
+        _donateToken(newUser, amount * 2);
+        // do another interaction to effectively update prices and trigger default
+        vm.startPrank(newUser);
+        // both deposits will revert as loss will accrue and leave 0 to juniors
+        underlying.approve(address(idleCDO), amount * 2);
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositBB(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawBB(amount);
+        vm.stopPrank();
+
+        vm.prank(idleCDO.owner());
+        IdleCDO(address(idleCDO)).updateAccounting();
+        // loss is now distributed and shutdown triggered
+        uint256 postDepositAAPrice = idleCDO.virtualPrice(address(AAtranche));
+        uint256 postDepositBBPrice = idleCDO.virtualPrice(address(BBtranche));
+
+        assertEq(postDepositAAPrice, postAAPrice, "AA price did not change after deposit");
+        assertEq(postDepositBBPrice, postBBPrice, "BB price did not change after deposit");
+        assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
+        assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
+        assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
+        assertEq(idleCDO.allowAAWithdraw(), false, "Default flag for senior set");
+        assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for senior set");
+        assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
+
+        // deposits/redeems are disabled
+        // vm.expectRevert(bytes("Pausable: paused"));
+        // idleCDO.depositAA(amount);
+        // vm.expectRevert(bytes("Pausable: paused"));
+        // idleCDO.depositBB(amount);
+        // vm.expectRevert(bytes("3"));
+        // idleCDO.withdrawAA(amount);
+        // vm.expectRevert(bytes("3"));
+        // idleCDO.withdrawBB(amount);
+    }
 }
