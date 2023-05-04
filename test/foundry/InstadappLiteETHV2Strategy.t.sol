@@ -128,13 +128,15 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         // fee is set to 10% and release block period to 0
         uint256 preAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 preBBPrice = idleCDO.virtualPrice(address(BBtranche));
-
+        console.log("preAAPrice :>>", preAAPrice);
+        console.log("preBBPrice :>>", preBBPrice);
         // AARatio 50%
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
 
         uint256 totAmount = amount * 2;
 
+        console.log("price :>>", strategy.price());
         uint256 maxDecrease = idleCDO.maxDecreaseDefault();
         uint256 unclaimedFees = idleCDO.unclaimedFees();
         assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, 1, "AAtranche bal");
@@ -160,10 +162,14 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
 
         _pokeLendingProtocol();
 
+        _cdoHarvest(true);
+
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+        console.log("price :>>", strategy.price());
         console.log("postAAPrice :>>", postAAPrice);
         console.log("postBBPrice :>>", postBBPrice);
+        // TODO BBprice何故か減らない
         // juniors lost about 10% as there were seniors to cover
         assertApproxEqAbs(postBBPrice, (preBBPrice * 90_000) / 100_000, 1, "BB price after loss");
         // seniors are covered
