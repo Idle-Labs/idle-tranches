@@ -1483,8 +1483,8 @@ exports.deployTokensBY = {
     name: 'IdleUSDC Junior',
     address: '0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e',
     strategies: [
-      // BB tranche of eUSDCStaking PYT
-      '0xcf93471A82241c2bE469D83d960932721b098FFB',
+      // BB tranche of cpPORUSDC PYT
+      '0x46e30328920036d7BffCcc14348808bF65C6DaEE',
       // BB tranche of maUSDC PYT
       '0x9db5a6bd77572748e541a0cf42f787f5fe03049e'
     ],
@@ -1496,8 +1496,8 @@ exports.deployTokensBY = {
     name: 'IdleUSDT Junior',
     address: '0xfa3AfC9a194BaBD56e743fA3b7aA2CcbED3eAaad',
     strategies: [
-      // BB tranche of eUSDTStaking PYT
-      '0x13b9a2b6434C3b0955F2b164784CB39dFF373C7c',
+      // BB tranche of cpFASUSDT PYT
+      '0x9115469239A781e52A518158CBAf36FAfc8B2A77',
       // BB tranche of maUSDT PYT
       '0x5Ac8094308918C3566330EEAe7cf4becaDACEc3E'
     ],
