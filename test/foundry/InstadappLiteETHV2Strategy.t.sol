@@ -135,7 +135,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         idleCDO.depositBB(amount);
 
         uint256 totAmount = amount * 2;
-
+        uint256 prePrice = strategy.price();
         console.log("price :>>", strategy.price());
         uint256 maxDecrease = idleCDO.maxDecreaseDefault();
         uint256 unclaimedFees = idleCDO.unclaimedFees();
@@ -146,10 +146,13 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         // strategy is still empty with no harvest
         assertApproxEqAbs(strategyToken.balanceOf(address(idleCDO)), 0, 1, "strategy bal");
 
+        // deposit underlying to the strategy
+        _cdoHarvest(true);
+
         // now let's simulate a loss by decreasing strategy price
-        // curr price - 5%
+        // curr price - about 2.5%
         uint256 totalAssets = IERC4626Upgradeable(ETHV2Vault).totalAssets();
-        uint256 loss = (totalAssets * maxDecrease) / FULL_ALLOC;
+        uint256 loss = ((totalAssets * maxDecrease) / 2) / FULL_ALLOC;
         uint256 bal = underlying.balanceOf(ETHV2Vault);
         require(bal >= loss, "test: loss is too large");
         vm.prank(ETHV2Vault);
@@ -161,17 +164,21 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.roll(block.number + 7 * 7200);
 
         _pokeLendingProtocol();
+        uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
 
         _cdoHarvest(true);
+
+        assertEq(idleCDO.allowAAWithdraw(), true, "AAwithdraw allowed");
+        assertEq(idleCDO.allowBBWithdraw(), true, "BBwithdraw allowed");
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
         console.log("price :>>", strategy.price());
         console.log("postAAPrice :>>", postAAPrice);
         console.log("postBBPrice :>>", postBBPrice);
-        // TODO BBprice何故か減らない
-        // juniors lost about 10% as there were seniors to cover
-        assertApproxEqAbs(postBBPrice, (preBBPrice * 90_000) / 100_000, 1, "BB price after loss");
+
+        // juniors lost about 5%(~= 2x priceDelta) as there were seniors to cover
+        assertApproxEqAbs(postBBPrice, (preBBPrice * (1e18 - 2 * priceDelta)) / 1e18, 100, "BB price after loss");
         // seniors are covered
         assertApproxEqAbs(preAAPrice, postAAPrice, 1, "AA price unaffected");
         assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 1, "AA price not updated until new interaction");
@@ -253,6 +260,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         idleCDO.depositAA(amount - amount / 50);
         idleCDO.depositBB(amount / 50);
 
+        _cdoHarvest(true);
+
         uint256 unclaimedFees = idleCDO.unclaimedFees();
         // now let's simulate a loss by decreasing strategy price
         // curr price - 5%, this will trigger a default because the loss is >= junior tvl
@@ -304,13 +313,13 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
 
         // deposits/redeems are disabled
-        // vm.expectRevert(bytes("Pausable: paused"));
-        // idleCDO.depositAA(amount);
-        // vm.expectRevert(bytes("Pausable: paused"));
-        // idleCDO.depositBB(amount);
-        // vm.expectRevert(bytes("3"));
-        // idleCDO.withdrawAA(amount);
-        // vm.expectRevert(bytes("3"));
-        // idleCDO.withdrawBB(amount);
+        vm.expectRevert(bytes("Pausable: paused"));
+        idleCDO.depositAA(amount);
+        vm.expectRevert(bytes("Pausable: paused"));
+        idleCDO.depositBB(amount);
+        vm.expectRevert(bytes("3"));
+        idleCDO.withdrawAA(amount);
+        vm.expectRevert(bytes("3"));
+        idleCDO.withdrawBB(amount);
     }
 }
