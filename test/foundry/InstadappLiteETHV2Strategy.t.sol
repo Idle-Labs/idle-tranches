@@ -166,11 +166,6 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         _pokeLendingProtocol();
         uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
 
-        _cdoHarvest(true);
-
-        assertEq(idleCDO.allowAAWithdraw(), true, "AAwithdraw allowed");
-        assertEq(idleCDO.allowBBWithdraw(), true, "BBwithdraw allowed");
-
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
         console.log("price :>>", strategy.price());

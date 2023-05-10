@@ -350,7 +350,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _lastNAV,
     uint256 _lastTrancheNAV,
     uint256 _trancheAPRSplitRatio
-  ) internal view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
+  ) internal virtual view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
     // Check if there are tranche holders
     uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
     if (_lastNAV == 0 || trancheSupply == 0) {
