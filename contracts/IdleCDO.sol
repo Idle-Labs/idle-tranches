@@ -331,11 +331,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// - if there is a loss on the lending protocol (ie strategy price decrease) up to maxDecreaseDefault (_checkDefault method), the loss is
   ///     - totally absorbed by junior holders if they have enough TVL and deposits/redeems work as normal
   ///     - otherwise a 'default' error (4) is raised and deposits/redeems are blocked
-  /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems 
+  /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems
   ///   are blocked and a 'default' error (4) is raised
-  /// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above 
+  /// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above
   ///   applies, the only difference is that maxDecreaseDefault is not considered
-  /// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked. 
+  /// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked.
   /// For this reason a protected updateAccounting method has been added which should be used to distributed the loss after a default event
   /// @param _tranche address of the requested tranche
   /// @param _nav current NAV
@@ -382,7 +382,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (IdleCDOTranche(_isAATranche ? _BBTranche : _AATranche).totalSupply() == 0) {
       _totalTrancheGain = totalGain;
     } else {
-      if (totalGain > 0) {
+      // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
+      if (totalGain > 0 || uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
         // Split the net gain, with precision loss favoring the AA tranche.
         int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
@@ -870,6 +871,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external {
     _checkOnlyOwner();
     require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
+  }
+
+  /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
+  function setLossToleranceBps(uint256 _diffBps) external {
+      _checkOnlyOwner();
+      lossToleranceBps = _diffBps;
   }
 
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the

@@ -114,6 +114,8 @@ contract IdleCDOStorage {
   uint256 public minAprSplitAYS;
   // Max strategy price decrease before triggering a default
   uint256 public maxDecreaseDefault;
+  // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
+  uint256 internal lossToleranceBps;
   // uint256 public test;
 
 
@@ -127,8 +129,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[48] private __gap;
-  // uint256[47] private __gap; -> after adding `test`
+  uint256[47] private __gap;
+  // uint256[46] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }
