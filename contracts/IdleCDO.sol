@@ -261,9 +261,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // prices adjusted accordingly
     _updateAccounting();
     // get underlyings from sender
-    IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
+    address _token = token;
+    uint256 _preBal = _contractTokenBalance(_token);
+    IERC20Detailed(_token).safeTransferFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
-    _minted = _mintShares(_amount, msg.sender, _tranche);
+    _minted = _mintShares(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
     // update trancheAPRSplitRatio
     _updateSplitRatio();
 
@@ -383,11 +385,16 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _totalTrancheGain = totalGain;
     } else {
       // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
-      if (totalGain > 0 || uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
+      if (totalGain > 0) {
         // Split the net gain, with precision loss favoring the AA tranche.
         int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
+      } else if (uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
+        // Split the loss based on TVL ratio instead of _trancheAPRSplitRatio
+        int256 totalBBLoss = totalGain * int256(FULL_ALLOC - _getAARatio(true)) / int256(FULL_ALLOC);
+        // The new NAV for the tranche is old NAV + total gain for the tranche
+        _totalTrancheGain = _isAATranche ? (totalGain - totalBBLoss) : totalBBLoss;
       } else { // totalGain is negative here
         // Redirect the whole loss (which should be < maxDecreaseDefault) to junior holders
         int256 _juniorTVL = int256(_isAATranche ? _lastNAV - _lastTrancheNAV : _lastTrancheNAV);

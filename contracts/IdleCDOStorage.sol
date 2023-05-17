@@ -115,7 +115,7 @@ contract IdleCDOStorage {
   // Max strategy price decrease before triggering a default
   uint256 public maxDecreaseDefault;
   // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
-  uint256 internal lossToleranceBps;
+  uint256 public lossToleranceBps;
   // uint256 public test;
 
 

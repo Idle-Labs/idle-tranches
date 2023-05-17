@@ -6,7 +6,7 @@ import {IdleCDO} from "./IdleCDO.sol";
 
 /// @title IdleCDO variant
 contract IdleCDOInstadappLiteVariant is IdleCDO {
-    /// @notice the tolerance for the liquidation in basis points. 10000 = 100%
+    /// @notice the tolerance for the liquidation in basis points. 100000 = 100%
     /// @dev relative to the amount to liquidate
     uint256 internal liquidationToleranceBps;
 

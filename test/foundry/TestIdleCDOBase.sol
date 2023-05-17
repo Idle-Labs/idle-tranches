@@ -112,6 +112,7 @@ abstract contract TestIdleCDOBase is Test {
   function testCantReinitialize() external virtual;
 
   function _pokeLendingProtocol() internal virtual {}
+  function _createLoss(uint256) internal virtual {}
 
   function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     uint256 amount = 10000 * ONE_SCALE;
@@ -286,10 +287,10 @@ abstract contract TestIdleCDOBase is Test {
 
     vm.roll(block.number + 1);
 
-    idleCDO.withdrawAA(amount);
-    idleCDO.withdrawBB(amount);
-    idleCDO.depositAA(amount);
-    idleCDO.depositBB(amount);
+    idleCDO.withdrawAA(0);
+    idleCDO.withdrawBB(0);
+    idleCDO.depositAA(0);
+    idleCDO.depositBB(0);
   }
 
   function testAPR() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
