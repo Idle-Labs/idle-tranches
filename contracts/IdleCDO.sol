@@ -198,7 +198,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _tranche tranche address
   /// @return actual apr given current ratio between AA and BB tranches
   function getApr(address _tranche) external view returns (uint256) {
-    return _getApr(_tranche, getCurrentAARatio());
+    return _getApr(_tranche, _getAARatio(false));
   }
 
   /// @notice calculates the current AA tranches ratio
@@ -206,7 +206,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// because it calculates the balance after splitting the accrued interest since the
   /// last depositXX/withdrawXX/harvest
   /// @return AA tranches ratio (in underlying value) considering all interest
-  function getCurrentAARatio() public view returns (uint256) {
+  function getCurrentAARatio() external view returns (uint256) {
     return _getAARatio(false);
   }
 
@@ -386,14 +386,15 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     } else {
       // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
       if (totalGain > 0) {
-        // Split the net gain, with precision loss favoring the AA tranche.
+        // Split the net gain, according to _trancheAPRSplitRatio, with precision loss favoring the AA tranche.
         int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
       } else if (uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
-        // Split the loss based on TVL ratio instead of _trancheAPRSplitRatio
-        int256 totalBBLoss = totalGain * int256(FULL_ALLOC - _getAARatio(true)) / int256(FULL_ALLOC);
-        // The new NAV for the tranche is old NAV + total gain for the tranche
+        // Split the loss, according to TVL ratio instead of _trancheAPRSplitRatio
+        uint256 _lastNAVBB = lastNAVBB;
+        int256 totalBBLoss = totalGain * int256(_lastNAVBB) / int256(lastNAVAA + _lastNAVBB);
+        // The new NAV for the tranche is old NAV - loss for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBLoss) : totalBBLoss;
       } else { // totalGain is negative here
         // Redirect the whole loss (which should be < maxDecreaseDefault) to junior holders

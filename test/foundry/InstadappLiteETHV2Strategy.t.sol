@@ -190,22 +190,23 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         _createLoss(idleCDO.lossToleranceBps() / 2);
 
         uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
-        uint256 currentAARatio = idleCDO.getCurrentAARatio();
+        uint256 lastNAVAA = idleCDO.lastNAVAA();
+        uint256 currentAARatioScaled = lastNAVAA * ONE_SCALE / (idleCDO.lastNAVBB() + lastNAVAA);
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
 
         // Both junior and senior lost
-        if (currentAARatio > 0) {
+        if (currentAARatioScaled > 0) {
             assertApproxEqAbs(postAAPrice, (preAAPrice * (1e18 - priceDelta)) / 1e18, 100, "AA price after loss");
         } else {
             assertApproxEqAbs(postAAPrice, preAAPrice, 1, "AA price not changed");
         }
-        if (currentAARatio < FULL_ALLOC) {
+        if (currentAARatioScaled < ONE_SCALE) {
             assertApproxEqAbs(postBBPrice, (preBBPrice * (1e18 - priceDelta)) / 1e18, 100, "BB price after loss");
         } else {
             assertApproxEqAbs(postBBPrice, preBBPrice, 1, "BB price not changed");
         }
-        
+
         // seniors lost
         assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 0, "AA price not updated until new interaction");
         assertApproxEqAbs(idleCDO.priceBB(), preBBPrice, 0, "BB price not updated until new interaction");
