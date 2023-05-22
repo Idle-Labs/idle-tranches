@@ -88,6 +88,125 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
 
     function testCantReinitialize() external override {}
 
+    function _computeApr(
+        uint256 _currentTimestamp,
+        uint256 _currentPrice,
+        uint256 _lastPriceTimestamp,
+        uint256 _lastPrice
+    ) internal pure returns (uint256) {
+        if (_lastPrice > _currentPrice) {
+            return 0;
+        }
+
+        uint256 SECONDS_IN_YEAR = 60 * 60 * 24 * 365;
+
+        // Calculate the percentage change in the price of the token
+        uint256 priceChange = ((_currentPrice - _lastPrice) * 1e18) / _lastPrice;
+
+        // Determine the time difference in seconds between the current timestamp and the timestamp when the last price was updated
+        uint256 timeDifference = _currentTimestamp - _lastPriceTimestamp;
+
+        uint256 aprPerYear = (priceChange * SECONDS_IN_YEAR) / timeDifference;
+
+        return aprPerYear * 100; // Return APR as a percentage
+    }
+
+    function testAPR() external override {
+        uint256 amount = 10000 * ONE_SCALE;
+        
+        // AARatio 50%
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        _cdoHarvest(true);
+        
+        uint256 lastPrice = strategy.price();
+        uint256 lastPriceTimestamp = block.timestamp;
+
+        // NOTE: forcely increase the vault price
+        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
+
+        // update the vault price
+        _pokeLendingProtocol();
+
+        // Skip 1 block
+        skip(1 days);
+        vm.roll(block.number + 1 * 7200);
+
+        // Strategy APR should be zero
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+
+        // 7 days in blocks
+        skip(1 days);
+        vm.roll(block.number + 1 * 7200);
+
+        // AARatio 50%
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        _cdoHarvest(true);
+
+        lastPrice = strategy.price();
+        lastPriceTimestamp = block.timestamp;
+
+        // NOTE: forcely increase the vault price
+        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
+
+        // update the vault price
+        _pokeLendingProtocol();
+
+        // 1 days in blocks
+        skip(1 days);
+        vm.roll(block.number + 1 * 7200);
+
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+
+        // NOTE: forcely increase the vault price
+        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
+
+        // update the vault price
+        _pokeLendingProtocol();
+
+        // 1 days in blocks
+        skip(1 days);
+        vm.roll(block.number + 1 * 7200);
+
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+
+        // NOTE: forcely increase the vault price
+        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
+
+        // update the vault price
+        _pokeLendingProtocol();
+
+        // 7 days in blocks
+        skip(1 days);
+        vm.roll(block.number + 1 * 7200);
+
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+
+        // AARatio 50%
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        _cdoHarvest(true);
+
+        lastPrice = strategy.price();
+        lastPriceTimestamp = block.timestamp;
+
+        // NOTE: forcely increase the vault price
+        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
+
+        // update the vault price
+        _pokeLendingProtocol();
+
+        // 7 days in blocks
+        skip(7 days);
+        vm.roll(block.number + 7 * 7200);
+
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+    }
+
     function testDeposits() external override {
         uint256 amount = 10000 * ONE_SCALE;
         // AARatio 50%
