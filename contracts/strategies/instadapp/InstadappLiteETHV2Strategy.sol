@@ -29,12 +29,14 @@ contract InstadappLiteETHV2Strategy is ERC4626Strategy {
 
         // ETHV2Vault price is updated only at the time of rebalance
         // if _lastPrice == zero, then apr returns zero as well
-        if (_lastPriceTimestamp > block.timestamp) {
+        if (_lastPriceTimestamp < block.timestamp) {
             uint256 _price = price();
             // update
-            lastPrice = _price;
-            lastPriceTimestamp = block.timestamp;
-            lastApr = _computeApr(block.timestamp, _price, _lastPriceTimestamp, _lastPrice);
+            if (_price > lastPrice){
+                lastPrice = _price;
+                lastPriceTimestamp = block.timestamp;
+                lastApr = _computeApr(block.timestamp, _price, _lastPriceTimestamp, _lastPrice);
+            }
         }
         if (_amount != 0) {
             // Send tokens to the strategy
@@ -58,7 +60,11 @@ contract InstadappLiteETHV2Strategy is ERC4626Strategy {
     function getRewardTokens() external view returns (address[] memory rewards) {}
 
     function getApr() external view override returns (uint256) {
-        return lastApr;
+        uint256 _price = price();
+        if (lastPriceTimestamp >= block.timestamp || lastPrice > _price) {
+            return lastApr;
+        }
+        return _computeApr(block.timestamp, _price, lastPriceTimestamp, lastPrice);
     }
 
     function _computeApr(
@@ -76,7 +82,7 @@ contract InstadappLiteETHV2Strategy is ERC4626Strategy {
         // Determine the time difference in seconds between the current timestamp and the timestamp when the last price was updated
         uint256 timeDifference = _currentTimestamp - _lastPriceTimestamp;
 
-        uint256 aprPerYear = ((priceChange * SECONDS_IN_YEAR) * 1e18) / timeDifference;
+        uint256 aprPerYear = (priceChange * SECONDS_IN_YEAR) / timeDifference;
 
         return aprPerYear * 100; // Return APR as a percentage
     }
