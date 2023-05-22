@@ -2,6 +2,7 @@
 pragma solidity 0.8.10;
 import "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
+import "../../contracts/interfaces/IStkIDLE.sol";
 import "../../contracts/IdleCDO.sol";
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -15,6 +16,9 @@ abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  address internal constant TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814 );
+  address internal constant STK_IDLE = address(0xaAC13a116eA7016689993193FcE4BadC8038136f);
+  address internal constant IDLE = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
   uint256 internal constant FULL_ALLOC = 100000;
@@ -307,6 +311,63 @@ abstract contract TestIdleCDOBase is Test {
     uint256 apr = idleCDO.getApr(address(AAtranche));
     console.log('apr', apr);
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
+  }
+
+  function testMinStkIDLEBalance() external runOnForkingNetwork(MAINNET_CHIANID) {
+    vm.prank(address(1));
+    vm.expectRevert(bytes("6")); // not authorized
+    idleCDO.setStkIDLEPerUnderlying(9e17);
+    vm.prank(owner);
+    idleCDO.setStkIDLEPerUnderlying(9e17); // 0.9 stkIDLE for each underlying deposited
+
+    uint256 _val = 100 * ONE_SCALE;
+    vm.expectRevert(bytes("7")); // stkIDLE bal too low
+    idleCDO.depositAA(_val);
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositBB(_val);
+
+    _getStkIDLE(_val, false);
+
+    // try to deposit too much
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositAA(_val * 2);
+    
+    // try to deposit the correct bal
+    idleCDO.depositAA(_val);
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), _val, 1, 'AA Deposit is not successful');
+    idleCDO.depositBB(_val);
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), _val, 1, 'BB Deposit is not successful');
+
+    // try to deposit too much, considering what we already deposited previously in AA
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositAA(_val);
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositBB(_val);
+
+    // lock more IDLE
+    _getStkIDLE(_val, true);
+
+    // now deposits works again
+    idleCDO.depositAA(_val);
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), _val * 2, 2, 'AA Deposit 2 is not successful');
+    idleCDO.depositBB(_val);
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), _val * 2, 2, 'BB Deposit is not successful');
+  }
+
+  function _getStkIDLE(uint256 _val, bool _increase) internal {
+    IStkIDLE stk = IStkIDLE(STK_IDLE);
+    address smartWalletChecker = stk.smart_wallet_checker();
+    deal(IDLE, address(this), _val);
+    // Allow deposit from contracts
+    vm.prank(TL_MULTISIG);
+    SmartWalletChecker(smartWalletChecker).toggleIsOpen(true);
+    // create lock for IDLE for 4 years so ~_val stkIDLE
+    IERC20Detailed(IDLE).approve(STK_IDLE, _val);
+    if (_increase) {
+      stk.increase_amount(_val);
+    } else {
+      stk.create_lock(_val, block.timestamp + 4 * 365 days); // 4 years
+    }
   }
 
   function testSetIsAYSActive() external runOnForkingNetwork(MAINNET_CHIANID) {

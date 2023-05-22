@@ -238,6 +238,21 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // Internal
   // ###############
 
+  /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault
+  /// @param _amount amount of underlying to deposit
+  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
+    uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
+    if (_stkIDLEPerUnderlying > 0) {
+      // We check if sender deposited in the same tranche previously and add the bal to _amount
+      uint256 bal = _amount + (IERC20Detailed(_tranche).balanceOf(msg.sender) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN);
+      require(
+        IERC20(STK_IDLE).balanceOf(msg.sender) >= 
+        bal * _stkIDLEPerUnderlying / oneToken, 
+        '7'
+      );
+    }
+  }
+
   /// @notice method used to deposit `token` and mint tranche tokens
   /// Ideally users should deposit right after an `harvest` call to maximize profit
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
@@ -260,6 +275,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
     _updateAccounting();
+    // check if depositor has enough stkIDLE for the amount to be deposited
+    _checkStkIDLEBal(_tranche, _amount);
     // get underlyings from sender
     address _token = token;
     uint256 _preBal = _contractTokenBalance(_token);
@@ -847,6 +864,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setLiquidationTolerance(uint256 _diff) external {
     _checkOnlyOwner();
     liquidationTolerance = _diff;
+  }
+
+  /// @param _val stkIDLE per underlying required for deposits
+  function setStkIDLEPerUnderlying(uint256 _val) external {
+    _checkOnlyOwner();
+    stkIDLEPerUnderlying = _val;
   }
 
   /// @param _aprSplit min apr split for AA, considering FULL_ALLOC = 100%

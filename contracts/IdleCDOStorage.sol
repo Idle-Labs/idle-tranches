@@ -102,6 +102,8 @@ contract IdleCDOStorage {
   // constant to represent 50% (for ADS AA ratio lower limit)
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
 
+  address internal constant STK_IDLE = address(0xaAC13a116eA7016689993193FcE4BadC8038136f);
+
   // Referral event
   event Referral(uint256 _amount, address _ref);
   // tolerance in underlyings when redeeming
@@ -116,6 +118,8 @@ contract IdleCDOStorage {
   uint256 public maxDecreaseDefault;
   // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
   uint256 public lossToleranceBps;
+  // Amount of stkIDLE required to mint 1 underlying
+  uint256 public stkIDLEPerUnderlying;
   // uint256 public test;
 
 
@@ -129,8 +133,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[47] private __gap;
-  // uint256[46] private __gap; -> after adding `test`
+  uint256[46] private __gap;
+  // uint256[45] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }
