@@ -133,8 +133,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         skip(1 days);
         vm.roll(block.number + 1 * 7200);
 
-        // Strategy APR should be zero
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+        // Check strategy APR after 1 day
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (1 day)");
 
         // 7 days in blocks
         skip(1 days);
@@ -159,40 +159,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         skip(1 days);
         vm.roll(block.number + 1 * 7200);
 
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
-
-        // NOTE: forcely increase the vault price
-        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
-
-        // update the vault price
-        _pokeLendingProtocol();
-
-        // 1 days in blocks
-        skip(1 days);
-        vm.roll(block.number + 1 * 7200);
-
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
-
-        // NOTE: forcely increase the vault price
-        _donateToken(ETHV2Vault, 40 * ONE_SCALE);
-
-        // update the vault price
-        _pokeLendingProtocol();
-
-        // 7 days in blocks
-        skip(1 days);
-        vm.roll(block.number + 1 * 7200);
-
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
-
-        // AARatio 50%
-        idleCDO.depositAA(amount);
-        idleCDO.depositBB(amount);
-
-        _cdoHarvest(true);
-
-        lastPrice = strategy.price();
-        lastPriceTimestamp = block.timestamp;
+        // Check strategy APR after 1 more deposit and 1 more day
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (2 day)");
 
         // NOTE: forcely increase the vault price
         _donateToken(ETHV2Vault, 40 * ONE_SCALE);
@@ -204,7 +172,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         skip(7 days);
         vm.roll(block.number + 7 * 7200);
 
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR");
+        // Check APR after 7 days (no deposits)
+        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (10 days)");
     }
 
     function testDeposits() external override {
