@@ -478,4 +478,32 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
         assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
+
+    // Test liquidation revert due to withdraw fee or slippage
+    function testRedeemWithLiquidation() external {
+
+        uint256 amount = 10000 * ONE_SCALE;
+
+        idleCDO.depositAA(amount);
+
+        // deposit underlying to the strategy
+        _cdoHarvest(true);
+
+        // set liquidationToleranceBps = 0
+        vm.prank(idleCDO.owner());
+        IdleCDOInstadappLiteVariant(address(idleCDO)).setLiquidationToleranceBps(0);
+
+        // redeem and expect revert
+        vm.expectRevert(bytes("5"));
+        idleCDO.withdrawAA(0);
+
+        // set liquidationToleranceBps = 500
+        uint256 liquidationToleranceBps = 500;
+        vm.prank(idleCDO.owner());
+        IdleCDOInstadappLiteVariant(address(idleCDO)).setLiquidationToleranceBps(liquidationToleranceBps);
+
+        // redeem and expect an amount
+        uint256 resAA = idleCDO.withdrawAA(0);
+        assertApproxEqAbs(resAA, amount, (amount * liquidationToleranceBps) / FULL_ALLOC, "AA amount not correct");
+    }
 }
