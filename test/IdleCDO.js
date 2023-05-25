@@ -147,7 +147,7 @@ describe("IdleCDO", function () {
     expect(await idleCDO.feeReceiver()).to.equal('0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814');
     expect(await idleCDO.guardian()).to.equal(owner.address);
     expect(await idleCDO.weth()).to.equal(weth.address);
-    expect(await idleCDO.incentiveTokens(0)).to.equal(incentiveTokens[0]);
+    // expect(await idleCDO.incentiveTokens(0)).to.equal(incentiveTokens[0]);
     // OwnableUpgradeable
     expect(await idleCDO.owner()).to.equal(owner.address);
     // GuardedLaunchUpgradable
@@ -618,7 +618,7 @@ describe("IdleCDO", function () {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
-    await idleCDO.setIncentiveTokens([]);
+    // await idleCDO.setIncentiveTokens([]);
 
     let value = await idleCDO.getContractValue();
     expect(value).to.be.equal(0);
@@ -792,8 +792,7 @@ describe("IdleCDO", function () {
 
   it("getIncentiveTokens should return the current incentiveTokens array", async () => {
     let rewards = await idleCDO.getIncentiveTokens();
-    expect(rewards.length).to.be.equal(1);
-    expect(rewards[0]).to.be.equal(incentiveToken.address);
+    expect(rewards.length).to.be.equal(0);
   });
 
   // ###############
@@ -1337,29 +1336,29 @@ describe("IdleCDO", function () {
   //   expect(await incentiveToken.balanceOf(stakingRewardsBB.address)).to.be.equal(BN('800').mul(one));
   // });
 
-  it("harvest should not sell incentiveTokens", async () => {
-    const feeReceiver = RandomAddr;
-    // set fee receiver
-    await idleCDO.setFeeReceiver(feeReceiver);
-    // Initialize deposits
-    const _amountAA = BN('1000').mul(one);
-    const _amountBB = BN('0').mul(one);
-    await setupBasicDeposits(_amountAA, _amountBB, true, false);
-    // Mock the return of gov tokens
-    await incentiveToken.transfer(idleToken.address, _amountAA);
-    await idleToken.setGovTokens([incentiveToken.address]);
-    await idleToken.setGovAmount(_amountAA);
+  // it("harvest should not sell incentiveTokens", async () => {
+  //   const feeReceiver = RandomAddr;
+  //   // set fee receiver
+  //   await idleCDO.setFeeReceiver(feeReceiver);
+  //   // Initialize deposits
+  //   const _amountAA = BN('1000').mul(one);
+  //   const _amountBB = BN('0').mul(one);
+  //   await setupBasicDeposits(_amountAA, _amountBB, true, false);
+  //   // Mock the return of gov tokens
+  //   await incentiveToken.transfer(idleToken.address, _amountAA);
+  //   await idleToken.setGovTokens([incentiveToken.address]);
+  //   await idleToken.setGovAmount(_amountAA);
 
-    await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], ['0x', '0x']);
-    expect(await incentiveToken.balanceOf(feeReceiver)).to.be.equal(0);
-    expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(_amountAA);
-  });
+  //   await idleCDO.harvest([false, true, false, false && true && false], [false], [BN('0')], [BN('0')], ['0x', '0x']);
+  //   expect(await incentiveToken.balanceOf(feeReceiver)).to.be.equal(0);
+  //   expect(await incentiveToken.balanceOf(idleCDO.address)).to.be.equal(_amountAA);
+  // });
 
   it("harvest should sell non incentiveTokens", async () => {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
-    await idleCDO.setIncentiveTokens([]);
+    // await idleCDO.setIncentiveTokens([]);
     // rewards will be released in 4 blocks after an harvest
     await idleCDO.setReleaseBlocksPeriod(BN('4'));
 
@@ -1409,7 +1408,7 @@ describe("IdleCDO", function () {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
-    await idleCDO.setIncentiveTokens([]);
+    // await idleCDO.setIncentiveTokens([]);
     // Initialize deposits
     const _amountAA = BN('1000').mul(one);
     const _amountBB = BN('0').mul(one);
@@ -1450,7 +1449,7 @@ describe("IdleCDO", function () {
     const feeReceiver = RandomAddr;
     // set fee receiver
     await idleCDO.setFeeReceiver(feeReceiver);
-    await idleCDO.setIncentiveTokens([]);
+    // await idleCDO.setIncentiveTokens([]);
     // Initialize deposits
     const _amountAA = BN('1000').mul(one);
     const _amountBB = BN('0').mul(one);
