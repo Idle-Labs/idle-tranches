@@ -176,6 +176,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (10 days)");
     }
 
+    // @dev there are gains for the strategy
     function testDeposits() external override {
         uint256 amount = 10000 * ONE_SCALE;
         // AARatio 50%
@@ -369,7 +370,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         idleCDO.withdrawBB(0);
     }
 
-    // price increases highly enough to cover withdrawal fees
+    // @dev price increases highly enough to cover withdrawal fees
     function testRedeems() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
@@ -396,7 +397,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    // price decreases
+    // @dev Loss is between lossToleranceBps and maxDecreaseDefault and is covered by junior holders
     function testRedeemWithLossCovered() external {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
@@ -423,7 +424,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    // Test socialized loss on redeem
+    // @dev Loss is between 0% and lossToleranceBps and is socialized
     function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
@@ -479,13 +480,11 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    // Test liquidation revert due to withdraw fee or slippage
+    // @dev redeem reverts due to withdraw fee or slippage
     function testRedeemWithLiquidation() external {
-
         uint256 amount = 10000 * ONE_SCALE;
 
         idleCDO.depositAA(amount);
-
         // deposit underlying to the strategy
         _cdoHarvest(true);
 
@@ -497,7 +496,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.expectRevert(bytes("5"));
         idleCDO.withdrawAA(0);
 
-        // set liquidationToleranceBps = 500
+        // increase liq tolerance to allow withdraw fee
         uint256 liquidationToleranceBps = 500;
         vm.prank(idleCDO.owner());
         IdleCDOInstadappLiteVariant(address(idleCDO)).setLiquidationToleranceBps(liquidationToleranceBps);
