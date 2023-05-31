@@ -321,12 +321,13 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setStkIDLEPerUnderlying(9e17); // 0.9 stkIDLE for each underlying deposited
 
     uint256 _val = 100 * ONE_SCALE;
+    uint256 scaledVal = _val * 10**(18 - decimals);
     vm.expectRevert(bytes("7")); // stkIDLE bal too low
     idleCDO.depositAA(_val);
     vm.expectRevert(bytes("7"));
     idleCDO.depositBB(_val);
 
-    _getStkIDLE(_val, false);
+    _getStkIDLE(scaledVal, false);
 
     // try to deposit too much
     vm.expectRevert(bytes("7"));
@@ -334,9 +335,9 @@ abstract contract TestIdleCDOBase is Test {
     
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), _val, 1, 'AA Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, 1, 'AA Deposit is not successful');
     idleCDO.depositBB(_val);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), _val, 1, 'BB Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, 1, 'BB Deposit is not successful');
 
     // try to deposit too much, considering what we already deposited previously in AA
     vm.expectRevert(bytes("7"));
@@ -345,13 +346,13 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.depositBB(_val);
 
     // lock more IDLE
-    _getStkIDLE(_val, true);
+    _getStkIDLE(scaledVal, true);
 
     // now deposits works again
     idleCDO.depositAA(_val);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), _val * 2, 2, 'AA Deposit 2 is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'AA Deposit 2 is not successful');
     idleCDO.depositBB(_val);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), _val * 2, 2, 'BB Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'BB Deposit is not successful');
   }
 
   function _getStkIDLE(uint256 _val, bool _increase) internal {

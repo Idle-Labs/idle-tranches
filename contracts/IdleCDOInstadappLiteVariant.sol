@@ -15,6 +15,7 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         lossToleranceBps = 500; // 0.5%
     }
 
+    /// @notice a loss of up to liquidationToleranceBps % is allowed (slippage / withdraw fee)
     /// @dev this should liquidate at least _amount of `token` from the lending provider or revertIfNeeded
     /// @param _amount in underlying tokens
     /// @param _revertIfNeeded flag whether to revert or not if the redeemed amount is not enough

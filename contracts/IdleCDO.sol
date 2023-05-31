@@ -243,8 +243,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
     if (_stkIDLEPerUnderlying > 0) {
+      uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
       // We check if sender deposited in the same tranche previously and add the bal to _amount
-      uint256 bal = _amount + (IERC20Detailed(_tranche).balanceOf(msg.sender) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN);
+      uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
       require(
         IERC20(STK_IDLE).balanceOf(msg.sender) >= 
         bal * _stkIDLEPerUnderlying / oneToken, 
@@ -510,7 +511,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
   /// @dev the idea here is to limit the min and max APR that the senior tranche can get
-  function _updateSplitRatio() internal {
+  function _updateSplitRatio() internal virtual {
     if (isAYSActive) {
       uint256 tvlAARatio = _getAARatio(true);
       uint256 aux;

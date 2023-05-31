@@ -305,9 +305,6 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
     // @dev Loss is > maxDecreaseDefault and is absorbed by junior holders if possible
     function testDepositRedeemWithLossShutdown() external {
         uint256 amount = 10000 * ONE_SCALE;
-        // TODO test also with loss < junior -> add fuzzing
-
-
         // AA Ratio is 98%
         idleCDO.depositAA(amount - amount / 50);
         idleCDO.depositBB(amount / 50);
