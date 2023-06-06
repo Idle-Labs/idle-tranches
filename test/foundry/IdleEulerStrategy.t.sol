@@ -6,6 +6,10 @@ import "./TestIdleCDOBase.sol";
 contract TestIdleEulerStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
 
+  function _selectFork() public override {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16527983));
+  }
+
   function _deployStrategy(address _owner) internal override returns (
     address _strategy,
     address _underlying
@@ -32,13 +36,11 @@ contract TestIdleEulerStrategy is TestIdleCDOBase {
   function testOnlyIdleCDO() 
     public 
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {}
 
   function testCantReinitialize()
     external
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     address eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;
     address lendingToken = 0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716; // eUSDC

@@ -13,6 +13,10 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
 
     uint256 internal initialDepositedAmount;
 
+    function _selectFork() public override {
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16527983));
+    }
+
     function setUp() public override {
         super.setUp();
         // deposit small amount in the senior
@@ -74,14 +78,14 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         assertEq(idleCDO.trancheAPRSplitRatio(), 0);
     }
 
-    function testOnlyIdleCDO() public override runOnForkingNetwork(MAINNET_CHIANID) {}
+    function testOnlyIdleCDO() public override {}
 
-    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testCantReinitialize() external override {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         IdleStrategy(address(strategy)).initialize(idleUSDT, owner);
     }
 
-    function testDisablingAATranche() external runOnForkingNetwork(MAINNET_CHIANID) {
+    function testDisablingAATranche() external {
         vm.expectRevert(bytes("disable depositAA"));
         idleCDO.depositAA(10 * ONE_SCALE);
 
@@ -89,7 +93,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.withdrawAA(10);
     }
 
-    function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testDeposits() external override {
         uint256 amount = 10000 * ONE_SCALE;
         // AARatio 0%
         idleCDO.depositBB(amount);
@@ -127,7 +131,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
     }
 
-    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeems() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositBB(amount);
 
@@ -142,7 +146,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         assertGe(underlying.balanceOf(address(this)), initialBal - initialDepositedAmount, "underlying bal increased");
     }
 
-    function testRedeemRewards() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeemRewards() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositBB(amount);
 
@@ -163,7 +167,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         }
     }
 
-    function testEmergencyShutdown() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testEmergencyShutdown() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositBB(amount);
 
@@ -186,7 +190,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.withdrawBB(amount);
     }
 
-    function testRestoreOperations() public override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRestoreOperations() public override {
         uint256 amount = 1000 * ONE_SCALE;
         idleCDO.depositBB(amount);
 
@@ -207,7 +211,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.depositBB(amount);
     }
 
-    function testAPR() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testAPR() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositBB(amount);
 
@@ -223,11 +227,13 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
     }
 
-    function testAPRSplitRatioDeposits(uint16) external override runOnForkingNetwork(MAINNET_CHIANID) {}
+    function testAPRSplitRatioDeposits(uint16) external override {}
 
     function testAPRSplitRatioRedeems(
         uint16 _ratio,
         uint16 _redeemRatioAA,
         uint16 _redeemRatioBB
-    ) external override runOnForkingNetwork(MAINNET_CHIANID) {}
+    ) external override {}
+
+    function testMinStkIDLEBalance() external override {}
 }
