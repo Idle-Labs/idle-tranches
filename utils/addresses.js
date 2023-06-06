@@ -45,6 +45,7 @@ const mainnetContracts = {
   cpFOL_USDC: '0xe3D20A721522874D32548B4097d1afc6f024e45b',
   cpPOR_USDC: '0x4a90c14335e81829d7cb0002605f555b8a784106',
   cpFAS_USDT: '0x1A1d778776542c2efEd161bA1fbCfe6e09Ba99Fb',
+  cpFAS_USDC: '0xa75dd592826fa9c679ec03beefb1777ba1a373a0',
   rWIN_USDC: '0x0aea75705be8281f4c24c3e954d1f8b1d0f8044c',
   rFOL_USDC: '0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d',
   // truefi
@@ -506,6 +507,32 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x0a6f2449C09769950cFb76f905Ad11c341541f70',
     BBTranche: '0x3Eb6318b8D9f362a0e1D99F6032eDB1C4c602500'
+  },
+  cpfasusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x16F6bE72882B24527F94c7BCCabF77B62608083b',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xE7C6A4525492395d65e736C3593aC933F33ee46e',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x16F6bE72882B24527F94c7BCCabF77B62608083b',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xdcA1daE87f5c733c84e0593984967ed756579BeE',
+    BBTranche: '0xbcC845bB731632eBE8Ac0BfAcdE056170aaaaa06'
+  },
+  cpfasdai: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: mainnetContracts.DAI,
+    cdoAddr: '',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: ''
   },
   rfolusdc: {
     decimals: 6,
@@ -1064,7 +1091,7 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: CDOs.lido.cdoAddr,
   },
-  cpfasusdt: { // portofino pool
+  cpfasusdt: { // fasanara usdt pool
     decimals: 6,
     underlying: mainnetContracts.USDT,
     strategyName: 'IdleClearpoolStrategy',
@@ -1075,6 +1102,40 @@ exports.deployTokens = {
       mainnetContracts.univ2Router
     ],
     cdo: CDOs.cpfasusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.lido.cdoAddr,
+  },
+  cpfasusdc: { // fasanara usdc pool
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleClearpoolStrategy',
+    strategyParams: [
+      mainnetContracts.cpFAS_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    cdo: CDOs.cpfasusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.lido.cdoAddr,
+  },
+  cpfasdai: { // fasanara usdc pool via psm
+    decimals: 18,
+    underlying: mainnetContracts.DAI,
+    strategyName: 'IdleClearpoolPSMStrategy',
+    strategyParams: [
+      mainnetContracts.cpFAS_USDC, // _strategyToken
+      mainnetContracts.USDC, // _underlyingToken
+      'owner', // owner address
+      mainnetContracts.univ2Router
+    ],
+    // cdo: CDOs.cpfasdai,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
@@ -1448,6 +1509,23 @@ exports.deployTokens = {
     AARatio: '20000',
     isAYSActive: true,
     proxyCdoAddress: CDOs.eulerusdcstaking.cdoAddr,
+  },
+
+  // Instadapp lite v2 stETH vault
+  instastethv2: {
+    decimals: 18,
+    underlying: mainnetContracts.stETH,
+    strategyName: 'InstadappLiteETHV2Strategy',
+    strategyParams: [
+      'owner', // owner address
+    ],
+    // cdo: CDOs.instastethv2,
+    cdoVariant: 'IdleCDOInstadappLiteVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '30000',
+    isAYSActive: true,
+    proxyCdoAddress: '', // deploy new instance
   },
 };
 
