@@ -313,7 +313,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
-  function testMinStkIDLEBalance() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testMinStkIDLEBalance() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setStkIDLEPerUnderlying(9e17);
