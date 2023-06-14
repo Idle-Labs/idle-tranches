@@ -1564,7 +1564,9 @@ exports.deployTokensBY = {
       // BB tranche of cpPORUSDC PYT
       '0x46e30328920036d7BffCcc14348808bF65C6DaEE',
       // BB tranche of maUSDC PYT
-      '0x9db5a6bd77572748e541a0cf42f787f5fe03049e'
+      '0x9db5a6bd77572748e541a0cf42f787f5fe03049e',
+      // BB tranche of cpFASUSDC PYT
+      '0xC72e841B460Ec6D3e969e5C457A1961463e12e00',
     ],
   },
   idleusdtjunior: {
@@ -1602,8 +1604,6 @@ exports.deployTokensBY = {
     name: 'IdleWETH Junior',
     address: '0x62A0369c6BB00054E589D12aaD7ad81eD789514b',
     strategies: [
-      // BB tranche of eWETHStaking PYT
-      '0xD57017632c1e6819370107d8Db4b1D372213a168',
       // BB tranche of maWETH PYT
       '0x9750c398993862Ebc9C5A30a9F8Be78Daa440677'
     ],
