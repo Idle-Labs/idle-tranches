@@ -72,10 +72,13 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
     IdleCDO(_cdo).setLiquidationTolerance(10**12 * 100);
   }
 
+  function _selectFork() public override {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 15133116));
+  }
+
   function testOnlyOwner()
     public
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
@@ -85,7 +88,6 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
   function testCantReinitialize()
     external
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     address _strategy = address(strategy);
     address univ2Router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
@@ -103,7 +105,6 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
 
   function testDepositsGetUSDC() 
     public
-    runOnForkingNetwork(MAINNET_CHIANID) 
   {
     uint256 oneToken = 10**6; // 1 USDC
     uint256 amount = 10000 * ONE_SCALE;

@@ -31,7 +31,6 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
     function _deployStrategy(address _owner)
         internal
         override
-        runOnForkingNetwork(MAINNET_CHIANID)
         returns (address _strategy, address _underlying)
     {
         _underlying = STETH;

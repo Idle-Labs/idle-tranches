@@ -54,13 +54,6 @@ abstract contract TestIdleCDOBase is Test {
   }
   // end override
 
-  modifier runOnForkingNetwork(uint256 networkId) {
-    // solhint-disable-next-line
-    if (block.chainid == networkId) {
-      _;
-    }
-  }
-
   function setUp() public virtual {
     _selectFork();
 
@@ -103,7 +96,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function _selectFork() public virtual {}
 
-  function testInitialize() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialize() public virtual {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
@@ -118,7 +111,7 @@ abstract contract TestIdleCDOBase is Test {
   function _pokeLendingProtocol() internal virtual {}
   function _createLoss(uint256) internal virtual {}
 
-  function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDeposits() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     // AARatio 50%
     idleCDO.depositAA(amount);
@@ -167,7 +160,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
   }
 
-  function testRedeems() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeems() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -191,7 +184,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
-  function testRedeemRewards() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeemRewards() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -215,7 +208,6 @@ abstract contract TestIdleCDOBase is Test {
   function testOnlyIdleCDO()
       public
       virtual
-      runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Only IdleCDO can call"));
@@ -249,7 +241,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.stopPrank();
   }
 
-  function testEmergencyShutdown() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testEmergencyShutdown() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -273,7 +265,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.withdrawBB(amount);
   }
 
-  function testRestoreOperations() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRestoreOperations() external virtual {
     uint256 amount = 1000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -297,7 +289,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.depositBB(0);
   }
 
-  function testAPR() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testAPR() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -309,11 +301,10 @@ abstract contract TestIdleCDOBase is Test {
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
-    console.log('apr', apr);
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
-  function testMinStkIDLEBalance() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testMinStkIDLEBalance() external virtual {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setStkIDLEPerUnderlying(9e17);
@@ -371,7 +362,7 @@ abstract contract TestIdleCDOBase is Test {
     }
   }
 
-  function testSetIsAYSActive() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testSetIsAYSActive() external {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setIsAYSActive(false);
@@ -379,7 +370,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setIsAYSActive(true);
   }
 
-  function testSetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testSetMinAprSplitAYS() external {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setMinAprSplitAYS(5000);
@@ -394,7 +385,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testAPRSplitRatioDeposits(
     uint16 _ratio
-  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual {
     vm.assume(_ratio <= 1000);
     uint256 amount = 1000 * ONE_SCALE;
     // to have the same scale as FULL_ALLOC and avoid 
@@ -415,7 +406,7 @@ abstract contract TestIdleCDOBase is Test {
     uint16 _ratio,
     uint16 _redeemRatioAA,
     uint16 _redeemRatioBB
-  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual {
     vm.assume(_ratio <= 1000 && _ratio > 0);
     // > 0 because it's a requirement of the withdraw
     vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
@@ -545,8 +536,8 @@ abstract contract TestIdleCDOBase is Test {
     if (success){
       releaseBlocksPeriod = abi.decode(returnData, (uint32));
     } else {
-      emit log("can't find releaseBlocksPeriod() on strategy");
-      emit logs(returnData);
+      // emit log("can't find releaseBlocksPeriod() on strategy");
+      // emit logs(returnData);
     }
   }
 }
