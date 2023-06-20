@@ -82,6 +82,7 @@ const mainnetContracts = {
   LDO: '0x5a98fcbea516cf06857215779fd812ca3bef1b32',
   stETH: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84',
   wstETH: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+  instaETHv2: '0xA0D3707c569ff8C87FA923d3823eC5D81c98Be78',
   mUSD: '0xe2f2a5C287993345a840Db3B0845fbC70f5935a5',
   imUSD: '0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19',
   mUSDVault: '0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B',
@@ -646,6 +647,18 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x6c0c8708e2FD507B7057762739cb04cF01b98d7b',
     BBTranche: '0xd69c52E6AF3aE708EE4b3d3e7C0C5b4CF4d6244B'
+  },
+  instastethv2: {
+    decimals: 18,
+    strategyToken: mainnetContracts.instaETHv2,
+    underlying: mainnetContracts.stETH,
+    cdoAddr: '0xf52834404A51f5af1CDbeEdaA95B60c8B2187ba0',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0xBE0DACE8d62a14D2D872b20462B4725Cc50a1ff6',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xbb26dD53dD37f2dC4b91E93C947d6b8683b85279',
+    BBTranche: '0xC136E01f74FB0DAEfA29f0AAc9c250EF069e684d'
   },
 };
 
@@ -1519,11 +1532,11 @@ exports.deployTokens = {
     strategyParams: [
       'owner', // owner address
     ],
-    // cdo: CDOs.instastethv2,
+    cdo: CDOs.instastethv2,
     cdoVariant: 'IdleCDOInstadappLiteVariant',
     ...baseCDOArgs,
     AARatio: '20000',
-    limit: '30000',
+    limit: '600',
     isAYSActive: true,
     proxyCdoAddress: '', // deploy new instance
   },
