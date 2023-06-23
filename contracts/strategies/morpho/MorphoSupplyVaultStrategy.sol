@@ -77,7 +77,7 @@ abstract contract MorphoSupplyVaultStrategy is ERC4626Strategy {
         }
     }
 
-    function getRewardTokens() external view returns (address[] memory rewards) {
+    function getRewardTokens() external override view returns (address[] memory rewards) {
         address _rewardToken = rewardToken;
 
         if (_rewardToken != address(0)) {

@@ -110,6 +110,8 @@ abstract contract ERC4626Strategy is
         returns (uint256[] memory rewards)
     {}
 
+    function getRewardTokens() external virtual view returns (address[] memory rewards) {}
+
     /// @dev deprecated method
     /// @notice pull stkedAave
     function pullStkAAVE() external override returns (uint256 pulledAmount) {}

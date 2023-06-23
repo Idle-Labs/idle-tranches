@@ -531,7 +531,7 @@ abstract contract TestIdleCDOBase is Test {
     _new = aux * ratio / FULL_ALLOC;
   }
 
-  function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
+  function _strategyReleaseBlocksPeriod() internal view returns (uint256 releaseBlocksPeriod) {
     (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
     if (success){
       releaseBlocksPeriod = abi.decode(returnData, (uint32));
