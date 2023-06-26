@@ -53,6 +53,10 @@ contract TestERC4626IdleTokenWrapper is ERC4626Test {
     }
 
     function setUpVault(Init memory init) public override {
+        // used to avoid "The vm.assume cheatcode rejected too many inputs" error
+        // see https://github.com/a16z/erc4626-tests/issues/3#issuecomment-1311218476
+        init = clamp(init, type(uint120).max);
+
         // setup initial shares and assets for individual users
         for (uint256 i = 0; i < N; i++) {
             address user = init.user[i];
@@ -85,5 +89,14 @@ contract TestERC4626IdleTokenWrapper is ERC4626Test {
         } else {
             vm.assume(false); // no loss
         }
+    }
+
+    function clamp(Init memory init, uint256 max) internal pure returns (Init memory) {
+        for (uint256 i = 0; i < N; i++) {
+            init.share[i] = init.share[i] % max;
+            init.asset[i] = init.asset[i] % max;
+        }
+        init.yield = init.yield % int256(max);
+        return init;
     }
 }
