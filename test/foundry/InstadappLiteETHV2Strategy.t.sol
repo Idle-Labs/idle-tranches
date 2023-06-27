@@ -133,7 +133,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.roll(block.number + 1 * 7200);
 
         // Check strategy APR after 1 day
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (1 day)");
+        assertApproxEqAbs(strategy.getApr(), 0, 0, "APR is always 0");
 
         // 7 days in blocks
         skip(1 days);
@@ -159,7 +159,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.roll(block.number + 1 * 7200);
 
         // Check strategy APR after 1 more deposit and 1 more day
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (2 day)");
+        assertApproxEqAbs(strategy.getApr(), 0, 0, "APR is always 0 as is calculated on the client");
 
         // NOTE: forcely increase the vault price
         _donateToken(ETHV2Vault, 40 * ONE_SCALE);
@@ -172,7 +172,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         vm.roll(block.number + 7 * 7200);
 
         // Check APR after 7 days (no deposits)
-        assertApproxEqAbs(strategy.getApr(), _computeApr(block.timestamp, strategy.price(), lastPriceTimestamp, lastPrice), 0, "Check strategy APR (10 days)");
+        assertApproxEqAbs(strategy.getApr(), 0, 0, "Check strategy APR (still 0)");
     }
 
     // @dev there are gains for the strategy
