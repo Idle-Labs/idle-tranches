@@ -2,6 +2,7 @@
 pragma solidity 0.8.10;
 import "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
+import "../../contracts/interfaces/IStkIDLE.sol";
 import "../../contracts/IdleCDO.sol";
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -15,6 +16,9 @@ abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
   using SafeERC20Upgradeable for IERC20Detailed;
 
+  address internal constant TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814 );
+  address internal constant STK_IDLE = address(0xaAC13a116eA7016689993193FcE4BadC8038136f);
+  address internal constant IDLE = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
   uint256 internal constant FULL_ALLOC = 100000;
@@ -50,13 +54,6 @@ abstract contract TestIdleCDOBase is Test {
   }
   // end override
 
-  modifier runOnForkingNetwork(uint256 networkId) {
-    // solhint-disable-next-line
-    if (block.chainid == networkId) {
-      _;
-    }
-  }
-
   function setUp() public virtual {
     _selectFork();
 
@@ -74,10 +71,7 @@ abstract contract TestIdleCDOBase is Test {
     incentives = idleCDO.getIncentiveTokens();
 
     // fund
-    initialBal = 1000000 * ONE_SCALE;
-    deal(address(underlying), address(this), initialBal, true);
-    // vm.prank(0x8EB8a3b98659Cce290402893d0123abb75E3ab28); // avax bridge
-    // underlying.safeTransfer(address(this), initialBal / 1000); -> for weth
+    _fundTokens();
   
     underlying.safeApprove(address(idleCDO), type(uint256).max);
 
@@ -95,9 +89,14 @@ abstract contract TestIdleCDOBase is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
+  function _fundTokens() internal virtual {
+    initialBal = 1000000 * ONE_SCALE;
+    deal(address(underlying), address(this), initialBal, true);
+  }
+
   function _selectFork() public virtual {}
 
-  function testInitialize() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialize() public virtual {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE);
     assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
@@ -110,8 +109,9 @@ abstract contract TestIdleCDOBase is Test {
   function testCantReinitialize() external virtual;
 
   function _pokeLendingProtocol() internal virtual {}
+  function _createLoss(uint256) internal virtual {}
 
-  function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDeposits() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     // AARatio 50%
     idleCDO.depositAA(amount);
@@ -160,7 +160,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
   }
 
-  function testRedeems() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeems() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -184,7 +184,7 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
 
-  function testRedeemRewards() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeemRewards() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -208,7 +208,6 @@ abstract contract TestIdleCDOBase is Test {
   function testOnlyIdleCDO()
       public
       virtual
-      runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Only IdleCDO can call"));
@@ -242,7 +241,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.stopPrank();
   }
 
-  function testEmergencyShutdown() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testEmergencyShutdown() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -266,7 +265,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.withdrawBB(amount);
   }
 
-  function testRestoreOperations() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRestoreOperations() external virtual {
     uint256 amount = 1000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -284,13 +283,13 @@ abstract contract TestIdleCDOBase is Test {
 
     vm.roll(block.number + 1);
 
-    idleCDO.withdrawAA(amount);
-    idleCDO.withdrawBB(amount);
-    idleCDO.depositAA(amount);
-    idleCDO.depositBB(amount);
+    idleCDO.withdrawAA(0);
+    idleCDO.withdrawBB(0);
+    idleCDO.depositAA(0);
+    idleCDO.depositBB(0);
   }
 
-  function testAPR() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testAPR() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -302,11 +301,68 @@ abstract contract TestIdleCDOBase is Test {
     skip(7 days); 
     vm.roll(block.number + 1);
     uint256 apr = idleCDO.getApr(address(AAtranche));
-    console.log('apr', apr);
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
-  function testSetIsAYSActive() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testMinStkIDLEBalance() external virtual {
+    vm.prank(address(1));
+    vm.expectRevert(bytes("6")); // not authorized
+    idleCDO.setStkIDLEPerUnderlying(9e17);
+    vm.prank(owner);
+    idleCDO.setStkIDLEPerUnderlying(9e17); // 0.9 stkIDLE for each underlying deposited
+
+    uint256 _val = 100 * ONE_SCALE;
+    uint256 scaledVal = _val * 10**(18 - decimals);
+    vm.expectRevert(bytes("7")); // stkIDLE bal too low
+    idleCDO.depositAA(_val);
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositBB(_val);
+
+    _getStkIDLE(scaledVal, false);
+
+    // try to deposit too much
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositAA(_val * 2);
+    
+    // try to deposit the correct bal
+    idleCDO.depositAA(_val);
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, 1, 'AA Deposit is not successful');
+    idleCDO.depositBB(_val);
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, 1, 'BB Deposit is not successful');
+
+    // try to deposit too much, considering what we already deposited previously in AA
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositAA(_val);
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositBB(_val);
+
+    // lock more IDLE
+    _getStkIDLE(scaledVal, true);
+
+    // now deposits works again
+    idleCDO.depositAA(_val);
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'AA Deposit 2 is not successful');
+    idleCDO.depositBB(_val);
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'BB Deposit is not successful');
+  }
+
+  function _getStkIDLE(uint256 _val, bool _increase) internal {
+    IStkIDLE stk = IStkIDLE(STK_IDLE);
+    address smartWalletChecker = stk.smart_wallet_checker();
+    deal(IDLE, address(this), _val);
+    // Allow deposit from contracts
+    vm.prank(TL_MULTISIG);
+    SmartWalletChecker(smartWalletChecker).toggleIsOpen(true);
+    // create lock for IDLE for 4 years so ~_val stkIDLE
+    IERC20Detailed(IDLE).approve(STK_IDLE, _val);
+    if (_increase) {
+      stk.increase_amount(_val);
+    } else {
+      stk.create_lock(_val, block.timestamp + 4 * 365 days); // 4 years
+    }
+  }
+
+  function testSetIsAYSActive() external {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setIsAYSActive(false);
@@ -314,7 +370,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.setIsAYSActive(true);
   }
 
-  function testSetMinAprSplitAYS() external runOnForkingNetwork(MAINNET_CHIANID) {
+  function testSetMinAprSplitAYS() external {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setMinAprSplitAYS(5000);
@@ -329,7 +385,7 @@ abstract contract TestIdleCDOBase is Test {
 
   function testAPRSplitRatioDeposits(
     uint16 _ratio
-  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual {
     vm.assume(_ratio <= 1000);
     uint256 amount = 1000 * ONE_SCALE;
     // to have the same scale as FULL_ALLOC and avoid 
@@ -338,10 +394,10 @@ abstract contract TestIdleCDOBase is Test {
     uint256 amountAA = amount * ratio / FULL_ALLOC;
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amount - amountAA);
-
-    assertEq(
+    assertApproxEqAbs(
       idleCDO.trancheAPRSplitRatio(), 
       _calcNewAPRSplit(ratio),
+      2,
       "split ratio on deposits"
     );
   }
@@ -350,7 +406,7 @@ abstract contract TestIdleCDOBase is Test {
     uint16 _ratio,
     uint16 _redeemRatioAA,
     uint16 _redeemRatioBB
-  ) external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  ) external virtual {
     vm.assume(_ratio <= 1000 && _ratio > 0);
     // > 0 because it's a requirement of the withdraw
     vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
@@ -379,9 +435,10 @@ abstract contract TestIdleCDOBase is Test {
       idleCDO.withdrawBB(amountBB);
     }
     
-    assertEq(
+    assertApproxEqAbs(
       idleCDO.trancheAPRSplitRatio(), 
       _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 
+      2,
       "split ratio on redeem"
     );
   }
@@ -474,13 +531,13 @@ abstract contract TestIdleCDOBase is Test {
     _new = aux * ratio / FULL_ALLOC;
   }
 
-  function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
+  function _strategyReleaseBlocksPeriod() internal view returns (uint256 releaseBlocksPeriod) {
     (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));
     if (success){
       releaseBlocksPeriod = abi.decode(returnData, (uint32));
     } else {
-      emit log("can't find releaseBlocksPeriod() on strategy");
-      emit logs(returnData);
+      // emit log("can't find releaseBlocksPeriod() on strategy");
+      // emit logs(returnData);
     }
   }
 }

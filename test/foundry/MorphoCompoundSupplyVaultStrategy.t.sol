@@ -68,7 +68,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         extraData = abi.encode(_cdo, 1000 * 1e18, new bytes32[](0));
     }
 
-    function testDeposits() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testDeposits() external override {
         // poke morpho contract with a deposit to update strategyPrice
         _pokeMorpho();
 
@@ -103,7 +103,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
     }
 
-    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testCantReinitialize() external override {
         vm.expectRevert(bytes("Initializable: contract is already initialized"));
         MorphoCompoundSupplyVaultStrategy(address(strategy)).initialize(
             mcDAI,
@@ -115,7 +115,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         );
     }
 
-    function testRedeems() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeems() external override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
@@ -140,7 +140,7 @@ contract TestMorphoCompoundSupplyVaultStrategy is TestIdleCDOBase {
         assertGe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
     }
 
-    function testRedeemRewards() external virtual override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testRedeemRewards() external virtual override {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
 

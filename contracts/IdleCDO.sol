@@ -198,7 +198,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _tranche tranche address
   /// @return actual apr given current ratio between AA and BB tranches
   function getApr(address _tranche) external view returns (uint256) {
-    return _getApr(_tranche, getCurrentAARatio());
+    return _getApr(_tranche, _getAARatio(false));
   }
 
   /// @notice calculates the current AA tranches ratio
@@ -206,7 +206,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// because it calculates the balance after splitting the accrued interest since the
   /// last depositXX/withdrawXX/harvest
   /// @return AA tranches ratio (in underlying value) considering all interest
-  function getCurrentAARatio() public view returns (uint256) {
+  function getCurrentAARatio() external view returns (uint256) {
     return _getAARatio(false);
   }
 
@@ -238,6 +238,22 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // Internal
   // ###############
 
+  /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault
+  /// @param _amount amount of underlying to deposit
+  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
+    uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
+    if (_stkIDLEPerUnderlying > 0) {
+      uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
+      // We check if sender deposited in the same tranche previously and add the bal to _amount
+      uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
+      require(
+        IERC20(STK_IDLE).balanceOf(msg.sender) >= 
+        bal * _stkIDLEPerUnderlying / oneToken, 
+        '7'
+      );
+    }
+  }
+
   /// @notice method used to deposit `token` and mint tranche tokens
   /// Ideally users should deposit right after an `harvest` call to maximize profit
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
@@ -260,10 +276,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
     _updateAccounting();
+    // check if depositor has enough stkIDLE for the amount to be deposited
+    _checkStkIDLEBal(_tranche, _amount);
     // get underlyings from sender
-    IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
+    address _token = token;
+    uint256 _preBal = _contractTokenBalance(_token);
+    IERC20Detailed(_token).safeTransferFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
-    _minted = _mintShares(_amount, msg.sender, _tranche);
+    _minted = _mintShares(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
     // update trancheAPRSplitRatio
     _updateSplitRatio();
 
@@ -331,11 +351,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// - if there is a loss on the lending protocol (ie strategy price decrease) up to maxDecreaseDefault (_checkDefault method), the loss is
   ///     - totally absorbed by junior holders if they have enough TVL and deposits/redeems work as normal
   ///     - otherwise a 'default' error (4) is raised and deposits/redeems are blocked
-  /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems 
+  /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems
   ///   are blocked and a 'default' error (4) is raised
-  /// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above 
+  /// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above
   ///   applies, the only difference is that maxDecreaseDefault is not considered
-  /// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked. 
+  /// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked.
   /// For this reason a protected updateAccounting method has been added which should be used to distributed the loss after a default event
   /// @param _tranche address of the requested tranche
   /// @param _nav current NAV
@@ -350,7 +370,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _lastNAV,
     uint256 _lastTrancheNAV,
     uint256 _trancheAPRSplitRatio
-  ) internal view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
+  ) internal virtual view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
     // Check if there are tranche holders
     uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
     if (_lastNAV == 0 || trancheSupply == 0) {
@@ -382,11 +402,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (IdleCDOTranche(_isAATranche ? _BBTranche : _AATranche).totalSupply() == 0) {
       _totalTrancheGain = totalGain;
     } else {
+      // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
       if (totalGain > 0) {
-        // Split the net gain, with precision loss favoring the AA tranche.
+        // Split the net gain, according to _trancheAPRSplitRatio, with precision loss favoring the AA tranche.
         int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
+      } else if (uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
+        // Split the loss, according to TVL ratio instead of _trancheAPRSplitRatio
+        uint256 _lastNAVBB = lastNAVBB;
+        int256 totalBBLoss = totalGain * int256(_lastNAVBB) / int256(lastNAVAA + _lastNAVBB);
+        // The new NAV for the tranche is old NAV - loss for the tranche
+        _totalTrancheGain = _isAATranche ? (totalGain - totalBBLoss) : totalBBLoss;
       } else { // totalGain is negative here
         // Redirect the whole loss (which should be < maxDecreaseDefault) to junior holders
         int256 _juniorTVL = int256(_isAATranche ? _lastNAV - _lastTrancheNAV : _lastTrancheNAV);
@@ -484,7 +511,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
   /// @dev the idea here is to limit the min and max APR that the senior tranche can get
-  function _updateSplitRatio() internal {
+  function _updateSplitRatio() internal virtual {
     if (isAYSActive) {
       uint256 tvlAARatio = _getAARatio(true);
       uint256 aux;
@@ -840,6 +867,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     liquidationTolerance = _diff;
   }
 
+  /// @param _val stkIDLE per underlying required for deposits
+  function setStkIDLEPerUnderlying(uint256 _val) external {
+    _checkOnlyOwner();
+    stkIDLEPerUnderlying = _val;
+  }
+
   /// @param _aprSplit min apr split for AA, considering FULL_ALLOC = 100%
   function setMinAprSplitAYS(uint256 _aprSplit) external {
     _checkOnlyOwner();
@@ -870,6 +903,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external {
     _checkOnlyOwner();
     require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
+  }
+
+  /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
+  function setLossToleranceBps(uint256 _diffBps) external {
+      _checkOnlyOwner();
+      lossToleranceBps = _diffBps;
   }
 
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the

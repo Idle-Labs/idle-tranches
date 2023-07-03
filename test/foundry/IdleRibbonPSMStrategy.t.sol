@@ -11,6 +11,10 @@ contract TestIdleRibbonPSMStrategy is TestIdleCDOBase {
   // ribbon Windermute USDC pool
   address public constant cpToken = 0x0Aea75705Be8281f4c24c3E954D1F8b1D0f8044C;
 
+  function _selectFork() public override {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 15831007));
+  }
+
   function _deployLocalContracts() internal override returns (IdleCDO _cdo) {
     address _owner = address(2);
     address _rebalancer = address(3);
@@ -75,7 +79,6 @@ contract TestIdleRibbonPSMStrategy is TestIdleCDOBase {
   function testOnlyOwner()
     public
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
@@ -85,7 +88,6 @@ contract TestIdleRibbonPSMStrategy is TestIdleCDOBase {
   function testCantReinitialize()
     external
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     address _strategy = address(strategy);
     address univ2Router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
@@ -103,7 +105,6 @@ contract TestIdleRibbonPSMStrategy is TestIdleCDOBase {
 
   function testDepositsGetUSDC() 
     public
-    runOnForkingNetwork(MAINNET_CHIANID) 
   {
     uint256 oneToken = 10**6; // 1 USDC
     uint256 amount = 10000 * ONE_SCALE;

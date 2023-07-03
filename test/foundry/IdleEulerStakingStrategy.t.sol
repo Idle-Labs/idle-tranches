@@ -30,12 +30,16 @@ contract TestIdleEulerStakingStrategy is TestIdleCDOBase {
         vm.label(stakingRewards, "stakingRewards");
     }
 
+    function _selectFork() public override {
+        vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16527983));
+    }
+
     function _postDeploy(address _cdo, address _owner) internal override {
         vm.prank(_owner);
         IdleEulerStakingStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     }
 
-    function testOnlyOwner() public override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testOnlyOwner() public override {
         super.testOnlyOwner();
 
         vm.startPrank(address(0xbabe));
@@ -52,7 +56,7 @@ contract TestIdleEulerStakingStrategy is TestIdleCDOBase {
         vm.stopPrank();
     }
 
-    function testCantReinitialize() external override runOnForkingNetwork(MAINNET_CHIANID) {
+    function testCantReinitialize() external override {
         address lendingToken = 0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716; // eUSDC
         address _underlying = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         address eulerMain = 0x27182842E098f60e3D576794A5bFFb0777E025d3;

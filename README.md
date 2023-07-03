@@ -5,7 +5,7 @@ The aim of Idle Perpetual Yield Tranches is to pool capital of users (eg DAI), d
 
 One will gain more interest and will be more risky (BB or junior tranche) and the other will have a lower APR but more safety (AA or senior tranche). In the case of an hack or a loss of funds of the lending provider integrated (or any other protocol integrated by this provider), all funds still available will be used to refund senior tranche holders first with the aim of making them whole, and with remaining funds, if any, junior holders after.
 
-There are no locking period or epochs and users are free to enter and exit at any time, the interest earned (and governance tokens, after being partially sold in the market) will be split between the two classes according to a dynamic ratio called `trancheAPRSplitRatio` which is updated, based on the TVL of both tranches, at each deposit/redeem. The apr is variable for both classes of tranches.
+There are no locking period or epochs and users are free to enter and exit at any time, the interest earned (and governance tokens, after being sold in the market) will be split between the two classes according to a dynamic ratio called `trancheAPRSplitRatio` which is updated, based on the TVL of both tranches, at each deposit/redeem. The apr is variable for both classes of tranches.
 
 ## Docs
 
@@ -14,7 +14,7 @@ https://docs.idle.finance/developers/perpetual-yield-tranches
 ## Architecture
 The main contract which will be used by users is `IdleCDO` which allows to deposit underlying and mint tranche tokens (ERC20), either AA or BB, and redeem principal+interest from it.
 
-The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possible. Other tokens (eg IDLE or LDO that won't be sold or tokens that have no liquid markets) will get redistributed via [Idle Gauges](https://github.com/Idle-Finance/idle-gauges) with a `Multirewards` contract
+The IdleCDO uses an `IIdleCDOStrategy` for interacting with a specific lending protocol. Governance tokens collected as rewards, are not redistributed to users directly in the IdleCDO contract but rather sold to the market (`harvest` method) and the underlyings reinvested in the downstream lending provider where possible.
 
 These are the main contracts used:
 
@@ -34,38 +34,16 @@ forge install
 ```
 For foundry setup [here](https://book.getfoundry.sh/getting-started/installation.html)
 
-## Testing with Hardhat
+## Tests
+
+Tests were initially done using Hardhat and then new ones with Foundry. Foundry tests are located in `test/foundry/` and are the ones that should be used for testing new features.
+New tests should be written using Foundry.
+
+### Old tests with Hardhat
 
 For unit tests run:
 ```
 yarn test
-```
-
-For integration tests:
-
-Copy the `.env.public` in a new `.env` file and fill out the keys OR in terminal:
-
-```
-export ALCHEMY_API_KEY=XXXX
-```
-
-then uncomment the following in `hardhat.config.js` (be sure to have a pinned block):
-
-```
-forking: {
-  url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-  blockNumber: XXXXX,
-}
-```
-then run
-
-```
-yarn test-integration
-```
-
-For running any other task:
-```
-npx hardhat TASK_NAME
 ```
 
 ## Test with Foundry
@@ -73,10 +51,18 @@ npx hardhat TASK_NAME
 For foundry tests (located in `test/foundry/`) run:
 
 ```
-forge test --fork-url https://eth-mainnet.alchemyapi.io/v2/$ALCHEMY_API_KEY --fork-block-number XXXXX -vvv --match-contract=MyTestContract
+forge test -vvv
 ```
+or 
+
+```
+forge test -vvv --match-contract=MyTestContract
+```
+to run a specific test.
 
 ## Deploy with Hardhat
+
+Deployment of new IdleCDOs is done with Hardhat using a factory contract which will deploy a new IdleCDO and initialize it with the correct params.
 
 ```
 npx hardhat deploy-with-factory-params --network YOUR_CONFIGURED_NETWORK --cdoname CDO_NAME 
@@ -119,13 +105,6 @@ then run the forge test against anvil network (using the deployed IdleCDO addres
 
 ```
 forge test --fork-url http://127.0.0.1:8545/ --match-contract=MyTest -vvv
-```
-
-
-## Coverage
-
-```
-npx hardhat coverage
 ```
 
 ## Code Contributions

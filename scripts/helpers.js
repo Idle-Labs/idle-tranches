@@ -31,7 +31,7 @@ const impersonateSigner = async (acc) => {
 }
 const getMultisigSigner = async (skipLog) => {
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
-  const service = new SafeService('https://safe-transaction.gnosis.io/');
+  const service = new SafeService('https://safe-transaction-mainnet.safe.global/');
   const safe = await Safe.create({ 
     ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
     safeAddress: addresses.IdleTokens.mainnet.treasuryMultisig

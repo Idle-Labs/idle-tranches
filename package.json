@@ -26,7 +26,6 @@
   "homepage": "https://idle.finance",
   "scripts": {
     "test": "npx hardhat test test/*.js",
-    "test-integration": "npx hardhat test test/integration/**/*.js",
     "test:polygon": "npx hardhat test test/polygon/**/*.js",
     "test:forge": "FOUNDRY_PROFILE=optimized forge test --fork-url https://eth-mainnet.alchemyapi.io/v2/$ALCHEMY_API_KEY --fork-block-number 14879273 -vvv"
   },

@@ -61,6 +61,7 @@ module.exports = {
     ],
     overrides: {
       "contracts/IdleCDO.sol": overrideConfig,
+      "contracts/IdleCDOInstadappLiteVariant.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
       "contracts/IdleCDOLeveregedEulerVariant.sol": minimalSizeConfig,
       "contracts/IdleCDOPoLidoVariant.sol": minimalSizeConfig,
@@ -118,7 +119,7 @@ module.exports = {
       //   // blockNumber: 16375540, // eUSDTStaking + eWETHStaking PYT deploy
       //   // blockNumber: 16419858, // Morpho maUSDC
       //   // blockNumber: 16976228, // Euler staking DAI
-      //   blockNumber: 17081600, // Euler staking DAI
+      //   blockNumber: 17363926, // instadapp lite v2
       // },
       // chainId: 137
     },

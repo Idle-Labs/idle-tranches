@@ -6,6 +6,10 @@ import "../../contracts/strategies/ribbon/IdleRibbonStrategy.sol";
 contract TestIdleRibbonStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
 
+  function _selectFork() public override {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 15831007));
+  }
+
   function _deployStrategy(address _owner) internal override returns (
     address _strategy,
     address _underlying
@@ -31,7 +35,6 @@ contract TestIdleRibbonStrategy is TestIdleCDOBase {
   function testOnlyOwner()
     public
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
@@ -41,7 +44,6 @@ contract TestIdleRibbonStrategy is TestIdleCDOBase {
   function testCantReinitialize()
     external
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     address _strategy = address(strategy);
     address cpToken = 0x3CD0ecf1552D135b8Da61c7f44cEFE93485c616d;

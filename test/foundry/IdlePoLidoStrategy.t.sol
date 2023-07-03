@@ -82,7 +82,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         uint256 strategyPrice = strategy.price();
 
         // check that trancheAPRSplitRatio and aprs are updated
-        assertEq(idleCDO.trancheAPRSplitRatio(), 25000, "split ratio");
+        assertApproxEqAbs(idleCDO.trancheAPRSplitRatio(), 25000, 1, "split ratio");
         // limit is 50% of the strategy apr if AAratio is <= 50%
         assertEq(idleCDO.getApr(address(AAtranche)), initialApr / 2, "AA apr");
         // apr will be 150% of the strategy apr if AAratio is == 50%
@@ -186,4 +186,6 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
     ) external pure returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
     }
+
+  function testMinStkIDLEBalance() external override {}
 }

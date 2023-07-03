@@ -22,6 +22,10 @@ contract TestIdleClearpoolStrategy is TestIdleCDOBase {
     IdleClearpoolStrategy(_strategy).initialize(cpToken, _underlying, _owner, univ2Router);
   }
 
+  function _selectFork() public override {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 15133116));
+  }
+
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
     IdleClearpoolStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
@@ -30,7 +34,6 @@ contract TestIdleClearpoolStrategy is TestIdleCDOBase {
   function testOnlyOwner()
     public
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Ownable: caller is not the owner"));
@@ -40,7 +43,6 @@ contract TestIdleClearpoolStrategy is TestIdleCDOBase {
   function testCantReinitialize()
     external
     override
-    runOnForkingNetwork(MAINNET_CHIANID)
   {
     address _strategy = address(strategy);
     address cpToken = 0xCb288b6d30738db7E3998159d192615769794B5b;

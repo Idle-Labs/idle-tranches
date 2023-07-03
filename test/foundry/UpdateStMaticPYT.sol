@@ -37,13 +37,6 @@ contract TestUpdateStMaticPYT is Test {
   IStMATIC internal constant stMatic = IStMATIC(0x9ee91F9f426fA633d227f7a9b000E28b9dfd8599);
   address public constant LDO = 0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32;
 
-  modifier runOnForkingNetwork(uint256 networkId) {
-    // solhint-disable-next-line
-    if (block.chainid == networkId) {
-      _;
-    }
-  }
-
   function _setUpParams() internal virtual {
     idleCDO = IdleCDO(0xF87ec7e1Ee467d7d78862089B92dd40497cBa5B8);
     // example with stMATIC, inherit this contract and override this method to test other
@@ -60,7 +53,9 @@ contract TestUpdateStMaticPYT is Test {
     extraData = '0x';
   }
 
-  function setUp() public virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function setUp() public virtual {
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 16917511));
+
     _setUpParams();
 
     AAtranche = IdleCDOTranche(idleCDO.AATranche());
@@ -102,13 +97,13 @@ contract TestUpdateStMaticPYT is Test {
     vm.label(address(strategyToken), "strategyToken");
   }
 
-  function testInitialValue() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testInitialValue() external virtual {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(idleCDO.virtualPrice(address(AAtranche)), initialAAVirtual);
     assertGe(idleCDO.virtualPrice(address(BBtranche)), initialBBVirtual);
   }
 
-  function testDeposits() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testDeposits() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
     uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
@@ -141,7 +136,7 @@ contract TestUpdateStMaticPYT is Test {
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
   }
 
-  function testRedeems() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeems() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     
     idleCDO.depositAA(amount);
@@ -169,7 +164,7 @@ contract TestUpdateStMaticPYT is Test {
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 0, "BBtranche bal");
   }
 
-  function testRedeemRewards() external virtual runOnForkingNetwork(MAINNET_CHIANID) {
+  function testRedeemRewards() external virtual {
     // give LDO to idleCDO contract
     vm.prank(0x09F82Ccd6baE2AeBe46bA7dd2cf08d87355ac430);
     IERC20Detailed(LDO).transfer(address(idleCDO), 10000 * 1e18);

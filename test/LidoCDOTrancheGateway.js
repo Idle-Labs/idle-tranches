@@ -145,8 +145,6 @@ describe("LidoCDOTrancheGateway", function () {
     expect(await idleCDO.strategyToken()).to.equal(wstETH.address);
     expect(await idleCDO.rebalancer()).to.equal(owner.address);
     expect(await idleCDO.trancheAPRSplitRatio()).to.be.equal(BN('20000'));
-    expect(await idleCDO.trancheIdealWeightRatio()).to.be.equal(BN('50000'));
-    expect(await idleCDO.idealRange()).to.be.equal(BN('10000'));
     expect(await idleCDO.unlentPerc()).to.be.equal(BN('2000'));
     expect(await idleCDO.oneToken()).to.be.equal(BN(10 ** 18));
     expect(await idleCDO.priceAA()).to.be.equal(BN(10 ** 18));
@@ -157,8 +155,8 @@ describe("LidoCDOTrancheGateway", function () {
     expect(await wstETH.allowance(idleCDO.address, strategy.address)).to.be.equal(MAX_UINT);
     expect(await underlying.allowance(idleCDO.address, strategy.address)).to.be.equal(MAX_UINT);
     expect(await idleCDO.lastStrategyPrice()).to.be.equal(await wstETH.stEthPerToken());
-    expect(await idleCDO.fee()).to.be.equal(BN('10000'));
-    expect(await idleCDO.releaseBlocksPeriod()).to.be.equal(BN('1500'));
+    expect(await idleCDO.fee()).to.be.equal(BN('15000'));
+    expect(await idleCDO.releaseBlocksPeriod()).to.be.equal(BN('6400'));
     expect(await idleCDO.feeReceiver()).to.equal('0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814');
     expect(await idleCDO.guardian()).to.equal(owner.address);
     expect(await idleCDO.weth()).to.equal(weth.address);
