@@ -71,11 +71,11 @@ contract IdleClearpoolStrategyPolygonZK is
     /// @notice can be only called once
     /// @param _cpToken address of the strategy token (lending pool)
     /// @param _underlyingToken address of the underlying token (pool currency)
+    /// @param _owner address of the owner of the strategy
     function initialize(
         address _cpToken,
         address _underlyingToken,
-        address _owner,
-        address _uniswapV2Router
+        address _owner
     ) public virtual initializer {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -96,8 +96,6 @@ contract IdleClearpoolStrategyPolygonZK is
         );
         //------//-------//
 
-        uniswapRouter = IUniswapV2Router02(_uniswapV2Router);
-
         transferOwnership(_owner);
     }
 
@@ -114,14 +112,16 @@ contract IdleClearpoolStrategyPolygonZK is
         onlyIdleCDO
         returns (uint256[] memory rewards)
     {
-        address pool = cpToken;
-        address[] memory pools = new address[](1);
-        pools[0] = pool;
-        IPoolMaster(pool).factory().withdrawReward(pools);
+        // Not used
 
-        rewards = new uint256[](1);
-        rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
-        IERC20Detailed(govToken).safeTransfer(msg.sender, rewards[0]);
+        // address pool = cpToken;
+        // address[] memory pools = new address[](1);
+        // pools[0] = pool;
+        // IPoolMaster(pool).factory().withdrawReward(pools);
+
+        // rewards = new uint256[](1);
+        // rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
+        // IERC20Detailed(govToken).safeTransfer(msg.sender, rewards[0]);
     }
 
     /// @notice unused in harvest strategy
@@ -144,24 +144,27 @@ contract IdleClearpoolStrategyPolygonZK is
         override
         returns (address[] memory)
     {
-        address[] memory govTokens = new address[](1);
-        govTokens[0] = govToken;
-        return govTokens;
+        // address[] memory govTokens = new address[](1);
+        // govTokens[0] = govToken;
+        // return govTokens;
     }
 
     function getApr() external view returns (uint256) {
         // CPOOL per second (clearpool's contract has typo)
         IPoolMaster _cpToken = IPoolMaster(cpToken);
         uint256 rewardSpeed = _cpToken.rewardPerSecond();
-        // Underlying tokens equivalent of rewards
-        uint256 annualRewards = (rewardSpeed *
-            YEAR *
-            _tokenToUnderlyingRate()) / 10**18;
-        // Pool's TVL as underlying tokens
-        uint256 poolTVL = (IERC20Detailed(address(_cpToken)).totalSupply() *
-            _cpToken.getCurrentExchangeRate()) / 10**18;
-        // Annual rewards rate (as clearpool's 18-precision decimal)
-        uint256 rewardRate = (annualRewards * 10**18) / poolTVL;
+        uint256 rewardRate;
+        if (rewardSpeed > 0) {
+            // Underlying tokens equivalent of rewards
+            uint256 annualRewards = (rewardSpeed *
+                YEAR *
+                _tokenToUnderlyingRate()) / 10**18;
+            // Pool's TVL as underlying tokens
+            uint256 poolTVL = (IERC20Detailed(address(_cpToken)).totalSupply() *
+                _cpToken.getCurrentExchangeRate()) / 10**18;
+            // Annual rewards rate (as clearpool's 18-precision decimal)
+            rewardRate = (annualRewards * 10**18) / poolTVL;
+        }
 
         // Pool's annual interest rate
         uint256 poolRate = _cpToken.getSupplyRate() * YEAR;
