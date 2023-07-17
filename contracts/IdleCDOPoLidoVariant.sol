@@ -75,7 +75,7 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
         }
 
         // update trancheAPRSplitRatio
-        _updateSplitRatio();
+        _updateSplitRatio(_getAARatio(true));
     }
 
     function onERC721Received(

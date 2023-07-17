@@ -81,7 +81,7 @@ contract IdleCDOTruefiVariant is IdleCDO {
     }
 
     // update trancheAPRSplitRatio
-    _updateSplitRatio();
+    _updateSplitRatio(_getAARatio(true));
   }
   function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256 _minted) {
     _minted = super._deposit(_amount, _tranche, _referral);

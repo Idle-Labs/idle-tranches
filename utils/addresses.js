@@ -648,17 +648,29 @@ const CDOs = {
     AATranche: '0x6c0c8708e2FD507B7057762739cb04cF01b98d7b',
     BBTranche: '0xd69c52E6AF3aE708EE4b3d3e7C0C5b4CF4d6244B'
   },
+  // instastethv2: {
+  //   decimals: 18,
+  //   strategyToken: mainnetContracts.instaETHv2,
+  //   underlying: mainnetContracts.stETH,
+  //   cdoAddr: '0xf52834404A51f5af1CDbeEdaA95B60c8B2187ba0',
+  //   proxyAdmin: mainnetContracts.proxyAdmin,
+  //   strategy: '0xBE0DACE8d62a14D2D872b20462B4725Cc50a1ff6',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0xbb26dD53dD37f2dC4b91E93C947d6b8683b85279',
+  //   BBTranche: '0xC136E01f74FB0DAEfA29f0AAc9c250EF069e684d'
+  // },
   instastethv2: {
     decimals: 18,
     strategyToken: mainnetContracts.instaETHv2,
     underlying: mainnetContracts.stETH,
-    cdoAddr: '0xf52834404A51f5af1CDbeEdaA95B60c8B2187ba0',
+    cdoAddr: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '0xBE0DACE8d62a14D2D872b20462B4725Cc50a1ff6',
+    strategy: '0x00d39058943B4A6F01cb3386A7f44b84ab482c8B',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0xbb26dD53dD37f2dC4b91E93C947d6b8683b85279',
-    BBTranche: '0xC136E01f74FB0DAEfA29f0AAc9c250EF069e684d'
+    AATranche: '0xdf17c739b666B259DA3416d01f0310a6e429f592',
+    BBTranche: '0x990b3aF34dDB502715E1070CE6778d8eB3c8Ea82'
   },
 };
 

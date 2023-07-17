@@ -285,7 +285,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // mint tranche tokens according to the current tranche price
     _minted = _mintShares(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
     // update trancheAPRSplitRatio
-    _updateSplitRatio();
+    _updateSplitRatio(_getAARatio(true));
 
     if (_referral != address(0)) {
       emit Referral(_amount, _referral);
@@ -409,7 +409,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
         // The new NAV for the tranche is old NAV + total gain for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
       } else if (uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
-        // Split the loss, according to TVL ratio instead of _trancheAPRSplitRatio
+        // Split the loss, according to TVL ratio instead of _trancheAPRSplitRatio (loss socialized between all tranches)
         uint256 _lastNAVBB = lastNAVBB;
         int256 totalBBLoss = totalGain * int256(_lastNAVBB) / int256(lastNAVAA + _lastNAVBB);
         // The new NAV for the tranche is old NAV - loss for the tranche
@@ -433,7 +433,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       }
     }
     // Split the new NAV (_lastTrancheNAV + _totalTrancheGain) per tranche token
-    _virtualPrice = uint256(int256(_lastTrancheNAV) + int256(_totalTrancheGain)) * ONE_TRANCHE_TOKEN / trancheSupply;
+    _virtualPrice = uint256(int256(_lastTrancheNAV) + _totalTrancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
   /// @notice mint tranche tokens and updates tranche last NAV
@@ -506,14 +506,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
 
     // update trancheAPRSplitRatio
-    _updateSplitRatio();
+    _updateSplitRatio(_getAARatio(true));
   }
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
   /// @dev the idea here is to limit the min and max APR that the senior tranche can get
-  function _updateSplitRatio() internal virtual {
+  function _updateSplitRatio(uint256 tvlAARatio) internal virtual {
     if (isAYSActive) {
-      uint256 tvlAARatio = _getAARatio(true);
       uint256 aux;
       if (tvlAARatio >= AA_RATIO_LIM_UP) {
         aux = AA_RATIO_LIM_UP;
