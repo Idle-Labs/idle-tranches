@@ -88,7 +88,7 @@ contract IdleClearpoolStrategyPolygonZK is
         tokenDecimals = underlyingToken.decimals();
         oneToken = 10**(tokenDecimals);
 
-        govToken = IPoolMaster(_cpToken).factory().cpool();
+        // govToken = IPoolMaster(_cpToken).factory().cpool();
 
         ERC20Upgradeable.__ERC20_init(
             "Idle Clearpool Strategy Token",
