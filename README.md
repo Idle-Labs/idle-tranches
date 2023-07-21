@@ -41,7 +41,10 @@ New tests should be written using Foundry.
 
 ### Old tests with Hardhat
 
+* One line change is needed in node_modules/@uniswap/v3-core/contracts/libraries/FullMath.sol to make compilation working see -> https://ethereum.stackexchange.com/questions/96642/unary-operator-minus-cannot-be-applied-to-type-uint256
+
 For unit tests run:
+
 ```
 yarn test
 ```

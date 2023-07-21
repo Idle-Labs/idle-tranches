@@ -9,6 +9,16 @@ const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
+const polygonZKContracts = addresses.IdleTokens.polygonZK;
+
+const getNetworkContracts = (_hre) => {
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  if (isMatic) {
+    return polygonContracts;
+  }
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  return isPolygonZK ? polygonZKContracts : mainnetContracts;
+}
 
 /**
  * @name deploy
@@ -51,7 +61,8 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     const creator = await signer.getAddress();
     let proxyAdminAddress = args.proxyAdmin;
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
-    const networkContracts = isMatic ? polygonContracts : mainnetContracts;
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    const networkContracts = getNetworkContracts(hre);
 
     if (!proxyAdminAddress) {
       const defaultProxyAdminAddress = networkContracts.proxyAdmin;
@@ -79,15 +90,15 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     const incentiveTokens = args.incentiveTokens ? args.incentiveTokens.split(",").map(s => s.trim()) : [];
 
     console.log("🔎 Retrieving underlying token from strategy (", strategyAddress, ")");
-    const strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress);
+    const strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress, signer);
     const underlyingAddress = await strategy.token();
     const underlyingAddressCDO = args.cdoUnderlying;
-    const underlyingToken = await ethers.getContractAt("IERC20Detailed", underlyingAddress);
+    const underlyingToken = await ethers.getContractAt("IERC20Detailed", underlyingAddress, signer);
     const underlyingName = await underlyingToken.name();
-    const underlyingTokenCDO = await ethers.getContractAt("IERC20Detailed", underlyingAddressCDO);
+    const underlyingTokenCDO = await ethers.getContractAt("IERC20Detailed", underlyingAddressCDO, signer);
     const underlyingNameCDO = await underlyingTokenCDO.name();
 
-    if (hre.network.name === 'hardhat' && cdoFactoryAddress === undefined) {
+    if (hre.network.name === 'hardhat' && !cdoFactoryAddress) {
       console.log("\n⚠️  Local network - cdoFactoryAddress is undefined, deploying CDOFactory\n");
       const cdoFactory = await hre.run("deploy-cdo-factory");
       cdoFactoryAddress = cdoFactory.address;
@@ -117,9 +128,13 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     
     await helpers.prompt("continue? [y/n]", true);
     
-    let cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress);
+    let cdoFactory = await ethers.getContractAt("IdleCDOFactory", cdoFactoryAddress, signer);
     cdoFactory = cdoFactory.connect(signer);
-    const idleCDO = await ethers.getContractAt(isMatic ? "IdleCDOPolygon" : "IdleCDO", cdoImplementationAddress);
+    let contractName = isMatic ? "IdleCDOPolygon" : "IdleCDO";
+    if (isPolygonZK) {
+      contractName = "IdleCDOPolygonZK";
+    }
+    const idleCDO = await ethers.getContractAt(contractName, cdoImplementationAddress, signer);
     
     const initMethodCall = idleCDO.interface.encodeFunctionData("initialize", [
       limit,
@@ -162,24 +177,30 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     let cdoProxyAddressToClone = args.proxyCdoAddress;
     const strategyAddress = args.strategyAddress;
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
-    const deployToken = (
-      isMatic ?
-        addresses.deployTokensPolygon :
-        addresses.deployTokens
-    )[args.cdoname];
-    const networkContracts = isMatic ? polygonContracts : mainnetContracts;
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
 
+    const networkTokens = isMatic ? addresses.deployTokensPolygon :
+      (isPolygonZK ? addresses.deployTokensPolygonZK : addresses.deployTokens);
+
+    // Get config params
+    const deployToken = networkTokens[args.cdoname];
+    const networkContracts = getNetworkContracts(hre);
+    
     if (deployToken === undefined) {
       console.log(`🛑 deployToken not found with specified cdoname (${cdoname})`)
       return;
     } 
-
-    let strategy = await ethers.getContractAt(args.strategyName, strategyAddress);
-    const incentiveTokens = deployToken.incentiveTokens || [];
+    
     const signer = await helpers.getSigner();
+    let strategy = await ethers.getContractAt(args.strategyName, strategyAddress, signer);
+    const incentiveTokens = deployToken.incentiveTokens || [];
     const creator = await signer.getAddress();
+    let networkCDOName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
+    if (isPolygonZK) {
+      networkCDOName = 'IdleCDOPolygonZK';
+    }
     let idleCDOAddress;
-    const contractName = deployToken.cdoVariant || (isMatic ? 'IdleCDOPolygon' : 'IdleCDO');
+    const contractName = deployToken.cdoVariant || networkCDOName;
 
     if (helpers.isEmptyString(cdoProxyAddressToClone)) {
       console.log("🛑 cdoProxyAddressToClone must be specified");
@@ -217,7 +238,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       idleCDOAddress = await hre.run("deploy-cdo-with-factory", deployParams);
     }
 
-    const idleCDO = await ethers.getContractAt(contractName, idleCDOAddress);
+    const idleCDO = await ethers.getContractAt(contractName, idleCDOAddress, signer);
     console.log('owner idleCDO', await idleCDO.owner());
 
     if (strategy.setWhitelistedCDO) {
@@ -237,17 +258,14 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
     console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
 
-    console.log(`Transfer ownership of strategy to DL multisig ${mainnetContracts.devLeagueMultisig}`);
-    await strategy.connect(signer).transferOwnership(mainnetContracts.devLeagueMultisig);
+    console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
+    await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
     
-    console.log(`Set guardian of CDO to DL multisig ${mainnetContracts.devLeagueMultisig}`);
-    await idleCDO.connect(signer).setGuardian(mainnetContracts.devLeagueMultisig);
+    console.log(`Set guardian of CDO to DL multisig ${networkContracts.devLeagueMultisig}`);
+    await idleCDO.connect(signer).setGuardian(networkContracts.devLeagueMultisig);
     
     const feeReceiver = await idleCDO.feeReceiver();
-    if (
-        (!isMatic && feeReceiver == mainnetContracts.oldFeeReceiver) || 
-        (isMatic && feeReceiver != polygonContracts.feeReceiver)
-      ) {
+    if ((isMatic || isPolygonZK) && feeReceiver != networkContracts.feeReceiver) {
       console.log('Setting fee receiver to Treasury Multisig')
       await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
     }
@@ -257,8 +275,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setUnlentPerc(0);
     }
 
-    console.log(`Transfer ownership of CDO to TL multisig ${mainnetContracts.treasuryMultisig}`);
-    await idleCDO.connect(signer).transferOwnership(mainnetContracts.treasuryMultisig);
+    console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
+    await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
 
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
@@ -270,7 +288,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     
     return {idleCDO, strategy, AAaddr, BBaddr};
   });
-      
+
 /**
  * @name deploy-with-factory-params
  * task to deploy CDO with strategy, staking rewards via factory with all params from utils/addresses.js
@@ -281,7 +299,7 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
     // Run compile task
     await run("compile");
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
-    const networkContracts = isMatic ? polygonContracts : mainnetContracts;
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
 
     // Check that cdoname is passed
     if (!args.cdoname) {
@@ -289,19 +307,17 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       return;
     }
     
+    const networkTokens = isMatic ? addresses.deployTokensPolygon : 
+      (isPolygonZK ? addresses.deployTokensPolygonZK : addresses.deployTokens);
+
     // Get config params
-    const deployToken = (
-      isMatic ? 
-      addresses.deployTokensPolygon : 
-      addresses.deployTokens
-    )[args.cdoname];
+    const deployToken = networkTokens[args.cdoname];
     
     // Check that args has strategyName and strategyParams
     if (!deployToken.strategyName || !deployToken.strategyParams) {
       console.log("🛑 strategyName and strategyParams must be specified");
       return;
     }
-    
     // Get signer
     const signer = await helpers.getSigner();
     const addr = await signer.getAddress();

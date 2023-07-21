@@ -51,10 +51,15 @@ const getSigner = async (acc) => {
     signer = await impersonateSigner(acc);
   } else {
     // get first signer
-    [signer] = await hre.ethers.getSigners();
+    if (hre.network.config.chainId == '1101') {
+      // eth_accounts not working on polygon zkevm alchemy
+      signer = await hre.ethers.getSigner(addresses.IdleTokens.polygonZK.deployer);
+    } else {
+      [signer] = await hre.ethers.getSigners();
+    }
   }
   // In mainnet overwrite signer to be the ledger signer
-  if (hre.network.name == 'mainnet' || hre.network.name == 'matic') {
+  if (hre.network.name == 'mainnet' || hre.network.name == 'matic' || hre.network.name == 'polygonzk') {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();

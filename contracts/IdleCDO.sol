@@ -586,7 +586,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return _amount of _rewardToken sold
   /// @return _amount received for the sell
   function _sellReward(address _rewardToken, bytes memory _path, uint256 _amount, uint256 _minAmount)
-    internal
+    internal virtual
     returns (uint256, uint256) {
     // If 0 is passed as sell amount, we get the whole contract balance
     if (_amount == 0) {

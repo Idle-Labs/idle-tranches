@@ -157,8 +157,31 @@ const polygonContracts = {
   proxyAdmin: '0x44b6CDda5D030B29eEc58009F6f474082313C470',
 }
 
+const polygonZKContracts = {
+  // deployer: '0xe8833ca9D4592d0A4dAf1A6ad4e2212742D76175',
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0xba43DE746840eD16eE53D26af0675d8E6c24FE38',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0x13854835c508FC79C3E5C5Abf7afa54b4CcC1Fdf',
+  treasuryMultisig: '0x13854835c508FC79C3E5C5Abf7afa54b4CcC1Fdf',
+  devLeagueMultisig: '0x13854835c508FC79C3E5C5Abf7afa54b4CcC1Fdf',
+  proxyAdmin: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
+  trancheErc4626Wrapper: '0x0ac74Fe6f3C9123254418EEfcE37E4f7271a2b72',
+
+  WETH: '0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9',
+  USDT: '0x1E4a5963aBFD975d8c9021ce480b42188849D41d',
+  cpPOR_USDT: '0x6beb2006a2c8b2dc90d924b8b19be084bc5a5eba',
+  USDC: '0xA8CE8aee21bC2A48a5EF670afCc9274C7bbbC035',
+  cpFAS_USDC: '0xfa42f010aac1acbb10018c7bf1588446e7e11bfb',
+
+  // same as trancheErc4626Wrapper blueprint
+  AA_4626_cpporusdt: '0x0ac74fe6f3c9123254418eefce37e4f7271a2b72',
+  AA_4626_cpfasusdc: '0xFbc63d309F915AA62517A6b4e845502CEcf946cf',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
+  polygonZK: polygonZKContracts,
   mainnet: mainnetContracts,
   local: mainnetContracts,
   kovan: {
@@ -774,6 +797,35 @@ const polygonCDOs = {
   //   BBTranche: ''
   // },
 };
+
+const polygonZKCDOs = {
+  cpfasusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x73318bF57Fa6A4a97e0140e5CfF8219755FcDdbc',
+    underlying: polygonZKContracts.cpFAS_USDC,
+    cdoAddr: '0x8890957F80d7D771337f4ce42e15Ec40388514f1',
+    proxyAdmin: polygonZKContracts.proxyAdmin,
+    strategy: '0x73318bF57Fa6A4a97e0140e5CfF8219755FcDdbc',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3Ed123E94C95A5777149AeEc50F4C956b29EcceC',
+    BBTranche: '0xBF78b393d14A90B52cdc2325e11c92F24f2F54F3'
+  },
+  cpporusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+    underlying: polygonZKContracts.cpPOR_USDT,
+    cdoAddr: '0x6b8A1e78Ac707F9b0b5eB4f34B02D9af84D2b689',
+    proxyAdmin: polygonZKContracts.proxyAdmin,
+    strategy: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6AaB2db845b23729aF1F5B0902Ff4BDc32BBf948',
+    BBTranche: '0x1FdAF221fF3929e86266D6A5930fa7263c1bD4DF'
+  },
+}
 
 const baseCDOArgs = {
   incentiveTokens: [],
@@ -1578,6 +1630,41 @@ exports.deployTokensPolygon = {
   },
 };
 
+exports.deployTokensPolygonZK = {
+  cpfasusdc: { // fasanara usdc pool
+    decimals: 6,
+    underlying: polygonZKContracts.USDC,
+    strategyName: 'IdleClearpoolStrategyPolygonZK',
+    strategyParams: [
+      polygonZKContracts.cpFAS_USDC, // _strategyToken
+      polygonZKContracts.USDC, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: CDOs.cpfasusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: polygonZKCDOs.cpporusdt.cdoAddr,
+  },
+  cpporusdt: { // portofino usdt pool
+    decimals: 6,
+    underlying: polygonZKContracts.USDT,
+    strategyName: 'IdleClearpoolStrategyPolygonZK',
+    strategyParams: [
+      polygonZKContracts.cpPOR_USDT, // _strategyToken
+      polygonZKContracts.USDT, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: CDOs.cpporusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: '',
+  },
+};
+
 exports.deployTokensBY = {
   idleusdcjunior: {
     decimals: 6,
@@ -1645,4 +1732,5 @@ exports.CDOs = CDOs;
 exports.trancheErc4626Wrappers = trancheErc4626Wrappers;
 exports.idleTokenErc4626Wrappers = idleTokenErc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
+exports.polygonZKCDOs = polygonZKCDOs;
 exports.mainnetContracts = mainnetContracts;
