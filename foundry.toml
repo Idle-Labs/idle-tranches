@@ -16,3 +16,4 @@ solc = '0.8.10'
 
 [rpc_endpoints]
 mainnet = "${ETH_RPC_URL}"
+polygonzk = "${POLYGON_ZK_RPC_URL}"

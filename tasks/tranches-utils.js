@@ -6,7 +6,26 @@ const addresses = require("../utils/addresses");
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const mainnetContracts = addresses.IdleTokens.mainnet;
+const polygonContracts = addresses.IdleTokens.polygon;
+const polygonZKContracts = addresses.IdleTokens.polygonZK;
+const polygonZKCDOs = addresses.polygonZKCDOs;
 const ICurveRegistryAbi = require("../abi/ICurveRegistry.json");
+
+const getNetworkContracts = (_hre) => {
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  if (isMatic) {
+    return polygonContracts;
+  }
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  return isPolygonZK ? polygonZKContracts : mainnetContracts;
+}
+
+const getDeployTokens = (_hre) => {
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  return isMatic ? addresses.deployTokensPolygon :
+    (isPolygonZK ? addresses.deployTokensPolygonZK : addresses.deployTokens);
+}
 
 /**
  * @name info
@@ -52,8 +71,9 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
 task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
   .addParam('cdoname')
   .setAction(async (args) => {
-    const deployToken = addresses.deployTokens[args.cdoname];
-    let contractName = 'IdleCDO';
+    const deployToken = getDeployTokens(hre)[args.cdoname];
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
     }
@@ -261,12 +281,7 @@ subtask("upgrade-with-multisig", "Get signer")
   .addOptionalParam('initParams')
   .setAction(async (args) => {
     await run("compile");
-    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
-    const deployToken = (
-      isMatic ?
-        addresses.deployTokensPolygon :
-        addresses.deployTokens
-    )[args.cdoname];
+    const deployToken = getDeployTokens(hre)[args.cdoname];
     const contractName = args.contractName;
 
     const contractAddress = deployToken.cdo[args.contractKey];
@@ -282,6 +297,12 @@ subtask("upgrade-with-multisig", "Get signer")
     let signer = await run('get-signer-or-fake');
     // deploy implementation with any signer
     const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    if (isPolygonZK) {
+      console.log('PolygonZK: continue with multisig UI');
+      return;
+    }
+  
     signer = await run('get-multisig-or-fake');
     // Use multisig for calling upgrade or upgradeAndCall
     const proxyAdminAddress = deployToken.cdo.proxyAdmin;
@@ -310,7 +331,7 @@ subtask("upgrade-with-multisig", "Get signer")
 subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
@@ -325,8 +346,9 @@ subtask("get-signer-or-fake", "Get signer")
 subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic') {
-      signer = await helpers.impersonateSigner(args.fakeAddress || addresses.IdleTokens.mainnet.treasuryMultisig);
+    const networkContracts = getNetworkContracts(hre);
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk') {
+      signer = await helpers.impersonateSigner(args.fakeAddress || networkContracts.treasuryMultisig);
     } else {
       signer = await helpers.getMultisigSigner();
     }

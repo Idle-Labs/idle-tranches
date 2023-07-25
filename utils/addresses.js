@@ -1640,7 +1640,7 @@ exports.deployTokensPolygonZK = {
       polygonZKContracts.USDC, // _underlyingToken
       'owner', // owner address
     ],
-    cdo: CDOs.cpfasusdc,
+    cdo: polygonZKCDOs.cpfasusdc,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
@@ -1656,7 +1656,7 @@ exports.deployTokensPolygonZK = {
       polygonZKContracts.USDT, // _underlyingToken
       'owner', // owner address
     ],
-    cdo: CDOs.cpporusdt,
+    cdo: polygonZKCDOs.cpporusdt,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
