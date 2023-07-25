@@ -112,7 +112,7 @@ const upgradeContract = async (address, contractName, signer) => {
 const prepareContractUpgrade = async (address, contractName, signer) => {
   log(`Upgrading ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
-  let impl = await hre.upgrades.prepareUpgrade(address, contractFactory);
+  let impl = await hre.upgrades.prepareUpgrade(address, contractFactory, { kind: 'transparent' });
   log(`📤 ${contractName} new implementation deployed: ${impl}`);
   return impl;
 };

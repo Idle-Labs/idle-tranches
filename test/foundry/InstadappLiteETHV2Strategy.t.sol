@@ -545,7 +545,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
     // @dev Fee is correctly accounted when there is unlent amount
     function testRedeemWithFeesAndUnlent() external {
         vm.prank(owner);
-        idleCDO.setUnlentPerc(20000); // 50%
+        idleCDO.setUnlentPerc(20000); // 20%
 
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
@@ -565,7 +565,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         assertGt(priceBB, ONE_SCALE, "BB > 1");
         assertGt(priceAA, ONE_SCALE, "AA > 1");
 
-        // redeem 1/20 of AA (which is less of the unlent amount)
+        // redeem 1/20 of AA (which is less of the unlent amount), pool is gaining the fee here
         uint256 resAA = idleCDO.withdrawAA(AAtranche.balanceOf(address(this)) / 20);
         uint256 priceBBAfter = idleCDO.virtualPrice(address(BBtranche));
         uint256 priceAAAfter = idleCDO.virtualPrice(address(AAtranche));
@@ -584,11 +584,67 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOBase {
         uint256 priceAAAfter2 = idleCDO.virtualPrice(address(AAtranche));
         uint256 expectedRedeemNoFeeBB = amount/2 + increase/4;
 
-        assertApproxEqRel(resBB, expectedRedeemNoFeeBB - (expectedRedeemNoFeeBB * 5 / 10000), 0.00001e18, 'BB redeem wrong');
+        assertApproxEqRel(resBB, expectedRedeemNoFeeBB - (expectedRedeemNoFeeBB * 5 / 10000), 0.00002e18, 'BB redeem wrong');
 
         // assert that both prices are still increasing
         assertGe(priceBBAfter2, priceBBAfter, "BB price 2 not increased");
         assertGe(priceAAAfter2, priceAAAfter, "AA price 2 not increased");
+    }
+
+    // @dev Fee is correctly accounted when there is unlent amount
+    function testRedeemWithFeesAsGain() external {
+        vm.prank(owner);
+        idleCDO.setUnlentPerc(10000); // 10%
+
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+        // funds in lending
+        _cdoHarvest(true);
+
+        // strategy token have the same price as before
+        uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
+        uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
+
+        assertApproxEqAbs(priceBB, ONE_SCALE, 1, "BB > 1");
+        assertApproxEqAbs(priceAA, ONE_SCALE, 1, "AA > 1");
+
+        // redeem 1/2 of AA (which is more of the unlent amount)
+        uint256 resAA = idleCDO.withdrawAA(AAtranche.balanceOf(address(this)) / 2);
+        // prices of both tranches should be increasing because
+        // there is 20000 of total tvl and 2000 of unlent
+        // user is redeeming 5000 and fee paid should be in total 2.5 stETH of which 
+        // 2000 * 0.05% = 1 stETH is the gain for the pool as it's taken from unlent
+        // fee is amount/2 * 0.0005 -> amount/2 * 1/2000 -> amount / 4000
+        // 5000 wei tolerance ie 1 wei for each stETH
+        assertApproxEqAbs(resAA, amount/2 - (amount/4000), 5000, 'AA redeem amount is wrong');
+
+        uint256 priceBBAfter = idleCDO.virtualPrice(address(BBtranche));
+        uint256 priceAAAfter = idleCDO.virtualPrice(address(AAtranche));
+        // assert that both prices are still increasing. APR split ratio is 16666
+        // so gain is 0.83334 for BB and 0.16666 for AA
+        // so price increase is 0.83334 / 10000 -> 0.000083334 for BB and 
+        // so price increase is 0.16666 / 5000 -> 0.000016666 for AA and 
+        assertEq(priceBBAfter, priceBB + 8.3334 * 1e17 / 10000, "BB price not increased");
+        assertEq(priceAAAfter, priceAA + 1.6666 * 1e17 / 5000, "AA price not increased");
+
+        // redeem 1/2 of BB, there is 1 stETH as unlent (the gain from last withdraw)
+        uint256 resBB = idleCDO.withdrawBB(BBtranche.balanceOf(address(this)) / 2);
+        uint256 expected = amount/2 * priceBBAfter / 1e18;
+        uint256 expectedFee = expected * 5 / 10000; // 0.05% fee
+        assertApproxEqAbs(resBB, expected - expectedFee, 2, 'BB redeem amount is wrong');
+
+        // APR split is 24999 (it consider the gain from last withdraw as TVL ratio is 49998)
+        // gain for the pool is 1 stETH * 0.05% = 0.0005 stETH
+        // 0.0005 -> 5 / 10000
+        // so price increase is (0.0005 * (100000 - 24999) / 100000) / 5000 for BB 
+        // -> (5 * 75001 / 1e9) / 5000 -> transform in wei -> (5 * 75001 * 1e18 / 1e9) / 5000
+        // so price increase is (0.0005 * 24999) / 100000) / 5000 for AA and 
+        // -> (5 * 24999 / 1e9) / 5000 -> transform in wei -> (5 * 24999 * 1e18 / 1e9) / 5000
+        uint256 priceBBAfter2 = idleCDO.virtualPrice(address(BBtranche));
+        uint256 priceAAAfter2 = idleCDO.virtualPrice(address(AAtranche));
+        assertApproxEqAbs(priceBBAfter2, priceBBAfter + (5 * 75001 * 1e18 / 1e9) / 5000, 1, "BB price not increased correctly");
+        assertApproxEqAbs(priceAAAfter2, priceAAAfter + (5 * 24999 * 1e18 / 1e9) / 5000, 1, "AA price not increased correctly");
     }
 
     function testAPRSplitRatioRedeems(

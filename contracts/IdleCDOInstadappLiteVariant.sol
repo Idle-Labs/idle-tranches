@@ -81,7 +81,8 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         uint256 balanceUnderlying = _contractTokenBalance(_token);
         // Calculate the amount to redeem
         toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
-        
+        // save full amount that user is redeeming (without counting fees)
+        uint256 _want = toRedeem;
         // calculate expected fee
         uint256 _expectedFee = _calcUnderlyingProtocolFee(toRedeem);
         // actual fee paid, considering the unlent balance present in this contract
@@ -110,18 +111,16 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         // send underlying to msg.sender
         IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
 
-        // update NAV with the _amount of underlyings removed, readd paidFee from _liquidateWithFee
-        // as withdraw fees deducted by the underlying protocol are not taken into account in the NAV
-        // otherwise lastNAVXX would be lower than the actual tranche NAV.
-        // _expectedFee is considered a gain for the pool and will be splitted in the next _updateAccounting
+        // update NAV with the _amount of underlyings removed (eventual fee gained is not
+        // considered here so virtualPrice will be updated accordingly)
         if (_tranche == AATranche) {
-            lastNAVAA -= (toRedeem + _paidFee);
+            lastNAVAA -= _want;
         } else {
-            lastNAVBB -= (toRedeem + _paidFee);
+            lastNAVBB -= _want;
         }
         // update trancheAPRSplitRatio, we pass `false` to _getAARatio so to consider also 
         // the eventual _expectedFee added to lastNAV as gain
-        _updateSplitRatio(_getAARatio(false));
+        _updateSplitRatio(_getAARatio(true));
     }
 
     /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for allowing loss on redeems for msg.sender 
