@@ -118,8 +118,7 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         } else {
             lastNAVBB -= _want;
         }
-        // update trancheAPRSplitRatio, we pass `false` to _getAARatio so to consider also 
-        // the eventual _expectedFee added to lastNAV as gain
+        // update trancheAPRSplitRatio
         _updateSplitRatio(_getAARatio(true));
     }
 
