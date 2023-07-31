@@ -19783,6 +19783,123 @@
           }
         }
       }
+    },
+    "39d7bb6a1f49f22af47ab603ac9ba8c08d6829a3b5b8110b5918b3fed02b541a": {
+      "address": "0x593fF7Ba8c0fd8bB87ce7214ec0F82119AA67a51",
+      "txHash": "0x4812cfdb412ebb8d64c54013bc8d8094de2f42a72db887f9ca9b0a8526856f3b",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_uint8",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "owner",
+            "type": "t_address",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:72"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "contractDatas",
+            "type": "t_mapping(t_address,t_struct(ContractData)6780_storage)",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:74"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "allContractDatas",
+            "type": "t_array(t_struct(ContractData)6780_storage)dyn_storage",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:75"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "isEulerDisabled",
+            "type": "t_bool",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:77"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "maxClearUR",
+            "type": "t_uint256",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:78"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_address,t_struct(ContractData)6780_storage)": {
+            "label": "mapping(address => struct IdleBuddyCompAavePYTStructs.ContractData)"
+          },
+          "t_struct(ContractData)6780_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData",
+            "members": [
+              {
+                "label": "underlying",
+                "type": "t_address"
+              },
+              {
+                "label": "cTokenNew",
+                "type": "t_address"
+              },
+              {
+                "label": "aV2Token",
+                "type": "t_address"
+              },
+              {
+                "label": "eToken",
+                "type": "t_address"
+              },
+              {
+                "label": "maToken",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearWinTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytEulerStakingTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytMorphoAaveTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearPorTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearFasTranche",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_array(t_struct(ContractData)6780_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData[]"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          }
+        }
+      }
     }
   }
 }
