@@ -61,6 +61,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   uint256 public unclaimedFees; // DEPRECATED
   address public constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
   address public constant DL_MULTISIG = 0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b;
+  address public constant PAUSE_MULTISIG = 0xBaeCba470C229984b75BC860EFe8e97AE082Bb9f;
   bool public skipRedeemMinAmount;
 
   // ERROR MESSAGES:
@@ -141,13 +142,13 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   // onlyOwner
   // pause deposits
   function pause() external {
-    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == owner(), '6');
+    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == PAUSE_MULTISIG || msg.sender == owner(), '6');
     _pause();
   }
 
   // unpause deposits
   function unpause() external {
-    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == owner(), '6');
+    require(msg.sender == TL_MULTISIG || msg.sender == DL_MULTISIG || msg.sender == PAUSE_MULTISIG || msg.sender == owner(), '6');
     _unpause();
   }
 

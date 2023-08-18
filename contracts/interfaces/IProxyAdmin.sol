@@ -6,4 +6,5 @@ interface IProxyAdmin {
   function owner() external view returns(address);
   function upgrade(address proxy, address impl) external;
   function upgradeAndCall(address proxy, address impl, bytes calldata) external;
+  function getProxyImplementation(address proxy) external view returns (address);
 }
