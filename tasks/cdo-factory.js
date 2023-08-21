@@ -4,6 +4,7 @@ const helpers = require("../scripts/helpers");
 const addresses = require("../utils/addresses");
 const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
 const { task } = require("hardhat/config");
+const HypernativeModuleAbi = require("../abi/hypernativeModule.json");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
@@ -261,9 +262,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
     await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
     
-    console.log(`Set guardian of CDO to DL multisig ${networkContracts.devLeagueMultisig}`);
-    await idleCDO.connect(signer).setGuardian(networkContracts.devLeagueMultisig);
-    
+    console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
+    await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
+
     const feeReceiver = await idleCDO.feeReceiver();
     if ((isMatic || isPolygonZK) && feeReceiver != networkContracts.feeReceiver) {
       console.log('Setting fee receiver to Treasury Multisig')
@@ -277,6 +278,16 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
+
+    const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
+    console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
+    const tx = await pauseModule.updateProtectedContracts([{
+      contractAddress: idleCDO.address, 
+      contractType: 1 // tranche contract
+    }]);
+    await tx.wait();
+    console.log('isContractProtected: ', await pauseModule.isContractProtected(idleCDOa.address));
+    console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
 
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
