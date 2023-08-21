@@ -4,7 +4,7 @@ const helpers = require("../scripts/helpers");
 const addresses = require("../utils/addresses");
 const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
 const { task } = require("hardhat/config");
-const HypernativeModuleAbi = require("../abi/hypernativeModule.json");
+const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
@@ -20,6 +20,44 @@ const getNetworkContracts = (_hre) => {
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   return isPolygonZK ? polygonZKContracts : mainnetContracts;
 }
+
+/**
+ * @name deploy
+ * deploy factory for CDOs
+ */
+task("hypernative-setup", "Deploy IdleCDOFactory")
+  .setAction(async (args) => {
+    const networkContracts = getNetworkContracts(hre);
+    const signer = await helpers.getSigner();
+    const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
+    console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
+
+    const tx = await pauseModule.replaceProtectedContracts([
+      // best yield
+      { contractAddress: '0x3fE7940616e5Bc47b0775a0dccf6237893353bB4', contractType: 0 },
+      { contractAddress: '0x5274891bEC421B39D23760c04A6755eCB444797C', contractType: 0 },
+      { contractAddress: '0xF34842d05A1c888Ca02769A633DF37177415C2f8', contractType: 0 },
+      { contractAddress: '0xC8E6CA6E96a326dC448307A5fDE90a0b21fd7f80', contractType: 0 },
+      { contractAddress: '0xeC9482040e6483B7459CC0Db05d51dfA3D3068E1', contractType: 0 },
+      { contractAddress: '0xDc7777C771a6e4B3A82830781bDDe4DBC78f320e', contractType: 0 },
+      { contractAddress: '0xfa3AfC9a194BaBD56e743fA3b7aA2CcbED3eAaad', contractType: 0 },
+      { contractAddress: '0x62A0369c6BB00054E589D12aaD7ad81eD789514b', contractType: 0 },
+      // tranches
+      { contractAddress: '0x34dCd573C5dE4672C8248cd12A99f875Ca112Ad8', contractType: 1 },
+      { contractAddress: '0xF87ec7e1Ee467d7d78862089B92dd40497cBa5B8', contractType: 1 },
+      { contractAddress: '0x1329E8DB9Ed7a44726572D44729427F132Fa290D', contractType: 1 },
+      { contractAddress: '0x5dcA0B3Ed7594A6613c1A2acd367d56E1f74F92D', contractType: 1 },
+      { contractAddress: '0xc4574C60a455655864aB80fa7638561A756C5E61', contractType: 1 },
+      { contractAddress: '0xE7C6A4525492395d65e736C3593aC933F33ee46e', contractType: 1 },
+      { contractAddress: '0x9C13Ff045C0a994AF765585970A5818E1dB580F8', contractType: 1 },
+      { contractAddress: '0xDB82dDcb7e2E4ac3d13eBD1516CBfDb7b7CE0ffc', contractType: 1 },
+      { contractAddress: '0x440ceAd9C0A0f4ddA1C81b892BeDc9284Fc190dd', contractType: 1 },
+      { contractAddress: '0xb3F717a5064D2CBE1b8999Fdfd3F8f3DA98339a6', contractType: 1 },
+      { contractAddress: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37', contractType: 1 }
+    ]);
+    await tx.wait();
+    console.log('Hypernative setup done');
+  })
 
 /**
  * @name deploy
