@@ -92,6 +92,7 @@ const mainnetContracts = {
   univ3Router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
   treasuryMultisig: "0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814",
   devLeagueMultisig: '0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b',
+  pauserMultisig: '0xBaeCba470C229984b75BC860EFe8e97AE082Bb9f',
   deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
   rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
   // NOTE: This is hardcoded in the contract too
