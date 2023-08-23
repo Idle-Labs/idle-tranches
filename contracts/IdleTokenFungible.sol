@@ -63,6 +63,7 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   address public constant DL_MULTISIG = 0xe8eA8bAE250028a8709A3841E0Ae1a44820d677b;
   address public constant PAUSE_MULTISIG = 0xBaeCba470C229984b75BC860EFe8e97AE082Bb9f;
   bool public skipRedeemMinAmount;
+  uint256 public scaleForTolerance;
 
   // ERROR MESSAGES:
   // 0 = is 0
@@ -221,6 +222,16 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
   function setMaxUnlentPerc(uint256 _perc)
     external onlyOwner {
       require((maxUnlentPerc = _perc) <= 100000, "5");
+  }
+
+  /**
+   * It allows owner to set the max the tolerance scaled for redeems
+   *
+   * @param _isScaled : wheter to use scaled tolerance or not on the redeemed amount
+   */
+  function setScaleForTolerance(bool _isScaled)
+    external onlyOwner {
+      scaleForTolerance = _isScaled ? 10**12 : 1;
   }
 
   /**
@@ -403,8 +414,11 @@ contract IdleTokenFungible is Initializable, ERC20Upgradeable, ReentrancyGuardUp
           redeemedTokens = valueToRedeem;
         }
         if (!skipRedeemMinAmount) {
-        // keep 100 wei as buffer
-          require(redeemedTokens > valueToRedeem - 100, '3');
+          // keep 100 wei as buffer, for DAI (where we convert DAI to USDC with PSM) the tolerance is 
+          // scaled by 10**12
+          uint256 _scaleForTolerance = scaleForTolerance;
+          uint256 _tolerance = _scaleForTolerance > 0 ? 100 * _scaleForTolerance : 100;
+          require(redeemedTokens > valueToRedeem - _tolerance, '3');
         }
         // update lastNAV
         lastNAV -= redeemedTokens;
