@@ -51,7 +51,14 @@ yarn test
 
 ## Test with Foundry
 
-For foundry tests (located in `test/foundry/`) run:
+For foundry tests (located in `test/foundry/`) 
+first set in env the rpc url like so:
+
+```
+export ETH_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/XXXXX
+```
+
+then run:
 
 ```
 forge test -vvv
