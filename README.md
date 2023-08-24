@@ -58,6 +58,8 @@ first set in env the rpc url like so:
 export ETH_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/XXXXX
 ```
 
+(if you need to run test on polygon zkEVM set `POLYGON_ZK_RPC_URL` env var)
+
 then run:
 
 ```
