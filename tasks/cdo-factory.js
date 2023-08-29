@@ -324,7 +324,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       contractType: 1 // tranche contract
     }]);
     await tx.wait();
-    console.log('isContractProtected: ', await pauseModule.isContractProtected(idleCDOa.address));
+    console.log('isContractProtected: ', await pauseModule.isContractProtected(idleCDO.address));
     console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
 
     // // adding CDO to IdleCDO registry (TODO multisig)
