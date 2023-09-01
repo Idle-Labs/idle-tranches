@@ -487,6 +487,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 balanceUnderlying = _contractTokenBalance(_token);
     // Calculate the amount to redeem
     toRedeem = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    uint256 _want = toRedeem;
     if (toRedeem > balanceUnderlying) {
       // if the unlent balance is not enough we try to redeem what's missing directly from the strategy
       // and then add it to the current unlent balance
@@ -495,18 +496,20 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     }
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
-    // send underlying to msg.sender
-    IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
 
     // update NAV with the _amount of underlyings removed
     if (_tranche == AATranche) {
-      lastNAVAA -= toRedeem;
+      lastNAVAA -= _want;
     } else {
-      lastNAVBB -= toRedeem;
+      lastNAVBB -= _want;
     }
 
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
+  
+    // send underlying to msg.sender. Keep this at the end of the function to avoid 
+    // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
+    IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
   }
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
@@ -891,6 +894,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     require((unlentPerc = _unlentPerc) <= FULL_ALLOC, '7');
   }
 
+  /// @notice set new release block period. WARN: this should be called only when there 
+  /// are no active rewards being unlocked
   /// @param _releaseBlocksPeriod new # of blocks after an harvest during which
   /// harvested rewards gets progressively redistriburted to users
   function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external {

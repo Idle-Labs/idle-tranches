@@ -108,8 +108,6 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
 
         // burn tranche token
         IdleCDOTranche(_tranche).burn(msg.sender, _amount);
-        // send underlying to msg.sender
-        IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
 
         // update NAV with the _amount of underlyings removed (eventual fee gained is not
         // considered here so virtualPrice will be updated accordingly)
@@ -120,6 +118,10 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         }
         // update trancheAPRSplitRatio
         _updateSplitRatio(_getAARatio(true));
+
+        // send underlying to msg.sender. Keep this at the end of the function to avoid 
+        // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
+        IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
     }
 
     /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for allowing loss on redeems for msg.sender 
