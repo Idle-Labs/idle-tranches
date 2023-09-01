@@ -61,7 +61,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address[] memory // Deprecated
   ) external initializer {
     require(token == address(0), '1');
-    require(_rebalancer != address(0) && _strategy != address(0) && _guardedToken != address(0), "0");
+    require(_rebalancer != address(0), '0');
+    require(_strategy != address(0), '0');
+    require(_guardedToken != address(0), '0');
     require( _trancheAPRSplitRatio <= FULL_ALLOC, '7');
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
@@ -242,7 +244,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of underlying to deposit
   function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
-    if (_stkIDLEPerUnderlying > 0) {
+    if (_stkIDLEPerUnderlying != 0) {
       uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
       // We check if sender deposited in the same tranche previously and add the bal to _amount
       uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
@@ -457,7 +459,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev this will be called only during harvests
   function _depositFees() internal {
     uint256 _amount = unclaimedFees;
-    if (_amount > 0) {
+    if (_amount != 0) {
       // mint tranches tokens (always AA) to this contract
       _mintShares(_amount, feeReceiver, AATranche);
       // reset unclaimedFees counter
@@ -481,7 +483,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
-    require(_amount > 0, '0');
+    require(_amount != 0, '0');
     address _token = token;
     // get current available unlent balance
     uint256 balanceUnderlying = _contractTokenBalance(_token);
@@ -599,7 +601,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       return (0, 0);
     }
   
-    if (_path.length > 0) {
+    if (_path.length != 0) {
       // Uni v3 swap
       ISwapRouter _swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
       IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_swapRouter), _amount);
@@ -654,11 +656,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_extraData.length > 0) {
       _paths = abi.decode(_extraData, (bytes[]));
     }
+    uint256 rewardsLen = _rewards.length;
     // Initialize the return array, containing the amounts received after swapping reward tokens
-    _soldAmounts = new uint256[](_rewards.length);
-    _swappedAmounts = new uint256[](_rewards.length);
+    _soldAmounts = new uint256[](rewardsLen);
+    _swappedAmounts = new uint256[](rewardsLen);
     // loop through all reward tokens
-    for (uint256 i = 0; i < _rewards.length; i++) {
+    for (uint256 i; i < rewardsLen; ++i) {
       _rewardToken = _rewards[i];
       // check if it should be sold or not
       if (_skipReward[i]) { continue; }
@@ -811,7 +814,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
   function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external {
     _checkOnlyOwner();
-    require(_maxDecreaseDefault < FULL_ALLOC);
+    require(_maxDecreaseDefault < FULL_ALLOC, '7');
     maxDecreaseDefault = _maxDecreaseDefault;
   }
 
@@ -994,13 +997,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
-  }
-
-  /// @dev Set allowance for _token to 0 for _spender
-  /// @param _token token address
-  /// @param _spender spender address
-  function _removeAllowance(address _token, address _spender) internal {
-    IERC20Detailed(_token).safeApprove(_spender, 0);
   }
 
   /// @dev Set allowance for _token to unlimited for _spender

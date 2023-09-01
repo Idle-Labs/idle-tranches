@@ -48,7 +48,7 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
         if (_amount == 0) {
             _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
         }
-        require(_amount > 0, "0");
+        require(_amount != 0, "0");
 
         // Calculate the amount to redeem
         toRedeem = (_amount * _tranchePrice(_tranche)) / ONE_TRANCHE_TOKEN;
