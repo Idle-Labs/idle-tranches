@@ -64,9 +64,6 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
         uint256[] memory tokenIds = stMatic.poLidoNFT().getOwnedTokens(address(this));
         require(tokenIds.length != 0, "no NFTs");
 
-        uint256 tokenId = tokenIds[tokenIds.length - 1];
-        stMatic.poLidoNFT().safeTransferFrom(address(this), msg.sender, tokenId);
-
         // update NAV with the _amount of underlyings removed
         if (_tranche == AATranche) {
             lastNAVAA -= toRedeem;
@@ -76,6 +73,9 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
 
         // update trancheAPRSplitRatio
         _updateSplitRatio(_getAARatio(true));
+
+        uint256 tokenId = tokenIds[tokenIds.length - 1];
+        stMatic.poLidoNFT().safeTransferFrom(address(this), msg.sender, tokenId);
     }
 
     function onERC721Received(
