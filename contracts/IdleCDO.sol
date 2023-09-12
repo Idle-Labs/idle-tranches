@@ -422,11 +422,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
         int256 _newJuniorTVL = _juniorTVL + totalGain; 
         // if junior holders have enough TVL to cover
         if (_newJuniorTVL > 0) {
+          // then juniors get all loss (totalGain) and senior gets 0 loss
           _totalTrancheGain = _isAATranche ? int256(0) : totalGain;
         } else {
           // otherwise all loss minus junior tvl to senior
           if (!_isAATranche) {
-            // juniors have no more claim price is set to 0, gain is set to -juniorTVL
+            // juniors have no more claims, price is set to 0, gain is set to -juniorTVL
             return (0, -_juniorTVL);
           }
           // seniors get the loss - old junior TVL
@@ -517,14 +518,17 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
   /// @dev the idea here is to limit the min and max APR that the senior tranche can get
   function _updateSplitRatio(uint256 tvlAARatio) internal virtual {
+    uint256 _minSplit = minAprSplitAYS;
+    _minSplit = _minSplit == 0 ? AA_RATIO_LIM_DOWN : _minSplit;
+
     if (isAYSActive) {
       uint256 aux;
       if (tvlAARatio >= AA_RATIO_LIM_UP) {
         aux = AA_RATIO_LIM_UP;
-      } else if (tvlAARatio > minAprSplitAYS) {
+      } else if (tvlAARatio > _minSplit) {
         aux = tvlAARatio;
       } else {
-        aux = minAprSplitAYS;
+        aux = _minSplit;
       }
       trancheAPRSplitRatio = aux * tvlAARatio / FULL_ALLOC;
     }
