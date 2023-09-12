@@ -18,7 +18,9 @@ import "./IdleCDO.sol";
 contract TrancheWrapperWSTETHBalancer is TrancheWrapper {
     address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
-    function initialize(IdleCDO _idleCDO, address _tranche) public override initializer {
+    function initialize(IdleCDO _idleCDO, address _tranche) public override {
+        // initializer modifier not used in this contract as initialization check is already included in parent contract 
+        // double initializer is not working anymore https://github.com/OpenZeppelin/openzeppelin-contracts/releases/tag/v4.4.1
         super.initialize(_idleCDO, _tranche);
         // approve wstETH to wrap our stETH
         ERC20Upgradeable(token).approve(WSTETH, type(uint256).max);

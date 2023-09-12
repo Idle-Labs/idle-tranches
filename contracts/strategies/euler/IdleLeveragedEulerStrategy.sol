@@ -79,7 +79,9 @@ contract IdleLeveragedEulerStrategy is BaseStrategy {
         address _router,
         bytes memory _path,
         uint256 _targetHealthScore
-    ) public initializer {
+    ) public {
+        // initializer modifier not used in this contract as initialization check is already included in parent contract 
+        // double initializer is not working anymore https://github.com/OpenZeppelin/openzeppelin-contracts/releases/tag/v4.4.1
         _initialize(
             string(abi.encodePacked("Idle ", IERC20Detailed(_underlying).name(), " Euler Leverege Strategy")),
             string(abi.encodePacked("idleEulLev", IERC20Detailed(_underlying).symbol())),

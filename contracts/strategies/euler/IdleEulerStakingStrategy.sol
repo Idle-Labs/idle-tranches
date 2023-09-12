@@ -58,7 +58,9 @@ contract IdleEulerStakingStrategy is BaseStrategy {
         address _eulerMain,
         address _stakingRewards,
         address _owner
-    ) public virtual initializer {
+    ) public virtual {
+        // initializer modifier not used in this contract as initialization check is already included in parent contract 
+        // double initializer is not working anymore https://github.com/OpenZeppelin/openzeppelin-contracts/releases/tag/v4.4.1
         _initialize(
             string(abi.encodePacked("Idle Euler ", IERC20Detailed(_eToken).name(), " Staking Strategy")),
             string(abi.encodePacked("idleEulStk_", IERC20Detailed(_eToken).symbol())),

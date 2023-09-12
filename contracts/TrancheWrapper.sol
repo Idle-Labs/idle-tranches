@@ -31,6 +31,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
     ///      proxy executes the runtime code that does not include the constructor
     constructor() {
         isOriginal = true;
+        token = address(1);
     }
 
     function initialize(IdleCDO _idleCDO, address _tranche) public virtual initializer {
@@ -39,6 +40,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
             string(abi.encodePacked(ERC20Upgradeable(_tranche).name(), "4626Adapter")),
             string(abi.encodePacked(ERC20Upgradeable(_tranche).symbol(), "4626"))
         );
+        require(token == address(0), "Token is already initialized");
         idleCDO = _idleCDO;
         tranche = _tranche; // 18 decimals
         token = idleCDO.token();
