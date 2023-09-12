@@ -296,7 +296,9 @@ subtask("upgrade-with-multisig", "Get signer")
     await helpers.prompt("continue? [y/n]", true);
     let signer = await run('get-signer-or-fake');
     // deploy implementation with any signer
-    const newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+    let newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+    // to checksum address
+    newImpl = ethers.utils.getAddress(newImpl);
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     if (isPolygonZK) {
       console.log('PolygonZK: continue with multisig UI');
