@@ -313,8 +313,20 @@ abstract contract TestIdleCDOBase is Test {
 
     uint256 _val = 100 * ONE_SCALE;
     uint256 scaledVal = _val * 10**(18 - decimals);
+
+    // try to enable gating for non existing tranche
+    vm.expectRevert(bytes("9")); // stkIDLE bal too low
+    vm.prank(owner);
+    idleCDO.toggleStkIDLEForTranche(address(2222));
+
+    // enable stkIDLE gating for AA
+    vm.prank(owner);
+    idleCDO.toggleStkIDLEForTranche(address(AAtranche));
     vm.expectRevert(bytes("7")); // stkIDLE bal too low
     idleCDO.depositAA(_val);
+    // enable stkIDLE gating for BB
+    vm.prank(owner);
+    idleCDO.toggleStkIDLEForTranche(address(BBtranche));
     vm.expectRevert(bytes("7"));
     idleCDO.depositBB(_val);
 
@@ -344,6 +356,16 @@ abstract contract TestIdleCDOBase is Test {
     assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'AA Deposit 2 is not successful');
     idleCDO.depositBB(_val);
     assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'BB Deposit is not successful');
+    
+    // disable gating
+    vm.startPrank(owner);
+    idleCDO.toggleStkIDLEForTranche(address(AAtranche));
+    idleCDO.toggleStkIDLEForTranche(address(BBtranche));
+    vm.stopPrank();
+
+    // try to deposit when stkIDLE gating is not active for the tranche
+    idleCDO.depositAA(_val);
+    idleCDO.depositBB(_val);
   }
 
   function _getStkIDLE(uint256 _val, bool _increase) internal {

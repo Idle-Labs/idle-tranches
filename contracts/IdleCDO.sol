@@ -30,6 +30,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // 6 = Not authorized
   // 7 = Amount too high
   // 8 = Same block
+  // 9 = Invalid
 
   // Used to prevent initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -244,16 +245,21 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of underlying to deposit
   function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
-    if (_stkIDLEPerUnderlying != 0) {
-      uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
-      // We check if sender deposited in the same tranche previously and add the bal to _amount
-      uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
-      require(
-        IERC20(STK_IDLE).balanceOf(msg.sender) >= 
-        bal * _stkIDLEPerUnderlying / oneToken, 
-        '7'
-      );
+    // check if stkIDLE requirement is active for _tranche
+    if (_stkIDLEPerUnderlying == 0 || 
+      _tranche == BBTranche && BBStaking == address(0) || 
+      _tranche == AATranche && AAStaking == address(0)) {
+      return;
     }
+
+    uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
+    // We check if sender deposited in the same tranche previously and add the bal to _amount
+    uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
+    require(
+      IERC20(STK_IDLE).balanceOf(msg.sender) >= 
+      bal * _stkIDLEPerUnderlying / oneToken, 
+      '7'
+    );
   }
 
   /// @notice method used to deposit `token` and mint tranche tokens
@@ -920,6 +926,20 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setLossToleranceBps(uint256 _diffBps) external {
       _checkOnlyOwner();
       lossToleranceBps = _diffBps;
+  }
+
+  /// @dev toggle stkIDLE requirement for tranche
+  /// @param _tranche address
+  function toggleStkIDLEForTranche(address _tranche) external {
+    _checkOnlyOwner();
+    address aa = AATranche;
+    require(_tranche == BBTranche || _tranche == aa, '9');
+    if (_tranche == aa) {
+      AAStaking = AAStaking == address(0) ? address(1) : address(0);
+      return;
+    }
+
+    BBStaking = BBStaking == address(0) ? address(1) : address(0);
   }
 
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the

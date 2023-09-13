@@ -47,9 +47,9 @@ contract IdleCDOStorage {
   address public AATranche;
   // address of BB Tranche token contract
   address public BBTranche;
-  // [DEPRECATED] address of AA Staking reward token contract
+  // address for stkIDLE gating for AA tranche. addr(0) -> inactive, addr(1) -> active
   address public AAStaking;
-  // [DEPRECATED] address of BB Staking reward token contract
+  // address for stkIDLE gating for BB tranche. addr(0) -> inactive, addr(1) -> active
   address public BBStaking;
 
   // Apr split ratio for AA tranches
