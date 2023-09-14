@@ -53,7 +53,8 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
       { contractAddress: '0xDB82dDcb7e2E4ac3d13eBD1516CBfDb7b7CE0ffc', contractType: 1 },
       { contractAddress: '0x440ceAd9C0A0f4ddA1C81b892BeDc9284Fc190dd', contractType: 1 },
       { contractAddress: '0xb3F717a5064D2CBE1b8999Fdfd3F8f3DA98339a6', contractType: 1 },
-      { contractAddress: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37', contractType: 1 }
+      { contractAddress: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37', contractType: 1 },
+      { contractAddress: '0xd12f9248dEb1D972AA16022B399ee1662d51aD22', contractType: 1 },
     ]);
     await tx.wait();
     console.log('Hypernative setup done');
