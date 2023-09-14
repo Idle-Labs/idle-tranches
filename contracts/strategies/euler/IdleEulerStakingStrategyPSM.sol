@@ -31,7 +31,9 @@ contract IdleEulerStakingStrategyPSM is IdleEulerStakingStrategy {
         address _eulerMain,
         address _stakingRewards,
         address _owner
-    ) public virtual override initializer {
+    ) public virtual override {
+        // initializer modifier not used in this contract as initialization check is already included in parent contract 
+        // double initializer is not working anymore https://github.com/OpenZeppelin/openzeppelin-contracts/releases/tag/v4.4.1
         super.initialize(_eToken, _underlyingToken, _eulerMain, _stakingRewards, _owner);
 
         // approve psm and helper to spend DAI and USDC

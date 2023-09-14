@@ -35,6 +35,8 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
         // deploy trancheWrapper
         address tranche = idleCDO.AATranche();
         trancheWrapper = new TrancheWrapper();
+        stdstore.target(address(trancheWrapper)).sig(trancheWrapper.token.selector).checked_write(address(0));
+
         trancheWrapper.initialize(idleCDO, tranche);
 
         _underlying_ = address(underlying);

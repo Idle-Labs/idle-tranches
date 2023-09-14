@@ -68,6 +68,8 @@ contract TestTrancheWrapper is Test {
         // deploy trancheWrapper
         tranche = IERC20Detailed(idleCDO.AATranche());
         trancheWrapper = new TrancheWrapper();
+        stdstore.target(address(trancheWrapper)).sig(trancheWrapper.token.selector).checked_write(address(0));
+
         trancheWrapper.initialize(idleCDO, address(tranche));
 
         vm.startPrank(owner);
