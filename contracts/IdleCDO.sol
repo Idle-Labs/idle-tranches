@@ -247,8 +247,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
     // check if stkIDLE requirement is active for _tranche
     if (_stkIDLEPerUnderlying == 0 || 
-      _tranche == BBTranche && BBStaking == address(0) || 
-      _tranche == AATranche && AAStaking == address(0)) {
+      (_tranche == BBTranche && BBStaking == address(0)) || 
+      (_tranche == AATranche && AAStaking == address(0))) {
       return;
     }
 
