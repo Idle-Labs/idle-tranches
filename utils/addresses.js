@@ -135,6 +135,13 @@ const mainnetContracts = {
   trancheErc4626WrapperBalancerVariant: '0x6bf9ea02daab6b4b3b71cce20a84088a71bf723a',
   idleTokenErc4626Wrapper: '0x658a190730be0afb1ea39295f7ffee6d44aaefa7',
   idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
+  cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
+}
+
+// format is tokenName_XXYY
+// eg cpWIN_USDC_0923 for Sept 2023 distribution
+const merkleDistributors = {
+  // cpPOR_DAI_0923: '',
 }
 
 // Polygon
