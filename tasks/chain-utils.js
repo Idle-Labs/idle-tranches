@@ -1,3 +1,6 @@
+const { StandardMerkleTree } = require("@openzeppelin/merkle-tree");
+const fs = require("fs");
+
 /**
  * @name chainid
  */
@@ -101,4 +104,18 @@ task("mine-multiple")
       await ethers.provider.send("evm_mine");
     }
     await run("blocknumber");
+  });
+
+/**
+* @name generate-merkle
+* * @param {Number} blocks
+*/
+task("generate-merkle")
+  .setAction(async function () {
+    const file = fs.readFileSync("treeInput.csv", "utf8");
+    const lines = file.trim().split('\n');
+    const values = lines.map(line => line.split(',').map(item => item.trim()));
+    const tree = StandardMerkleTree.of(values, ["address", "uint256"]);
+    console.log('Merkle Root:', tree.root);
+    fs.writeFileSync("tree1.json", JSON.stringify(tree.dump()));
   });
