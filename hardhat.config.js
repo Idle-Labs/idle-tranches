@@ -164,6 +164,14 @@ module.exports = {
       timeout: 1200000,
       chainId: 1101
     },
+    optimism: {
+      url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      timeout: 1200000,
+      chainId: 10
+    },
   },
   etherscan: {
     apiKey: {

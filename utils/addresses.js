@@ -189,10 +189,28 @@ const polygonZKContracts = {
   AA_4626_cpfasusdc: '0xFbc63d309F915AA62517A6b4e845502CEcf946cf',
 }
 
+const optimismContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  proxyAdmin: '',
+
+  OP: '0x4200000000000000000000000000000000000042',
+  WETH: '0x4200000000000000000000000000000000000006',
+  USDT: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+  cpPOR_USDC: '0x5eabfc05b51ff2ef32ac8960e30f4a35963143e2',
+  USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+  cpFAS_USDT: '0x87181362ba304fec7e5a82ad2b7b503d7ad62639',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonZK: polygonZKContracts,
   mainnet: mainnetContracts,
+  optimismCDOs: optimismContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -819,6 +837,35 @@ const polygonCDOs = {
   //   AATranche: '',
   //   BBTranche: ''
   // },
+};
+
+const optimismCDOs = {
+  cpfasusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: optimismContracts.cpFAS_USDC,
+    cdoAddr: '',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: ''
+  },
+  cpporusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: optimismContracts.cpPOR_USDC,
+    cdoAddr: '',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: ''
+  },
 };
 
 const polygonZKCDOs = {
@@ -1705,6 +1752,41 @@ exports.deployTokensPolygonZK = {
   },
 };
 
+exports.deployTokensOptimism = {
+  cpfasusdt: { // fasanara usdt pool
+    decimals: 6,
+    underlying: optimismContracts.USDT,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpFAS_USDT, // _strategyToken
+      optimismContracts.USDT, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpfasusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
+  },
+  cpporusdc: { // portofino usdc pool
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpPOR_USDC, // _strategyToken
+      optimismContracts.USDC, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpporusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: '',
+  },
+};
+
 exports.deployTokensBY = {
   idleusdcjunior: {
     decimals: 6,
@@ -1773,4 +1855,5 @@ exports.trancheErc4626Wrappers = trancheErc4626Wrappers;
 exports.idleTokenErc4626Wrappers = idleTokenErc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.polygonZKCDOs = polygonZKCDOs;
+exports.optimismCDOs = optimismCDOs;
 exports.mainnetContracts = mainnetContracts;
