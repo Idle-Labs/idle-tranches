@@ -177,7 +177,8 @@ module.exports = {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
-      polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY
+      polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
+      optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY
     },
     customChains: [
       {

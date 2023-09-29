@@ -59,7 +59,12 @@ const getSigner = async (acc) => {
     }
   }
   // In mainnet overwrite signer to be the ledger signer
-  if (hre.network.name == 'mainnet' || hre.network.name == 'matic' || hre.network.name == 'polygonzk') {
+  if (
+    hre.network.name == 'mainnet' || 
+    hre.network.name == 'matic' || 
+    hre.network.name == 'polygonzk' || 
+    hre.network.name == 'optimism'
+  ) {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();

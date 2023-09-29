@@ -191,7 +191,7 @@ const polygonZKContracts = {
 
 const optimismContracts = {
   deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
-  cdoFactory: '',
+  cdoFactory: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
   rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
   feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
@@ -210,7 +210,7 @@ exports.IdleTokens = {
   polygon: polygonContracts,
   polygonZK: polygonZKContracts,
   mainnet: mainnetContracts,
-  optimismCDOs: optimismContracts,
+  optimism: optimismContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -1767,7 +1767,7 @@ exports.deployTokensOptimism = {
     AARatio: '20000',
     limit: '20000000',
     isAYSActive: true,
-    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
+    proxyCdoAddress: optimismCDOs.cpporusdc.cdoAddr,
   },
   cpporusdc: { // portofino usdc pool
     decimals: 6,
