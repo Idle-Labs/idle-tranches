@@ -196,7 +196,8 @@ const optimismContracts = {
   feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
-  proxyAdmin: '',
+  pauserMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  proxyAdmin: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
 
   OP: '0x4200000000000000000000000000000000000042',
   WETH: '0x4200000000000000000000000000000000000006',
@@ -856,15 +857,15 @@ const optimismCDOs = {
   cpporusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '',
+    strategyToken: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
     underlying: optimismContracts.cpPOR_USDC,
-    cdoAddr: '',
+    cdoAddr: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
     proxyAdmin: optimismContracts.proxyAdmin,
-    strategy: '',
+    strategy: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '',
-    BBTranche: ''
+    AATranche: '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
+    BBTranche: '0x56A4283a4CE7202672A1518340732d5ffC511c0b'
   },
 };
 
