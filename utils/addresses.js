@@ -844,15 +844,15 @@ const optimismCDOs = {
   cpfasusdt: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '',
+    strategyToken: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
     underlying: optimismContracts.cpFAS_USDC,
-    cdoAddr: '',
+    cdoAddr: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
     proxyAdmin: optimismContracts.proxyAdmin,
-    strategy: '',
+    strategy: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '',
-    BBTranche: ''
+    AATranche: '0x50BA0c3f940f0e851f8e30f95d2A839216EC5eC9',
+    BBTranche: '0x7038D2A5323064f7e590EADc0E8833F2613F6317'
   },
   cpporusdc: {
     decimals: 6,
