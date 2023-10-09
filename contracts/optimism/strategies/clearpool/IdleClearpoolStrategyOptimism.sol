@@ -59,6 +59,7 @@ contract IdleClearpoolStrategyOptimism is
     IUniswapV2Router02 public uniswapRouter;
     
     uint256 internal constant EXP_SCALE = 1e18;
+    address internal constant OP = 0x4200000000000000000000000000000000000042;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -142,9 +143,9 @@ contract IdleClearpoolStrategyOptimism is
         override
         returns (address[] memory)
     {
-        // address[] memory govTokens = new address[](1);
-        // govTokens[0] = govToken;
-        // return govTokens;
+        address[] memory govTokens = new address[](1);
+        govTokens[0] = OP;
+        return govTokens;
     }
 
     function getApr() external view returns (uint256) {
