@@ -120,8 +120,9 @@ contract IdleCDOStorage {
   uint256 public lossToleranceBps;
   // Amount of stkIDLE required to mint 1 underlying
   uint256 public stkIDLEPerUnderlying;
+  // Mapping to keep track of deposited amount by each user per tranche
+  mapping(address => mapping(address => uint256)) internal depositedAmount;
   // uint256 public test;
-
 
 
   // ####################### 
@@ -133,8 +134,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[46] private __gap;
-  // uint256[45] private __gap; -> after adding `test`
+  uint256[45] private __gap;
+  // uint256[44] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }

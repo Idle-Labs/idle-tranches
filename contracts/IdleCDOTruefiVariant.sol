@@ -17,6 +17,7 @@ import {ITruefiPool, ITrueLender, ILoanToken} from "./interfaces/truefi/ITruefi.
 error Default();
 error Is0();
 
+/// [DEPRECATED] 
 /// @title IdleCDO variant for TrueFi. 
 /// @author Idle Labs Inc.
 /// @dev In this variant the `_checkDefault` is perfomed by looping through all loans (which should always be at most like 10-20)

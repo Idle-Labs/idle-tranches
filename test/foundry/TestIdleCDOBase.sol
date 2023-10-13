@@ -315,7 +315,7 @@ abstract contract TestIdleCDOBase is Test {
     uint256 scaledVal = _val * 10**(18 - decimals);
 
     // try to enable gating for non existing tranche
-    vm.expectRevert(bytes("9")); // stkIDLE bal too low
+    vm.expectRevert(bytes("9")); // invalid tranche
     vm.prank(owner);
     idleCDO.toggleStkIDLEForTranche(address(2222));
 
@@ -366,6 +366,40 @@ abstract contract TestIdleCDOBase is Test {
     // try to deposit when stkIDLE gating is not active for the tranche
     idleCDO.depositAA(_val);
     idleCDO.depositBB(_val);
+  }
+
+  function testMinStkIDLEBalanceWithTranfer() external virtual {
+    vm.prank(owner);
+    idleCDO.setStkIDLEPerUnderlying(9e17); // 0.9 stkIDLE for each underlying deposited
+
+    uint256 _val = 100 * ONE_SCALE;
+    uint256 scaledVal = _val * 10**(18 - decimals);
+
+    // enable stkIDLE gating for AA
+    vm.prank(owner);
+    idleCDO.toggleStkIDLEForTranche(address(AAtranche));
+
+    _getStkIDLE(scaledVal, false);
+
+    // deposit the max bal
+    idleCDO.depositAA(_val);
+    uint256 trancheBal = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
+    assertApproxEqAbs(trancheBal, scaledVal, 1, 'AA Deposit is not successful');
+
+    // transfer tranche token to another address
+    address dead = address(0xdead);
+    IERC20Detailed(address(AAtranche)).transfer(dead, trancheBal);
+
+    // try to deposit more and expect revert
+    vm.expectRevert(bytes("7"));
+    idleCDO.depositAA(_val);
+
+    // skip 1 block
+    vm.roll(block.number + 1);
+
+    // redeem with 0xdead
+    vm.prank(dead);
+    idleCDO.withdrawAA(trancheBal);
   }
 
   function _getStkIDLE(uint256 _val, bool _increase) internal {

@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "./IdleCDO.sol";
 import "./strategies/euler/IdleLeveragedEulerStrategy.sol";
 
+/// [DEPRECATED] 
 /// @title IdleCDO variant for Euler Levereged strategy. 
 /// @author Idle DAO, @bugduino
 /// @dev In this variant the `_checkDefault` calculates if strategy price decreased 
