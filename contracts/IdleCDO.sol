@@ -243,7 +243,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault
   /// @param _amount amount of underlying to deposit
-  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal {
+  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
     // check if stkIDLE requirement is active for _tranche
     if (_stkIDLEPerUnderlying == 0 || 
@@ -251,15 +251,15 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       (_tranche == AATranche && AAStaking == address(0))) {
       return;
     }
-    // check if depositor has enough stkIDLE for the amount to be deposited
+
+    uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
+    // We check if sender deposited in the same tranche previously and add the bal to _amount
+    uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
     require(
       IERC20(STK_IDLE).balanceOf(msg.sender) >= 
-      (depositedAmount[msg.sender][_tranche] + _amount) * _stkIDLEPerUnderlying / oneToken, 
+      bal * _stkIDLEPerUnderlying / oneToken, 
       '7'
     );
-
-    // update deposited amount
-    depositedAmount[msg.sender][_tranche] += _amount;
   }
 
   /// @notice method used to deposit `token` and mint tranche tokens
@@ -515,11 +515,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
-    // update deposited amount (used for stkIDLE gating)
-        uint256 deposited = depositedAmount[msg.sender][_tranche];
-    if (deposited != 0) {
-      depositedAmount[msg.sender][_tranche] -= toRedeem <= deposited ? toRedeem : deposited;
-    } 
   
     // send underlying to msg.sender. Keep this at the end of the function to avoid 
     // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
@@ -929,8 +924,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
   function setLossToleranceBps(uint256 _diffBps) external {
-    _checkOnlyOwner();
-    lossToleranceBps = _diffBps;
+      _checkOnlyOwner();
+      lossToleranceBps = _diffBps;
   }
 
   /// @dev toggle stkIDLE requirement for tranche

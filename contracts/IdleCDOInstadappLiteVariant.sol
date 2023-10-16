@@ -118,11 +118,6 @@ contract IdleCDOInstadappLiteVariant is IdleCDO {
         }
         // update trancheAPRSplitRatio
         _updateSplitRatio(_getAARatio(true));
-        // update deposited amount (used for stkIDLE gating)
-        uint256 deposited = depositedAmount[msg.sender][_tranche];
-        if (deposited != 0) {
-            depositedAmount[msg.sender][_tranche] -= toRedeem <= deposited ? toRedeem : deposited;
-        }
 
         // send underlying to msg.sender. Keep this at the end of the function to avoid 
         // potential read only reentrancy on cdo variants that have hooks (eg with nfts)

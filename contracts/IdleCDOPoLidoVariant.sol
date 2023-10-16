@@ -73,11 +73,6 @@ contract IdleCDOPoLidoVariant is IdleCDO, IERC721ReceiverUpgradeable {
 
         // update trancheAPRSplitRatio
         _updateSplitRatio(_getAARatio(true));
-        // update deposited amount (used for stkIDLE gating)
-        uint256 deposited = depositedAmount[msg.sender][_tranche];
-        if (deposited != 0) {
-            depositedAmount[msg.sender][_tranche] -= toRedeem <= deposited ? toRedeem : deposited;
-        }
 
         uint256 tokenId = tokenIds[tokenIds.length - 1];
         stMatic.poLidoNFT().safeTransferFrom(address(this), msg.sender, tokenId);
