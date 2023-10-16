@@ -30,11 +30,16 @@ const impersonateSigner = async (acc) => {
   return await hre.ethers.getSigner(acc);
 }
 const getMultisigSigner = async (skipLog) => {
+  const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
+  const safeServiceUrl = isOptimism ? 
+    'https://safe-transaction-optimism.safe.global/' : 
+    'https://safe-transaction-mainnet.safe.global/';
+  const networkKey = isOptimism ? 'optimism' : 'mainnet';
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
-  const service = new SafeService('https://safe-transaction-mainnet.safe.global/');
+  const service = new SafeService(safeServiceUrl);
   const safe = await Safe.create({ 
     ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
-    safeAddress: addresses.IdleTokens.mainnet.treasuryMultisig
+    safeAddress: addresses.IdleTokens[networkKey].treasuryMultisig
   });
   const signer = new SafeEthersSigner(safe, service, ethers.provider);
   const address = await signer.getAddress();
@@ -59,7 +64,12 @@ const getSigner = async (acc) => {
     }
   }
   // In mainnet overwrite signer to be the ledger signer
-  if (hre.network.name == 'mainnet' || hre.network.name == 'matic' || hre.network.name == 'polygonzk') {
+  if (
+    hre.network.name == 'mainnet' || 
+    hre.network.name == 'matic' || 
+    hre.network.name == 'polygonzk' || 
+    hre.network.name == 'optimism'
+  ) {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
   const address = await signer.getAddress();

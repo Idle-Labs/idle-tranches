@@ -189,10 +189,29 @@ const polygonZKContracts = {
   AA_4626_cpfasusdc: '0xFbc63d309F915AA62517A6b4e845502CEcf946cf',
 }
 
+const optimismContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  pauserMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  proxyAdmin: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+
+  OP: '0x4200000000000000000000000000000000000042',
+  WETH: '0x4200000000000000000000000000000000000006',
+  USDT: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+  cpPOR_USDC: '0x5eabfc05b51ff2ef32ac8960e30f4a35963143e2',
+  USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+  cpFAS_USDT: '0x87181362ba304fec7e5a82ad2b7b503d7ad62639',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonZK: polygonZKContracts,
   mainnet: mainnetContracts,
+  optimism: optimismContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -819,6 +838,35 @@ const polygonCDOs = {
   //   AATranche: '',
   //   BBTranche: ''
   // },
+};
+
+const optimismCDOs = {
+  cpfasusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
+    underlying: optimismContracts.cpFAS_USDT,
+    cdoAddr: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x50BA0c3f940f0e851f8e30f95d2A839216EC5eC9',
+    BBTranche: '0x7038D2A5323064f7e590EADc0E8833F2613F6317'
+  },
+  cpporusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+    underlying: optimismContracts.cpPOR_USDC,
+    cdoAddr: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
+    BBTranche: '0x56A4283a4CE7202672A1518340732d5ffC511c0b'
+  },
 };
 
 const polygonZKCDOs = {
@@ -1705,6 +1753,41 @@ exports.deployTokensPolygonZK = {
   },
 };
 
+exports.deployTokensOptimism = {
+  cpfasusdt: { // fasanara usdt pool
+    decimals: 6,
+    underlying: optimismContracts.USDT,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpFAS_USDT, // _strategyToken
+      optimismContracts.USDT, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpfasusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: optimismCDOs.cpporusdc.cdoAddr,
+  },
+  cpporusdc: { // portofino usdc pool
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpPOR_USDC, // _strategyToken
+      optimismContracts.USDC, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpporusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: '',
+  },
+};
+
 exports.deployTokensBY = {
   idleusdcjunior: {
     decimals: 6,
@@ -1773,4 +1856,5 @@ exports.trancheErc4626Wrappers = trancheErc4626Wrappers;
 exports.idleTokenErc4626Wrappers = idleTokenErc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.polygonZKCDOs = polygonZKCDOs;
+exports.optimismCDOs = optimismCDOs;
 exports.mainnetContracts = mainnetContracts;

@@ -11,14 +11,34 @@ const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals))
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
+const optimismContracts = addresses.IdleTokens.optimism;
 
 const getNetworkContracts = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   if (isMatic) {
     return polygonContracts;
+  } else if (isPolygonZK) {
+    return polygonZKContracts;
+  } else if (isOptimism) {
+    return optimismContracts;
   }
+  return mainnetContracts;
+}
+
+const getDeployTokens = (_hre) => {
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
-  return isPolygonZK ? polygonZKContracts : mainnetContracts;
+  const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  if (isMatic) {
+    return addresses.deployTokensPolygon;
+  } else if (isPolygonZK) {
+    return addresses.deployTokensPolygonZK;
+  } else if (isOptimism) {
+    return addresses.deployTokensOptimism;
+  }
+  return addresses.deployTokens;
 }
 
 /**
@@ -102,6 +122,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     let proxyAdminAddress = args.proxyAdmin;
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const networkContracts = getNetworkContracts(hre);
 
     if (!proxyAdminAddress) {
@@ -173,6 +194,8 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     let contractName = isMatic ? "IdleCDOPolygon" : "IdleCDO";
     if (isPolygonZK) {
       contractName = "IdleCDOPolygonZK";
+    } else if (isOptimism) {
+      contractName = "IdleCDOOptimism";
     }
     const idleCDO = await ethers.getContractAt(contractName, cdoImplementationAddress, signer);
     
@@ -218,9 +241,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const strategyAddress = args.strategyAddress;
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
 
-    const networkTokens = isMatic ? addresses.deployTokensPolygon :
-      (isPolygonZK ? addresses.deployTokensPolygonZK : addresses.deployTokens);
+    const networkTokens = getDeployTokens(hre);
 
     // Get config params
     const deployToken = networkTokens[args.cdoname];
@@ -238,6 +261,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     let networkCDOName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
     if (isPolygonZK) {
       networkCDOName = 'IdleCDOPolygonZK';
+    } else if (isOptimism) {
+      networkCDOName = 'IdleCDOOptimism';
     }
     let idleCDOAddress;
     const contractName = deployToken.cdoVariant || networkCDOName;
@@ -305,7 +330,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
 
     const feeReceiver = await idleCDO.feeReceiver();
-    if ((isMatic || isPolygonZK) && feeReceiver != networkContracts.feeReceiver) {
+    if ((isMatic || isPolygonZK || isOptimism) && feeReceiver != networkContracts.feeReceiver) {
       console.log('Setting fee receiver to Treasury Multisig')
       await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
     }
@@ -318,15 +343,17 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
 
-    const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
-    console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
-    const tx = await pauseModule.updateProtectedContracts([{
-      contractAddress: idleCDO.address, 
-      contractType: 1 // tranche contract
-    }]);
-    await tx.wait();
-    console.log('isContractProtected: ', await pauseModule.isContractProtected(idleCDO.address));
-    console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
+    if (!(isMatic || isPolygonZK || isOptimism)) {
+      const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
+      console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
+      const tx = await pauseModule.updateProtectedContracts([{
+        contractAddress: idleCDO.address, 
+        contractType: 1 // tranche contract
+      }]);
+      await tx.wait();
+      console.log('isContractProtected: ', await pauseModule.isContractProtected(idleCDO.address));
+      console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
+    }
 
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
@@ -348,17 +375,13 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
-    const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
-    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
-
     // Check that cdoname is passed
     if (!args.cdoname) {
       console.log("🛑 cdoname and it's params must be defined");
       return;
     }
     
-    const networkTokens = isMatic ? addresses.deployTokensPolygon : 
-      (isPolygonZK ? addresses.deployTokensPolygonZK : addresses.deployTokens);
+    const networkTokens = getDeployTokens(hre);
 
     // Get config params
     const deployToken = networkTokens[args.cdoname];
