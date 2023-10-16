@@ -241,7 +241,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // Internal
   // ###############
 
-  /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault
+  /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault.
+  /// This can be used to give priority access to new vaults to stkIDLE holders. 
+  /// @dev This check is only intended for "regular" users as it does not strictly enforce the _stkIDLEPerUnderlying 
+  /// ratio (eg: deposit+transfer). This will be mitigated by the fee rebate mechanism (airdrop) as otherwise those
+  /// rebates will be lost.
   /// @param _amount amount of underlying to deposit
   function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
