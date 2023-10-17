@@ -39,7 +39,7 @@ contract IdleCDOPolygonZK is IdleCDO {
       return (0, 0);
     }
   
-    // Quickswap v3 swap
+    // zkEVM Quickswap v3 swap (algebra.finance is used so _path should not include poolFees)
     ISwapRouter _swapRouter = ISwapRouter(0xF6Ad3CcF71Abb3E12beCf6b3D2a74C963859ADCd);
     IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_swapRouter), _amount);
     // multi hop swap params

@@ -62,6 +62,7 @@ contract IdleClearpoolStrategyPolygonZK is
     address private constant CPOOL = 0xc3630b805F10E91c2de084Ac26C66bCD91F3D3fE;
     address internal constant QUICK_V3_FACTORY = 0x4B9f4d2435Ef65559567e5DbFC1BbB37abC43B57;
     uint256 internal constant EXP_SCALE = 1e18;
+    address private constant MATIC = 0xa2036f0538221a77A3937F1379699f44945018d0;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -112,16 +113,16 @@ contract IdleClearpoolStrategyPolygonZK is
         onlyIdleCDO
         returns (uint256[] memory rewards)
     {
-        // Not used
-
         // address pool = cpToken;
         // address[] memory pools = new address[](1);
         // pools[0] = pool;
         // IPoolMaster(pool).factory().withdrawReward(pools);
 
-        // rewards = new uint256[](1);
-        // rewards[0] = IERC20Detailed(govToken).balanceOf(address(this));
-        // IERC20Detailed(govToken).safeTransfer(msg.sender, rewards[0]);
+        // rewards = new uint256[](2); // 2 rewards CPOOL and MATIC (manually sent to CDO)
+        // rewards[0] = IERC20Detailed(CPOOL).balanceOf(address(this));
+        // if (rewards[0] != 0) {
+        //     IERC20Detailed(CPOOL).safeTransfer(msg.sender, rewards[0]);
+        // }
     }
 
     /// @notice unused in harvest strategy
@@ -144,9 +145,9 @@ contract IdleClearpoolStrategyPolygonZK is
         override
         returns (address[] memory)
     {
-        // address[] memory govTokens = new address[](1);
-        // govTokens[0] = govToken;
-        // return govTokens;
+        address[] memory govTokens = new address[](1);
+        govTokens[0] = MATIC;
+        return govTokens;
     }
 
     function getApr() external view returns (uint256) {
@@ -181,7 +182,6 @@ contract IdleClearpoolStrategyPolygonZK is
             _price = _price * wethToUnderlying / EXP_SCALE; // in underlyings
         }
     }
-
 
     /// @notice this price is not safe from flash loan attacks, but it is used only for showing the apr on the UI
     function _getPriceUniV3(address tokenIn, address tokenOut, uint24 _fee)

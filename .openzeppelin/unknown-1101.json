@@ -399,7 +399,7 @@
             "label": "underlyingToken",
             "offset": 0,
             "slot": "205",
-            "type": "t_contract(IERC20Detailed)18504",
+            "type": "t_contract(IERC20Detailed)18717",
             "contract": "IdleClearpoolStrategyPolygonZK",
             "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:43"
           },
@@ -457,7 +457,7 @@
             "label": "bool",
             "numberOfBytes": "1"
           },
-          "t_contract(IERC20Detailed)18504": {
+          "t_contract(IERC20Detailed)18717": {
             "label": "contract IERC20Detailed",
             "numberOfBytes": "20"
           },
@@ -1204,6 +1204,478 @@
           },
           "t_uint8": {
             "label": "uint8"
+          }
+        }
+      }
+    },
+    "a4d8a32faa43dbd81ed4b93b03c2ff8606d5830bb8f1e6488fd7c1388accaa88": {
+      "address": "0xBe3e788bd11aB3070B5264AeED25c1976ab6AC00",
+      "txHash": "0x42082aba9cac4330ed30369f3fc20f50ea5b3a6254cb578e51ecac7892e59e7b",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_balances",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "label": "_allowances",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:42"
+          },
+          {
+            "label": "_totalSupply",
+            "offset": 0,
+            "slot": "103",
+            "type": "t_uint256",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:44"
+          },
+          {
+            "label": "_name",
+            "offset": 0,
+            "slot": "104",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:46"
+          },
+          {
+            "label": "_symbol",
+            "offset": 0,
+            "slot": "105",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:47"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "106",
+            "type": "t_array(t_uint256)45_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:376"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:31"
+          },
+          {
+            "label": "cpToken",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:34"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:37"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:40"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_contract(IERC20Detailed)19528",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:43"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:46"
+          },
+          {
+            "label": "govToken",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:52"
+          },
+          {
+            "label": "lastApr",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:55"
+          },
+          {
+            "label": "uniswapRouter",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_contract(IUniswapV2Router02)7965",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:58"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]",
+            "numberOfBytes": "1440"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)19528": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV2Router02)7965": {
+            "label": "contract IUniswapV2Router02",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "a141b8310c0116c3a0686b0b0300034d4317b6347b0d4f7b921f86f2213acb5d": {
+      "address": "0x7bE5622b27ceb9f2f3776fa5c8e3BA23Db65Ced7",
+      "txHash": "0xb3fe7fcacaad614d5e543fed0bebc162dd56c181d86f48d145730a128ba4546a",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_balances",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "label": "_allowances",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:42"
+          },
+          {
+            "label": "_totalSupply",
+            "offset": 0,
+            "slot": "103",
+            "type": "t_uint256",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:44"
+          },
+          {
+            "label": "_name",
+            "offset": 0,
+            "slot": "104",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:46"
+          },
+          {
+            "label": "_symbol",
+            "offset": 0,
+            "slot": "105",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:47"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "106",
+            "type": "t_array(t_uint256)45_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:376"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:31"
+          },
+          {
+            "label": "cpToken",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:34"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:37"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:40"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_contract(IERC20Detailed)19528",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:43"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:46"
+          },
+          {
+            "label": "govToken",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:52"
+          },
+          {
+            "label": "lastApr",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_uint256",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:55"
+          },
+          {
+            "label": "uniswapRouter",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_contract(IUniswapV2Router02)7965",
+            "contract": "IdleClearpoolStrategyPolygonZK",
+            "src": "contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol:58"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]",
+            "numberOfBytes": "1440"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)19528": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV2Router02)7965": {
+            "label": "contract IUniswapV2Router02",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
           }
         }
       }
