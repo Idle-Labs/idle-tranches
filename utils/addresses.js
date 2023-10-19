@@ -206,6 +206,7 @@ const optimismContracts = {
   cpPOR_USDC: '0x5eabfc05b51ff2ef32ac8960e30f4a35963143e2',
   USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
   cpFAS_USDT: '0x87181362ba304fec7e5a82ad2b7b503d7ad62639',
+  cpPOR_USDT: '0x462c4b2e69a59ff886980f36300c168234b63464',
 }
 
 exports.IdleTokens = {
@@ -855,18 +856,32 @@ const optimismCDOs = {
     AATranche: '0x50BA0c3f940f0e851f8e30f95d2A839216EC5eC9',
     BBTranche: '0x7038D2A5323064f7e590EADc0E8833F2613F6317'
   },
-  cpporusdc: {
+  // DEPRECATED
+  // cpporusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+  //   underlying: optimismContracts.cpPOR_USDC,
+  //   cdoAddr: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
+  //   proxyAdmin: optimismContracts.proxyAdmin,
+  //   strategy: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
+  //   BBTranche: '0x56A4283a4CE7202672A1518340732d5ffC511c0b'
+  // },
+  cpporusdt: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
-    underlying: optimismContracts.cpPOR_USDC,
-    cdoAddr: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
+    strategyToken: '0x5d4E705315ACa451Db40bf7c067077C768B3FFd0',
+    underlying: optimismContracts.cpPOR_USDT,
+    cdoAddr: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
     proxyAdmin: optimismContracts.proxyAdmin,
-    strategy: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+    strategy: '0x5d4E705315ACa451Db40bf7c067077C768B3FFd0',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
-    BBTranche: '0x56A4283a4CE7202672A1518340732d5ffC511c0b'
+    AATranche: '0x8552801C75C4f2b1Cac088aF352193858B201D4E',
+    BBTranche: '0xafbAeA12DE33bF6B44105Eceecec24B29163077c'
   },
 };
 
@@ -1765,6 +1780,22 @@ exports.deployTokensOptimism = {
       'owner', // owner address
     ],
     cdo: optimismCDOs.cpfasusdt,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: optimismCDOs.cpporusdc.cdoAddr,
+  },
+  cpporusdt: { // portofino usdt pool
+    decimals: 6,
+    underlying: optimismContracts.USDT,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpPOR_USDT, // _strategyToken
+      optimismContracts.USDT, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpporusdt,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
