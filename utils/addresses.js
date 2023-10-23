@@ -576,19 +576,6 @@ const CDOs = {
     AATranche: '0xdcA1daE87f5c733c84e0593984967ed756579BeE',
     BBTranche: '0xbcC845bB731632eBE8Ac0BfAcdE056170aaaaa06'
   },
-  cpfasdai: {
-    decimals: 18,
-    // strategyToken it's the strategy itself here
-    strategyToken: '',
-    underlying: mainnetContracts.DAI,
-    cdoAddr: '',
-    proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '',
-    BBTranche: ''
-  },
   cpwincusdc: { // wincent
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -602,6 +589,19 @@ const CDOs = {
     AATranche: '0x00b51Fc6384A120Eac68bEA38b889Ea92524ab93',
     BBTranche: '0xe6De3A77B4e71356F4E5e52fd695EAD5E5DBcd27'
   },
+  // cpfasdai: {
+  //   decimals: 18,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '',
+  //   underlying: mainnetContracts.DAI,
+  //   cdoAddr: '',
+  //   proxyAdmin: mainnetContracts.proxyAdmin,
+  //   strategy: '',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '',
+  //   BBTranche: ''
+  // },
   rfolusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1784,7 +1784,7 @@ exports.deployTokensOptimism = {
     AARatio: '20000',
     limit: '20000000',
     isAYSActive: true,
-    proxyCdoAddress: optimismCDOs.cpporusdc.cdoAddr,
+    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
   },
   cpporusdt: { // portofino usdt pool
     decimals: 6,
@@ -1800,7 +1800,7 @@ exports.deployTokensOptimism = {
     AARatio: '20000',
     limit: '20000000',
     isAYSActive: true,
-    proxyCdoAddress: optimismCDOs.cpporusdc.cdoAddr,
+    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
   },
   cpporusdc: { // portofino usdc pool
     decimals: 6,
