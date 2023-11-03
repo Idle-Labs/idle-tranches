@@ -21926,13 +21926,13 @@
           {
             "contract": "IdleBuddyCompAavePYT",
             "label": "contractDatas",
-            "type": "t_mapping(t_address,t_struct(ContractData)6856_storage)",
+            "type": "t_mapping(t_address,t_struct(ContractData)6850_storage)",
             "src": "contracts/utils/IdleBuddyCompAavePYT.sol:74"
           },
           {
             "contract": "IdleBuddyCompAavePYT",
             "label": "allContractDatas",
-            "type": "t_array(t_struct(ContractData)6856_storage)dyn_storage",
+            "type": "t_array(t_struct(ContractData)6850_storage)dyn_storage",
             "src": "contracts/utils/IdleBuddyCompAavePYT.sol:75"
           },
           {
@@ -21964,10 +21964,10 @@
           "t_address": {
             "label": "address"
           },
-          "t_mapping(t_address,t_struct(ContractData)6856_storage)": {
+          "t_mapping(t_address,t_struct(ContractData)6850_storage)": {
             "label": "mapping(address => struct IdleBuddyCompAavePYTStructs.ContractData)"
           },
-          "t_struct(ContractData)6856_storage": {
+          "t_struct(ContractData)6850_storage": {
             "label": "struct IdleBuddyCompAavePYTStructs.ContractData",
             "members": [
               {
@@ -22012,7 +22012,7 @@
               }
             ]
           },
-          "t_array(t_struct(ContractData)6856_storage)dyn_storage": {
+          "t_array(t_struct(ContractData)6850_storage)dyn_storage": {
             "label": "struct IdleBuddyCompAavePYTStructs.ContractData[]"
           },
           "t_bool": {
@@ -22386,6 +22386,135 @@
           },
           "t_array(t_uint256)50_storage": {
             "label": "uint256[50]"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          }
+        }
+      }
+    },
+    "92aec5af7b9316ec0fa82b2344e46a43920e313fa51b121d71a6caed95ce971c": {
+      "address": "0xcF66438D3B880f8f80B071F228Fff7BCDD38Bb90",
+      "txHash": "0x1af271da8a559edf31e26cc6b80f27f842b8721b1914610d153d20dd275c9f1d",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_uint8",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "owner",
+            "type": "t_address",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:72"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "contractDatas",
+            "type": "t_mapping(t_address,t_struct(ContractData)6914_storage)",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:74"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "allContractDatas",
+            "type": "t_array(t_struct(ContractData)6914_storage)dyn_storage",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:75"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "isEulerDisabled",
+            "type": "t_bool",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:77"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "maxClearUR",
+            "type": "t_uint256",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:78"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "enable95Check",
+            "type": "t_bool",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:79"
+          },
+          {
+            "contract": "IdleBuddyCompAavePYT",
+            "label": "maxClearWarningUR",
+            "type": "t_uint256",
+            "src": "contracts/utils/IdleBuddyCompAavePYT.sol:80"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_address,t_struct(ContractData)6914_storage)": {
+            "label": "mapping(address => struct IdleBuddyCompAavePYTStructs.ContractData)"
+          },
+          "t_struct(ContractData)6914_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData",
+            "members": [
+              {
+                "label": "underlying",
+                "type": "t_address"
+              },
+              {
+                "label": "cTokenNew",
+                "type": "t_address"
+              },
+              {
+                "label": "aV2Token",
+                "type": "t_address"
+              },
+              {
+                "label": "eToken",
+                "type": "t_address"
+              },
+              {
+                "label": "maToken",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearWinTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytEulerStakingTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytMorphoAaveTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearPorTranche",
+                "type": "t_address"
+              },
+              {
+                "label": "pytClearFasTranche",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_array(t_struct(ContractData)6914_storage)dyn_storage": {
+            "label": "struct IdleBuddyCompAavePYTStructs.ContractData[]"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_uint256": {
+            "label": "uint256"
           },
           "t_uint8": {
             "label": "uint8"
