@@ -207,6 +207,7 @@ const optimismContracts = {
   USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
   cpFAS_USDT: '0x87181362ba304fec7e5a82ad2b7b503d7ad62639',
   cpPOR_USDT: '0x462c4b2e69a59ff886980f36300c168234b63464',
+  cpWINC_USDC: '0x463a9fb7320834b7f8a5c4713434257c8971b9a8',
 }
 
 exports.IdleTokens = {
@@ -882,6 +883,19 @@ const optimismCDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x8552801C75C4f2b1Cac088aF352193858B201D4E',
     BBTranche: '0xafbAeA12DE33bF6B44105Eceecec24B29163077c'
+  },
+  cpwincusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x7bE5622b27ceb9f2f3776fa5c8e3BA23Db65Ced7',
+    underlying: optimismContracts.cpWINC_USDC,
+    cdoAddr: '0xa26b308B2386DBd906Cf1F8a653ca7d758f301B3',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x7bE5622b27ceb9f2f3776fa5c8e3BA23Db65Ced7',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xb00BbFD1bD0ee3EefF953FA02cdBe4A55BaaC55f',
+    BBTranche: '0x0BD3cC920926472606bAe4CE479430df18E99F75'
   },
 };
 
@@ -1802,22 +1816,38 @@ exports.deployTokensOptimism = {
     isAYSActive: true,
     proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
   },
-  cpporusdc: { // portofino usdc pool
+  cpwincusdc: { // wincent usdc pool
     decimals: 6,
     underlying: optimismContracts.USDC,
     strategyName: 'IdleClearpoolStrategyOptimism',
     strategyParams: [
-      optimismContracts.cpPOR_USDC, // _strategyToken
+      optimismContracts.cpWINC_USDC, // _strategyToken
       optimismContracts.USDC, // _underlyingToken
       'owner', // owner address
     ],
-    cdo: optimismCDOs.cpporusdc,
+    cdo: optimismCDOs.cpwincusdc,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
     isAYSActive: true,
-    proxyCdoAddress: '',
+    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
   },
+  // cpporusdc: { // portofino usdc pool
+  //   decimals: 6,
+  //   underlying: optimismContracts.USDC,
+  //   strategyName: 'IdleClearpoolStrategyOptimism',
+  //   strategyParams: [
+  //     optimismContracts.cpPOR_USDC, // _strategyToken
+  //     optimismContracts.USDC, // _underlyingToken
+  //     'owner', // owner address
+  //   ],
+  //   cdo: optimismCDOs.cpporusdc,
+  //   ...baseCDOArgs,
+  //   AARatio: '20000',
+  //   limit: '20000000',
+  //   isAYSActive: true,
+  //   proxyCdoAddress: '',
+  // },
 };
 
 exports.deployTokensBY = {
