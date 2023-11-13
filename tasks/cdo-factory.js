@@ -214,9 +214,9 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     console.log("deploying with factory...");
     let res = await cdoFactory.deployCDO(cdoImplementationAddress, proxyAdminAddress, initMethodCall);
     res = await res.wait();
-    const cdoDeployFilter = cdoFactory.filters.CDODeployed;
-    const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
-    const proxyAddress = events[0].args.proxy;
+    // const cdoDeployFilter = cdoFactory.filters.CDODeployed;
+    // const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
+    const proxyAddress = res.events[7].args.proxy;
     helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${res.cumulativeGasUsed.toString()})`);
     return proxyAddress;
   });
