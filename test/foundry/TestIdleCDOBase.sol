@@ -121,10 +121,10 @@ abstract contract TestIdleCDOBase is Test {
 
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, "BBtranche bal");
-    assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal");
-    assertEq(underlying.balanceOf(address(idleCDO)), totAmount, "underlying bal");
+    assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal strategy");
+    assertEq(underlying.balanceOf(address(idleCDO)), totAmount, "underlying bal cdo");
     // strategy is still empty with no harvest
-    assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal");
+    assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal cdo");
     uint256 strategyPrice = strategy.price();
 
     // check that trancheAPRSplitRatio and aprs are updated 
@@ -133,7 +133,6 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(idleCDO.getApr(address(AAtranche)), initialApr / 2, "AA apr");
     // apr will be 150% of the strategy apr if AAratio is == 50%
     assertEq(idleCDO.getApr(address(BBtranche)), initialApr * 3 / 2, "BB apr");
-
     // skip rewards and deposit underlyings to the strategy
     _cdoHarvest(true);
 
@@ -185,6 +184,11 @@ abstract contract TestIdleCDOBase is Test {
   }
 
   function testRedeemRewards() external virtual {
+    // done to avoid rewriting some tests with change from external to public
+    _testRedeemRewardsInternal();
+  }
+
+  function _testRedeemRewardsInternal() internal virtual {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
@@ -205,10 +209,7 @@ abstract contract TestIdleCDOBase is Test {
     }
   }
 
-  function testOnlyIdleCDO()
-      public
-      virtual
-  {
+  function testOnlyIdleCDO() public virtual {
     vm.prank(address(0xbabe));
     vm.expectRevert(bytes("Only IdleCDO can call"));
     strategy.deposit(1e10);
@@ -305,6 +306,10 @@ abstract contract TestIdleCDOBase is Test {
   }
 
   function testMinStkIDLEBalance() external virtual {
+    _testMinStkIDLEBalanceInternal();
+  }
+
+  function _testMinStkIDLEBalanceInternal() internal virtual {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setStkIDLEPerUnderlying(9e17);
