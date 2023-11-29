@@ -8,6 +8,7 @@ import "../../interfaces/morpho/IMorphoAaveV2Lens.sol";
 import "../../interfaces/morpho/IMorphoCompoundLens.sol";
 import "../../interfaces/morpho/IRewardsDistributor.sol";
 import "../../interfaces/morpho/IURD.sol";
+import "../../interfaces/morpho/IMetamorphoSnippets.sol";
 import "../ERC4626Strategy.sol";
 
 contract MetaMorphoStrategy is ERC4626Strategy {
@@ -19,11 +20,11 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @notice reward token address (e.g. MORPHO, COMP, ...)
   address[] public rewardTokens;
 
-  /// @notice reward distributors
-  IURD[] public rewardDistributors;
-
   /// @notice MORPHO transferability
   bool public morphoTransferable;
+
+  /// @notice Metamorpho snippets contract, used for apr
+  address public mmSnippets;
 
   /// Initialization
 
@@ -31,20 +32,22 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @param _strategyToken strategy token address
   /// @param _token underlying token address
   /// @param _owner owner address
+  /// @param _mmSnippets snippets contract address
   /// @param _rewardTokens array of reward tokens
-  /// @param _distributors array of reward distributors
   function initialize(
     address _strategyToken,
     address _token,
     address _owner,
-    address[] memory _rewardTokens,
-    address[] memory _distributors
+    address _mmSnippets,
+    address[] memory _rewardTokens
   ) public {
     _initialize(_strategyToken, _token, _owner);
 
+    // used to fetch apr
+    mmSnippets = _mmSnippets;
+
     for (uint256 i = 0; i < _rewardTokens.length; i++) {
       rewardTokens.push(_rewardTokens[i]);
-      rewardDistributors.push(IURD(_distributors[i]));
     }
   }
 
@@ -69,16 +72,16 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     rewards = new uint256[](_rewardsLen);
     bytes[] memory claimDatas = abi.decode(data, (bytes[]));
     address reward;
+    address rewardDistributor;
     uint256 claimable; 
     bytes32[] memory proof;
-    IURD[] memory _rewardDistributors = rewardDistributors;
 
     for (uint256 i = 0; i < _rewardsLen; i++) {
       if (claimDatas[i].length == 0) {
         continue;
       }
-      (reward, claimable, proof) = abi.decode(claimDatas[i], (address, uint256, bytes32[]));
-      rewards[i] = _claimReward(_rewardDistributors[i], reward, claimable, proof);
+      (reward, rewardDistributor, claimable, proof) = abi.decode(claimDatas[i], (address, address, uint256, bytes32[]));
+      rewards[i] = _claimReward(IURD(rewardDistributor), reward, claimable, proof);
     }
   }
 
@@ -136,9 +139,9 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @dev return always a value which is multiplied by 1e18
   /// eg for 2% apr -> 2*1e18
   function getApr() external view override returns (uint256 apr) {
-    // This was for morpho v2 optimizer
     // // The supply rate per year experienced on average on the given market (in ray).
-    // (uint256 ratePerYear, , ) = LENS.getAverageSupplyRatePerYear(poolToken);
+    // uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPRVault();
+    // console.log('ratePerYear', ratePerYear);
     // apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
   }
 }

@@ -9,6 +9,7 @@ import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/interfaces/morpho/IURD.sol";
 import "../../contracts/interfaces/morpho/IUrdFactory.sol";
 import "../../contracts/interfaces/morpho/IMerkle.sol";
+import "../../contracts/interfaces/morpho/IMetamorphoSnippets.sol";
 import "../../contracts/interfaces/IWETH.sol";
 import "./TestIdleCDOBase.sol";
 
@@ -32,6 +33,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   address internal distributorOwner = makeAddr('distributorOwner');
 
+  IMetamorphoSnippets internal mmSnippets;
   IUrdFactory internal urdFactory;
   IMerkle internal merkle;
   IURD internal distributor;
@@ -45,7 +47,13 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     urdFactory = IUrdFactory(deployCode("UrdFactory.sol"));
     merkle = IMerkle(deployCode("Merkle.sol"));
     distributor = urdFactory.createUrd(distributorOwner, 0, bytes32(0), hex"", hex"");
-    
+
+
+    // TODO
+    // mmSnippets = deployCode("MetamorphoSnippets.sol");
+
+
+
     super.setUp();
     
     // setup rewards
@@ -58,7 +66,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
     // prepare extraData to claim
     bytes[] memory claimDatas = new bytes[](1);
-    claimDatas[0] = abi.encode(reward, claimable, proof);
+    claimDatas[0] = abi.encode(reward, distributor, claimable, proof);
     extraData = abi.encode(claimDatas, 'bytes[]');
 
     // prepare extraDataSell to sell rewards on uni v3
@@ -102,8 +110,6 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     _strategy = address(strategy);
     address[] memory rewardsTokens = new address[](1);
     rewardsTokens[0] = defaultReward;
-    address[] memory rewardDistributors = new address[](1);
-    rewardDistributors[0] = address(distributor);
 
     // initialize
     stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
@@ -111,8 +117,8 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
         address(strategyToken),
         _underlying,
         _owner,
-        rewardsTokens,
-        rewardDistributors
+        address(mmSnippets),
+        rewardsTokens
     );
 
     vm.label(address(strategyToken), "Vault");
@@ -132,7 +138,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
       mmUSDC,
       address(underlying),
       owner,
-      new address[](0),
+      address(mmSnippets),
       new address[](0)
     );
   }
