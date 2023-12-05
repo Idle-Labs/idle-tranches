@@ -293,4 +293,80 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
             "split ratio on redeem"
         );
     }
+
+    function testCheckMaxDecreaseDefault() external virtual {
+        uint256 amount = 10000 * ONE_SCALE;
+        // fee is set to 10% and release block period to 0
+
+        // AA Ratio 98%
+        (uint256 preAAPrice, ) = _doDepositsWithInterest(amount - amount / 50, amount / 50);
+        // now let's simulate a loss by decreasing strategy price
+        // curr price - 10%, this will trigger a default
+        _createLoss(IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2);
+
+        uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
+        uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+        // juniors lost 100% as they need to cover seniors
+        assertEq(0, postBBPrice, 'Full loss for junior tranche');
+        // seniors are covered
+        assertApproxEqAbs(
+            preAAPrice * 92000/100000,
+            postAAPrice, 
+            2000, // 2000 wei to account for interest accrued
+            'AA price lost about 8% (2% covered by junior)'
+        );
+
+        // deposits/redeems are disabled
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositBB(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawBB(amount);
+
+        // distribute loss, as non owner
+        vm.startPrank(makeAddr('nonOwner'));
+        vm.expectRevert(bytes("6"));
+        IdleCDO(address(idleCDO)).updateAccounting();
+        vm.stopPrank();
+
+        // effectively distribute loss
+        vm.prank(idleCDO.owner());
+        IdleCDO(address(idleCDO)).updateAccounting();
+
+        assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
+        assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
+    }
+
+    function _doDepositsWithInterest(uint256 aa, uint256 bb) 
+        internal virtual
+        returns (uint256 priceAA, uint256 priceBB) {
+        vm.startPrank(owner);
+        idleCDO.setReleaseBlocksPeriod(0);
+        idleCDO.setFee(10000);
+        vm.stopPrank();
+
+        _pokeLendingProtocol();
+
+        idleCDO.depositAA(aa);
+        idleCDO.depositBB(bb);
+
+        // deposit underlyings to the strategy
+        _cdoHarvest(true);
+        // accrue some interest 
+        skip(7 days);
+        vm.roll(block.number + 7 * 7200); // 7 days in blocks
+        // claim and sell rewards
+        _cdoHarvest(false);
+        vm.roll(block.number + 1); // 7 days in blocks
+
+        _pokeLendingProtocol();
+
+        priceAA = idleCDO.virtualPrice(address(AAtranche));
+        priceBB = idleCDO.virtualPrice(address(BBtranche));
+        assertGe(priceAA, ONE_SCALE - 1, 'AA price is >= 1');
+        assertGe(priceBB, ONE_SCALE - 1, 'BB price is >= 1');
+    }
 }

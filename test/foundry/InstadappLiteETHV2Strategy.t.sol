@@ -453,4 +453,58 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
         assertGe(priceBBAfter2, priceBBAfter, "BB price 2 not increased");
         assertGe(priceAAAfter2, priceAAAfter, "AA price 2 not increased");
     }
+
+    function testCheckMaxDecreaseDefault() external override {
+        vm.prank(owner);
+        idleCDO.setUnlentPerc(0); // 10%
+
+        uint256 amount = 10000 * ONE_SCALE;
+        uint256 amountAA = amount - amount / 50;
+        uint256 amountBB = amount / 50;
+
+        idleCDO.depositAA(amountAA);
+        idleCDO.depositBB(amountBB);
+        // skip rewards and deposit underlyings to the strategy
+        _cdoHarvest(true);
+
+        // now let's simulate a loss by decreasing strategy price
+        // curr price - 10%, this will trigger a default
+        uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
+        _createLoss(lossBps);
+
+        uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
+        uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+        // juniors lost 100% as they need to cover seniors
+        assertEq(0, postBBPrice, 'Full loss for junior tranche');
+        // seniors are covered
+        assertApproxEqRel(
+            (amount * (FULL_ALLOC - lossBps) / FULL_ALLOC) * 1e18 / amountAA,
+            postAAPrice, 
+            1e15, // 0.2%
+            'AA price lost about 8% (2% covered by junior)'
+        );
+
+        // deposits/redeems are disabled
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.depositBB(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawAA(amount);
+        vm.expectRevert(bytes("4"));
+        idleCDO.withdrawBB(amount);
+
+        // distribute loss, as non owner
+        vm.startPrank(makeAddr('nonOwner'));
+        vm.expectRevert(bytes("6"));
+        IdleCDO(address(idleCDO)).updateAccounting();
+        vm.stopPrank();
+
+        // effectively distribute loss
+        vm.prank(idleCDO.owner());
+        IdleCDO(address(idleCDO)).updateAccounting();
+
+        assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
+        assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
+    }
 }

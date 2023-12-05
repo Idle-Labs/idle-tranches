@@ -486,6 +486,20 @@ abstract contract TestIdleCDOBase is Test {
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
   }
 
+  function _depositWithUser(address _user, uint256 _amount, bool _isAA) internal {
+    deal(address(underlying), _user, _amount * 2);
+
+    vm.startPrank(_user);
+    underlying.safeIncreaseAllowance(address(idleCDO), _amount);
+    if (_isAA) {
+      idleCDO.depositAA(_amount);
+    } else {
+      idleCDO.depositBB(_amount);
+    }
+    vm.stopPrank();
+    vm.roll(block.number + 1);
+  }
+
   function _deployLocalContracts() internal virtual returns (IdleCDO _cdo) {
     address _owner = address(0xdeadbad);
     address _rebalancer = address(0xbaddead);
