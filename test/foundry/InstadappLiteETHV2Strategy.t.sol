@@ -507,4 +507,30 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
         assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
         assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
     }
+
+    function testRedeemWithLossCovered() external override {
+        uint256 amount = 10000 * ONE_SCALE;
+        idleCDO.depositAA(amount);
+        idleCDO.depositBB(amount);
+
+        // funds in lending
+        _cdoHarvest(true);
+
+        // NOTE: forcely decrease the vault price
+        // curr price - 2.5%
+        _createLoss(idleCDO.maxDecreaseDefault() / 2);
+
+        // redeem all
+        uint256 resAA = idleCDO.withdrawAA(0);
+        uint256 resBB = idleCDO.withdrawBB(0);
+
+        // withdrawal fee of instadapp vault is deducted from the amount
+        assertApproxEqRel(resAA, (amount * 995) / 1000, 0.01 * 1e18, "BB price after loss"); // 1e18 == 100%
+        // juniors lost about 5% as there were seniors to cover + withdarawal fee
+        assertApproxEqRel(resBB, (((amount * 95_000) / 100_000) * 995) / 1000, 0.005 * 1e18, "BB price after loss"); // 1e18 == 100%
+
+        assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
+        assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
+        assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+    }
 }

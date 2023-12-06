@@ -50,7 +50,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     }
 
     // @dev Loss is between 0% and lossToleranceBps and is socialized
-    function testDepositWithLossSocialized(uint256 depositAmountAARatio) external {
+    function testDepositWithLossSocialized(uint256 depositAmountAARatio) external virtual {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
 
@@ -161,7 +161,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     }
 
     // @dev Loss is between lossToleranceBps and maxDecreaseDefault and is covered by junior holders
-    function testRedeemWithLossCovered() external {
+    function testRedeemWithLossCovered() external virtual {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
@@ -177,10 +177,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         uint256 resAA = idleCDO.withdrawAA(0);
         uint256 resBB = idleCDO.withdrawBB(0);
 
-        // withdrawal fee of instadapp vault is deducted from the amount
-        assertApproxEqRel(resAA, (amount * 995) / 1000, 0.01 * 1e18, "BB price after loss"); // 1e18 == 100%
-        // juniors lost about 5% as there were seniors to cover + withdarawal fee
-        assertApproxEqRel(resBB, (((amount * 95_000) / 100_000) * 995) / 1000, 0.005 * 1e18, "BB price after loss"); // 1e18 == 100%
+        assertApproxEqRel(resAA, amount, 0.0001 * 1e18, "AA price after loss"); // 1e18 == 100%
+        // juniors lost about 5% as there were seniors to cover
+        assertApproxEqRel(resBB, (amount * 95_000) / 100_000, 0.0001 * 1e18, "BB price after loss"); // 1e18 == 100%
 
         assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
         assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
@@ -197,6 +196,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         idleCDO.depositAA(amountAA);
         idleCDO.depositBB(amountBB);
+        uint256 prePrice = strategy.price();
 
         // deposit underlying to the strategy
         _cdoHarvest(true);
@@ -204,9 +204,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         // now let's simulate a loss by decreasing strategy price
         // curr price - about 0.25%
         _createLoss(idleCDO.lossToleranceBps() / 2);
-
-        // Get AA tranche price
-        uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
+        uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
+        uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
+        uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
 
         // redeem all
         uint256 resAA;
@@ -214,22 +214,33 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
             resAA = idleCDO.withdrawAA(0);
         }
 
-        // Get BB tranche price after the AA redeem
-        uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
-
         uint256 resBB;
         if (depositAmountAARatio < FULL_ALLOC) {
             resBB = idleCDO.withdrawBB(0);
         }
 
         if (depositAmountAARatio > 0) {
-            assertApproxEqRel(resAA, (amountAA * (postAAPrice) / 1e18) * (FULL_ALLOC / 10) / FULL_ALLOC, 10**13, "AA amount after loss");
+            assertApproxEqRel(
+                resAA,
+                amountAA * (1e18 - priceDelta) / 1e18, 
+                10**14, 
+                "AA amount after loss"
+            );
+            // Abs = 11 because min deposit for AA is 0.1 underlying (with depositAmountAARatio = 1)
+            // and this can cause a price diff of up to 11 wei
+            assertApproxEqAbs(priceAA, ONE_SCALE - (priceDelta / 10**(18-decimals)), 11, "AA price after loss");
         } else {
             assertApproxEqRel(resAA, amountAA, 1, "AA amount not changed");
         }
 
         if (depositAmountAARatio < FULL_ALLOC) {
-            assertApproxEqRel(resBB, (amountBB * (postBBPrice) / 1e18) * (FULL_ALLOC / 10) / FULL_ALLOC, 10**13, "BB amount after loss");
+            assertApproxEqRel(
+                resBB, 
+                (amountBB * (1e18 - priceDelta)) / 1e18, 
+                10**14, 
+                "BB amount after loss"
+            );
+            assertApproxEqAbs(priceBB, ONE_SCALE - (priceDelta / 10**(18-decimals)), 11, "BB price after loss");
         } else {
             assertApproxEqRel(resBB, amountBB, 1, "BB amount not changed");
         }
