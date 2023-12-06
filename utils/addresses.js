@@ -214,7 +214,7 @@ const optimismContracts = {
 
 exports.IdleTokens = {
   polygon: polygonContracts,
-  polygonZK: polygonZKContracts,
+  polygonzk: polygonZKContracts,
   mainnet: mainnetContracts,
   optimism: optimismContracts,
   local: mainnetContracts,
