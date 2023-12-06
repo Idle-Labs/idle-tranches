@@ -15,12 +15,7 @@ contract IdleCDOAmphorVariant is IdleCDO {
 
   function _additionalInit() internal override {
     unlentPerc = 0;
-    // TODO is it ok 0.5%?
     lossToleranceBps = 500; // 0.5%
-    // TODO in this way all losses are always automatically managed??
-    // maxDecreaseDefault = FULL_ALLOC; // 100% ???
-    // or
-    // skipDefaultCheck = true;
   }
 
   /// @notice method used to deposit `token` and mint tranche tokens
