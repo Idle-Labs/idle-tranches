@@ -84,6 +84,8 @@ const mainnetContracts = {
   stETH: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84',
   wstETH: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
   instaETHv2: '0xA0D3707c569ff8C87FA923d3823eC5D81c98Be78',
+  amprWSTETH: '0x2791EB5807D69Fe10C02eED6B4DC12baC0701744',
+  amprUSDC: '0x3b022EdECD65b63288704a6fa33A8B9185b5096b',
   mUSD: '0xe2f2a5C287993345a840Db3B0845fbC70f5935a5',
   imUSD: '0x30647a72Dc82d7Fbb1123EA74716aB8A317Eac19',
   mUSDVault: '0x78BefCa7de27d07DC6e71da295Cc2946681A6c7B',
@@ -1737,6 +1739,42 @@ exports.deployTokens = {
     limit: '600',
     isAYSActive: true,
     proxyCdoAddress: '', // deploy new instance
+  },
+
+  // Instadapp lite v2 stETH vault
+  amphorwsteth: {
+    decimals: 18,
+    underlying: mainnetContracts.wstETH,
+    strategyName: 'AmphorStrategy',
+    strategyParams: [
+      mainnetContracts.amprWSTETH,
+      mainnetContracts.wstETH,
+      'owner', // owner address
+    ],
+    // cdo: CDOs.amphorwsteth,
+    cdoVariant: 'IdleCDOAmphorVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: '', // deploy new instance
+  },
+  amphorusdc: {
+    decimals: 18,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'AmphorStrategy',
+    strategyParams: [
+      mainnetContracts.amprUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+    ],
+    // cdo: CDOs.amphorusdc,
+    cdoVariant: 'IdleCDOAmphorVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.amphorwsteth.cdoAddr
   },
 };
 
