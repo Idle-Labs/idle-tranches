@@ -7,8 +7,6 @@ import {IdleCDOTranche} from "./IdleCDOTranche.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-import "forge-std/console.sol";
-
 /// @title IdleCDO variant for amphor, which has epochs and deposit/withdraw windows
 contract IdleCDOAmphorVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
