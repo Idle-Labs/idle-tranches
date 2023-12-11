@@ -42,12 +42,9 @@ contract IdleCDOAmphorVariant is IdleCDO {
   function _mintShares(uint256 _amount, address _to, address _tranche) internal override returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     // we should remove 1 wei per 1 unit of underlying from _amount 
-    // to avoid rounding issues for tokens with less than 18 decimals
-    // given that tokens are deposited directly by the user in the strategy
+    // to avoid rounding issues given that tokens are deposited directly by the user in the strategy
     // eg if we deposit 100 USDC (100 * 1e6) we should set _amount to 100 * 1e6 - 100
-    if (IERC20Detailed(token).decimals() < 18) {
-      _amount -= _amount / oneToken;
-    }
+    _amount -= _amount / oneToken;
 
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
 

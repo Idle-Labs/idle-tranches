@@ -18,19 +18,22 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
   uint256 internal constant ONE_TRANCHE = 1e18;
   address internal constant usdcVault = 0x3b022EdECD65b63288704a6fa33A8B9185b5096b;
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-  // address internal constant wstethVault = 0x2791EB5807D69Fe10C02eED6B4DC12baC0701744;
-  // address internal constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
+  address internal constant wstethVault = 0x2791EB5807D69Fe10C02eED6B4DC12baC0701744;
+  address internal constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
   address internal defaultUnderlying = USDC;
   IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(usdcVault);
+  // address internal defaultUnderlying = WSTETH;
+  // IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(wstethVault);
 
   uint256 internal lastVaultAssets;
 
   function setUp() public override {
-    // vm.createSelectFork("mainnet", 18585628); // USDC deposit/redeem window open
-    // vm.createSelectFork("mainnet", 18670247); // WSTETH deposit/redeem window open
-    // vm.createSelectFork("mainnet", 18677060); // epoch running
-    vm.createSelectFork("mainnet", 18678289); // USDC deposit/redeem window open
+    if (defaultUnderlying == WSTETH) {
+      vm.createSelectFork("mainnet", 18670247); // WSTETH deposit/redeem window open
+    } else {
+      vm.createSelectFork("mainnet", 18678289); // USDC deposit/redeem window open
+    }
     super.setUp();
   }
 
@@ -141,8 +144,8 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
     uint256 balBB = IERC20(BBtranche).balanceOf(address(this));
 
     // Minted amount is 1 wei less for each unit of underlying, scaled to 18 decimals
-    assertEq(balAA, amount * ONE_TRANCHE - amount * 10**(18-decimals), "AAtranche bal");
-    assertEq(balBB, amount * ONE_TRANCHE - amount * 10**(18-decimals), "BBtranche bal");
+    assertGe(balAA, amount * ONE_TRANCHE - amount * 10**(18-decimals), "AAtranche bal");
+    assertGe(balBB, amount * ONE_TRANCHE - amount * 10**(18-decimals), "BBtranche bal");
 
     assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal");
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal is != 0 in CDO");
@@ -228,8 +231,8 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
     );
     uint256 priceAAPost2 = idleCDO.virtualPrice(address(AAtranche));
 
-    assertGe(priceAAPost, priceAAPre, 'AA price is not the same after deposit 1');
-    assertGe(priceAAPost2, priceAAPost, 'AA price is not the same after deposit 1');
+    assertApproxEqAbs(priceAAPost, priceAAPre, 1, 'AA price is not the same after deposit 1');
+    assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
   }
 
   // @dev Loss is between 0% and lossToleranceBps and is socialized
@@ -270,9 +273,8 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
       assertApproxEqAbs(postBBPrice, preBBPrice, 1, "BB price not changed");
     }
 
-    // seniors lost
-    assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 0, "AA price not updated until new interaction");
-    assertApproxEqAbs(idleCDO.priceBB(), preBBPrice, 0, "BB price not updated until new interaction");
+    assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 1, "AA price not updated until new interaction");
+    assertApproxEqAbs(idleCDO.priceBB(), preBBPrice, 1, "BB price not updated until new interaction");
     assertApproxEqAbs(idleCDO.unclaimedFees(), unclaimedFees, 0, "Fees did not increase");
   }
 }

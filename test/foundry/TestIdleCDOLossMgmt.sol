@@ -307,13 +307,17 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
     function testCheckMaxDecreaseDefault() external virtual {
         uint256 amount = 10000 * ONE_SCALE;
-        // fee is set to 10% and release block period to 0
 
         // AA Ratio 98%
-        (uint256 preAAPrice, ) = _doDepositsWithInterest(amount - amount / 50, amount / 50);
+        uint256 amountAA = amount - amount / 50;
+        uint256 amountBB = amount - amountAA;
+        _doDepositsWithInterest(amountAA, amountBB);
+
         // now let's simulate a loss by decreasing strategy price
         // curr price - 10%, this will trigger a default
-        _createLoss(IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2);
+        uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
+        uint256 totLoss = amount * lossBps / FULL_ALLOC; // 1000
+        _createLoss(lossBps);
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
@@ -321,8 +325,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         assertEq(0, postBBPrice, 'Full loss for junior tranche');
         // seniors are covered
         assertApproxEqAbs(
-            preAAPrice * 92000/100000,
-            postAAPrice, 
+            (amountAA + amountBB - totLoss) * ONE_SCALE / amountAA,
+            postAAPrice,
             2000, // 2000 wei to account for interest accrued
             'AA price lost about 8% (2% covered by junior)'
         );
