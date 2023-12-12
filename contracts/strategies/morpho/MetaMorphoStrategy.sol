@@ -135,13 +135,14 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     return rewardTokens;
   }
 
-  // TODO
   /// @dev return always a value which is multiplied by 1e18
   /// eg for 2% apr -> 2*1e18
+  /// @notice this lending market is returning the apr already compounded (apy)
   function getApr() external view override returns (uint256 apr) {
-    // // The supply rate per year experienced on average on the given market (in ray).
-    // uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPRVault();
-    // console.log('ratePerYear', ratePerYear);
-    // apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
+    // The supply rate per year experienced on average on the given market (in ray).
+    uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
+    // TODO verify this
+    // console.log('ratePerYear', ratePerYear)
+    apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
   }
 }
