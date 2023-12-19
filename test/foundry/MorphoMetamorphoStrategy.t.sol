@@ -25,7 +25,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   address internal constant mmUSDC = 0x4BC8E2c58C4210098D3B16b24E2a1Ec64e3bFf22;
   address internal constant mmWETH = 0x7cE27FC617e12C937dA933A65d1F40E3191a370e;
   address internal constant MORPHO_BLUE = 0x64c7044050Ba0431252df24fEd4d9635a275CB41;
-  address internal MORPHO = makeAddr('MORPHO');
+  address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
 
   address internal constant defaultReward = DAI;
   address internal constant defaultUnderlying = WETH;
@@ -47,6 +47,10 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     urdFactory = IUrdFactory(deployCode("UrdFactory.sol"));
     merkle = IMerkle(deployCode("Merkle.sol"));
     distributor = urdFactory.createUrd(distributorOwner, 0, bytes32(0), hex"", hex"");
+    if (_isGoerli()) {
+      // deploy an ERC20 to be used as MORPHO in goerli
+      deployCodeTo("ERC20.sol", abi.encode("MORPHO", "MORPHO", uint8(18)), MORPHO);
+    }
 
 
     // TODO
@@ -164,11 +168,46 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   // Not applicable in goearli
   function testMinStkIDLEBalance() external override {
     // if we are in goerli, we skip this test
-    string memory noStkIDLENetwork = "goerli";
-    if (keccak256(abi.encode(selectedNetwork)) == keccak256(abi.encode(noStkIDLENetwork))) {
+    if (_isGoerli()) {
       return;
     }
 
     super._testMinStkIDLEBalanceInternal();
+  }
+
+  function testTransferRewards() external {
+    MetaMorphoStrategy mmStrategy = MetaMorphoStrategy(address(strategy));
+    uint256 amount = 100 * ONE_SCALE;
+    
+    // set rewards to defaultReward and MORPHO
+    address[] memory _rewardTokens = new address[](2);
+    _rewardTokens[0] = defaultReward;
+    _rewardTokens[1] = MORPHO;
+    vm.prank(owner);
+    mmStrategy.setRewardTokens(_rewardTokens);
+
+    // give defaultReward to strategy and then transfer
+    deal(defaultReward, address(strategy), amount);
+    mmStrategy.transferRewards();
+
+    assertEq(IERC20Detailed(defaultReward).balanceOf(address(idleCDO)), amount, "idleCDO bal == amount");
+    assertEq(IERC20Detailed(defaultReward).balanceOf(address(strategy)), 0, "strategy bal == 0");
+
+    // Morpho is not transferred
+    deal(MORPHO, address(strategy), amount);
+    mmStrategy.transferRewards();
+    assertEq(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal cdo == 0");
+    assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), amount, "morpho bal strategy != 0");
+
+    // Morpho is now transferrable
+    vm.prank(owner);
+    mmStrategy.setMorphoTransferable(true);
+    mmStrategy.transferRewards();
+    assertEq(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), amount, "morpho bal strategy == 0");
+    assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), 0, "morpho bal cdo != 0");
+  }
+
+  function _isGoerli() internal pure returns (bool) {
+    return keccak256(abi.encode(selectedNetwork)) == keccak256(abi.encode("goerli"));
   }
 }

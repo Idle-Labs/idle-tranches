@@ -11,7 +11,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   //// @notice MORPHO governance token
-  IERC20Detailed internal constant MORPHO = IERC20Detailed(0x9994E35Db50125E0DF82e4c2dde62496CE330999);
+  address internal constant MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
 
   /// @notice reward token address (e.g. MORPHO, COMP, ...)
   address[] public rewardTokens;
@@ -81,11 +81,21 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     }
   }
 
-  /// @notice transfer MORPHO to the idleCDO
+  /// @notice transfer rewards to IdleCDO, used if someone claims on behalf of the strategy
+  /// or to transfer MORPHO once it's transferable
   /// @dev Anyone can call this function
-  function transferMorpho() public {
-    uint256 bal = MORPHO.balanceOf(address(this));
-    MORPHO.safeTransfer(address(idleCDO), bal);
+  function transferRewards() public {
+    address[] memory _rewardTokens = rewardTokens;
+    address cdo = address(idleCDO);
+    uint256 _rewardsLen = _rewardTokens.length;
+    IERC20Detailed _reward;
+    for (uint256 i = 0; i < _rewardsLen; i++) {
+      _reward = IERC20Detailed(_rewardTokens[i]);
+      uint256 bal = _reward.balanceOf(address(this));
+      if (bal > 0 && (address(_reward) != MORPHO || morphoTransferable)) {
+        _reward.safeTransfer(cdo, bal);
+      }
+    }
   }
 
   /// onlyOwner methods
@@ -119,7 +129,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     distributor.claim(address(this), reward, claimable, proof);
     claimed = IERC20Detailed(reward).balanceOf(address(this)) - balBefore;
     // MORPHO is not transferable atm
-    if (reward != address(MORPHO) || morphoTransferable) {
+    if (reward != MORPHO || morphoTransferable) {
       IERC20Detailed(reward).safeTransfer(address(idleCDO), claimed);
     }
   }
