@@ -2,12 +2,8 @@
 pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "morpho-urd/src/interfaces/IUniversalRewardsDistributor.sol";
 import "../../interfaces/IERC20Detailed.sol";
-import "../../interfaces/morpho/IMorphoSupplyVault.sol";
-import "../../interfaces/morpho/IMorphoAaveV2Lens.sol";
-import "../../interfaces/morpho/IMorphoCompoundLens.sol";
-import "../../interfaces/morpho/IRewardsDistributor.sol";
-import "../../interfaces/morpho/IURD.sol";
 import "../../interfaces/morpho/IMetamorphoSnippets.sol";
 import "../ERC4626Strategy.sol";
 
@@ -81,7 +77,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
         continue;
       }
       (reward, rewardDistributor, claimable, proof) = abi.decode(claimDatas[i], (address, address, uint256, bytes32[]));
-      rewards[i] = _claimReward(IURD(rewardDistributor), reward, claimable, proof);
+      rewards[i] = _claimReward(IUniversalRewardsDistributor(rewardDistributor), reward, claimable, proof);
     }
   }
 
@@ -114,7 +110,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @param claimable amount of reward to claim
   /// @param proof merkle proof
   function _claimReward(
-    IURD distributor,
+    IUniversalRewardsDistributor distributor,
     address reward,
     uint256 claimable,
     bytes32[] memory proof
@@ -139,10 +135,10 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// eg for 2% apr -> 2*1e18
   /// @notice this lending market is returning the apr already compounded (apy)
   function getApr() external view override returns (uint256 apr) {
-    // The supply rate per year experienced on average on the given market (in ray).
-    uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
-    // TODO verify this
-    // console.log('ratePerYear', ratePerYear)
-    apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
+    // // The supply rate per year experienced on average on the given market (in ray).
+    // uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
+    // // TODO verify this
+    // // console.log('ratePerYear', ratePerYear)
+    // apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
   }
 }

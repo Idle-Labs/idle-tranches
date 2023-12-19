@@ -2,11 +2,11 @@
 pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "morpho-urd/src/interfaces/IUniversalRewardsDistributor.sol";
 import "forge-std/Test.sol";
 
 import "../../contracts/strategies/morpho/MetaMorphoStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
-import "../../contracts/interfaces/morpho/IURD.sol";
 import "../../contracts/interfaces/morpho/IUrdFactory.sol";
 import "../../contracts/interfaces/morpho/IMerkle.sol";
 import "../../contracts/interfaces/morpho/IMetamorphoSnippets.sol";
@@ -36,7 +36,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   IMetamorphoSnippets internal mmSnippets;
   IUrdFactory internal urdFactory;
   IMerkle internal merkle;
-  IURD internal distributor;
+  IUniversalRewardsDistributor internal distributor;
 
   function setUp() public override {
     // do not use _selectFork otherwise URD setup is wrong and needs to be done before super.setUp()

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
-import "./IURD.sol";
+import "morpho-urd/src/interfaces/IUniversalRewardsDistributor.sol";
 
 interface IUrdFactory {
   function createUrd(
@@ -9,5 +9,5 @@ interface IUrdFactory {
     bytes32 initialRoot,
     bytes32 initialIpfsHash,
     bytes32 salt
-  ) external returns (IURD);
+  ) external returns (IUniversalRewardsDistributor);
 }
