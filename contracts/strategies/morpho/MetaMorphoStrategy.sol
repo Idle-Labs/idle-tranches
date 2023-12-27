@@ -145,10 +145,9 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// eg for 2% apr -> 2*1e18
   /// @notice this lending market is returning the apr already compounded (apy)
   function getApr() external view override returns (uint256 apr) {
-    // // The supply rate per year experienced on average on the given market (in ray).
-    // uint256 ratePerYear = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
-    // // TODO verify this
-    // // console.log('ratePerYear', ratePerYear)
-    // apr = ratePerYear / 1e7; // ratePerYear / 1e9 * 100
+    uint256 ratePerSecond = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
+    // ratePerSecond is the rate per second scaled by 18 decimals
+    // (eg 32943060 -> 32943060 * 24 * 3600 * 365 * 100 / 1e18 = 0.103% apy)
+    apr = ratePerSecond * 365 days * 100;
   }
 }

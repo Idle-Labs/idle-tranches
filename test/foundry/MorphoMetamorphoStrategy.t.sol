@@ -18,13 +18,14 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   // These are goerli addresses!
   string internal constant selectedNetwork = "goerli";
-  uint256 internal constant selectedBlock = 10092750;
+  uint256 internal constant selectedBlock = 10279600;
   address internal constant USDC = 0x62bD2A599664D421132d7C54AB4DbE3233f4f0Ae;
   address internal constant DAI = 0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844;
   address internal constant WETH = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
   address internal constant mmUSDC = 0x4BC8E2c58C4210098D3B16b24E2a1Ec64e3bFf22;
   address internal constant mmWETH = 0x7cE27FC617e12C937dA933A65d1F40E3191a370e;
   address internal constant MORPHO_BLUE = 0x64c7044050Ba0431252df24fEd4d9635a275CB41;
+  address internal constant MM_SNIPPETS = 0x594077C8Dab3b233761806EcE28A2cb62fd5d16e;
   address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
 
   address internal constant defaultReward = DAI;
@@ -40,8 +41,9 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   function setUp() public override {
     // do not use _selectFork otherwise URD setup is wrong and needs to be done before super.setUp()
-    vm.createSelectFork(selectedNetwork, 10092750);
+    vm.createSelectFork(selectedNetwork, selectedBlock);
 
+    mmSnippets = IMetamorphoSnippets(MM_SNIPPETS);
     // setup URD
     // deployCode is used instead of 'new' to avoid compile issues with multiple solidity versions
     urdFactory = IUrdFactory(deployCode("UrdFactory.sol"));
@@ -51,12 +53,6 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
       // deploy an ERC20 to be used as MORPHO in goerli
       deployCodeTo("ERC20.sol", abi.encode("MORPHO", "MORPHO", uint8(18)), MORPHO);
     }
-
-
-    // TODO
-    // mmSnippets = deployCode("MetamorphoSnippets.sol");
-
-
 
     super.setUp();
     
