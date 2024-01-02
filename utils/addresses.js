@@ -29,6 +29,10 @@ const mainnetContracts = {
   maDAI: '0x36f8d0d0573ae92326827c4a82fe4ce4c244cab6',
   maWETH: '0x490bbbc2485e99989ba39b34802fafa58e26aba4',
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
+  mmSnippets: '0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa',
+  MORPHO_BLUE: '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb',
+  mmWETH: '',
+  mmUSDC: '',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
@@ -741,6 +745,30 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xdf17c739b666B259DA3416d01f0310a6e429f592',
     BBTranche: '0x990b3aF34dDB502715E1070CE6778d8eB3c8Ea82'
+  },
+  mmweth: {
+    decimals: 18,
+    strategyToken: mainnetContracts.mmWETH,
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: ''
+  },
+  mmusdc: {
+    decimals: 6,
+    strategyToken: mainnetContracts.mmUSDC,
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: ''
   },
 };
 
@@ -1737,6 +1765,49 @@ exports.deployTokens = {
     limit: '600',
     isAYSActive: true,
     proxyCdoAddress: '', // deploy new instance
+  },
+  // Metamorpho
+  mmWETH: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmWETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      // TODO
+      [
+        mainnetContracts.MORPHO,
+      ]
+    ],
+    // cdo: CDOs.mmweth,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+  },
+  mmUSDC: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      // TODO
+      [
+        mainnetContracts.MORPHO,
+      ]
+    ],
+    // cdo: CDOs.mmusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
   },
 };
 

@@ -27,6 +27,17 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   address internal constant MORPHO_BLUE = 0x64c7044050Ba0431252df24fEd4d9635a275CB41;
   address internal constant MM_SNIPPETS = 0x594077C8Dab3b233761806EcE28A2cb62fd5d16e;
   address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
+  // mainnet
+  // string internal constant selectedNetwork = "mainnet";
+  // uint256 internal constant selectedBlock = ;
+  // address internal constant MM_SNIPPETS = 0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa;
+  // address internal MORPHO_BLUE = 0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb;
+  // address internal constant USDC = 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48;
+  // address internal constant DAI = 0x6b175474e89094c44da98b954eedeac495271d0f;
+  // address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+  // address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
+  // address internal constant mmUSDC = ;
+  // address internal constant mmWETH = ;
 
   address internal constant defaultReward = DAI;
   address internal constant defaultUnderlying = WETH;
