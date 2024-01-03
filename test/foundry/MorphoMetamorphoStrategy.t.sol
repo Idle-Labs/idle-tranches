@@ -17,27 +17,27 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
 
   // These are goerli addresses!
-  string internal constant selectedNetwork = "goerli";
-  uint256 internal constant selectedBlock = 10279600;
-  address internal constant USDC = 0x62bD2A599664D421132d7C54AB4DbE3233f4f0Ae;
-  address internal constant DAI = 0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844;
-  address internal constant WETH = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
-  address internal constant mmUSDC = 0x4BC8E2c58C4210098D3B16b24E2a1Ec64e3bFf22;
-  address internal constant mmWETH = 0x7cE27FC617e12C937dA933A65d1F40E3191a370e;
-  address internal constant MORPHO_BLUE = 0x64c7044050Ba0431252df24fEd4d9635a275CB41;
-  address internal constant MM_SNIPPETS = 0x594077C8Dab3b233761806EcE28A2cb62fd5d16e;
-  address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
-  // mainnet
-  // string internal constant selectedNetwork = "mainnet";
-  // uint256 internal constant selectedBlock = ;
-  // address internal constant MM_SNIPPETS = 0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa;
-  // address internal MORPHO_BLUE = 0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb;
-  // address internal constant USDC = 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48;
-  // address internal constant DAI = 0x6b175474e89094c44da98b954eedeac495271d0f;
-  // address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+  // string internal constant selectedNetwork = "goerli";
+  // uint256 internal constant selectedBlock = 10279600;
+  // address internal constant USDC = 0x62bD2A599664D421132d7C54AB4DbE3233f4f0Ae;
+  // address internal constant DAI = 0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844;
+  // address internal constant WETH = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
+  // address internal constant mmUSDC = 0x4BC8E2c58C4210098D3B16b24E2a1Ec64e3bFf22;
+  // address internal constant mmWETH = 0x7cE27FC617e12C937dA933A65d1F40E3191a370e;
+  // address internal constant MORPHO_BLUE = 0x64c7044050Ba0431252df24fEd4d9635a275CB41;
+  // address internal constant MM_SNIPPETS = 0x594077C8Dab3b233761806EcE28A2cb62fd5d16e;
   // address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
+  // mainnet
+  string internal constant selectedNetwork = "mainnet";
+  uint256 internal constant selectedBlock = 18927900;
+  address internal constant MM_SNIPPETS = 0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa;
+  address internal MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
+  address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+  address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+  address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+  address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
   // address internal constant mmUSDC = ;
-  // address internal constant mmWETH = ;
+  address internal constant mmWETH = 0x38989BBA00BDF8181F4082995b3DEAe96163aC5D;
 
   address internal constant defaultReward = DAI;
   address internal constant defaultUnderlying = WETH;
@@ -146,7 +146,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   function testCantReinitialize() external override {
     vm.expectRevert(bytes("Initializable: contract is already initialized"));
     MetaMorphoStrategy(address(strategy)).initialize(
-      mmUSDC,
+      defaultStrategyToken,
       address(underlying),
       owner,
       address(mmSnippets),

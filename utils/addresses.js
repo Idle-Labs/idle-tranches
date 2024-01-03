@@ -31,7 +31,7 @@ const mainnetContracts = {
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
   mmSnippets: '0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa',
   MORPHO_BLUE: '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb',
-  mmWETH: '',
+  mmWETHbbWETH: '0x38989BBA00BDF8181F4082995b3DEAe96163aC5D',
   mmUSDC: '',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
@@ -748,7 +748,7 @@ const CDOs = {
   },
   mmweth: {
     decimals: 18,
-    strategyToken: mainnetContracts.mmWETH,
+    strategyToken: mainnetContracts.mmWETHbbWETH,
     underlying: mainnetContracts.WETH,
     cdoAddr: '',
     proxyAdmin: mainnetContracts.proxyAdmin,
@@ -1767,12 +1767,12 @@ exports.deployTokens = {
     proxyCdoAddress: '', // deploy new instance
   },
   // Metamorpho
-  mmWETH: {
+  mmWETHbbWETH: {
     decimals: 18,
     underlying: mainnetContracts.WETH,
     strategyName: 'MetaMorphoStrategy',
     strategyParams: [
-      mainnetContracts.mmWETH,
+      mainnetContracts.mmWETHbbWETH,
       mainnetContracts.WETH,
       'owner', // owner address
       mainnetContracts.mmSnippets,
@@ -1781,7 +1781,7 @@ exports.deployTokens = {
         mainnetContracts.MORPHO,
       ]
     ],
-    // cdo: CDOs.mmweth,
+    // cdo: CDOs.mmwethbbweth,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '0',
