@@ -180,13 +180,15 @@ const polygonZKContracts = {
   proxyAdmin: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
   trancheErc4626Wrapper: '0x0ac74Fe6f3C9123254418EEfcE37E4f7271a2b72',
 
+  QUICK: '0x68286607A1d43602d880D349187c3c48c0fD05E6',
   MATIC: '0xa2036f0538221a77A3937F1379699f44945018d0',
   WETH: '0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9',
   USDT: '0x1E4a5963aBFD975d8c9021ce480b42188849D41d',
   cpPOR_USDT: '0x6beb2006a2c8b2dc90d924b8b19be084bc5a5eba',
   USDC: '0xA8CE8aee21bC2A48a5EF670afCc9274C7bbbC035',
   cpFAS_USDC: '0xfa42f010aac1acbb10018c7bf1588446e7e11bfb',
-
+  gammaUSDT_USDC: '0x145d55ae4848f9782efcac785a655e3e5dce1bcd',
+  quickUSDT_USDC: '0x9591b8a30c3a52256ea93e98da49ee43afa136a8',
   // same as trancheErc4626Wrapper blueprint
   AA_4626_cpporusdt: '0x0ac74fe6f3c9123254418eefce37e4f7271a2b72',
   AA_4626_cpfasusdc: '0xFbc63d309F915AA62517A6b4e845502CEcf946cf',
@@ -1846,6 +1848,23 @@ exports.deployTokensPolygonZK = {
     limit: '20000000',
     isAYSActive: true,
     proxyCdoAddress: '',
+  },
+  gammausdtusdc: {
+    decimals: 18,
+    underlying: polygonContracts.gammaUSDT_USDC,
+    strategyName: 'IdleGammaStrategyPolygonZK',
+    strategyParams: [
+      polygonContracts.gammaUSDT_USDC, // underlying
+      polygonContracts.quickUSDT_USDC, // quickswap pool
+      8, // pid (get via TestZKUtils test)
+      'owner' // owner address
+    ],
+    // cdo: polygonZKCDOs.gammausdtusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: polygonZKCDOs.cpporusdt.cdoAddr,
   },
 };
 

@@ -16,7 +16,7 @@ abstract contract TestIdleCDOBase is Test {
   using stdStorage for StdStorage;
   using SafeERC20Upgradeable for IERC20Detailed;
 
-  address internal constant TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814 );
+  address internal TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814 );
   address internal constant STK_IDLE = address(0xaAC13a116eA7016689993193FcE4BadC8038136f);
   address internal constant IDLE = address(0x875773784Af8135eA0ef43b5a374AaD105c5D39e);
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
