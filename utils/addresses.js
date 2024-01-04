@@ -32,7 +32,7 @@ const mainnetContracts = {
   mmSnippets: '0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa',
   MORPHO_BLUE: '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb',
   mmWETHbbWETH: '0x38989BBA00BDF8181F4082995b3DEAe96163aC5D',
-  mmUSDC: '',
+  mmUSDCsteakUSDC: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
@@ -746,7 +746,7 @@ const CDOs = {
     AATranche: '0xdf17c739b666B259DA3416d01f0310a6e429f592',
     BBTranche: '0x990b3aF34dDB502715E1070CE6778d8eB3c8Ea82'
   },
-  mmweth: {
+  mmwethbbweth: {
     decimals: 18,
     strategyToken: mainnetContracts.mmWETHbbWETH,
     underlying: mainnetContracts.WETH,
@@ -758,9 +758,9 @@ const CDOs = {
     AATranche: '',
     BBTranche: ''
   },
-  mmusdc: {
+  mmusdcsteakusdc: {
     decimals: 6,
-    strategyToken: mainnetContracts.mmUSDC,
+    strategyToken: mainnetContracts.mmUSDCsteakUSDC,
     underlying: mainnetContracts.USDC,
     cdoAddr: '',
     proxyAdmin: mainnetContracts.proxyAdmin,
@@ -1776,9 +1776,9 @@ exports.deployTokens = {
       mainnetContracts.WETH,
       'owner', // owner address
       mainnetContracts.mmSnippets,
-      // TODO
       [
         mainnetContracts.MORPHO,
+        mainnetContracts.wstETH,
       ]
     ],
     // cdo: CDOs.mmwethbbweth,
@@ -1788,21 +1788,20 @@ exports.deployTokens = {
     isAYSActive: true,
     proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
   },
-  mmUSDC: {
+  mmUSDCsteakUSDC: {
     decimals: 6,
     underlying: mainnetContracts.USDC,
     strategyName: 'MetaMorphoStrategy',
     strategyParams: [
-      mainnetContracts.mmUSDC,
+      mainnetContracts.mmUSDCsteakUSDC,
       mainnetContracts.USDC,
       'owner', // owner address
       mainnetContracts.mmSnippets,
-      // TODO
       [
         mainnetContracts.MORPHO,
       ]
     ],
-    // cdo: CDOs.mmusdc,
+    // cdo: CDOs.mmusdcsteakusdc,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '0',
