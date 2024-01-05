@@ -750,25 +750,25 @@ const CDOs = {
     decimals: 18,
     strategyToken: mainnetContracts.mmWETHbbWETH,
     underlying: mainnetContracts.WETH,
-    cdoAddr: '',
+    cdoAddr: '0x260D1E0CB6CC9E34Ea18CE39bAB879d450Cdd706',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '',
+    strategy: '0x0186e34DE71987303B4eD4a027Ed939a1178A73B',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '',
-    BBTranche: ''
+    AATranche: '0x10036C2E5C441Cdef24A30134b6dF5ebf116205e',
+    BBTranche: '0x3331B21Abb39190a0426ca54D68F9E3E953Eec8e'
   },
   mmusdcsteakusdc: {
     decimals: 6,
     strategyToken: mainnetContracts.mmUSDCsteakUSDC,
     underlying: mainnetContracts.USDC,
-    cdoAddr: '',
+    cdoAddr: '0x87E53bE99975DA318056af5c4933469a6B513768',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '',
+    strategy: '0x937C5122d6fbaddBd74a41E73B9dB6dEb66d515d',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '',
-    BBTranche: ''
+    AATranche: '0x2B0E31B8EE653D2077db86dea3ACf3F34ae9d5D2',
+    BBTranche: '0x7b713B1Cb6EaFD4061064581579ffCCf7DF21545'
   },
 };
 
@@ -1781,7 +1781,7 @@ exports.deployTokens = {
         mainnetContracts.wstETH,
       ]
     ],
-    // cdo: CDOs.mmwethbbweth,
+    cdo: CDOs.mmwethbbweth,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '0',
@@ -1801,7 +1801,7 @@ exports.deployTokens = {
         mainnetContracts.MORPHO,
       ]
     ],
-    // cdo: CDOs.mmusdcsteakusdc,
+    cdo: CDOs.mmusdcsteakusdc,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '0',
