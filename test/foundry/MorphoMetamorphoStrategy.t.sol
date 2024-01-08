@@ -78,7 +78,12 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
     // prepare extraDataSell to sell rewards on uni v3
     bytes[] memory _extraPath = new bytes[](1);
-    _extraPath[0] = abi.encodePacked(DAI, uint24(3000), WETH);
+
+    if (defaultUnderlying == WETH) {
+      _extraPath[0] = abi.encodePacked(DAI, uint24(3000), WETH);
+    } else {
+      _extraPath[0] = abi.encodePacked(DAI, uint24(100), USDC);
+    }
     extraDataSell = abi.encode(_extraPath);
 
     // uniswap addresses are the same on all networks but we need to change WETH
