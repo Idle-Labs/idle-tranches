@@ -29,14 +29,14 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   // address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
   // mainnet
   string internal constant selectedNetwork = "mainnet";
-  uint256 internal constant selectedBlock = 18927900;
-  address internal constant MM_SNIPPETS = 0x603Cb545b98AcA3691bE869871B34Ae72CCfDDCa;
+  uint256 internal constant selectedBlock = 18963285;
+  address internal constant MM_SNIPPETS = 0x7a928E2a07E093fb83db52E63DFB93c2F5FF42Ff;
   address internal MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
   address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
   address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
-  // address internal constant mmUSDC = ;
+  address internal constant mmUSDC = 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB;
   address internal constant mmWETH = 0x38989BBA00BDF8181F4082995b3DEAe96163aC5D;
 
   address internal constant defaultReward = DAI;
@@ -45,7 +45,6 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   address internal distributorOwner = makeAddr('distributorOwner');
 
-  IMetamorphoSnippets internal mmSnippets;
   IUrdFactory internal urdFactory;
   IMerkle internal merkle;
   IUniversalRewardsDistributor internal distributor;
@@ -54,16 +53,13 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     // do not use _selectFork otherwise URD setup is wrong and needs to be done before super.setUp()
     vm.createSelectFork(selectedNetwork, selectedBlock);
 
-    mmSnippets = IMetamorphoSnippets(MM_SNIPPETS);
     // setup URD
     // deployCode is used instead of 'new' to avoid compile issues with multiple solidity versions
     urdFactory = IUrdFactory(deployCode("UrdFactory.sol"));
     merkle = IMerkle(deployCode("Merkle.sol"));
     distributor = urdFactory.createUrd(distributorOwner, 0, bytes32(0), hex"", hex"");
-    if (_isGoerli()) {
-      // deploy an ERC20 to be used as MORPHO in goerli
-      deployCodeTo("ERC20.sol", abi.encode("MORPHO", "MORPHO", uint8(18)), MORPHO);
-    }
+    // deploy an ERC20 to be used as MORPHO (now transferable)
+    deployCodeTo("ERC20.sol", abi.encode("MORPHO", "MORPHO", uint8(18)), MORPHO);
 
     super.setUp();
     
@@ -128,7 +124,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
         address(strategyToken),
         _underlying,
         _owner,
-        address(mmSnippets),
+        MM_SNIPPETS,
         rewardsTokens
     );
 
@@ -149,7 +145,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
       defaultStrategyToken,
       address(underlying),
       owner,
-      address(mmSnippets),
+      MM_SNIPPETS,
       new address[](0)
     );
   }
