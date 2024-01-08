@@ -106,6 +106,12 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     rewardTokens = _rewardTokens;
   }
 
+  /// @dev used to upgrade mmSnippets contract
+  /// @param _mmSnippets new snippets contract address
+  function setMMSnippets(address _mmSnippets) external onlyOwner {
+    mmSnippets = _mmSnippets;
+  }
+
   /// @dev set morpho transferability
   /// @param _isTransferable true if MORPHO is transferable
   function setMorphoTransferable(bool _isTransferable) external onlyOwner {
