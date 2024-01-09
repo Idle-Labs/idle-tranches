@@ -1,3 +1,4 @@
+require("@nomicfoundation/hardhat-foundry");
 require('dotenv').config();
 require('chai').should();
 require('@openzeppelin/hardhat-upgrades');

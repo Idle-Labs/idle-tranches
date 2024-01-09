@@ -29,6 +29,10 @@ const mainnetContracts = {
   maDAI: '0x36f8d0d0573ae92326827c4a82fe4ce4c244cab6',
   maWETH: '0x490bbbc2485e99989ba39b34802fafa58e26aba4',
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
+  mmSnippets: '0x7a928e2a07e093fb83db52e63dfb93c2f5ff42ff',
+  MORPHO_BLUE: '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb',
+  mmWETHbbWETH: '0x38989BBA00BDF8181F4082995b3DEAe96163aC5D',
+  mmUSDCsteakUSDC: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
@@ -743,6 +747,30 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xdf17c739b666B259DA3416d01f0310a6e429f592',
     BBTranche: '0x990b3aF34dDB502715E1070CE6778d8eB3c8Ea82'
+  },
+  mmwethbbweth: {
+    decimals: 18,
+    strategyToken: mainnetContracts.mmWETHbbWETH,
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0x260D1E0CB6CC9E34Ea18CE39bAB879d450Cdd706',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x0186e34DE71987303B4eD4a027Ed939a1178A73B',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x10036C2E5C441Cdef24A30134b6dF5ebf116205e',
+    BBTranche: '0x3331B21Abb39190a0426ca54D68F9E3E953Eec8e'
+  },
+  mmusdcsteakusdc: {
+    decimals: 6,
+    strategyToken: mainnetContracts.mmUSDCsteakUSDC,
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x87E53bE99975DA318056af5c4933469a6B513768',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x937C5122d6fbaddBd74a41E73B9dB6dEb66d515d',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x2B0E31B8EE653D2077db86dea3ACf3F34ae9d5D2',
+    BBTranche: '0x7b713B1Cb6EaFD4061064581579ffCCf7DF21545'
   },
   amphorwsteth: {
     decimals: 18,
@@ -1753,7 +1781,7 @@ exports.deployTokens = {
     proxyCdoAddress: '', // deploy new instance
   },
 
-  // Instadapp lite v2 stETH vault
+  // Amphor
   amphorwsteth: {
     decimals: 18,
     underlying: mainnetContracts.wstETH,
@@ -1787,6 +1815,49 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.amphorwsteth.cdoAddr
+  },
+
+  // Metamorpho
+  mmWETHbbWETH: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmWETHbbWETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      [
+        mainnetContracts.MORPHO,
+        mainnetContracts.wstETH,
+      ]
+    ],
+    cdo: CDOs.mmwethbbweth,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+  },
+  mmUSDCsteakUSDC: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmUSDCsteakUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      [
+        mainnetContracts.MORPHO,
+      ]
+    ],
+    cdo: CDOs.mmusdcsteakusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
   },
 };
 
