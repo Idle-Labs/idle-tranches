@@ -31,16 +31,37 @@ const impersonateSigner = async (acc) => {
 }
 const getMultisigSigner = async (skipLog) => {
   const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
-  const safeServiceUrl = isOptimism ? 
+  const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+  let safeServiceUrl = isOptimism ? 
     'https://safe-transaction-optimism.safe.global/' : 
     'https://safe-transaction-mainnet.safe.global/';
-  const networkKey = isOptimism ? 'optimism' : 'mainnet';
+  if (isPolygonZK) {
+    safeServiceUrl = 'https://safe-transaction-zkevm.safe.global/'
+  }
+
+  const networkKey = isOptimism ? 'optimism' : (isPolygonZK ? 'polygonzk' : 'mainnet');
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   const service = new SafeService(safeServiceUrl);
-  const safe = await Safe.create({ 
+  // needed for polygon zkevm as we are using an old version of the sdk
+  const contractNetworks = {
+    1101: {
+      multiSendAddress: '0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761',
+      safeMasterCopyAddress: '0x3E5c63644E683549055b9Be8653de26E0B4CD36E',
+      safeProxyFactoryAddress: '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2'
+    }
+  };
+
+  const safeObj = {
     ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
-    safeAddress: addresses.IdleTokens[networkKey].treasuryMultisig
-  });
+    safeAddress: addresses.IdleTokens[networkKey].treasuryMultisig,
+    contractNetworks
+  };
+
+  if (!isPolygonZK) {
+    delete safeObj.contractNetworks;
+  }
+
+  const safe = await Safe.create(safeObj);
   const signer = new SafeEthersSigner(safe, service, ethers.provider);
   const address = await signer.getAddress();
   if (!skipLog) {

@@ -10,7 +10,6 @@ We encourage community submissions to improve the quality of this codebase.
 * Open a Pull Request (PR) with the [WIP] tag, against the `master` branch and describe the change you are intending to undertake in the PR description.
 
 After confirming the following requirements, please remove the [WIP] tag and submit the PR for review:
-* It passes our linter checks `npm run lint` (ie no errors and possibily all warnings fixed)
 * Your changes have sufficient test coverage (e.g regression tests have been added for bug fixes) both for unit and integration tests in fork
 * It has extensive in-line documentation
 * Its code style is consistent with the other similar files in the repo

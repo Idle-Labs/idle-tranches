@@ -310,6 +310,11 @@ abstract contract TestIdleCDOBase is Test {
   }
 
   function _testMinStkIDLEBalanceInternal() internal virtual {
+    uint256 tolerance = 1;
+    _internalTestMinStkIDLEBalance(tolerance);
+  }
+
+  function _internalTestMinStkIDLEBalance(uint256 tolerance) internal virtual {
     vm.prank(address(1));
     vm.expectRevert(bytes("6")); // not authorized
     idleCDO.setStkIDLEPerUnderlying(9e17);
@@ -343,9 +348,9 @@ abstract contract TestIdleCDOBase is Test {
     
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, 1, 'AA Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'AA Deposit is not successful');
     idleCDO.depositBB(_val);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, 1, 'BB Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'BB Deposit is not successful');
 
     // try to deposit too much, considering what we already deposited previously in AA
     vm.expectRevert(bytes("7"));
@@ -358,9 +363,9 @@ abstract contract TestIdleCDOBase is Test {
 
     // now deposits works again
     idleCDO.depositAA(_val);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'AA Deposit 2 is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, tolerance * 2 * 10**(18 - decimals), 'AA Deposit 2 is not successful');
     idleCDO.depositBB(_val);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, 2, 'BB Deposit is not successful');
+    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, tolerance * 2 * 10**(18 - decimals), 'BB Deposit 2 is not successful');
     
     // disable gating
     vm.startPrank(owner);
@@ -489,6 +494,20 @@ abstract contract TestIdleCDOBase is Test {
 
     // linearly release all sold rewards
     vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
+  }
+
+  function _depositWithUser(address _user, uint256 _amount, bool _isAA) internal {
+    deal(address(underlying), _user, _amount * 2);
+
+    vm.startPrank(_user);
+    underlying.safeIncreaseAllowance(address(idleCDO), _amount);
+    if (_isAA) {
+      idleCDO.depositAA(_amount);
+    } else {
+      idleCDO.depositBB(_amount);
+    }
+    vm.stopPrank();
+    vm.roll(block.number + 1);
   }
 
   function _deployLocalContracts() internal virtual returns (IdleCDO _cdo) {
