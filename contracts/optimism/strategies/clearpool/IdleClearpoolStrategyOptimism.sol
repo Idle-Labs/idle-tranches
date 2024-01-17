@@ -252,6 +252,14 @@ contract IdleClearpoolStrategyOptimism is
         idleCDO = _cdo;
     }
 
+    /// @notice used to skim OP tokens sent to this contract accidentally
+    function transferOP(address _to) external onlyOwner {
+        IERC20Detailed(OP).safeTransfer(
+            _to, 
+            IERC20Detailed(OP).balanceOf(address(this))
+        );
+    }
+
     /// @notice Modifier to make sure that caller os only the idleCDO contract
     modifier onlyIdleCDO() {
         require(idleCDO == msg.sender, "Only IdleCDO can call");
