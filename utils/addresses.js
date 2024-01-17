@@ -216,6 +216,7 @@ const optimismContracts = {
   cpPOR_USDT: '0x462c4b2e69a59ff886980f36300c168234b63464',
   cpWINC_USDC: '0x463a9fb7320834b7f8a5c4713434257c8971b9a8',
   cpWINC_USDC_V2: '0xa3aad4020f9c2e336c6bc0461948c94447a335f5',
+  cpBAS_USDT: '0xe6be721CCC9552D79bDC0d9CC3638606C3bDaDB5',
 }
 
 exports.IdleTokens = {
@@ -954,6 +955,19 @@ const optimismCDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x6AB470a650E1E0E68b8D1C0f154E78ca1a7147BF',
     BBTranche: '0xB1aD1E9309e5f10982d9bf480bC241580ccc4b02'
+  },
+  cpbasusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x98c1E0261Fe4C4c701Cc509Cce2168084944bA4B',
+    underlying: optimismContracts.cpBAS_USDT,
+    cdoAddr: '0x67D07aA415c8eC78cbF0074bE12254E55Ad43f3f',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x98c1E0261Fe4C4c701Cc509Cce2168084944bA4B',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x8324cB085Ffdce6256C2aEe4a63Bc878870Ff04d',
+    BBTranche: '0x9837cC130FB339FAB85Dc09E9de6343b3324246F'
   },
 };
 
@@ -1979,6 +1993,22 @@ exports.deployTokensOptimism = {
       'owner', // owner address
     ],
     cdo: optimismCDOs.cpwincusdcv2,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: optimismCDOs.cpporusdt.cdoAddr,
+  },
+  cpbasusdt: { // bastion trading usdt pool
+    decimals: 6,
+    underlying: optimismContracts.USDT,
+    strategyName: 'IdleClearpoolStrategyOptimism',
+    strategyParams: [
+      optimismContracts.cpBAS_USDT, // _strategyToken
+      optimismContracts.USDT, // _underlyingToken
+      'owner', // owner address
+    ],
+    cdo: optimismCDOs.cpbasusdt,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '20000000',
