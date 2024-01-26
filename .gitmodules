@@ -13,6 +13,3 @@
 [submodule "lib/universal-rewards-distributor"]
 	path = lib/universal-rewards-distributor
 	url = https://github.com/morpho-org/universal-rewards-distributor
-[submodule "lib/view-quoter-v3"]
-	path = lib/view-quoter-v3
-	url = https://github.com/Uniswap/view-quoter-v3
