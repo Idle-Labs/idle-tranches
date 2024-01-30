@@ -182,7 +182,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
 
   /// @notice return the reward tokens
   function getRewardTokens() external override view returns (address[] memory) {
-    return rewardTokens;  
+    return rewardTokens;
   }
 
   /// @dev return always a value which is multiplied by 1e18

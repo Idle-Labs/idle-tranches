@@ -82,10 +82,8 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
     if (defaultUnderlying == WETH) {
       _extraPath[0] = abi.encodePacked(WSTETH, uint24(100), WETH);
-      // _extraPath[0] = abi.encodePacked(DAI, uint24(3000), WETH);
     } else {
       _extraPath[0] = abi.encodePacked(WSTETH, uint24(100), WETH, uint24(500), USDC);
-      // _extraPath[0] = abi.encodePacked(DAI, uint24(100), USDC);
     }
     extraDataSell = abi.encode(_extraPath);
 
@@ -258,11 +256,13 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   function testGetAprWithLiquidityChange(uint8 add, uint8 sub) external {
     _setupRewardsData();
+    uint256 scaledAdd = uint256(add) * ONE_SCALE;
+    uint256 scaledSub = uint256(sub) * ONE_SCALE;
     MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
     assertEq(strat.getAprWithLiquidityChange(0, 0), strat.getApr(), "getApr and getAprWithLiquidityChange(0, 0) are not equal");
 
     uint256 baseApr = IMetamorphoSnippets(MM_SNIPPETS).supplyAPYVault(defaultStrategyToken) * 365 days * 100;
-    assertEq(strat.getAprWithLiquidityChange(add, sub), baseApr + strat.getRewardsApr(add, sub), "getAprWithLiquidityChange is not correct");
+    assertEq(strat.getAprWithLiquidityChange(scaledAdd, scaledSub), baseApr + strat.getRewardsApr(scaledAdd, scaledSub), "getAprWithLiquidityChange is not correct");
   }
 
   function _setupRewardsData() internal {
