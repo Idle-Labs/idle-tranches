@@ -248,10 +248,12 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     // withdraw all
     idleCDO.withdrawAA(0);
 
-    uint256 rewardsApr0 = strat.getRewardsApr(0, 0);
-    assertGt(rewardsApr0, rewardsApr, "apr with 0 deposits is < of apr with some underlyings");
+    uint256 rewardsAprFinal = strat.getRewardsApr(0, 0);
+    // Redeems happens in the idle market first, so rewards apr stays the same as when we had 1000 underlyings
+    // because 1000 underlyings are still in the non-idle market
+    assertEq(rewardsAprFinal, rewardsApr1000, "apr with 0 deposits is < of apr with some underlyings");
     // 1e13 -> maxDelta 0.001%
-    assertApproxEqRel(simulated1001Redeem, rewardsApr0, 1e13, "simulated apr on redeem is not equal to real apr");
+    assertApproxEqRel(simulated1001Redeem, rewardsAprFinal, 1e13, "simulated apr on redeem is not equal to real apr");
   }
 
   function testGetAprWithLiquidityChange(uint8 add, uint8 sub) external {
@@ -272,8 +274,6 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     address morphoReward = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
     bytes32 morphoMarketUSDC = 0xb323495f7e4148be5643a4ea4a8221eef163e4bccfdedc2a6f4696baacbc86cc;
     bytes32 morphoMarketWETH = 0xc54d7acf14de29e0e5527cabd7a576506870346a78a11a6762e2cca66322ec41;
-    bytes memory morphoUSDCPath = '0x0';
-    bytes memory morphoWETHPath = '0x0';
     // WSTETH reward data
     address wstethURD = 0x2EfD4625d0c149EbADf118EC5446c6de24d916A4;
     address wstethReward = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
@@ -286,10 +286,10 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   
     // set reward data in strategy
     vm.startPrank(strat.owner());
-    strat.setRewardData(sender, morphoURD, morphoReward, morphoMarketUSDC, morphoUSDCPath);
-    strat.setRewardData(sender, morphoURD, morphoReward, morphoMarketWETH, morphoWETHPath);
-    strat.setRewardData(sender, wstethURD, wstethReward, wstethMarketUSDC, wstethUSDCPath);
-    strat.setRewardData(sender, wstethURD, wstethReward, wstethMarketWETH, wstethWETHPath);
+    strat.setRewardData(0, sender, morphoURD, morphoReward, morphoMarketUSDC, '0x0');
+    strat.setRewardData(1, sender, morphoURD, morphoReward, morphoMarketWETH, '0x0');
+    strat.setRewardData(0, sender, wstethURD, wstethReward, wstethMarketUSDC, wstethUSDCPath);
+    strat.setRewardData(1, sender, wstethURD, wstethReward, wstethMarketWETH, wstethWETHPath);
     vm.stopPrank();
 
     // set unlentPerc to 0

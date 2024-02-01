@@ -12,6 +12,8 @@ import "../../interfaces/morpho/IMMVault.sol";
 import "../../interfaces/IStaticQuoter.sol";
 import "../ERC4626Strategy.sol";
 
+error InvalidPosition();
+
 contract MetaMorphoStrategy is ERC4626Strategy {
   using SafeERC20Upgradeable for IERC20Detailed;
 
@@ -43,12 +45,13 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   struct AprData {
     uint256 add;
     uint256 sub;
-    uint256 marketsLen;
+    uint256 withdrawLen;
+    uint256 supplyLen;
     uint256 totalAssets;
   }
 
   /// @notice reward token data
-  mapping(address => RewardData) public rewardsData;
+  mapping(address => RewardData[]) public rewardsData;
 
   /// Initialization
 
@@ -152,8 +155,21 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @param rewardToken reward token address
   /// @param marketId market id
   /// @param uniV3Path uni v3 path
-  function setRewardData(address sender, address urd, address rewardToken, bytes32 marketId, bytes calldata uniV3Path) external onlyOwner {
-    rewardsData[rewardToken] = RewardData(sender, urd, rewardToken, marketId, uniV3Path);
+  function setRewardData(uint256 idx, address sender, address urd, address rewardToken, bytes32 marketId, bytes calldata uniV3Path) external onlyOwner {
+    uint256 len = rewardsData[rewardToken].length;
+    if (idx > len) {
+      revert InvalidPosition();
+    }
+
+    RewardData memory _rewardData = RewardData(sender, urd, rewardToken, marketId, uniV3Path);
+
+    // add new element
+    if (idx == len) {
+      rewardsData[rewardToken].push(_rewardData);
+      return;
+    }
+    // replace existing element
+    rewardsData[rewardToken][idx] = _rewardData;
   }
 
   /// Internal methods
@@ -211,17 +227,24 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// are used off-chain to calculate the variation of the apr based on the liquidity added/removed
   function getRewardsApr(uint256 add, uint256 sub) public view returns (uint256 apr) {
     IMMVault _mmVault = IMMVault(address(strategyToken));
-    AprData memory _aprData = AprData(add, sub, _mmVault.withdrawQueueLength(), _mmVault.totalAssets());
+    AprData memory _aprData = AprData(add, sub, _mmVault.withdrawQueueLength(), _mmVault.supplyQueueLength(), _mmVault.totalAssets());
     address[] memory _rewardTokens = rewardTokens;
+    RewardData[] memory _rewardDatas;
     RewardData memory _rewardData;
 
+    // loop through all the reward tokens
     for (uint256 i = 0; i < _rewardTokens.length; i++) {
-      _rewardData = rewardsData[_rewardTokens[i]];
-      if (_rewardData.sender == address(0) || (_rewardData.rewardToken == MORPHO && !morphoTransferable)) {
-        continue;
+      // get all the rewards data for the current reward token
+      _rewardDatas = rewardsData[_rewardTokens[i]];
+      // loop through all the rewards data for the current reward token
+      for (uint256 j = 0; j < _rewardDatas.length; j++) {
+        _rewardData = _rewardDatas[j];
+        if (_rewardData.sender == address(0) || (_rewardData.rewardToken == MORPHO && !morphoTransferable)) {
+          continue;
+        }
+        // for each market find the correct market associated the current rewardToken and calculate the apr 
+        apr += _getRewardApr(_mmVault, _aprData, _rewardData.marketId, _quoteRewards(_rewardData));
       }
-      // for each market find the correct market associated the current rewardToken and calculate the apr 
-      apr += _getRewardApr(_mmVault, _aprData, _rewardData.marketId, _quoteRewards(_rewardData));
     }
   }
 
@@ -243,11 +266,10 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     bytes32 _marketId;
     uint256 _vaultShare;
     uint256 _assetsSuppliedByVault;
-    uint256 _currPercOfAssetsForMarket;
-    uint256 _newTotalSupplyAssets;
+    uint256 _totalSupplyAssets;
 
     // find the correct market associated with the current rewardToken and calculate the apr 
-    for (uint256 m = 0; m < _aprData.marketsLen; m++) {
+    for (uint256 m = 0; m < _aprData.withdrawLen; m++) {
       _marketId = _mmVault.withdrawQueue(m);
       if (_marketId != _targetMarketId) {
         continue;
@@ -256,21 +278,24 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       _market = MORPHO_BLUE.market(_marketId);
       // get vault position data in the target market
       _pos = MORPHO_BLUE.position(_marketId, address(_mmVault));
+      // calc how much of `add` will be added to this market
+      if (_aprData.add > 0) {
+        _aprData.add = _calcMarketAdd(_mmVault, _marketId, _aprData.supplyLen, _aprData.add);
+      }
+      // calc how much of `sub` will be added to this market
+      if (_aprData.sub > 0) {
+        _aprData.sub = _calcMarketSub(_mmVault, _marketId, _aprData.withdrawLen, _aprData.sub);
+      }
       // get underlyings supplied by the vault in the target market
       // totalSupplyShares : totalSupplyAssets = supplyShares : assetsSuppliedByVault
       // => assetsSuppliedByVault = supplyShares * totalSupplyAssets / totalSupplyShares
-      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
-      // get % (in EXP_SCALE) of vault assets that will go in this specific market once deposited (not all assets will go in the same market)
-      _currPercOfAssetsForMarket = _assetsSuppliedByVault * EXP_SCALE / _aprData.totalAssets;
-      // and scale add and sub values to maintain the proportion, calculates with vault totalAssets and assets supplied by vault
-      _aprData.add = _aprData.add * _currPercOfAssetsForMarket / EXP_SCALE;
-      _aprData.sub = _aprData.sub * _currPercOfAssetsForMarket / EXP_SCALE;
+      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _aprData.sub;
       // calculate new totalSupplyAssets with liquidity added/removed
-      _newTotalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _aprData.sub;
+      _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _aprData.sub;
       // calculate vaultShare (% in EXP_SCALE) of the total market and simulate change of liquidity by using add and sub
-      _vaultShare = (_assetsSuppliedByVault + _aprData.add - _aprData.sub) * EXP_SCALE / _newTotalSupplyAssets;
+      _vaultShare = _assetsSuppliedByVault * EXP_SCALE / _totalSupplyAssets;
       // calculate vault rewards apr
-      apr = _rewardsInUnderlyings * _currPercOfAssetsForMarket * _vaultShare * 100 / (_newTotalSupplyAssets * EXP_SCALE);
+      apr = _rewardsInUnderlyings * _vaultShare * 100 / _totalSupplyAssets;
     }
   }
 
@@ -286,5 +311,86 @@ contract MetaMorphoStrategy is ERC4626Strategy {
         _rewardData.rewardToken, 
         _rewardData.marketId
       ).supplyRewardTokensPerYear / _oneReward;
+  }
+
+  /// @notice calculate how much of vault `_add` amount will be added to this market
+  /// @param _mmVault metamorpho vault
+  /// @param _targetMarketId target market id
+  /// @param _supplyQueueLen supply queue length
+  /// @param _add amount of liquidity to add
+  function _calcMarketAdd(
+    IMMVault _mmVault,
+    bytes32 _targetMarketId,
+    uint256 _supplyQueueLen,
+    uint256 _add
+  ) internal view returns (uint256) {
+    IMorpho.Market memory _market;
+    // loop throuh supplyQueue, starting from the first market, and see how much will
+    // be deposited in target market
+    for (uint256 i = 0; i < _supplyQueueLen; i++) {
+      bytes32 _currMarketId = _mmVault.supplyQueue(i);
+      _market = MORPHO_BLUE.market(_currMarketId);
+      // get max depositable amount for this market
+      (uint184 _marketCap,,) = _mmVault.config(_targetMarketId);
+      uint256 _maxDeposit = uint256(_marketCap) - _market.totalSupplyAssets;
+      // If this is the target market, return the current _add value, eventually
+      // reduced to the max depositable amount
+      if (_currMarketId == _targetMarketId) {
+        if (_add > _maxDeposit) {
+          _add = _maxDeposit;
+        }
+        break;
+      }
+      // If this is not the target market, check if we can deposit all the _add amount
+      // in this market, otherwise continue the loop and subtract the max depositable
+      if (_add > _maxDeposit) {
+        _add -= _maxDeposit;
+      } else {
+        _add = 0;
+        break;
+      }
+    }
+
+    return _add;
+  }
+
+  /// @notice calculate how much of vault `_sub` amount will be removed from target market
+  /// @param _mmVault metamorpho vault
+  /// @param _targetMarketId target market id
+  /// @param _withdrawQueueLen withdraw queue length
+  /// @param _sub liquidity to remove
+  function _calcMarketSub(
+    IMMVault _mmVault, 
+    bytes32 _targetMarketId,
+    uint256 _withdrawQueueLen,
+    uint256 _sub
+  ) internal view returns (uint256) {
+    IMorpho.Market memory _market;
+    // loop throuh withdrawQueue, and see how much will be redeemed in target market
+    for (uint256 i = 0; i < _withdrawQueueLen; i++) {
+      bytes32 _currMarketId = _mmVault.withdrawQueue(i);
+      _market = MORPHO_BLUE.market(_currMarketId);
+      // get available liquidity for this market
+      uint256 _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+
+      // If this is the target market, return the current _sub value, eventually
+      // reduced to the max withdrawable amount
+      if (_currMarketId == _targetMarketId) {
+        if (_sub > _availableLiquidity) {
+          _sub = _availableLiquidity;
+        }
+        break;
+      }
+      // If this is not the target market, check if we can withdraw all the _sub amount
+      // in this market, otherwise continue the loop and subtract the available liquidity
+      if (_sub > _availableLiquidity) {
+        _sub -= _availableLiquidity;
+      } else {
+        _sub = 0;
+        break;
+      }
+    }
+
+    return _sub;
   }
 }
