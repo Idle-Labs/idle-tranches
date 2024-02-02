@@ -9,6 +9,8 @@ import "../../contracts/strategies/morpho/MetaMorphoStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/interfaces/morpho/IUrdFactory.sol";
 import "../../contracts/interfaces/morpho/IMerkle.sol";
+import "../../contracts/interfaces/morpho/IMorpho.sol";
+import "../../contracts/interfaces/morpho/IMMVault.sol";
 import "../../contracts/interfaces/morpho/IMetamorphoSnippets.sol";
 import "../../contracts/interfaces/IWETH.sol";
 import "./TestIdleCDOBase.sol";
@@ -218,42 +220,68 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), 0, "morpho bal cdo != 0");
   }
 
-  function testRewardsApr() external virtual {
+  function testRewardsApr(uint256 firstDeposit, uint256 secondDeposit) external virtual {
+    firstDeposit = bound(firstDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
+    secondDeposit = bound(secondDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
+  
     _setupRewardsData();
     MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
+    uint256 initialRewardsApr = strat.getRewardsApr(0, 0);
 
-    // deposit 1 and harvest to get strategy tokens
-    idleCDO.depositAA(1 * ONE_SCALE);
+    // first deposit and harvest to get strategy tokens
+    idleCDO.depositAA(firstDeposit);
     _cdoHarvest(true);
-
     uint256 rewardsApr = strat.getRewardsApr(0, 0);
     assertGt(rewardsApr / 1e17, 0, "apr is == 0 and/or not with 18 decimals");
 
-    // Simulate a deposit of 1000
-    uint256 simulated1000 = strat.getRewardsApr(1000 * ONE_SCALE, 0);
-
-    // Deposit 1000 and harvest
-    idleCDO.depositAA(1000 * ONE_SCALE);
+    // Simulate a second deposit
+    uint256 simulated2 = strat.getRewardsApr(secondDeposit, 0);
+    // second deposit and harvest
+    idleCDO.depositAA(secondDeposit);
     _cdoHarvest(true);
-
-    uint256 rewardsApr1000 = strat.getRewardsApr(0, 0);
-    assertGt(rewardsApr1000 / 1e17, 0, "apr with 1000 underlyings is == 0");
-    assertGt(rewardsApr, rewardsApr1000, "apr is not decreasing when amount is increasing");
+    uint256 rewardsApr2 = strat.getRewardsApr(0, 0);
+    assertGt(rewardsApr2 / 1e17, 0, "apr with 1000 underlyings is == 0");
+    assertGt(rewardsApr, rewardsApr2, "apr is not decreasing when amount is increasing");
     // 1e13 -> maxDelta 0.001%
-    assertApproxEqRel(simulated1000, rewardsApr1000, 1e13, "simulated apr is not equal to real apr");
+    assertApproxEqRel(simulated2, rewardsApr2, 1e13, "simulated apr is not equal to real apr");
 
-    // Simulate a redeem of 1001 (ie all deposited)
-    uint256 simulated1001Redeem = strat.getRewardsApr(0, 1001 * ONE_SCALE);
-
+    // Get unlent liquidity pre withdraw
+    uint256 unlentLiquidity = _getUnlentLiquidity();
+    // Simulate a redeem of all
+    uint256 simulatedRedeem = strat.getRewardsApr(0, firstDeposit + secondDeposit);
     // withdraw all
     idleCDO.withdrawAA(0);
-
     uint256 rewardsAprFinal = strat.getRewardsApr(0, 0);
-    // Redeems happens in the idle market first, so rewards apr stays the same as when we had 1000 underlyings
-    // because 1000 underlyings are still in the non-idle market
-    assertEq(rewardsAprFinal, rewardsApr1000, "apr with 0 deposits is < of apr with some underlyings");
     // 1e13 -> maxDelta 0.001%
-    assertApproxEqRel(simulated1001Redeem, rewardsAprFinal, 1e13, "simulated apr on redeem is not equal to real apr");
+    assertApproxEqRel(simulatedRedeem, rewardsAprFinal, 1e13, "simulated apr on redeem is not equal to real apr");
+
+    // Check if redeem happened all from the unlent market
+    if (firstDeposit + secondDeposit <= unlentLiquidity) {
+      // Redeems from the idle market => apr is the same as when we had the deposits
+      assertApproxEqAbs(rewardsAprFinal, rewardsApr2, 100, "apr with 0 deposits is < of apr with some underlyings");
+    } else {
+      // Redeems also from non-idle market => apr is increasing
+      assertGe(rewardsAprFinal, rewardsApr2, "apr is not increasing when amount is decreasing");
+      // but still less than the initial apr
+      assertLt(rewardsAprFinal, initialRewardsApr, "apr final is less than the initial apr");
+    }
+  }
+
+  function _getUnlentLiquidity() internal view returns (uint256 unlentLiquidity) {
+    // find available liquidity of the unlent market
+    IMMVault vault = IMMVault(defaultStrategyToken);
+    IMorpho blue = IMorpho(MORPHO_BLUE);
+    IMorpho.Market memory unlentMarket;
+    bytes32 unlentMarketId;
+    for (uint256 i = 0; i < vault.withdrawQueueLength(); i++) {
+      unlentMarketId = vault.withdrawQueue(i);
+      IMorpho.MarketParams memory marketParams = blue.idToMarketParams(unlentMarketId);
+      if (marketParams.collateralToken == address(0)) {
+        unlentMarket = blue.market(unlentMarketId);
+        unlentLiquidity = unlentMarket.totalSupplyAssets - unlentMarket.totalBorrowAssets;
+        break; 
+      }
+    }
   }
 
   function testGetAprWithLiquidityChange(uint8 add, uint8 sub) external {
