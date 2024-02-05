@@ -282,7 +282,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       if (_aprData.add > 0) {
         _aprData.add = _calcMarketAdd(_mmVault, _marketId, _aprData.supplyLen, _aprData.add);
       }
-      // calc how much of `sub` will be added to this market
+      // calc how much of `sub` will be removed from this market
       if (_aprData.sub > 0) {
         _aprData.sub = _calcMarketSub(_mmVault, _marketId, _aprData.withdrawLen, _aprData.sub);
       }
@@ -324,15 +324,25 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     uint256 _supplyQueueLen,
     uint256 _add
   ) internal view returns (uint256) {
+    uint256 _assetsSuppliedByVault;
+    uint184 _marketCap;
+    bytes32 _currMarketId;
     IMorpho.Market memory _market;
+    IMorpho.Position memory _pos;
+
     // loop throuh supplyQueue, starting from the first market, and see how much will
     // be deposited in target market
     for (uint256 i = 0; i < _supplyQueueLen; i++) {
-      bytes32 _currMarketId = _mmVault.supplyQueue(i);
+      _currMarketId = _mmVault.supplyQueue(i);
       _market = MORPHO_BLUE.market(_currMarketId);
+      _pos = MORPHO_BLUE.position(_currMarketId, address(_mmVault));
+      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
       // get max depositable amount for this market
-      (uint184 _marketCap,,) = _mmVault.config(_targetMarketId);
-      uint256 _maxDeposit = uint256(_marketCap) - _market.totalSupplyAssets;
+      (_marketCap,,) = _mmVault.config(_currMarketId);
+      uint256 _maxDeposit;
+      if (_assetsSuppliedByVault < uint256(_marketCap)) {
+        _maxDeposit = uint256(_marketCap) - _assetsSuppliedByVault;
+      }
       // If this is the target market, return the current _add value, eventually
       // reduced to the max depositable amount
       if (_currMarketId == _targetMarketId) {
@@ -366,12 +376,16 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     uint256 _sub
   ) internal view returns (uint256) {
     IMorpho.Market memory _market;
+    bytes32 _currMarketId;
     // loop throuh withdrawQueue, and see how much will be redeemed in target market
     for (uint256 i = 0; i < _withdrawQueueLen; i++) {
-      bytes32 _currMarketId = _mmVault.withdrawQueue(i);
+      _currMarketId = _mmVault.withdrawQueue(i);
       _market = MORPHO_BLUE.market(_currMarketId);
       // get available liquidity for this market
-      uint256 _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+      uint256 _availableLiquidity;
+      if (_market.totalBorrowAssets < _market.totalSupplyAssets) {
+        _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+      }
 
       // If this is the target market, return the current _sub value, eventually
       // reduced to the max withdrawable amount
