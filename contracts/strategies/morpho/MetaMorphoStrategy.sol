@@ -285,7 +285,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       // calc how much of `sub` will be removed from this market
       uint256 _toSub;
       if (_aprData.sub > 0) {
-        (_toSub, _aprData.sub) -= _calcMarketSub(_mmVault, _marketId, _aprData.sub);
+        (_toSub, _aprData.sub) = _calcMarketSub(_mmVault, _marketId, _aprData.sub);
       }
       // get underlyings supplied by the vault in the target market
       // totalSupplyShares : totalSupplyAssets = supplyShares : assetsSuppliedByVault
@@ -383,7 +383,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     uint256 _withdrawable = _vaultAssets > _availableLiquidity ? _vaultAssets : _availableLiquidity;
 
     if (_sub > _withdrawable) {
-      (toSub, remaining) = (_withdrawable, _sub - remaining);
+      (toSub, remaining) = (_withdrawable, _sub - _withdrawable);
     } else {
       (toSub, remaining) = (_sub, 0);
     }
