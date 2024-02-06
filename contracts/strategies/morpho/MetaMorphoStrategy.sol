@@ -239,7 +239,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       // loop through all the rewards data for the current reward token
       for (uint256 j = 0; j < _rewardDatas.length; j++) {
         _rewardData = _rewardDatas[j];
-        if (_rewardData.sender == address(0) || (_rewardData.rewardToken == MORPHO && !morphoTransferable)) {
+        if (_rewardData.sender == address(0) || (_rewardData.rewardToken == MORPHO && _rewardData.uniV3Path.length == 0)) {
           continue;
         }
         // for each market find the correct market associated the current rewardToken and calculate the apr 
