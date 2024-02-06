@@ -283,15 +283,16 @@ contract MetaMorphoStrategy is ERC4626Strategy {
         _aprData.add = _calcMarketAdd(_mmVault, _marketId, _aprData.supplyLen, _aprData.add);
       }
       // calc how much of `sub` will be removed from this market
+      uint256 _toSub;
       if (_aprData.sub > 0) {
-        _aprData.sub = _calcMarketSub(_mmVault, _marketId, _aprData.withdrawLen, _aprData.sub);
+        (_toSub, _aprData.sub) = _calcMarketSub(_mmVault, _marketId, _aprData.sub);
       }
       // get underlyings supplied by the vault in the target market
       // totalSupplyShares : totalSupplyAssets = supplyShares : assetsSuppliedByVault
       // => assetsSuppliedByVault = supplyShares * totalSupplyAssets / totalSupplyShares
-      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _aprData.sub;
+      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _toSub;
       // calculate new totalSupplyAssets with liquidity added/removed
-      _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _aprData.sub;
+      _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _toSub;
       // calculate vaultShare (% in EXP_SCALE) of the total market and simulate change of liquidity by using add and sub
       _vaultShare = _assetsSuppliedByVault * EXP_SCALE / _totalSupplyAssets;
       // calculate vault rewards apr
@@ -367,40 +368,24 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @notice calculate how much of vault `_sub` amount will be removed from target market
   /// @param _mmVault metamorpho vault
   /// @param _targetMarketId target market id
-  /// @param _withdrawQueueLen withdraw queue length
   /// @param _sub liquidity to remove
   function _calcMarketSub(
     IMMVault _mmVault, 
     bytes32 _targetMarketId,
-    uint256 _withdrawQueueLen,
     uint256 _sub
-  ) internal view returns (uint256) {
-    IMorpho.Market memory _market;
-    bytes32 _currMarketId;
-    // loop throuh withdrawQueue, and see how much will be redeemed in target market
-    for (uint256 i = 0; i < _withdrawQueueLen; i++) {
-      _currMarketId = _mmVault.withdrawQueue(i);
-      _market = MORPHO_BLUE.market(_currMarketId);
-      // get available liquidity for this market
-      uint256 _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
-      // If this is the target market, return the current _sub value, eventually
-      // reduced to the max withdrawable amount
-      if (_currMarketId == _targetMarketId) {
-        if (_sub > _availableLiquidity) {
-          _sub = _availableLiquidity;
-        }
-        break;
-      }
-      // If this is not the target market, check if we can withdraw all the _sub amount
-      // in this market, otherwise continue the loop and subtract the available liquidity
-      if (_sub > _availableLiquidity) {
-        _sub -= _availableLiquidity;
-      } else {
-        _sub = 0;
-        break;
-      }
-    }
+  ) internal view returns (uint256 toSub, uint256 remaining) {
+    IMorpho.Market memory _market = MORPHO_BLUE.market(_targetMarketId);
+    IMorpho.Position memory _position = MORPHO_BLUE.position(_targetMarketId, address(_mmVault));
 
-    return _sub;
+    uint256 _vaultAssets = _position.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+    uint256 _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+
+    uint256 _withdrawable = _vaultAssets > _availableLiquidity ? _vaultAssets : _availableLiquidity;
+
+    if (_sub > _withdrawable) {
+      (toSub, remaining) = (_withdrawable, _sub - _withdrawable);
+    } else {
+      (toSub, remaining) = (_sub, 0);
+    }
   }
 }
