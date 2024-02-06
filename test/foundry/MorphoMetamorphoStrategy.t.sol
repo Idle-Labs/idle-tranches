@@ -314,8 +314,8 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   
     // set reward data in strategy
     vm.startPrank(strat.owner());
-    strat.setRewardData(0, sender, morphoURD, morphoReward, morphoMarketUSDC, '0x0');
-    strat.setRewardData(1, sender, morphoURD, morphoReward, morphoMarketWETH, '0x0');
+    strat.setRewardData(0, sender, morphoURD, morphoReward, morphoMarketUSDC, '');
+    strat.setRewardData(1, sender, morphoURD, morphoReward, morphoMarketWETH, '');
     strat.setRewardData(0, sender, wstethURD, wstethReward, wstethMarketUSDC, wstethUSDCPath);
     strat.setRewardData(1, sender, wstethURD, wstethReward, wstethMarketWETH, wstethWETHPath);
     vm.stopPrank();
