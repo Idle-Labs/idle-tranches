@@ -283,15 +283,16 @@ contract MetaMorphoStrategy is ERC4626Strategy {
         _aprData.add = _calcMarketAdd(_mmVault, _marketId, _aprData.supplyLen, _aprData.add);
       }
       // calc how much of `sub` will be removed from this market
+      uint256 _toSub;
       if (_aprData.sub > 0) {
-        _aprData.sub -= _calcMarketSub(_mmVault, _marketId, _aprData.sub);
+        (_toSub, _aprData.sub) -= _calcMarketSub(_mmVault, _marketId, _aprData.sub);
       }
       // get underlyings supplied by the vault in the target market
       // totalSupplyShares : totalSupplyAssets = supplyShares : assetsSuppliedByVault
       // => assetsSuppliedByVault = supplyShares * totalSupplyAssets / totalSupplyShares
-      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _aprData.sub;
+      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _toSub;
       // calculate new totalSupplyAssets with liquidity added/removed
-      _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _aprData.sub;
+      _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _toSub;
       // calculate vaultShare (% in EXP_SCALE) of the total market and simulate change of liquidity by using add and sub
       _vaultShare = _assetsSuppliedByVault * EXP_SCALE / _totalSupplyAssets;
       // calculate vault rewards apr
@@ -372,7 +373,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     IMMVault _mmVault, 
     bytes32 _targetMarketId,
     uint256 _sub
-  ) internal view returns (uint256) {
+  ) internal view returns (uint256 toSub, uint256 remaining) {
     IMorpho.Market memory _market = MORPHO_BLUE.market(_targetMarketId);
     IMorpho.Position memory _position = MORPHO_BLUE.position(_targetMarketId, address(_mmVault));
 
@@ -382,9 +383,9 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     uint256 _withdrawable = _vaultAssets > _availableLiquidity ? _vaultAssets : _availableLiquidity;
 
     if (_sub > _withdrawable) {
-      return _withdrawable;
+      (toSub, remaining) = (_withdrawable, _sub - remaining);
     } else {
-      return _sub;
+      (toSub, remaining) = (_sub, 0);
     }
   }
 }
