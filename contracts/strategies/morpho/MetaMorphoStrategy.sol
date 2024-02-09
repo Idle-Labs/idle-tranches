@@ -376,25 +376,34 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     uint256 _sub
   ) internal view returns (uint256) {
     IMorpho.Market memory _market;
+    IMorpho.Position memory _position;
     bytes32 _currMarketId;
+    uint256 _availableLiquidity;
+    uint256 _vaultAssets;
+    uint256 _withdrawable;
     // loop throuh withdrawQueue, and see how much will be redeemed in target market
     for (uint256 i = 0; i < _withdrawQueueLen; i++) {
       _currMarketId = _mmVault.withdrawQueue(i);
       _market = MORPHO_BLUE.market(_currMarketId);
+      _position = MORPHO_BLUE.position(_currMarketId, address(_mmVault));
       // get available liquidity for this market
-      uint256 _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+      _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
+      // get assets deposited by the vault in the maket
+      _vaultAssets = _position.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+      // get max withdrawable amount for this market (min between available liquidity and vault assets)
+      _withdrawable = _vaultAssets > _availableLiquidity ? _availableLiquidity : _vaultAssets;
       // If this is the target market, return the current _sub value, eventually
       // reduced to the max withdrawable amount
       if (_currMarketId == _targetMarketId) {
-        if (_sub > _availableLiquidity) {
-          _sub = _availableLiquidity;
+        if (_sub > _withdrawable) {
+          _sub = _withdrawable;
         }
         break;
       }
       // If this is not the target market, check if we can withdraw all the _sub amount
       // in this market, otherwise continue the loop and subtract the available liquidity
-      if (_sub > _availableLiquidity) {
-        _sub -= _availableLiquidity;
+      if (_sub > _withdrawable) {
+        _sub -= _withdrawable;
       } else {
         _sub = 0;
         break;
