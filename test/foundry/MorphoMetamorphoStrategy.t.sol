@@ -31,8 +31,8 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   // address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
   // mainnet
   string internal constant selectedNetwork = "mainnet";
-  uint256 internal constant selectedBlock = 19118725;
-  address internal constant MM_SNIPPETS = 0x7a928E2a07E093fb83db52E63DFB93c2F5FF42Ff;
+  uint256 internal constant selectedBlock = 19225935;
+  address internal constant MM_SNIPPETS = 0xDfd98F2FaB869B18aD4322B2c7B1227c576402c6;
   address internal MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -291,7 +291,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
     assertEq(strat.getAprWithLiquidityChange(0, 0), strat.getApr(), "getApr and getAprWithLiquidityChange(0, 0) are not equal");
 
-    uint256 baseApr = IMetamorphoSnippets(MM_SNIPPETS).supplyAPYVault(defaultStrategyToken) * 365 days * 100;
+    uint256 baseApr = IMetamorphoSnippets(MM_SNIPPETS).supplyAPRVault(defaultStrategyToken, scaledAdd, scaledSub) * 365 days * 100;
     assertEq(strat.getAprWithLiquidityChange(scaledAdd, scaledSub), baseApr + strat.getRewardsApr(scaledAdd, scaledSub), "getAprWithLiquidityChange is not correct");
   }
 

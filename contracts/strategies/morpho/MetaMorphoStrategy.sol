@@ -211,10 +211,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// eg for 2% apr -> 2*1e18. Add and sub params are used off-chain
   /// to calculate the variation of the apr based on the liquidity added/removed
   function getAprWithLiquidityChange(uint256 add, uint256 sub) public view returns (uint256 apr) {
-    // TODO update mm snippet to include add and sub
-    // uint256 ratePerSecond = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken, add, sub);
-
-    uint256 ratePerSecond = IMetamorphoSnippets(mmSnippets).supplyAPYVault(strategyToken);
+    uint256 ratePerSecond = IMetamorphoSnippets(mmSnippets).supplyAPRVault(strategyToken, add, sub);
     // ratePerSecond is the rate per second scaled by 18 decimals
     // (eg 32943060 -> 32943060 * 24 * 3600 * 365 * 100 / 1e18 = 0.103% apr)
     apr = ratePerSecond * 365 days * 100 + getRewardsApr(add, sub);
@@ -225,6 +222,8 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @param sub liquidity to remove
   /// @dev return a value multiplied by 1e18 eg for 2% apr -> 2*1e18. Add and sub params
   /// are used off-chain to calculate the variation of the apr based on the liquidity added/removed
+  /// WARN: ensure that mmVault.maxWithdraw(idleCDO) + add < sub if sub > 0 before calling this method
+  /// this is not done in this method to avoid gas costs and another loop made in maxWithdraw call
   function getRewardsApr(uint256 add, uint256 sub) public view returns (uint256 apr) {
     IMMVault _mmVault = IMMVault(address(strategyToken));
     AprData memory _aprData = AprData(add, sub, _mmVault.withdrawQueueLength(), _mmVault.supplyQueueLength(), _mmVault.totalAssets());
@@ -280,16 +279,28 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       _pos = MORPHO_BLUE.position(_marketId, address(_mmVault));
       // calc how much of `add` will be added to this market
       if (_aprData.add > 0) {
+        // we overwrite _aprData.add with the liquidity added as this path is touched only once for target market
         _aprData.add = _calcMarketAdd(_mmVault, _marketId, _aprData.supplyLen, _aprData.add);
       }
       // calc how much of `sub` will be removed from this market
       if (_aprData.sub > 0) {
+        // we overwrite _aprData.sub with the liquidity removed as this path is touched only once for target market
         _aprData.sub = _calcMarketSub(_mmVault, _marketId, _aprData.withdrawLen, _aprData.sub);
       }
       // get underlyings supplied by the vault in the target market
       // totalSupplyShares : totalSupplyAssets = supplyShares : assetsSuppliedByVault
       // => assetsSuppliedByVault = supplyShares * totalSupplyAssets / totalSupplyShares
-      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares + _aprData.add - _aprData.sub;
+      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+      // if the vault is removing more liquidity than it has or the market has, apr is 0
+      if (_aprData.sub > 0 && (
+        (_market.totalSupplyAssets + _aprData.add) <= _aprData.sub || 
+        (_assetsSuppliedByVault + _aprData.add) <= _aprData.sub)
+      ) {
+        apr = 0;
+        continue;
+      }
+      // simulate change of liquidity by using add and sub
+      _assetsSuppliedByVault = _assetsSuppliedByVault + _aprData.add - _aprData.sub;
       // calculate new totalSupplyAssets with liquidity added/removed
       _totalSupplyAssets = _market.totalSupplyAssets + _aprData.add - _aprData.sub;
       // calculate vaultShare (% in EXP_SCALE) of the total market and simulate change of liquidity by using add and sub
