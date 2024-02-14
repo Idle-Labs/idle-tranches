@@ -9,6 +9,8 @@ import "../../contracts/strategies/morpho/MetaMorphoStrategy.sol";
 import "../../contracts/interfaces/IERC20Detailed.sol";
 import "../../contracts/interfaces/morpho/IUrdFactory.sol";
 import "../../contracts/interfaces/morpho/IMerkle.sol";
+import "../../contracts/interfaces/morpho/IMorpho.sol";
+import "../../contracts/interfaces/morpho/IMMVault.sol";
 import "../../contracts/interfaces/morpho/IMetamorphoSnippets.sol";
 import "../../contracts/interfaces/IWETH.sol";
 import "./TestIdleCDOBase.sol";
@@ -29,17 +31,18 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
   // address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
   // mainnet
   string internal constant selectedNetwork = "mainnet";
-  uint256 internal constant selectedBlock = 18963285;
-  address internal constant MM_SNIPPETS = 0x7a928E2a07E093fb83db52E63DFB93c2F5FF42Ff;
+  uint256 internal constant selectedBlock = 19225935;
+  address internal constant MM_SNIPPETS = 0xDfd98F2FaB869B18aD4322B2c7B1227c576402c6;
   address internal MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
   address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+  address internal constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
   address internal MORPHO = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
   address internal constant mmUSDC = 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB;
   address internal constant mmWETH = 0x38989BBA00BDF8181F4082995b3DEAe96163aC5D;
 
-  address internal constant defaultReward = DAI;
+  address internal constant defaultReward = WSTETH;
   address internal constant defaultUnderlying = WETH;
   address internal constant defaultStrategyToken = mmWETH;
 
@@ -72,17 +75,17 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     bytes32[] memory proof = merkle.getProof(tree, 0);
 
     // prepare extraData to claim
-    bytes[] memory claimDatas = new bytes[](1);
+    bytes[] memory claimDatas = new bytes[](2);
     claimDatas[0] = abi.encode(reward, distributor, claimable, proof);
     extraData = abi.encode(claimDatas, 'bytes[]');
 
     // prepare extraDataSell to sell rewards on uni v3
-    bytes[] memory _extraPath = new bytes[](1);
+    bytes[] memory _extraPath = new bytes[](2);
 
     if (defaultUnderlying == WETH) {
-      _extraPath[0] = abi.encodePacked(DAI, uint24(3000), WETH);
+      _extraPath[0] = abi.encodePacked(WSTETH, uint24(100), WETH);
     } else {
-      _extraPath[0] = abi.encodePacked(DAI, uint24(100), USDC);
+      _extraPath[0] = abi.encodePacked(WSTETH, uint24(100), WETH, uint24(500), USDC);
     }
     extraDataSell = abi.encode(_extraPath);
 
@@ -120,8 +123,9 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     strategy = new MetaMorphoStrategy();
 
     _strategy = address(strategy);
-    address[] memory rewardsTokens = new address[](1);
+    address[] memory rewardsTokens = new address[](2);
     rewardsTokens[0] = defaultReward;
+    rewardsTokens[1] = MORPHO;
 
     // initialize
     stdstore.target(_strategy).sig(strategy.token.selector).checked_write(address(0));
@@ -166,9 +170,10 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
         break;
       }
     }
-    if (!includesMorhpo) {
+    if (!includesMorhpo || !MetaMorphoStrategy(address(idleCDO.strategy())).morphoTransferable()) {
       return;
     }
+
     // NOTE: right now MORPHO is not transferable
     assertGt(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal > 0");
   }
@@ -213,6 +218,111 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     mmStrategy.transferRewards();
     assertEq(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), amount, "morpho bal strategy == 0");
     assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), 0, "morpho bal cdo != 0");
+  }
+
+  function testRewardsApr(uint256 firstDeposit, uint256 secondDeposit) external virtual {
+    firstDeposit = bound(firstDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
+    secondDeposit = bound(secondDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
+  
+    _setupRewardsData();
+    MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
+    uint256 initialRewardsApr = strat.getRewardsApr(0, 0);
+
+    // first deposit and harvest to get strategy tokens
+    idleCDO.depositAA(firstDeposit);
+    _cdoHarvest(true);
+    uint256 rewardsApr = strat.getRewardsApr(0, 0);
+    assertGt(rewardsApr / 1e17, 0, "apr is == 0 and/or not with 18 decimals");
+
+    // Simulate a second deposit
+    uint256 simulated2 = strat.getRewardsApr(secondDeposit, 0);
+    // second deposit and harvest
+    idleCDO.depositAA(secondDeposit);
+    _cdoHarvest(true);
+    uint256 rewardsApr2 = strat.getRewardsApr(0, 0);
+    assertGt(rewardsApr2 / 1e17, 0, "apr with 1000 underlyings is == 0");
+    assertGt(rewardsApr, rewardsApr2, "apr is not decreasing when amount is increasing");
+    // 1e13 -> maxDelta 0.001%
+    assertApproxEqRel(simulated2, rewardsApr2, 1e13, "simulated apr is not equal to real apr");
+
+    // Get unlent liquidity pre withdraw
+    uint256 unlentLiquidity = _getUnlentLiquidity();
+    // Simulate a redeem of all
+    uint256 simulatedRedeem = strat.getRewardsApr(0, firstDeposit + secondDeposit);
+    // withdraw all
+    idleCDO.withdrawAA(0);
+    uint256 rewardsAprFinal = strat.getRewardsApr(0, 0);
+    // 1e13 -> maxDelta 0.001%
+    assertApproxEqRel(simulatedRedeem, rewardsAprFinal, 1e13, "simulated apr on redeem is not equal to real apr");
+
+    // Check if redeem happened all from the unlent market
+    if (firstDeposit + secondDeposit <= unlentLiquidity) {
+      // Redeems from the idle market => apr is the same as when we had the deposits
+      assertApproxEqAbs(rewardsAprFinal, rewardsApr2, 100, "apr with 0 deposits is < of apr with some underlyings");
+    } else {
+      // Redeems also from non-idle market => apr is increasing
+      assertGe(rewardsAprFinal, rewardsApr2, "apr is not increasing when amount is decreasing");
+      // but still less than the initial apr
+      assertLt(rewardsAprFinal, initialRewardsApr, "apr final is less than the initial apr");
+    }
+  }
+
+  function _getUnlentLiquidity() internal view returns (uint256 unlentLiquidity) {
+    // find available liquidity of the unlent market
+    IMMVault vault = IMMVault(defaultStrategyToken);
+    IMorpho blue = IMorpho(MORPHO_BLUE);
+    IMorpho.Market memory unlentMarket;
+    bytes32 unlentMarketId;
+    for (uint256 i = 0; i < vault.withdrawQueueLength(); i++) {
+      unlentMarketId = vault.withdrawQueue(i);
+      IMorpho.MarketParams memory marketParams = blue.idToMarketParams(unlentMarketId);
+      if (marketParams.collateralToken == address(0)) {
+        unlentMarket = blue.market(unlentMarketId);
+        unlentLiquidity = unlentMarket.totalSupplyAssets - unlentMarket.totalBorrowAssets;
+        break; 
+      }
+    }
+  }
+
+  function testGetAprWithLiquidityChange(uint8 add, uint8 sub) external {
+    _setupRewardsData();
+    uint256 scaledAdd = uint256(add) * ONE_SCALE;
+    uint256 scaledSub = uint256(sub) * ONE_SCALE;
+    MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
+    assertEq(strat.getAprWithLiquidityChange(0, 0), strat.getApr(), "getApr and getAprWithLiquidityChange(0, 0) are not equal");
+
+    uint256 baseApr = IMetamorphoSnippets(MM_SNIPPETS).supplyAPRVault(defaultStrategyToken, scaledAdd, scaledSub) * 365 days * 100;
+    assertEq(strat.getAprWithLiquidityChange(scaledAdd, scaledSub), baseApr + strat.getRewardsApr(scaledAdd, scaledSub), "getAprWithLiquidityChange is not correct");
+  }
+
+  function _setupRewardsData() internal {
+    address sender = 0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143;
+    // MORPHO reward data
+    address morphoURD = 0x678dDC1d07eaa166521325394cDEb1E4c086DF43;
+    address morphoReward = 0x9994E35Db50125E0DF82e4c2dde62496CE330999;
+    bytes32 morphoMarketUSDC = 0xb323495f7e4148be5643a4ea4a8221eef163e4bccfdedc2a6f4696baacbc86cc;
+    bytes32 morphoMarketWETH = 0xc54d7acf14de29e0e5527cabd7a576506870346a78a11a6762e2cca66322ec41;
+    // WSTETH reward data
+    address wstethURD = 0x2EfD4625d0c149EbADf118EC5446c6de24d916A4;
+    address wstethReward = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
+    bytes32 wstethMarketUSDC = 0xb323495f7e4148be5643a4ea4a8221eef163e4bccfdedc2a6f4696baacbc86cc;
+    bytes32 wstethMarketWETH = 0xc54d7acf14de29e0e5527cabd7a576506870346a78a11a6762e2cca66322ec41;
+    bytes memory wstethUSDCPath = abi.encodePacked(WSTETH, uint24(100), WETH, uint24(500), USDC);
+    bytes memory wstethWETHPath = abi.encodePacked(WSTETH, uint24(100), WETH);
+
+    MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
+  
+    // set reward data in strategy
+    vm.startPrank(strat.owner());
+    strat.setRewardData(0, sender, morphoURD, morphoReward, morphoMarketUSDC, '');
+    strat.setRewardData(1, sender, morphoURD, morphoReward, morphoMarketWETH, '');
+    strat.setRewardData(0, sender, wstethURD, wstethReward, wstethMarketUSDC, wstethUSDCPath);
+    strat.setRewardData(1, sender, wstethURD, wstethReward, wstethMarketWETH, wstethWETHPath);
+    vm.stopPrank();
+
+    // set unlentPerc to 0
+    vm.prank(idleCDO.owner());
+    idleCDO.setUnlentPerc(0);
   }
 
   function _isGoerli() internal pure returns (bool) {
