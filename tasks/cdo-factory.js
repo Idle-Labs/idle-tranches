@@ -214,8 +214,10 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     console.log("deploying with factory...");
     let res = await cdoFactory.deployCDO(cdoImplementationAddress, proxyAdminAddress, initMethodCall);
     res = await res.wait();
-    // const cdoDeployFilter = cdoFactory.filters.CDODeployed;
-    // const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
+    const cdoDeployFilter = cdoFactory.filters.CDODeployed;
+    const events = await cdoFactory.queryFilter(cdoDeployFilter, "latest");
+    console.log('events', events);
+    console.log('res.events', res.events);
     const proxyAddress = res.events[7].args.proxy;
     helpers.log(`📤 IdleCDO created (proxy via CDOFactory): ${proxyAddress} @tx: ${res.hash}, (gas ${res.cumulativeGasUsed.toString()})`);
     return proxyAddress;
@@ -322,6 +324,15 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setIsAYSActive(true);
     }
     console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
+
+    if (deployToken.rewardsData && deployToken.rewardsData.length > 0) {
+      console.log('setting metamorpho rewards data');
+      for (let i = 0; i < deployToken.rewardsData.length; i++) {
+        const data = deployToken.rewardsData[i];
+        console.log('setting reward data', { id: data.id, sender: data.sender, urd: data.urd, reward: data.reward, marketId: data.marketId, uniV3Path: data.uniV3Path});
+        await strategy.connect(signer).setRewardData(data.id, data.sender, data.urd, data.reward, data.marketId, data.uniV3Path);
+      }
+    }
 
     console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
     await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);

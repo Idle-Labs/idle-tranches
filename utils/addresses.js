@@ -23,15 +23,18 @@ const mainnetContracts = {
   aDAI: '0x028171bCA77440897B824Ca71D1c56caC55b68A3',
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
+  SWISE: '0x48C3399719B582dD63eB5AADf12A40B4C3f52FA2',
   // morpho, check https://github.com/morpho-dao/morpho-tokenized-vaults#morpho-aave-v2-ethereum
   maUSDC: '0xa5269a8e31b93ff27b887b56720a25f844db0529',
   maUSDT: '0xafe7131a57e44f832cb2de78ade38cad644aac2f',
   maDAI: '0x36f8d0d0573ae92326827c4a82fe4ce4c244cab6',
   maWETH: '0x490bbbc2485e99989ba39b34802fafa58e26aba4',
   MORPHO: '0x9994E35Db50125E0DF82e4c2dde62496CE330999',
-  mmSnippets: '0x7a928e2a07e093fb83db52e63dfb93c2f5ff42ff',
+  mmSnippets: '0xDfd98F2FaB869B18aD4322B2c7B1227c576402c6',
+  // mmSnippets: '0x7a928e2a07e093fb83db52e63dfb93c2f5ff42ff',
   MORPHO_BLUE: '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb',
   mmWETHbbWETH: '0x38989BBA00BDF8181F4082995b3DEAe96163aC5D',
+  mmWETHre7WETH: '0x78fc2c2ed1a4cdb5402365934ae5648adad094d0',
   mmUSDCsteakUSDC: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
@@ -772,6 +775,18 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x2B0E31B8EE653D2077db86dea3ACf3F34ae9d5D2',
     BBTranche: '0x7b713B1Cb6EaFD4061064581579ffCCf7DF21545'
+  },
+  mmwethre7weth: {
+    decimals: 18,
+    strategyToken: mainnetContracts.mmWETHre7WETH,
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xA8d747Ef758469e05CF505D708b2514a1aB9Cc08',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x4BFD21eBcf0819E8c5A74346517f9Db849208Ac2',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x454bB3cb427B21e1c052A080e21A57753cd6969e',
+    BBTranche: '0x20aa3CD83044D2903181f7eF5c2B498a017d1C4A'
   },
   amphorwsteth: {
     decimals: 18,
@@ -1867,6 +1882,70 @@ exports.deployTokens = {
       ]
     ],
     cdo: CDOs.mmusdcsteakusdc,
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+  },
+  mmWETHre7WETH: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmWETHre7WETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      [
+        mainnetContracts.MORPHO,
+        mainnetContracts.USDC,
+        mainnetContracts.SWISE,
+      ]
+    ],
+    rewardsData: [
+      {
+        id: 0,
+        reward: mainnetContracts.MORPHO,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0x678dDC1d07eaa166521325394cDEb1E4c086DF43',
+        marketId: '0x698fe98247a40c5771537b5786b2f3f9d78eb487b4ce4d75533cd0e94d88a115',
+        uniV3Path: '0x',
+      },
+      {
+        id: 1,
+        reward: mainnetContracts.MORPHO,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0x678dDC1d07eaa166521325394cDEb1E4c086DF43',
+        marketId: '0xd5211d0e3f4a30d5c98653d988585792bb7812221f04801be73a44ceecb11e89',
+        uniV3Path: '0x',
+      },
+      {
+        id: 0,
+        reward: mainnetContracts.USDC,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xb5b17231e2c89ca34ce94b8cb895a9b124bb466e',
+        marketId: '0x698fe98247a40c5771537b5786b2f3f9d78eb487b4ce4d75533cd0e94d88a115',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.05% fee tier
+          [mainnetContracts.USDC, 500, mainnetContracts.WETH]
+        ),
+      },
+      {
+        id: 0,
+        reward: mainnetContracts.SWISE,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xfd9b178257ae397a674698834628262fd858aad3',
+        marketId: '0xd5211d0e3f4a30d5c98653d988585792bb7812221f04801be73a44ceecb11e89',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.3% fee tier
+          [mainnetContracts.SWISE, 3000, mainnetContracts.WETH]
+        ),
+      },
+    ],
+    cdo: CDOs.mmwethre7weth,
     ...baseCDOArgs,
     AARatio: '20000',
     limit: '0',
