@@ -247,7 +247,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
     }
   }
 
-  /// @notice return the additional rewards apr for a specific market
+  /// @notice return the additional vault reward apr for a specific market
   /// @param _mmVault metamorpho vault
   /// @param _aprData apr data
   /// @param _targetMarketId target market id
@@ -306,7 +306,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       // calculate vaultShare (% in EXP_SCALE) of the total market and simulate change of liquidity by using add and sub
       _vaultShare = _assetsSuppliedByVault * EXP_SCALE / _totalSupplyAssets;
       // calculate vault rewards apr
-      apr = _rewardsInUnderlyings * _vaultShare * 100 / _totalSupplyAssets;
+      apr = _rewardsInUnderlyings * _vaultShare * 100 / _aprData.totalAssets;
     }
   }
 
