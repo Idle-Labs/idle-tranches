@@ -291,6 +291,49 @@ task("find-convex-params", "Find depositPosition for depositToken of a convex po
   });
 
 /**
+* @name base58
+*/
+task("fetch-morpho-rewards")
+  .addParam('cdoname')
+  .setAction(async function (args) {
+    if (!args.cdoname) {
+      console.log("🛑 cdoname and it's params must be defined");
+      return;
+    }
+    // Get config params
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const cdoAddr = deployToken.cdo.cdoAddr;
+    if (!deployToken.urds.length) {
+      console.log("🛑 No URDs defined");
+      return;
+    }
+    console.log('cdoAddr:', cdoAddr);
+    console.log('urds:', deployToken.urds);
+
+    for (let i = 0; i < deployToken.urds.length; i++) {
+      const urd = deployToken.urds[i];
+      console.log('urd:', urd);
+      const urdContract = await ethers.getContractAt("IUniversalRewardsDistributor", urd);
+      const ipfsHash = await urdContract.ipfsHash();
+      // converts hash to base58
+      const hash_base58 = ethers.utils.base58.encode(
+        // 0x12 is the hash method (sha256), and 0x20 is the data size (32)
+        Buffer.from("1220" + ipfsHash.slice(2), "hex")
+      );
+      const link = `https://dweb.link/ipfs/${hash_base58}`;
+      console.log("Ipfs link:", link);
+      // fetch json from link
+      const response = await fetch(link);
+      const json = await response.json();
+      // find user reward
+      const userRewards = json.rewards[cdoAddr];
+      console.log('CDO rewards:', userRewards);
+      console.log('---');
+    }
+  });
+
+/**
  * @name upgrade-with-multisig
  */
 subtask("upgrade-with-multisig", "Get signer")

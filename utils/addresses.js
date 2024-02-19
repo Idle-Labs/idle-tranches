@@ -1867,6 +1867,10 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+    urds: [
+      '0x678dDC1d07eaa166521325394cDEb1E4c086DF43', // MORPHO
+      '0x2EfD4625d0c149EbADf118EC5446c6de24d916A4' // WSTETH
+    ]
   },
   mmUSDCsteakUSDC: {
     decimals: 6,
@@ -1887,6 +1891,10 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+    urds: [
+      '0x678dDC1d07eaa166521325394cDEb1E4c086DF43', // MORPHO
+      '0x2EfD4625d0c149EbADf118EC5446c6de24d916A4' // WSTETH
+    ]
   },
   mmWETHre7WETH: {
     decimals: 18,
@@ -1944,6 +1952,11 @@ exports.deployTokens = {
           [mainnetContracts.SWISE, 3000, mainnetContracts.WETH]
         ),
       },
+    ],
+    urds: [
+      '0x678dDC1d07eaa166521325394cDEb1E4c086DF43', // MORPHO
+      '0xb5b17231e2c89ca34ce94b8cb895a9b124bb466e', // WSTETH
+      '0xfd9b178257ae397a674698834628262fd858aad3', // SWISE
     ],
     cdo: CDOs.mmwethre7weth,
     ...baseCDOArgs,
