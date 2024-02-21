@@ -28,7 +28,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @notice reward token address (e.g. MORPHO, COMP, ...)
   address[] public rewardTokens;
 
-  /// @notice MORPHO transferability
+  /// @notice [DEPRECATED] MORPHO transferability
   bool public morphoTransferable;
 
   /// @notice Metamorpho snippets contract, used for apr
@@ -98,6 +98,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
 
     rewards = new uint256[](_rewardsLen);
     bytes[] memory claimDatas = abi.decode(data, (bytes[]));
+    address cdo = idleCDO;
     address reward;
     address rewardDistributor;
     uint256 claimable; 
@@ -108,24 +109,7 @@ contract MetaMorphoStrategy is ERC4626Strategy {
         continue;
       }
       (reward, rewardDistributor, claimable, proof) = abi.decode(claimDatas[i], (address, address, uint256, bytes32[]));
-      rewards[i] = _claimReward(IUniversalRewardsDistributor(rewardDistributor), reward, claimable, proof);
-    }
-  }
-
-  /// @notice transfer rewards to IdleCDO, used if someone claims on behalf of the strategy
-  /// or to transfer MORPHO once it's transferable
-  /// @dev Anyone can call this function
-  function transferRewards() external {
-    address[] memory _rewardTokens = rewardTokens;
-    address cdo = address(idleCDO);
-    uint256 _rewardsLen = _rewardTokens.length;
-    IERC20Detailed _reward;
-    for (uint256 i = 0; i < _rewardsLen; i++) {
-      _reward = IERC20Detailed(_rewardTokens[i]);
-      uint256 bal = _reward.balanceOf(address(this));
-      if (bal > 0 && (address(_reward) != MORPHO || morphoTransferable)) {
-        _reward.safeTransfer(cdo, bal);
-      }
+      rewards[i] = _claimReward(IUniversalRewardsDistributor(rewardDistributor), cdo, reward, claimable, proof);
     }
   }
 
@@ -141,12 +125,6 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// @param _mmSnippets new snippets contract address
   function setMMSnippets(address _mmSnippets) external onlyOwner {
     mmSnippets = _mmSnippets;
-  }
-
-  /// @dev set morpho transferability
-  /// @param _isTransferable true if MORPHO is transferable
-  function setMorphoTransferable(bool _isTransferable) external onlyOwner {
-    morphoTransferable = _isTransferable;
   }
 
   /// @dev set reward data for a reward token
@@ -176,22 +154,20 @@ contract MetaMorphoStrategy is ERC4626Strategy {
 
   /// @notice claim and transfer reward to idleCDO by verifying a merkle root
   /// @param distributor contract for distributing rewards
+  /// @param cdo idleCDO address
   /// @param reward reward address to claim
   /// @param claimable amount of reward to claim
   /// @param proof merkle proof
   function _claimReward(
     IUniversalRewardsDistributor distributor,
+    address cdo,
     address reward,
     uint256 claimable,
     bytes32[] memory proof
   ) internal returns (uint256 claimed) {
-    uint256 balBefore = IERC20Detailed(reward).balanceOf(address(this));
-    distributor.claim(address(this), reward, claimable, proof);
-    claimed = IERC20Detailed(reward).balanceOf(address(this)) - balBefore;
-    // MORPHO is not transferable atm
-    if (reward != MORPHO || morphoTransferable) {
-      IERC20Detailed(reward).safeTransfer(address(idleCDO), claimed);
-    }
+    uint256 balBefore = IERC20Detailed(reward).balanceOf(cdo);
+    distributor.claim(cdo, reward, claimable, proof);
+    claimed = IERC20Detailed(reward).balanceOf(cdo) - balBefore;
   }
 
   /// View methods
@@ -226,7 +202,12 @@ contract MetaMorphoStrategy is ERC4626Strategy {
   /// this is not done in this method to avoid gas costs and another loop made in maxWithdraw call
   function getRewardsApr(uint256 add, uint256 sub) public view returns (uint256 apr) {
     IMMVault _mmVault = IMMVault(address(strategyToken));
-    AprData memory _aprData = AprData(add, sub, _mmVault.withdrawQueueLength(), _mmVault.supplyQueueLength(), _mmVault.totalAssets());
+    uint256 _totalAssets = _mmVault.totalAssets();
+    if (sub > 0 && _totalAssets + add < sub) {
+      return 0;
+    }
+    _totalAssets = _totalAssets + add - sub;
+    AprData memory _aprData = AprData(add, sub, _mmVault.withdrawQueueLength(), _mmVault.supplyQueueLength(), _totalAssets);
     address[] memory _rewardTokens = rewardTokens;
     RewardData[] memory _rewardDatas;
     RewardData memory _rewardData;

@@ -10,5 +10,6 @@ interface IMMVault is IERC20Detailed {
   function convertToAssets(uint256) external view returns (uint256);
   function totalAssets() external view returns (uint256);
   function config(bytes32 id) external view returns (uint184 cap, bool, uint64);
+  function maxWithdraw(address) external view returns (uint256);
 }
 
