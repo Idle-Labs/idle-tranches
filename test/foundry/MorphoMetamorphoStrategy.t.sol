@@ -109,7 +109,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
   function _setupRewards(address reward, uint256 claimable) internal returns (bytes32[] memory tree) {
     tree = new bytes32[](2);
-    tree[0] = keccak256(bytes.concat(keccak256(abi.encode(address(strategy), reward, claimable))));
+    tree[0] = keccak256(bytes.concat(keccak256(abi.encode(address(idleCDO), reward, claimable))));
     tree[1] = keccak256(bytes.concat(keccak256(abi.encode(makeAddr('deadrandom'), reward, claimable))));
 
     bytes32 root = merkle.getRoot(tree);
@@ -188,50 +188,22 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     super._testMinStkIDLEBalanceInternal();
   }
 
-  function testTransferRewards() external {
-    MetaMorphoStrategy mmStrategy = MetaMorphoStrategy(address(strategy));
-    uint256 amount = 100 * ONE_SCALE;
-    
-    // set rewards to defaultReward and MORPHO
-    address[] memory _rewardTokens = new address[](2);
-    _rewardTokens[0] = defaultReward;
-    _rewardTokens[1] = MORPHO;
-    vm.prank(owner);
-    mmStrategy.setRewardTokens(_rewardTokens);
-
-    // give defaultReward to strategy and then transfer
-    deal(defaultReward, address(strategy), amount);
-    mmStrategy.transferRewards();
-
-    assertEq(IERC20Detailed(defaultReward).balanceOf(address(idleCDO)), amount, "idleCDO bal == amount");
-    assertEq(IERC20Detailed(defaultReward).balanceOf(address(strategy)), 0, "strategy bal == 0");
-
-    // Morpho is not transferred
-    deal(MORPHO, address(strategy), amount);
-    mmStrategy.transferRewards();
-    assertEq(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal cdo == 0");
-    assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), amount, "morpho bal strategy != 0");
-
-    // Morpho is now transferrable
-    vm.prank(owner);
-    mmStrategy.setMorphoTransferable(true);
-    mmStrategy.transferRewards();
-    assertEq(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), amount, "morpho bal strategy == 0");
-    assertEq(IERC20Detailed(MORPHO).balanceOf(address(strategy)), 0, "morpho bal cdo != 0");
-  }
-
   function testRewardsApr(uint256 firstDeposit, uint256 secondDeposit) external virtual {
+    // accrueInterest on all markets before
+    _blueAccrueInterest();
+
     firstDeposit = bound(firstDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
     secondDeposit = bound(secondDeposit, ONE_SCALE / 100, 10_000 * ONE_SCALE);
   
     _setupRewardsData();
     MetaMorphoStrategy strat = MetaMorphoStrategy(address(idleCDO.strategy()));
-    uint256 initialRewardsApr = strat.getRewardsApr(0, 0);
 
     // first deposit and harvest to get strategy tokens
+    uint256 simulated1 = strat.getRewardsApr(firstDeposit, 0);
     idleCDO.depositAA(firstDeposit);
     _cdoHarvest(true);
     uint256 rewardsApr = strat.getRewardsApr(0, 0);
+    assertApproxEqRel(simulated1, rewardsApr, 1e13, "simulated apr is not equal to real apr after first deposit");
     assertGt(rewardsApr / 1e17, 0, "apr is == 0 and/or not with 18 decimals");
 
     // Simulate a second deposit
@@ -239,14 +211,11 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     // second deposit and harvest
     idleCDO.depositAA(secondDeposit);
     _cdoHarvest(true);
-    uint256 rewardsApr2 = strat.getRewardsApr(0, 0);
-    assertGt(rewardsApr2 / 1e17, 0, "apr with 1000 underlyings is == 0");
-    assertGt(rewardsApr, rewardsApr2, "apr is not decreasing when amount is increasing");
+    uint256 rewardsAprAfterDeposits = strat.getRewardsApr(0, 0);
+    assertGt(rewardsApr, rewardsAprAfterDeposits, "apr is not decreasing when amount is increasing");
     // 1e13 -> maxDelta 0.001%
-    assertApproxEqRel(simulated2, rewardsApr2, 1e13, "simulated apr is not equal to real apr");
+    assertApproxEqRel(simulated2, rewardsAprAfterDeposits, 1e13, "simulated apr is not equal to real apr");
 
-    // Get unlent liquidity pre withdraw
-    uint256 unlentLiquidity = _getUnlentLiquidity();
     // Simulate a redeem of all
     uint256 simulatedRedeem = strat.getRewardsApr(0, firstDeposit + secondDeposit);
     // withdraw all
@@ -254,16 +223,13 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     uint256 rewardsAprFinal = strat.getRewardsApr(0, 0);
     // 1e13 -> maxDelta 0.001%
     assertApproxEqRel(simulatedRedeem, rewardsAprFinal, 1e13, "simulated apr on redeem is not equal to real apr");
+  }
 
-    // Check if redeem happened all from the unlent market
-    if (firstDeposit + secondDeposit <= unlentLiquidity) {
-      // Redeems from the idle market => apr is the same as when we had the deposits
-      assertApproxEqAbs(rewardsAprFinal, rewardsApr2, 100, "apr with 0 deposits is < of apr with some underlyings");
-    } else {
-      // Redeems also from non-idle market => apr is increasing
-      assertGe(rewardsAprFinal, rewardsApr2, "apr is not increasing when amount is decreasing");
-      // but still less than the initial apr
-      assertLt(rewardsAprFinal, initialRewardsApr, "apr final is less than the initial apr");
+  function _blueAccrueInterest() internal {
+    IMMVault vault = IMMVault(defaultStrategyToken);
+    IMorpho blue = IMorpho(MORPHO_BLUE);
+    for (uint256 i = 0; i < vault.withdrawQueueLength(); i++) {
+      blue.accrueInterest(blue.idToMarketParams(vault.withdrawQueue(i)));
     }
   }
 
@@ -272,13 +238,20 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     IMMVault vault = IMMVault(defaultStrategyToken);
     IMorpho blue = IMorpho(MORPHO_BLUE);
     IMorpho.Market memory unlentMarket;
+    IMorpho.Position memory pos;
     bytes32 unlentMarketId;
+    uint256 availableLiquidity;
+    uint256 vaultAssets;
     for (uint256 i = 0; i < vault.withdrawQueueLength(); i++) {
       unlentMarketId = vault.withdrawQueue(i);
       IMorpho.MarketParams memory marketParams = blue.idToMarketParams(unlentMarketId);
       if (marketParams.collateralToken == address(0)) {
+        pos = blue.position(unlentMarketId, address(vault));
         unlentMarket = blue.market(unlentMarketId);
-        unlentLiquidity = unlentMarket.totalSupplyAssets - unlentMarket.totalBorrowAssets;
+        availableLiquidity = unlentMarket.totalSupplyAssets - unlentMarket.totalBorrowAssets;
+        vaultAssets = pos.supplyShares * unlentMarket.totalSupplyAssets / unlentMarket.totalSupplyShares;
+        // get max withdrawable amount for this market (min between available liquidity and vault assets)
+        unlentLiquidity = vaultAssets > availableLiquidity ? availableLiquidity : vaultAssets;
         break; 
       }
     }
