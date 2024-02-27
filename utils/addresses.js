@@ -908,7 +908,7 @@ const optimismCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
-    underlying: optimismContracts.cpFAS_USDT,
+    underlying: optimismContracts.USDT,
     cdoAddr: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
     proxyAdmin: optimismContracts.proxyAdmin,
     strategy: '0x8A42DDE5040675C71C09499F63fBa8Ed98fee77B',
@@ -935,7 +935,7 @@ const optimismCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x5d4E705315ACa451Db40bf7c067077C768B3FFd0',
-    underlying: optimismContracts.cpPOR_USDT,
+    underlying: optimismContracts.USDT,
     cdoAddr: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
     proxyAdmin: optimismContracts.proxyAdmin,
     strategy: '0x5d4E705315ACa451Db40bf7c067077C768B3FFd0',
@@ -962,7 +962,7 @@ const optimismCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0xB144eE58679e15f1b25A5F6EfcEBDd0AB8c8BEF5',
-    underlying: optimismContracts.cpWINC_USDC_V2,
+    underlying: optimismContracts.USDC,
     cdoAddr: '0xe49174F0935F088509cca50e54024F6f8a6E08Dd',
     proxyAdmin: optimismContracts.proxyAdmin,
     strategy: '0xB144eE58679e15f1b25A5F6EfcEBDd0AB8c8BEF5',
@@ -975,7 +975,7 @@ const optimismCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x98c1E0261Fe4C4c701Cc509Cce2168084944bA4B',
-    underlying: optimismContracts.cpBAS_USDT,
+    underlying: optimismContracts.USDT,
     cdoAddr: '0x67D07aA415c8eC78cbF0074bE12254E55Ad43f3f',
     proxyAdmin: optimismContracts.proxyAdmin,
     strategy: '0x98c1E0261Fe4C4c701Cc509Cce2168084944bA4B',
@@ -991,7 +991,7 @@ const polygonZKCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x73318bF57Fa6A4a97e0140e5CfF8219755FcDdbc',
-    underlying: polygonZKContracts.cpFAS_USDC,
+    underlying: polygonZKContracts.USDC,
     cdoAddr: '0x8890957F80d7D771337f4ce42e15Ec40388514f1',
     proxyAdmin: polygonZKContracts.proxyAdmin,
     strategy: '0x73318bF57Fa6A4a97e0140e5CfF8219755FcDdbc',
@@ -1004,7 +1004,7 @@ const polygonZKCDOs = {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
-    underlying: polygonZKContracts.cpPOR_USDT,
+    underlying: polygonZKContracts.USDT,
     cdoAddr: '0x6b8A1e78Ac707F9b0b5eB4f34B02D9af84D2b689',
     proxyAdmin: polygonZKContracts.proxyAdmin,
     strategy: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
