@@ -9,6 +9,8 @@ interface IIdleCDO {
   function strategy() external view returns(address);
   function strategyToken() external view returns(address);
   function token() external view returns(address);
+  function rebalancer() external view returns(address);
+  function owner() external view returns(address);
 
   function allowAAWithdraw() external view returns(bool);
   function allowBBWithdraw() external view returns(bool);
@@ -21,9 +23,18 @@ interface IIdleCDO {
   function tranchePrice(address _tranche) external view returns(uint256);
   function virtualPrice(address _tranche) external view returns(uint256);
   function getIncentiveTokens() external view returns(address[] memory);
+  function setUnlentPerc(uint256) external;
 
   function depositAA(uint256) external returns(uint256);
   function depositBB(uint256) external returns(uint256);
   function withdrawAA(uint256) external returns(uint256);
   function withdrawBB(uint256) external returns(uint256);
+
+  function harvest(
+    bool[] calldata _skipFlags,
+    bool[] calldata _skipReward,
+    uint256[] calldata _minAmount,
+    uint256[] calldata _sellAmounts,
+    bytes[] calldata _extraData
+  ) external returns (uint256[][] memory _res);
 }
