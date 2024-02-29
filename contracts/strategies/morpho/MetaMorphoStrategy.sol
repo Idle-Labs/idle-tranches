@@ -328,7 +328,11 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       _currMarketId = _mmVault.supplyQueue(i);
       _market = MORPHO_BLUE.market(_currMarketId);
       _pos = MORPHO_BLUE.position(_currMarketId, address(_mmVault));
-      _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+      if (_market.totalSupplyShares == 0) {
+        _assetsSuppliedByVault = 0;
+      } else {
+        _assetsSuppliedByVault = _pos.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+      }
       // get max depositable amount for this market
       (_marketCap,,) = _mmVault.config(_currMarketId);
       uint256 _maxDeposit;
@@ -380,10 +384,14 @@ contract MetaMorphoStrategy is ERC4626Strategy {
       _position = MORPHO_BLUE.position(_currMarketId, address(_mmVault));
       // get available liquidity for this market
       _availableLiquidity = _market.totalSupplyAssets - _market.totalBorrowAssets;
-      // get assets deposited by the vault in the maket
-      _vaultAssets = _position.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
-      // get max withdrawable amount for this market (min between available liquidity and vault assets)
-      _withdrawable = _vaultAssets > _availableLiquidity ? _availableLiquidity : _vaultAssets;
+      if (_availableLiquidity == 0 || _market.totalSupplyShares == 0) {
+        _withdrawable = 0;
+      } else {
+        // get assets deposited by the vault in the maket
+        _vaultAssets = _position.supplyShares * _market.totalSupplyAssets / _market.totalSupplyShares;
+        // get max withdrawable amount for this market (min between available liquidity and vault assets)
+        _withdrawable = _vaultAssets > _availableLiquidity ? _availableLiquidity : _vaultAssets;
+      }
       // If this is the target market, return the current _sub value, eventually
       // reduced to the max withdrawable amount
       if (_currMarketId == _targetMarketId) {
