@@ -500,7 +500,8 @@ abstract contract TestIdleCDOBase is Test {
     deal(address(underlying), _user, _amount * 2);
 
     vm.startPrank(_user);
-    underlying.safeIncreaseAllowance(address(idleCDO), _amount);
+    underlying.approve(address(idleCDO), 0);
+    underlying.approve(address(idleCDO), _amount);
     if (_isAA) {
       idleCDO.depositAA(_amount);
     } else {

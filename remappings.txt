@@ -12,3 +12,4 @@ forge-std/=lib/forge-std/src/
 hardhat/=node_modules/hardhat/
 openzeppelin-contracts-upgradeable/=lib/best-yield-PYT-strategy/lib/openzeppelin-contracts-upgradeable/
 morpho-urd/=lib/universal-rewards-distributor/
+clones-with-immutable-args/=node_modules/clones-with-immutable-args/
