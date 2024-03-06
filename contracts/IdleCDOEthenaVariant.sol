@@ -9,7 +9,7 @@ import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {IStakedUSDeV2} from "./interfaces/ethena/IStakedUSDeV2.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
-import "forge-std/console.sol";
+
 /// @title IdleCDO variant for ethena susde, which has a cooldown period for withdrawals
 contract IdleCDOEthenaVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
@@ -18,10 +18,8 @@ contract IdleCDOEthenaVariant is IdleCDO {
   address public constant cooldownImpl = 0xe0C4a2B14F0ACd936226A598BE6BfeD190E098d1;
   event NewCooldownRequestContract(address indexed contractAddress, address indexed user, uint256 susdeAmount);
 
-  // TODO is this needed??
   function _additionalInit() internal override {
     unlentPerc = 0;
-    lossToleranceBps = 500; // 0.5%
   }
 
   /// @notice method used to deposit `token` and mint tranche tokens
