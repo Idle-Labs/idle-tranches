@@ -24,6 +24,9 @@ const mainnetContracts = {
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
   dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   SWISE: '0x48C3399719B582dD63eB5AADf12A40B4C3f52FA2',
+  // ethena
+  SUSDe: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497',
+  USDe: '0x4c9EDD5852cd905f086C759E8383e09bff1E68B3',
   // morpho, check https://github.com/morpho-dao/morpho-tokenized-vaults#morpho-aave-v2-ethereum
   maUSDC: '0xa5269a8e31b93ff27b887b56720a25f844db0529',
   maUSDT: '0xafe7131a57e44f832cb2de78ade38cad644aac2f',
@@ -799,6 +802,18 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x28D8a22c6689aC1e2DDC43Ca6F85c520457351C1',
     BBTranche: '0xEfC4f43737Fd336fa8A8254454Ced1e421804b16'
+  },
+  ethenasusde: {
+    decimals: 18,
+    strategyToken: mainnetContracts.SUSDe,
+    underlying: mainnetContracts.USDe,
+    cdoAddr: '0x1EB1b47D0d8BCD9D761f52D26FCD90bBa225344C',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x73a99d5383ab115a24b4e3f6def02f7dd0e57b16',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xF3188697Bd35Df73E4293d04A07ebAAf1FfC4018',
+    BBTranche: '0xb8d0BE502A8F12Cc5213733285b430A43d07349D'
   },
 };
 
@@ -1964,6 +1979,23 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+  },
+  ethenasusde: {
+    decimals: 18,
+    underlying: mainnetContracts.USDe,
+    strategyName: 'EthenaSusdeStrategy',
+    strategyParams: [
+      mainnetContracts.SUSDe,
+      mainnetContracts.USDe,
+      'owner', // owner address
+    ],
+    cdo: CDOs.ethenasusde,
+    cdoVariant: 'IdleCDOEthenaVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: ''
   },
 };
 
