@@ -803,6 +803,18 @@ const CDOs = {
     AATranche: '0x28D8a22c6689aC1e2DDC43Ca6F85c520457351C1',
     BBTranche: '0xEfC4f43737Fd336fa8A8254454Ced1e421804b16'
   },
+  ethenasusde: {
+    decimals: 18,
+    strategyToken: mainnetContracts.SUSDe,
+    underlying: mainnetContracts.USDe,
+    cdoAddr: '0x1EB1b47D0d8BCD9D761f52D26FCD90bBa225344C',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x73a99d5383ab115a24b4e3f6def02f7dd0e57b16',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xF3188697Bd35Df73E4293d04A07ebAAf1FfC4018',
+    BBTranche: '0xb8d0BE502A8F12Cc5213733285b430A43d07349D'
+  },
 };
 
 const trancheErc4626Wrappers = {
@@ -1977,7 +1989,7 @@ exports.deployTokens = {
       mainnetContracts.USDe,
       'owner', // owner address
     ],
-    // cdo: CDOs.ethenasusde,
+    cdo: CDOs.ethenasusde,
     cdoVariant: 'IdleCDOEthenaVariant',
     ...baseCDOArgs,
     AARatio: '20000',

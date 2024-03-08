@@ -41,11 +41,11 @@ contract IdleCDOEthenaVariant is IdleCDO {
   /// @return toRedeem number of underlyings redeemed
   function _withdraw(uint256 _amount, address _tranche) override internal nonReentrant returns (uint256 toRedeem) {
     // if no cooldown is set we can use the normal path
-    if (IStakedUSDeV2(strategyToken).cooldownDuration() == 0) {
-      return super._withdraw(_amount, _tranche);
-    }
-
-    // otherwise we send susde to a contract, one for each cooldown request,
+    // if (IStakedUSDeV2(strategyToken).cooldownDuration() == 0) {
+    //   return super._withdraw(_amount, _tranche);
+    // }
+    require(IStakedUSDeV2(strategyToken).cooldownDuration() != 0, '9');
+    // we send susde to a contract, one for each cooldown request,
     // created on the fly for the user as multiple cooldowns cannot be managed 
     // by the same contract
 
@@ -89,28 +89,5 @@ contract IdleCDOEthenaVariant is IdleCDO {
     clone.startCooldown();
     // emit event for the client to be aware of the new contract address
     emit NewCooldownRequestContract(address(clone), msg.sender, SUSDeRedeemed);
-  }
-
-  /// @notice mint tranche tokens and updates tranche last NAV
-  /// @param _amount, in underlyings, to convert in tranche tokens
-  /// @param _to receiver address of the newly minted tranche tokens
-  /// @param _tranche tranche address
-  /// @return _minted number of tranche tokens minted
-  function _mintShares(uint256 _amount, address _to, address _tranche) internal override returns (uint256 _minted) {
-    // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
-    // we should remove 1 wei per 1 unit of underlying from _amount 
-    // to avoid rounding issues given that tokens are deposited directly by the user in the strategy
-    // eg if we deposit 100 USDC (100 * 1e6) we should set _amount to 100 * 1e6 - 100
-    _amount -= _amount / oneToken;
-
-    _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
-
-    IdleCDOTranche(_tranche).mint(_to, _minted);
-    // update NAV with the _amount of underlyings added
-    if (_tranche == AATranche) {
-      lastNAVAA += _amount;
-    } else {
-      lastNAVBB += _amount;
-    }
   }
 }
