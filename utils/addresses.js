@@ -113,6 +113,7 @@ const mainnetContracts = {
   feeReceiver: '0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814',
   oldFeeReceiver: '0xBecC659Bfc6EDcA552fa1A67451cC6b38a0108E4',
   feeTreasury: '0x69a62C24F16d4914a48919613e8eE330641Bcb94',
+  delegateStakingRewards: '0x747E819B878956FB6E5eB936A6415a5D037fF388',
   // end 10/2021
   // latestImplementation: '0x3cd51e62e14926dda0949ea3869d5fad0b9ab844',
   // 2/12/2021
