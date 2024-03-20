@@ -44,11 +44,8 @@ contract MetamorphoIdleVault is Test {
     vm.startPrank(DEPLOYER);
     IERC20Detailed(WETH).approve(re7WETH_CDO, type(uint256).max);
     IIdleCDO(re7WETH_CDO).depositAA(1e18);
-    // TODO bbWETH_CDO
     vm.stopPrank();
   }
-
-  // TODO given that these tokens are collateral should we set skipDefaultChecks to true?
 
   function testMetamorphoFactoryCreation() external {
     (IMorpho.MarketParams memory re7Params,) = _initializeTrancheMarket(AA_re7WETH);
@@ -62,12 +59,6 @@ contract MetamorphoIdleVault is Test {
     MORPHO.supply(re7Params, 1e16, 0, DEPLOYER, '');
     MORPHO.borrow(re7Params, 9e15, 0, DEPLOYER, DEPLOYER);
 
-    // (IMorpho.MarketParams memory bbParams, bytes32 bbId) = _initializeTrancheMarket(AA_bbWETH);
-    // IERC20Detailed(AA_bbWETH).approve(address(MORPHO), type(uint256).max);
-    // // supply 0.01 and borrow 0.009 to achieve 90% UR
-    // MORPHO.supplyCollateral(re7Params, 1e16, DEPLOYER, '');
-    // MORPHO.supply(bbParams, 1e16, 0, DEPLOYER, '');
-    // MORPHO.borrow(bbParams, 9e15, 0, DEPLOYER, DEPLOYER);
     vm.stopPrank();
 
     IMorpho.MarketParams[] memory params = new IMorpho.MarketParams[](1);
