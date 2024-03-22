@@ -130,6 +130,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         vm.stopPrank();
 
         vm.prank(idleCDO.owner());
+        // This will set also allowAAWithdraw to true
         IdleCDO(address(idleCDO)).updateAccounting();
         // loss is now distributed and shutdown triggered
         uint256 postDepositAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -140,7 +141,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
         assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
         assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-        assertEq(idleCDO.allowAAWithdraw(), false, "Default flag for senior set");
+        assertEq(idleCDO.allowAAWithdraw(), true, "Default flag for senior set to true regardless");
         assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for senior set");
         assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
 
@@ -155,9 +156,10 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         vm.expectRevert(bytes("Pausable: paused"));
         idleCDO.depositBB(1);
         vm.expectRevert(bytes("3"));
-        idleCDO.withdrawAA(0);
-        vm.expectRevert(bytes("3"));
         idleCDO.withdrawBB(0);
+
+        // AA withdraw is allowed
+        idleCDO.withdrawAA(0);
     }
 
     // @dev Loss is between lossToleranceBps and maxDecreaseDefault and is covered by junior holders
