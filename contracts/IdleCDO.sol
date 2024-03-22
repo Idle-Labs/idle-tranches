@@ -331,9 +331,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       // `updateAccounting` should be manually called to distribute loss
       require(skipDefaultCheck, "4");
       // This path will be called when a default happens and guardian calls
-      // `updateAccounting` after setting skipDefaultCheck
+      // `updateAccounting` after setting skipDefaultCheck or when skipDefaultCheck is already set to true
       lastNAVBB = 0;
-      _emergencyShutdown();
+      // if skipDefaultCheck is set to true prior a default (eg because AA is used as collateral and needs to be liquid), 
+      // emergencyShutdown won't prevent the current deposit/redeem (the one that called this _updateAccounting) and is 
+      // still correct because:
+      // - depositBB will revert as priceBB is 0
+      // - depositAA won't revert (unless the loss is 100% of TVL) and user will get 
+      //   correct number of share at a priceAA already post junior default
+      // - withdrawBB will redeem 0 and burn BB tokens because priceBB is 0
+      // - withdrawAA will redeem the correct amount of underlyings post junior default
+      // We pass true as we still want AA to be redeemable in any case even after a junior default
+      _emergencyShutdown(true);
     } else {
       // we add the gain to last saved NAV
       lastNAVBB = uint256(int256(_lastNAVBB) + _totalBBGain);
@@ -963,14 +972,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev can be called by both the owner and the guardian
   function emergencyShutdown() external {
     _checkOnlyOwnerOrGuardian();
-    _emergencyShutdown();
+    _emergencyShutdown(false);
   }
 
-  function _emergencyShutdown() internal {
+  function _emergencyShutdown(bool isAAWithdrawAllowed) internal {
     // prevent deposits
     _pause();
     // prevent withdraws
-    allowAAWithdraw = false;
+    allowAAWithdraw = isAAWithdrawAllowed;
     allowBBWithdraw = false;
     // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
     // without checking for lending protocol default

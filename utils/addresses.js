@@ -125,7 +125,9 @@ const mainnetContracts = {
   // 18/10/2022 Polido variant with univ3
   latestImplementationPolido: '0x6df196928ace3c98b12ff0769b3164753e5099aa',
   // 18/10/2022 Generic with univ3
-  latestImplementation: '0xAD6Cc71ef6bA82FFAd9Adf40220d035669EACB58',
+  // latestImplementation: '0xAD6Cc71ef6bA82FFAd9Adf40220d035669EACB58',
+  // 22/03/2024 Generic with AA fully liquid (with skipDefaultCheck = true)
+  latestImplementation: '0x1EA9aE797972ad9fc52C55105D184d8B059BB716',
   // 2/12/2021
   latestIdleStrategyImpl: '0xd04843ac2ae7cfb7fe9ff6ff43c808af7a030527',
   // 8/3/2022 ConvexStrategyMeta3Pool
