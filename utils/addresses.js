@@ -2160,6 +2160,23 @@ exports.deployTokensOptimism = {
   // },
 };
 
+exports.deployTokensBYOptimism = {
+  idleusdtrwa: {
+    decimals: 6,
+    underlying: optimismContracts.USDT,
+    symbol: 'idleUSDTRWA',
+    name: 'IdleUSDT RWA',
+    address: '0x9Ebcb025949FFB5A77ff6cCC142e0De649801697',
+    strategies: [
+      // AA tranche wrapper for cpfasusdt
+      '0x133F1C751f25C2AAf0E83f0609A67074915144A4',
+      // AA tranche wrapper for cpporusdt
+      '0x0fDCdC3dF70420BAD4f7EAD4852F961b5D809Df1',
+      // AA tranche wrapper for cpbasusdt
+      '0xd24A6f07E78165AD865e9Ee2FB6FfF894F5B6A0C',
+    ],
+  },
+}
 exports.deployTokensBY = {
   idleusdcjunior: {
     decimals: 6,
