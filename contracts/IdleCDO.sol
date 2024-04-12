@@ -100,7 +100,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // skipDefaultCheck = false is the default value
     // Set allowance for strategy
     _allowUnlimitedSpend(_guardedToken, _strategy);
-    _allowUnlimitedSpend(strategyToken, _strategy);
+    _allowUnlimitedSpend(_strategyToken, _strategy);
     // Save current strategy price
     lastStrategyPrice = _strategyPrice();
     // Fee params
@@ -484,6 +484,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _mintShares(_amount, feeReceiver, AATranche);
       // reset unclaimedFees counter
       unclaimedFees = 0;
+      // update trancheAPRSplitRatio using instant balance
+      _updateSplitRatio(_getAARatio(true));
     }
   }
 

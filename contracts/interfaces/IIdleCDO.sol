@@ -16,6 +16,7 @@ interface IIdleCDO {
   function allowBBWithdraw() external view returns(bool);
   function fee() external view returns(uint256);
   function limit() external view returns(uint256);
+  function unclaimedFees() external view returns(uint256);
   function getApr(address _tranche) external view returns(uint256);
   function getContractValue() external view returns(uint256);
   function trancheAPRSplitRatio() external view returns(uint256);
