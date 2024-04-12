@@ -119,39 +119,39 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
     _internalTestMinStkIDLEBalance(tolerance);
   }
 
-  // function testMultipleDeposits() external {
-  //   uint256 _val = 100 * ONE_SCALE;
-  //   uint256 scaledVal = _val * 10**(18 - decimals);
-  //   deal(address(underlying), address(this), _val * 100000000);
+  function testMultipleDeposits() external {
+    uint256 _val = 100 * ONE_SCALE;
+    uint256 scaledVal = _val * 10**(18 - decimals);
+    deal(address(underlying), address(this), _val * 100000000);
 
-  //   uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
-  //   // try to deposit the correct bal
-  //   idleCDO.depositAA(_val);
-  //   assertApproxEqAbs(
-  //     IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 
-  //     scaledVal, 
-  //     // 1 wei less for each unit of underlying, scaled to 18 decimals
-  //     100 * 10**(18 - decimals) + 1, 
-  //     'AA Deposit 1 is not correct'
-  //   );
-  //   uint256 priceAAPost = idleCDO.virtualPrice(address(AAtranche));
-  //   _cdoHarvest(true);
+    uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
+    // try to deposit the correct bal
+    idleCDO.depositAA(_val);
+    assertApproxEqAbs(
+      IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 
+      scaledVal, 
+      // 1 wei less for each unit of underlying, scaled to 18 decimals
+      100 * 10**(18 - decimals) + 1, 
+      'AA Deposit 1 is not correct'
+    );
+    uint256 priceAAPost = idleCDO.virtualPrice(address(AAtranche));
+    _cdoHarvest(true);
 
-  //   // now deposit again
-  //   address user1 = makeAddr('user1');
-  //   _depositWithUser(user1, _val, true);
+    // now deposit again
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, _val, true);
 
-  //   assertApproxEqAbs(
-  //     IERC20Detailed(address(AAtranche)).balanceOf(user1), 
-  //     scaledVal, 
-  //     // 1 wei less for each unit of underlying, scaled to 18 decimals
-  //     // check _mintShares for more info
-  //     100 * 10**(18 - decimals) + 1, 
-  //     'AA Deposit 2 is not correct'
-  //   );
-  //   uint256 priceAAPost2 = idleCDO.virtualPrice(address(AAtranche));
+    assertApproxEqAbs(
+      IERC20Detailed(address(AAtranche)).balanceOf(user1), 
+      scaledVal, 
+      // 1 wei less for each unit of underlying, scaled to 18 decimals
+      // check _mintShares for more info
+      100 * 10**(18 - decimals) + 1, 
+      'AA Deposit 2 is not correct'
+    );
+    uint256 priceAAPost2 = idleCDO.virtualPrice(address(AAtranche));
 
-  //   assertApproxEqAbs(priceAAPost, priceAAPre, 1, 'AA price is not the same after deposit 1');
-  //   assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
-  // }
+    assertApproxEqAbs(priceAAPost, priceAAPre, 1, 'AA price is not the same after deposit 1');
+    assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
+  }
 }
