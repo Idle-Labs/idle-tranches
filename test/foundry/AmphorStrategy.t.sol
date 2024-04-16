@@ -21,10 +21,10 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
   address internal constant wstethVault = 0x2791EB5807D69Fe10C02eED6B4DC12baC0701744;
   address internal constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
-  address internal defaultUnderlying = USDC;
-  IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(usdcVault);
-  // address internal defaultUnderlying = WSTETH;
-  // IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(wstethVault);
+  // address internal defaultUnderlying = USDC;
+  // IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(usdcVault);
+  address internal defaultUnderlying = WSTETH;
+  IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(wstethVault);
 
   uint256 internal lastVaultAssets;
 

@@ -13,6 +13,7 @@ contract GearboxStrategy is ERC4626Strategy, ERC20Upgradeable {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   address public constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
+  uint256 internal constant REF_CODE = 104353;
   // uniswap path to quote GEAR rewards
   bytes public uniV3Path;
   // https://github.com/eden-network/uniswap-v3-static-quoter/blob/master/contracts/UniV3Quoter/UniswapV3StaticQuoter.sol
@@ -96,8 +97,7 @@ contract GearboxStrategy is ERC4626Strategy, ERC20Upgradeable {
       // Send underlyings to the strategy
       IERC20Detailed(token).safeTransferFrom(msg.sender, address(this), _amount);
       // Calls deposit function and get dTokens
-      // TODO use depositWithReferral ??
-      shares = IERC4626(strategyToken).deposit(_amount, address(this));
+      shares = DToken(strategyToken).depositWithReferral(_amount, address(this), REF_CODE);
       // stake dTokens and get sdTokens
       IFarmingPool(stakedStrategyToken).deposit(shares);
       // mint strategyTokens (that should have 18 decimals) to msg.sender

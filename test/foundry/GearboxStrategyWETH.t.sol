@@ -10,11 +10,12 @@ import {IERC4626Upgradeable} from "../../contracts/interfaces/IERC4626Upgradeabl
 import {IWETH} from "../../contracts/interfaces/IWETH.sol";
 import {IdleCDOGearboxVariant} from "../../contracts/IdleCDOGearboxVariant.sol";
 
-contract TestGearboxStrategy is TestIdleCDOLossMgmt {
+contract TestGearboxStrategyWETH is TestIdleCDOLossMgmt {
   using stdStorage for StdStorage;
 
   uint256 internal constant ONE_TRANCHE = 1e18;
   address internal constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
+
   address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
   address internal constant dWETH = 0xda0002859B2d05F66a753d8241fCDE8623f26F4f;
   address internal constant sdWETH = 0x0418fEB7d0B25C411EB77cD654305d29FcbFf685;
@@ -26,7 +27,7 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
   IERC4626Upgradeable internal defaultVault = IERC4626Upgradeable(dWETH);
 
   function _selectFork() public override {
-    vm.createSelectFork("mainnet", 19638340);
+    vm.createSelectFork("mainnet", 19659800);
   }
 
   function _deployCDO() internal override returns (IdleCDO _cdo) {
@@ -69,10 +70,15 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
     DToken dToken = DToken(address(defaultVault));
     address user = makeAddr('rando');
     uint256 amount = 1e18;
-    vm.deal(user, amount);
+    if (defaultUnderlying == WETH) {
+      vm.deal(user, amount);
+      vm.prank(user);
+      IWETH(WETH).deposit{value: amount}();
+    } else {
+      deal(defaultUnderlying, user, amount, true);
+    }
     vm.startPrank(user);
-    IWETH(WETH).deposit{value: amount}();
-    IERC20Detailed(WETH).approve(address(defaultVault), amount);
+    IERC20Detailed(defaultUnderlying).approve(address(defaultVault), amount);
     IERC4626Upgradeable(address(dToken)).deposit(amount, user);
     vm.stopPrank();
   }
@@ -84,17 +90,21 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
     _pokeLendingProtocol();
 
     bytes[] memory _extraPath = new bytes[](1);
-    _extraPath[0] = abi.encodePacked(GEAR, uint24(10000), WETH);
+    _extraPath[0] = defaultUniv3Path;
     extraDataSell = abi.encode(_extraPath);
     extraData = '0x';
   }
 
   function _donateToken(address to, uint256 amount) internal override {
-    address maker = 0x2F0b23f53734252Bda2277357e97e1517d6B042A;
-    uint256 bal = underlying.balanceOf(maker);
-    require(bal > amount, "doesn't have enough tokens");
-    vm.prank(maker);
-    underlying.transfer(to, amount);
+    if (defaultUnderlying == WETH) {
+      address maker = 0x2F0b23f53734252Bda2277357e97e1517d6B042A;
+      uint256 bal = underlying.balanceOf(maker);
+      require(bal > amount, "doesn't have enough tokens");
+      vm.prank(maker);
+      underlying.transfer(to, amount);
+    } else {
+      deal(defaultUnderlying, to, amount);
+    }
   }
 
   function _createLoss(uint256 _loss) internal override {
@@ -114,15 +124,14 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
     GearboxStrategy(address(strategy)).initialize(address(1), address(2), owner, defaultStaking, defaultUniv3Path);
   }
 
-  function testMinStkIDLEBalance() external override {
-    uint256 tolerance = 100;
-    _internalTestMinStkIDLEBalance(tolerance);
-  }
+  // function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
+  //   // not used for this strategy
+  // }
 
   function testMultipleDeposits() external {
     uint256 _val = 100 * ONE_SCALE;
     uint256 scaledVal = _val * 10**(18 - decimals);
-    deal(address(underlying), address(this), _val * 100000000);
+    deal(address(underlying), address(this), _val * 100_000_000);
 
     uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
     // try to deposit the correct bal
@@ -136,22 +145,34 @@ contract TestGearboxStrategy is TestIdleCDOLossMgmt {
     );
     uint256 priceAAPost = idleCDO.virtualPrice(address(AAtranche));
     _cdoHarvest(true);
+    uint256 priceAAPostHarvest = idleCDO.virtualPrice(address(AAtranche));
 
     // now deposit again
     address user1 = makeAddr('user1');
     _depositWithUser(user1, _val, true);
-
-    assertApproxEqAbs(
-      IERC20Detailed(address(AAtranche)).balanceOf(user1), 
-      scaledVal, 
-      // 1 wei less for each unit of underlying, scaled to 18 decimals
-      // check _mintShares for more info
-      100 * 10**(18 - decimals) + 1, 
-      'AA Deposit 2 is not correct'
-    );
     uint256 priceAAPost2 = idleCDO.virtualPrice(address(AAtranche));
 
+    if (decimals < 18) {
+      assertApproxEqAbs(
+        IERC20Detailed(address(AAtranche)).balanceOf(user1), 
+        // This is used to better account for slight differences in prices when using low decimals
+        scaledVal * ONE_SCALE / priceAAPostHarvest, 
+        1,
+        'AA Deposit 2 is not correct'
+      );
+    } else {
+      assertApproxEqAbs(
+        IERC20Detailed(address(AAtranche)).balanceOf(user1), 
+        scaledVal, 
+        // 1 wei less for each unit of underlying, scaled to 18 decimals
+        // check _mintShares for more info
+        100 * 10**(18 - decimals) + 1, 
+        'AA Deposit 2 is not correct'
+      );
+    }
+
     assertApproxEqAbs(priceAAPost, priceAAPre, 1, 'AA price is not the same after deposit 1');
+    assertApproxEqAbs(priceAAPost, priceAAPostHarvest, 1, 'AA price is not the same after harvest');
     assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
   }
 }
