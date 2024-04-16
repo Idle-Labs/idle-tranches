@@ -124,10 +124,6 @@ contract TestGearboxStrategyWETH is TestIdleCDOLossMgmt {
     GearboxStrategy(address(strategy)).initialize(address(1), address(2), owner, defaultStaking, defaultUniv3Path);
   }
 
-  // function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
-  //   // not used for this strategy
-  // }
-
   function testMultipleDeposits() external {
     uint256 _val = 100 * ONE_SCALE;
     uint256 scaledVal = _val * 10**(18 - decimals);
