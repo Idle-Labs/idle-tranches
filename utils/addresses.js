@@ -24,6 +24,7 @@ const mainnetContracts = {
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
   dUSDCEul: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   SWISE: '0x48C3399719B582dD63eB5AADf12A40B4C3f52FA2',
+  BTRFLY: '0xc55126051b22ebb829d00368f4b12bde432de5da',
   // ethena
   SUSDe: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497',
   USDe: '0x4c9EDD5852cd905f086C759E8383e09bff1E68B3',
@@ -1959,6 +1960,7 @@ exports.deployTokens = {
         mainnetContracts.MORPHO,
         mainnetContracts.USDC,
         mainnetContracts.SWISE,
+        mainnetContracts.BTRFLY,
       ]
     ],
     rewardsData: [
@@ -2002,11 +2004,24 @@ exports.deployTokens = {
           [mainnetContracts.SWISE, 3000, mainnetContracts.WETH]
         ),
       },
+      {
+        id: 0,
+        reward: mainnetContracts.BTRFLY,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xfd5ee44774a162ec25dbf3a4cff6242a1fa5e338',
+        marketId: '0x8bbd1763671eb82a75d5f7ca33a0023ffabdd9d1a3d4316f34753685ae988e80',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.3% fee tier
+          [mainnetContracts.BTRFLY, 10000, mainnetContracts.WETH]
+        ),
+      },
     ],
     urds: [
       '0x678dDC1d07eaa166521325394cDEb1E4c086DF43', // MORPHO
       '0xb5b17231e2c89ca34ce94b8cb895a9b124bb466e', // WSTETH
       '0xfd9b178257ae397a674698834628262fd858aad3', // SWISE
+      '0xfd5ee44774a162ec25dbf3a4cff6242a1fa5e338', // BTRFLY
     ],
     cdo: CDOs.mmwethre7weth,
     ...baseCDOArgs,
