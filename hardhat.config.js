@@ -65,6 +65,7 @@ module.exports = {
       "contracts/IdleCDOInstadappLiteVariant.sol": overrideConfig,
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
+      "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,
       "contracts/IdleCDOTruefiVariant.sol": minimalSizeConfig,
