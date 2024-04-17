@@ -2034,7 +2034,7 @@ exports.deployTokens = {
         [mainnetContracts.GEAR, 10000, mainnetContracts.WETH]
       )
     ],
-    // cdo: CDOs.gearboxweth,
+    cdo: CDOs.gearboxweth,
     cdoVariant: 'IdleCDOGearboxVariant',
     ...baseCDOArgs,
     AARatio: '20000',
