@@ -22,7 +22,7 @@ const mainnetContracts = {
   USDC: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
   aDAI: '0x028171bCA77440897B824Ca71D1c56caC55b68A3',
   aUSDC: '0xbcca60bb61934080951369a648fb03df4f96263c',
-  dUSDC: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
+  dUSDCEul: '0x84721A3dB22EB852233AEAE74f9bC8477F8bcc42',
   SWISE: '0x48C3399719B582dD63eB5AADf12A40B4C3f52FA2',
   // ethena
   SUSDe: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497',
@@ -39,6 +39,12 @@ const mainnetContracts = {
   mmWETHbbWETH: '0x38989BBA00BDF8181F4082995b3DEAe96163aC5D',
   mmWETHre7WETH: '0x78fc2c2ed1a4cdb5402365934ae5648adad094d0',
   mmUSDCsteakUSDC: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
+  // gearbox
+  GEAR: '0xBa3335588D9403515223F109EdC4eB7269a9Ab5D',
+  dWETH: '0xda0002859B2d05F66a753d8241fCDE8623f26F4f',
+  sdWETH: '0x0418fEB7d0B25C411EB77cD654305d29FcbFf685',
+  dUSDC: '0xda00000035fef4082F78dEF6A8903bee419FbF8E',
+  sdUSDC: '0x9ef444a6d7F4A5adcd68FD5329aA5240C90E14d2',
   // euler
   eWETH: '0x1b808F49ADD4b8C6b5117d9681cF7312Fcf0dC1D',
   eUSDC: '0xEb91861f8A4e1C12333F42DCE8fB0Ecdc28dA716',
@@ -818,6 +824,32 @@ const CDOs = {
     AATranche: '0xF3188697Bd35Df73E4293d04A07ebAAf1FfC4018',
     BBTranche: '0xb8d0BE502A8F12Cc5213733285b430A43d07349D'
   },
+  gearboxweth: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xeE4043b3E4fDf830a557Aa78604E16a599701dFA',
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xbc48967C34d129a2ef25DD4dc693Cc7364d02eb9',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0xeE4043b3E4fDf830a557Aa78604E16a599701dFA',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x0f09A04AD551Dd941b589625BD2360FC962FF9f7',
+    BBTranche: '0x1223ddeEe77F8F379ea7a49e7650Ff1Ec1e2dE8a'
+  },
+  gearboxusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x29c794B9a70752c41D65EBcCEF1c1eE697387510',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xdd4D030A4337CE492B55bc5169F6A9568242C0Bc',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x29c794B9a70752c41D65EBcCEF1c1eE697387510',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x450C055a00226F1Eba09E8D9627034565b7C4C8A',
+    BBTranche: '0x2a84A042DB06222C486BcB815E961f26599D0dF6'
+  },
 };
 
 const trancheErc4626Wrappers = {
@@ -1522,7 +1554,7 @@ exports.deployTokens = {
     strategyParams: [
       mainnetContracts.eulerMain,
       mainnetContracts.eUSDC,
-      mainnetContracts.dUSDC,
+      mainnetContracts.dUSDCEul,
       mainnetContracts.USDC,
       'owner', // owner address
       mainnetContracts.eulerDistributor,
@@ -1999,6 +2031,52 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: ''
+  },
+  gearboxweth: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'GearboxStrategy',
+    strategyParams: [
+      mainnetContracts.dWETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.sdWETH,
+      ethers.utils.solidityPack(
+        ['address', 'uint24', 'address'],
+        // 1% fee tier
+        [mainnetContracts.GEAR, 10000, mainnetContracts.WETH]
+      )
+    ],
+    cdo: CDOs.gearboxweth,
+    cdoVariant: 'IdleCDOGearboxVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: ''
+  },
+  gearboxusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'GearboxStrategy',
+    strategyParams: [
+      mainnetContracts.dUSDC,
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.sdUSDC,
+      ethers.utils.solidityPack(
+        ['address', 'uint24', 'address', 'uint24', 'address'],
+        // 1% fee tier
+        [mainnetContracts.GEAR, 10000, mainnetContracts.WETH, 500, mainnetContracts.USDC]
+      )
+    ],
+    cdo: CDOs.gearboxusdc,
+    cdoVariant: 'IdleCDOGearboxVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: true,
+    proxyCdoAddress: CDOs.gearboxweth.cdoAddr
   },
 };
 

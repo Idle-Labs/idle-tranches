@@ -141,11 +141,11 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
 
     uint256 releasePeriod = _strategyReleaseBlocksPeriod();
-    // Skip 7 day forward to accrue interest
-    skip(7 days);
+    // Skip 60 day forward to accrue interest
+    skip(60 days);
     if (releasePeriod == 0) {
-      // 7 days in blocks
-      vm.roll(block.number + 7 * 7200);
+      // 60 days in blocks
+      vm.roll(block.number + 60 * 7200);
     } else {
       vm.roll(block.number + releasePeriod + 1);
     }
@@ -167,8 +167,8 @@ abstract contract TestIdleCDOBase is Test {
     // funds in lending
     _cdoHarvest(true);
 
-    skip(7 days);
-    vm.roll(block.number + 7 * 7200);
+    skip(60 days);
+    vm.roll(block.number + 60 * 7200);
 
     _pokeLendingProtocol();
 

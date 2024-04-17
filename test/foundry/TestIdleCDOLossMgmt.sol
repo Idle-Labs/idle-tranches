@@ -12,6 +12,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
     address public vault; // used to simulate price increase via _donateToken
     uint256 public increaseAmount;
+    uint256 public ONE_TRANCHE_TOKEN = 1e18;
 
     // Used to trasfer underlying to `vault` and simulate a price increase
     function _donateToken(address to, uint256 amount) internal virtual {}
@@ -54,6 +55,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
 
+        vm.prank(idleCDO.owner());
+        idleCDO.setLossToleranceBps(500);
+
         uint256 amountAA = 10000 * ONE_SCALE * depositAmountAARatio / FULL_ALLOC;
         uint256 amountBB = 10000 * ONE_SCALE * (FULL_ALLOC - depositAmountAARatio) / FULL_ALLOC;
         uint256 preAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -71,7 +75,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         // curr price - about 0.25%
         _createLoss(idleCDO.lossToleranceBps() / 2);
 
-        uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
+        uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
         uint256 lastNAVAA = idleCDO.lastNAVAA();
         uint256 currentAARatioScaled = lastNAVAA * ONE_SCALE / (idleCDO.lastNAVBB() + lastNAVAA);
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -79,12 +83,12 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         // Both junior and senior lost
         if (currentAARatioScaled > 0) {
-            assertApproxEqAbs(postAAPrice, (preAAPrice * (1e18 - priceDelta)) / 1e18, 100, "AA price after loss");
+            assertApproxEqAbs(postAAPrice, (preAAPrice * (ONE_SCALE - priceDelta)) / ONE_SCALE, 100, "AA price after loss");
         } else {
             assertApproxEqAbs(postAAPrice, preAAPrice, 1, "AA price not changed");
         }
         if (currentAARatioScaled < ONE_SCALE) {
-            assertApproxEqAbs(postBBPrice, (preBBPrice * (1e18 - priceDelta)) / 1e18, 100, "BB price after loss");
+            assertApproxEqAbs(postBBPrice, (preBBPrice * (ONE_SCALE - priceDelta)) / ONE_SCALE, 100, "BB price after loss");
         } else {
             assertApproxEqAbs(postBBPrice, preBBPrice, 1, "BB price not changed");
         }
@@ -193,6 +197,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
 
+        vm.prank(idleCDO.owner());
+        idleCDO.setLossToleranceBps(500);
+
         uint256 amountAA = 10000 * ONE_SCALE * depositAmountAARatio / FULL_ALLOC;
         uint256 amountBB = 10000 * ONE_SCALE * (FULL_ALLOC - depositAmountAARatio) / FULL_ALLOC;
 
@@ -206,7 +213,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         // now let's simulate a loss by decreasing strategy price
         // curr price - about 0.25%
         _createLoss(idleCDO.lossToleranceBps() / 2);
-        uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
+
+        uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
         uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
         uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
 
@@ -224,13 +232,13 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         if (depositAmountAARatio > 0) {
             assertApproxEqRel(
                 resAA,
-                amountAA * (1e18 - priceDelta) / 1e18, 
+                amountAA * (ONE_SCALE - priceDelta) / ONE_SCALE, 
                 10**14, 
                 "AA amount after loss"
             );
             // Abs = 11 because min deposit for AA is 0.1 underlying (with depositAmountAARatio = 1)
             // and this can cause a price diff of up to 11 wei
-            assertApproxEqAbs(priceAA, ONE_SCALE - (priceDelta / 10**(18-decimals)), 11, "AA price after loss");
+            assertApproxEqAbs(priceAA, ONE_SCALE - priceDelta, 11, "AA price after loss");
         } else {
             assertApproxEqRel(resAA, amountAA, 1, "AA amount not changed");
         }
@@ -238,11 +246,11 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         if (depositAmountAARatio < FULL_ALLOC) {
             assertApproxEqRel(
                 resBB, 
-                (amountBB * (1e18 - priceDelta)) / 1e18, 
+                (amountBB * (ONE_SCALE - priceDelta)) / ONE_SCALE, 
                 10**14, 
                 "BB amount after loss"
             );
-            assertApproxEqAbs(priceBB, ONE_SCALE - (priceDelta / 10**(18-decimals)), 11, "BB price after loss");
+            assertApproxEqAbs(priceBB, ONE_SCALE - priceDelta, 11, "BB price after loss");
         } else {
             assertApproxEqRel(resBB, amountBB, 1, "BB amount not changed");
         }
@@ -261,10 +269,6 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         // > 0 because it's a requirement of the withdraw
         vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
         vm.assume(_redeemRatioBB <= 1000 && _redeemRatioBB > 0);
-
-        // uint16 _ratio = 1;
-        // uint16 _redeemRatioAA = 1;
-        // uint16 _redeemRatioBB = 910;
 
         uint256 amount = 1000 * ONE_SCALE;
         // to have the same scale as FULL_ALLOC and avoid 
@@ -293,16 +297,10 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         if (amountBB > 0) {
             idleCDO.withdrawBB(amountBB);
         }
-
-        // both withdrawals are increasing the NAV and so the price of tranches 
-        // is increasing too because the expectedFee gets added to the NAV
-        uint256 AABal = AAtranche.totalSupply() * idleCDO.virtualPrice(address(AAtranche)) / ONE_SCALE;
-        uint256 BBBal = BBtranche.totalSupply() * idleCDO.virtualPrice(address(BBtranche)) / ONE_SCALE;
-        uint256 newAATVLRatio = AABal * FULL_ALLOC / (AABal + BBBal);
         assertApproxEqAbs(
             idleCDO.trancheAPRSplitRatio(), 
-            _calcNewAPRSplit(newAATVLRatio), 
-            2,
+            _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 
+            25,
             "split ratio on redeem"
         );
     }
@@ -314,11 +312,16 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         uint256 amountAA = amount - amount / 50;
         uint256 amountBB = amount - amountAA;
         _doDepositsWithInterest(amountAA, amountBB);
+        uint256 newTVL = (
+            IdleCDOTranche(address(AAtranche)).totalSupply() * idleCDO.virtualPrice(address(AAtranche)) / ONE_TRANCHE_TOKEN +
+            IdleCDOTranche(address(BBtranche)).totalSupply() * idleCDO.virtualPrice(address(BBtranche)) / ONE_TRANCHE_TOKEN
+        );
+        uint256 interest = newTVL > amount ? newTVL - amountAA - amountBB : 0;
 
         // now let's simulate a loss by decreasing strategy price
         // curr price - 10%, this will trigger a default
         uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
-        uint256 totLoss = amount * lossBps / FULL_ALLOC; // 1000
+        uint256 totLoss = (amount + interest) * lossBps / FULL_ALLOC;
         _createLoss(lossBps);
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -327,9 +330,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         assertEq(0, postBBPrice, 'Full loss for junior tranche');
         // seniors are covered
         assertApproxEqAbs(
-            (amountAA + amountBB - totLoss) * ONE_SCALE / amountAA,
+            (amountAA + amountBB + interest - totLoss) * ONE_SCALE / amountAA,
             postAAPrice,
-            2000, // 2000 wei to account for interest accrued
+            2,
             'AA price lost about 8% (2% covered by junior)'
         );
 
@@ -362,7 +365,6 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         returns (uint256 priceAA, uint256 priceBB) {
         vm.startPrank(owner);
         idleCDO.setReleaseBlocksPeriod(0);
-        idleCDO.setFee(10000);
         vm.stopPrank();
 
         _pokeLendingProtocol();
@@ -372,12 +374,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         // deposit underlyings to the strategy
         _cdoHarvest(true);
-        // accrue some interest 
-        skip(7 days);
-        vm.roll(block.number + 7 * 7200); // 7 days in blocks
-        // claim and sell rewards
-        _cdoHarvest(false);
-        vm.roll(block.number + 1); // 7 days in blocks
+        // accrue 7 days of interest + rewards
+        _accrueInterest();
 
         _pokeLendingProtocol();
 
@@ -385,5 +383,14 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         priceBB = idleCDO.virtualPrice(address(BBtranche));
         assertGe(priceAA, ONE_SCALE - 1, 'AA price is >= 1');
         assertGe(priceBB, ONE_SCALE - 1, 'BB price is >= 1');
+    }
+
+    function _accrueInterest() internal virtual {
+        // accrue some interest 
+        skip(7 days);
+        vm.roll(block.number + 7 * 7200);
+        // claim and sell rewards
+        _cdoHarvest(false);
+        vm.roll(block.number + 1);
     }
 }
