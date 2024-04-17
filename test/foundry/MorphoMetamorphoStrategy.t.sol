@@ -58,6 +58,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
 
     // setup URD
     // deployCode is used instead of 'new' to avoid compile issues with multiple solidity versions
+    // MetamorphoHelper is a contract that is used to compile Merkle and UrdFactory
     urdFactory = IUrdFactory(deployCode("UrdFactory.sol"));
     merkle = IMerkle(deployCode("Merkle.sol"));
     distributor = urdFactory.createUrd(distributorOwner, 0, bytes32(0), hex"", hex"");
