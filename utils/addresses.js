@@ -837,6 +837,19 @@ const CDOs = {
     AATranche: '0x0f09A04AD551Dd941b589625BD2360FC962FF9f7',
     BBTranche: '0x1223ddeEe77F8F379ea7a49e7650Ff1Ec1e2dE8a'
   },
+  gearboxusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x29c794B9a70752c41D65EBcCEF1c1eE697387510',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xdd4D030A4337CE492B55bc5169F6A9568242C0Bc',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x29c794B9a70752c41D65EBcCEF1c1eE697387510',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x450C055a00226F1Eba09E8D9627034565b7C4C8A',
+    BBTranche: '0x2a84A042DB06222C486BcB815E961f26599D0dF6'
+  },
 };
 
 const trancheErc4626Wrappers = {
@@ -2057,7 +2070,7 @@ exports.deployTokens = {
         [mainnetContracts.GEAR, 10000, mainnetContracts.WETH, 500, mainnetContracts.USDC]
       )
     ],
-    // cdo: CDOs.gearboxusdc,
+    cdo: CDOs.gearboxusdc,
     cdoVariant: 'IdleCDOGearboxVariant',
     ...baseCDOArgs,
     AARatio: '20000',
