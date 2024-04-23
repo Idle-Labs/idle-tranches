@@ -801,6 +801,18 @@ const CDOs = {
     AATranche: '0x454bB3cb427B21e1c052A080e21A57753cd6969e',
     BBTranche: '0x20aa3CD83044D2903181f7eF5c2B498a017d1C4A'
   },
+  mmwethre7wethfarm: {
+    decimals: 18,
+    strategyToken: mainnetContracts.mmWETHre7WETH,
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xD071EA5D2575E155E4e9c2234968D1E11B8a920E',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x0f050055b162fEAcA563Ff36fE905c930361dA57',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xb9d321B26095195610707597Aab416925C598aab',
+    BBTranche: '0xf529f10Fe24367d3A123Faf0E9D5F6D80980b46f'
+  },
   amphorwsteth: {
     decimals: 18,
     strategyToken: mainnetContracts.amprWSTETH,
@@ -2029,6 +2041,90 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.morphoaaveweth.cdoAddr, // deploy new instance
+  },
+  mmWETHre7WETHFarm: {
+    farmTranche: true,
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'MetaMorphoStrategy',
+    strategyParams: [
+      mainnetContracts.mmWETHre7WETH,
+      mainnetContracts.WETH,
+      'owner', // owner address
+      mainnetContracts.mmSnippets,
+      [
+        mainnetContracts.MORPHO,
+        mainnetContracts.USDC,
+        mainnetContracts.SWISE,
+        mainnetContracts.BTRFLY,
+      ]
+    ],
+    rewardsData: [
+      {
+        id: 0,
+        reward: mainnetContracts.MORPHO,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0x678dDC1d07eaa166521325394cDEb1E4c086DF43',
+        marketId: '0x698fe98247a40c5771537b5786b2f3f9d78eb487b4ce4d75533cd0e94d88a115',
+        uniV3Path: '0x',
+      },
+      {
+        id: 1,
+        reward: mainnetContracts.MORPHO,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0x678dDC1d07eaa166521325394cDEb1E4c086DF43',
+        marketId: '0xd5211d0e3f4a30d5c98653d988585792bb7812221f04801be73a44ceecb11e89',
+        uniV3Path: '0x',
+      },
+      {
+        id: 0,
+        reward: mainnetContracts.USDC,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xb5b17231e2c89ca34ce94b8cb895a9b124bb466e',
+        marketId: '0x698fe98247a40c5771537b5786b2f3f9d78eb487b4ce4d75533cd0e94d88a115',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.05% fee tier
+          [mainnetContracts.USDC, 500, mainnetContracts.WETH]
+        ),
+      },
+      {
+        id: 0,
+        reward: mainnetContracts.SWISE,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xfd9b178257ae397a674698834628262fd858aad3',
+        marketId: '0xd5211d0e3f4a30d5c98653d988585792bb7812221f04801be73a44ceecb11e89',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.3% fee tier
+          [mainnetContracts.SWISE, 3000, mainnetContracts.WETH]
+        ),
+      },
+      {
+        id: 0,
+        reward: mainnetContracts.BTRFLY,
+        sender: '0x640428D38189B11B844dAEBDBAAbbdfbd8aE0143',
+        urd: '0xfd5ee44774a162ec25dbf3a4cff6242a1fa5e338',
+        marketId: '0x8bbd1763671eb82a75d5f7ca33a0023ffabdd9d1a3d4316f34753685ae988e80',
+        uniV3Path: ethers.utils.solidityPack(
+          ['address', 'uint24', 'address'],
+          // 0.3% fee tier
+          [mainnetContracts.BTRFLY, 10000, mainnetContracts.WETH]
+        ),
+      },
+    ],
+    urds: [
+      '0x678dDC1d07eaa166521325394cDEb1E4c086DF43', // MORPHO
+      '0xb5b17231e2c89ca34ce94b8cb895a9b124bb466e', // WSTETH
+      '0xfd9b178257ae397a674698834628262fd858aad3', // SWISE
+      '0xfd5ee44774a162ec25dbf3a4cff6242a1fa5e338', // BTRFLY
+    ],
+    cdo: CDOs.mmwethre7wethfarm,
+    ...baseCDOArgs,
+    AARatio: '100000',
+    limit: '0',
+    isAYSActive: false,
+    proxyCdoAddress: CDOs.mmwethre7weth.cdoAddr,
   },
   ethenasusde: {
     decimals: 18,

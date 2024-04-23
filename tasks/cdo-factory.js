@@ -319,9 +319,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log()
 
     const ays = await idleCDO.isAYSActive();
-    if (args.isAYSActive && !ays) {
-      console.log("Turning on AYS");
-      await idleCDO.connect(signer).setIsAYSActive(true);
+    if (args.isAYSActive != ays) {
+      console.log("Toggling AYS");
+      await idleCDO.connect(signer).setIsAYSActive(args.isAYSActive);
     }
     console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
 
@@ -349,6 +349,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     if (deployToken.unlent == 0) {
       console.log('Setting unlent to 0')
       await idleCDO.connect(signer).setUnlentPerc(0);
+    }
+
+    if (deployToken.farmTranche) {
+      console.log('Farming CDO: Setting loss always socialized')
+      await idleCDO.connect(signer).setLossToleranceBps(100000);
     }
 
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
