@@ -47,6 +47,10 @@ contract IdleCDOEpochVariant is IdleCDO {
   uint256 public totEpochDeposits;
   /// @notice flag to allow instant withdraws
   bool public allowInstantWithdraw;
+  /// @notice flag to disable instant withdraw
+  bool public disableInstantWithdraw;
+  /// @notice flag to check if borrower defaulted
+  bool public defaulted;
 
   event AccrueInterest(uint256 interest, uint256 fees);
 
@@ -81,6 +85,10 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
   }
 
+  ///
+  /// Only owner or manager methods 
+  ///
+
   /// @notice update epoch duration
   /// @param _epochDuration duration in seconds
   function setEpochDuration(uint256 _epochDuration) external {
@@ -100,6 +108,13 @@ contract IdleCDOEpochVariant is IdleCDO {
   function setInstantWithdrawAprDelta(uint256 _instantWithdrawAprDelta) external {
     _checkOnlyOwnerOrManager();
     instantWithdrawAprDelta = _instantWithdrawAprDelta;
+  }
+
+  /// @notice update disable instant withdraw flag
+  /// @param _disableInstantWithdraw flag to disable instant withdraw
+  function setDisableInstantWithdraw(bool _disableInstantWithdraw) external {
+    _checkOnlyOwnerOrManager();
+    disableInstantWithdraw = _disableInstantWithdraw;
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -152,12 +167,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     IERC20Detailed(token).safeTransfer(_strategy.borrower(), totUnderlyings - pendingInstant);
   }
 
-  /// @dev See {IdleCDO-_deposit}. In addition we update totEpochDeposits
-  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256 _minted) {
-    totEpochDeposits += _amount;
-    return super._deposit(_amount, _tranche, _referral);
-  }
-
   /// @notice Stop epoch, accrue interest to the vault and get funds to fullfill normal
   /// (ie non-instant) withdraw requests from the prev epoch.
   /// @dev normal withdraw requests do not burn tranche tokens so tranche prices are increased
@@ -179,7 +188,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     IdleCreditVault _strategy = IdleCreditVault(strategy);
     uint256 _expectedInterest = expectedEpochInterest;
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
-    allowInstantWithdraw = false;
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
@@ -202,14 +210,21 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       // stop epoch
       isEpochRunning = false;
+      expectedEpochInterest = 0;
+
       // allow deposits
       _unpause();
       // allow withdrawals requests
       allowAAWithdrawRequest = true;
       allowBBWithdrawRequest = true;
+      // block instant withdraws as these can be done only after the deadline
+      allowInstantWithdraw = false;
 
       emit AccrueInterest(_expectedInterest, _fees);
     } catch {
+      // if borrower defaults, prev instant withdraw requests can still be withdrawn
+      // as were already fullfilled prior to the default (all funds already sent to the strategy)
+      allowInstantWithdraw = true;
       _handleBorrowerDefault();
     }
   }
@@ -266,10 +281,25 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
   }
 
+  /// @notice Handle borrower default
   function _handleBorrowerDefault() internal {
-    // TODO handle default without revert?
-    // borrower defaulted interest payment 
-    revert BorrowerDefault();
+    defaulted = true;
+    // prevent deposits
+    _pause();
+
+    // prevent withdrawals requests
+    allowAAWithdrawRequest = false;
+    allowBBWithdrawRequest = false;
+  }
+
+  /// 
+  /// User methods
+  ///
+
+  /// @dev See {IdleCDO-_deposit}. In addition we update totEpochDeposits
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256 _minted) {
+    totEpochDeposits += _amount;
+    return super._deposit(_amount, _tranche, _referral);
   }
 
   /// @notice Request a withdraw from the vault of AA tranche
@@ -301,15 +331,17 @@ contract IdleCDOEpochVariant is IdleCDO {
     IdleCreditVault creditVault = IdleCreditVault(strategy);
     uint256 _underlyings = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
 
-    // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
-    if (lastEpochApr > (creditVault.getApr() + instantWithdrawAprDelta)) {
-      // Check that user is not requesting too much instant withdraw
-      if (maxWitdrawableInstant(msg.sender, _tranche) < _underlyings) {
-        revert AmountTooHigh();
+    if (!disableInstantWithdraw) {
+      // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
+      if (lastEpochApr > (creditVault.getApr() + instantWithdrawAprDelta)) {
+        // Check that user is not requesting too much instant withdraw
+        if (maxWitdrawableInstant(msg.sender, _tranche) < _underlyings) {
+          revert AmountTooHigh();
+        }
+        creditVault.requestInstantWithdraw(_underlyings, msg.sender);
+        _withdrawOps(_amount, _underlyings, _tranche);
+        return;
       }
-      creditVault.requestInstantWithdraw(_underlyings, msg.sender);
-      _withdrawOps(_amount, _underlyings, _tranche);
-      return;
     }
 
     // Check that user is not requesting too much withdraw
@@ -375,6 +407,15 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert EpochRunning();
     }
 
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+
+    // if borrower did not paid prev withdraw requests, revert. if instead he defaulted
+    // only on instant withdraw requests but prev normal withdraws were fullfilled, we can still
+    // allow normal withdraws
+    if (defaulted && _strategy.pendingWithdraws() != 0) {
+      revert BorrowerDefault();
+    }
+
     uint256 requested = IdleCreditVault(strategy).claimWithdrawRequest(msg.sender);
     // calc tranche tokens to burn.
     uint256 _amount = requested * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
@@ -392,18 +433,3 @@ contract IdleCDOEpochVariant is IdleCDO {
     IdleCreditVault(strategy).claimInstantWithdrawRequest(msg.sender);
   }
 }
-
-// pre epoch 0 -> 
-//   - deposits
-// start epoch 0 -> nothing
-// end epoch 0 -> 
-//   - deposits and
-//   - if apr >= withdraw requests 
-//   - if apr <  instant withdraw requests 
-// start epoch 1 -> 
-//   - if apr was < then claim instant withdraws after 3 days and before end epoch
-// end epoch 1 -> 
-//   - deposits and 
-//   - stop instant withdraw 
-//   - claim normal withdraws
-//   repeat from end epoch 0
