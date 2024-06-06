@@ -74,7 +74,8 @@ contract IdleCreditVault is
     address _owner,
     address _manager,
     address _borrower,
-    string memory borrowerName
+    string memory borrowerName,
+    uint256 _apr
   ) public virtual initializer {
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -87,6 +88,7 @@ contract IdleCreditVault is
     oneToken = 10**(tokenDecimals);
     borrower = _borrower;
     manager = _manager;
+    lastApr = _apr;
 
     ERC20Upgradeable.__ERC20_init(
       string(abi.encodePacked("Idle Credit Vault ", borrowerName)),
@@ -150,7 +152,6 @@ contract IdleCreditVault is
     amount = withdrawsRequests[_user];
     // burn strategy tokens
     _burn(msg.sender, amount);
-    // _burn(msg.sender, amount * decimals() / oneToken);
     withdrawsRequests[_user] = 0;
     pendingWithdraws -= amount;
     underlyingToken.safeTransfer(_user, amount);
@@ -164,11 +165,9 @@ contract IdleCreditVault is
     _onlyIdleCDO();
     // burn strategy tokens from cdo
     _burn(msg.sender, _amount);
-    // _burn(msg.sender, _amount * decimals() / oneToken);
   
     // mint equal amount of strategy tokens to the user as receipt, useful in case of default
     _mint(_user, _amount);
-    // _mint(_user, _amount * decimals() / oneToken);
 
     // increase the instant withdraw requests for the user
     instantWithdrawsRequests[_user] += _amount;
@@ -184,7 +183,6 @@ contract IdleCreditVault is
     uint256 amount = instantWithdrawsRequests[_user];
     // burn strategy tokens from user
     _burn(_user, amount);
-    // _burn(_user, amount * decimals() / oneToken);
 
     instantWithdrawsRequests[_user] = 0;
     underlyingToken.safeTransfer(_user, amount);
@@ -212,8 +210,6 @@ contract IdleCreditVault is
   /// @param _amount number of underlyings to mint
   function mintStrategyTokens(uint256 _amount) external returns (uint256 minted) {
     _onlyIdleCDO();
-    // minted = _amount * 1e18 / oneToken;
-    // _mint(msg.sender, minted);
     _mint(msg.sender, _amount);
     minted = _amount;
   }
