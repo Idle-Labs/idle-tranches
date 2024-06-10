@@ -141,4 +141,10 @@ contract GearboxStrategy is ERC4626Strategy, ERC20Upgradeable {
     rewards = new address[](1);
     rewards[0] = GEAR;
   }
+
+  /// @notice set the uniswap path to quote GEAR rewards
+  /// @param _uniV3Path uniswap path to quote GEAR rewards
+  function setUniV3Path(bytes calldata _uniV3Path) external onlyOwner {
+    uniV3Path = _uniV3Path;
+  }
 }
