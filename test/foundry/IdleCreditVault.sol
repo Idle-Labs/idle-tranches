@@ -11,7 +11,6 @@ error EpochRunning();
 error EpochNotRunning();
 error DeadlineNotMet();
 error NotAllowed();
-error AmountTooHigh();
 error Default();
 
 contract TestIdleCreditVault is TestIdleCDOLossMgmt {
@@ -96,14 +95,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     } else {
       deal(defaultUnderlying, borrower, funds);
       vm.warp(_vault.epochEndDate() + 1);
+      uint256 pendingFees = _vault.pendingWithdrawFees();
       uint256 expectedInterest = _vault.expectedEpochInterest();
-      uint256 fees = _vault.fee() * expectedInterest / FULL_ALLOC;
+      uint256 fees = _vault.fee() * (expectedInterest - pendingFees) / FULL_ALLOC;
       uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
       vm.expectEmit(address(_vault));
       if (funds < expectedInterest + pendingWithdraws) {
         emit BorrowerDefault(expectedInterest + pendingWithdraws);
       } else {
-        emit AccrueInterest(expectedInterest, fees);
+        emit AccrueInterest(expectedInterest, fees + pendingFees);
       }
       _vault.stopEpoch(newApr);
     }
@@ -175,7 +175,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.withdrawBB(0);
 
     // stop epoch
-    _toggleEpoch(false, 1e18, 1000);
+    _toggleEpoch(false, 1e18, 1e18);
 
     // While the epoch is stopped the withdraw flows is blocked in the _withdraw (overridden)
     // hence the different error
@@ -204,7 +204,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.totEpochDeposits(), amountWei, "totEpochDeposits after AA deposit");
     idleCDO.depositBB(amountWei);
     assertEq(cdoEpoch.totEpochDeposits(), totAmount, "totEpochDeposits after BB deposit");
-
+    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal is != 0 in CDO after deposit");
+    assertEq(
+      strategyToken.balanceOf(address(idleCDO)), 
+      totAmount, 
+      "strategy bal after deposits is wrong"
+    );
 
     uint256 balAA = IERC20(AAtranche).balanceOf(address(this));
     uint256 balBB = IERC20(BBtranche).balanceOf(address(this));
@@ -252,7 +257,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // this is overidden in the test
     // assertEq(cdoEpoch.lossToleranceBps(), FULL_ALLOC, 'lossTokenranceBps is wrong');
     assertEq(cdoEpoch.trancheAPRSplitRatio(), FULL_ALLOC, 'trancheAPRSplitRatio is wrong');
-    assertEq(cdoEpoch.epochDuration(), 30 days, 'epochDuration is wrong');
+    assertEq(cdoEpoch.epochDuration(), 36.5 days, 'epochDuration is wrong');
     assertEq(cdoEpoch.instantWithdrawDelay(), 3 days, 'instantWithdrawDelay is wrong');
     assertEq(cdoEpoch.allowAAWithdraw(), false, 'allowAAWithdraw is wrong');
     assertEq(cdoEpoch.allowBBWithdraw(), false, 'allowBBWithdraw is wrong');
@@ -329,7 +334,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
-    uint256 interest = strategy.getApr() * amount * cdoEpoch.epochDuration() / 365 days;
+    uint256 interest = (strategy.getApr() / 100) * amount * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN) * cdoEpoch.trancheAPRSplitRatio() / FULL_ALLOC;
     assertEq(cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche()), amount + interest, 'maxWitdrawable is wrong');
 
     vm.prank(owner);
@@ -461,6 +466,81 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(IERC20Detailed(defaultUnderlying).balanceOf(borrower), ONE_SCALE, 1, 'borrower got wrong amount of funds after new deposits');
   }
 
+  function testStartEpochWithPendingNormal() external {
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    
+    // set some params to ease calculations
+    vm.prank(manager);
+    _strategy.setApr(10e18);
+
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    cdoEpoch.setEpochDuration(36.5 days); // set this to have an epoch during 1/10 of the year
+    cdoEpoch.setIsAYSActive(false); // we do the test only with AA so 100% of the interest shoudl go to AA
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    uint256 fee = cdoEpoch.fee();
+    uint256 totTVLBase = amountWei * 2;
+
+    idleCDO.depositAA(totTVLBase / 2);
+    _depositWithUser(makeAddr('user1'), totTVLBase / 2, true);
+    // tot tvl = 20000
+    
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch.
+    // We have apr = 10% and 1 epoch = 1/10 of the year so the expected amount is amountWei * 2 / 100
+    uint256 interest = totTVLBase / 100;
+    uint256 fees = fee * interest / FULL_ALLOC;
+    uint256 feeBalPre = IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, interest);
+
+    assertEq(cdoEpoch.getContractValue(), totTVLBase + interest - fees, 'tvl is wrong');
+    assertEq(cdoEpoch.getContractValue(), 20180 * ONE_SCALE, 'tvl is wrong v2');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeBalPre, fees, 'fee balance is wrong on epoch 1');
+    
+    totTVLBase += interest - fees;
+    interest = totTVLBase / 100;
+    fees = fee * interest / FULL_ALLOC;
+
+    // we request a withdraw for all the amount of user 1 -> 10090 + (10090 * 0.9%) interest of next epoch - fees = 10180.81
+    cdoEpoch.requestWithdrawAA(0);
+    assertEq(_strategy.pendingWithdraws(), 1018081 * ONE_SCALE / 100, 'pendingWithdraw is wrong');
+    assertEq(_strategy.pendingWithdraws(), (totTVLBase + interest - fees) / 2, 'pendingWithdraw is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(1);
+    // expected interest is interest of the user still deposited (totTVLBase / 2 / 100, fees included) + the fee
+    // of the user with a pending withdraw
+    assertEq(cdoEpoch.expectedEpochInterest(), (totTVLBase / 2) / 100 + fees / 2, 'expectedEpochInterest is wrong epoch 1');
+    // stop epoch.
+
+    feeBalPre = IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+    // borrower should pay 10180.81 for pending withdraw + interest + fees + interest of the other deposit (fee included)
+    _stopEpochAndCheckPrices(1, initialProvidedApr, _strategy.pendingWithdraws() + fees / 2 + (totTVLBase / 2) / 100);
+
+    assertEq(IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeBalPre, fees, 'fee balance is wrong');
+    assertEq(cdoEpoch.defaulted(), false, 'borower defaulted');
+
+    totTVLBase = cdoEpoch.getContractValue();
+
+    // we don't claim the requested amount and start another epoch
+    // interest should not be calculated for the request not withdrawn yet
+    _startEpochAndCheckPrices(2);
+    assertEq(cdoEpoch.expectedEpochInterest(), totTVLBase / 100, 'expectedEpochInterest is wrong epoch 2');
+    _stopEpochAndCheckPrices(2, initialProvidedApr, totTVLBase / 100);
+    assertEq(cdoEpoch.defaulted(), false, 'borower defaulted on epoch 2');
+  
+    totTVLBase = cdoEpoch.getContractValue();
+
+    _startEpochAndCheckPrices(3);
+    assertEq(cdoEpoch.expectedEpochInterest(), totTVLBase / 100, 'expectedEpochInterest is wrong epoch 3');
+    _stopEpochAndCheckPrices(3, initialProvidedApr, totTVLBase / 100);
+    assertEq(cdoEpoch.defaulted(), false, 'borower defaulted on epoch 3');
+  }
+
   function _startEpochAndCheckPrices(uint256 epochNum) internal {
     // start epoch
     uint256 AAPricePre = cdoEpoch.virtualPrice(address(AAtranche));
@@ -483,12 +563,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(false, newApr, funds);
     uint256 AAPricePost = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePost = cdoEpoch.virtualPrice(address(BBtranche));
-    assertGt(AAPricePost, AAPricePre,
-      string(abi.encodePacked("AA price is not the same after stopping epoch: ", epochNum))
-    );
-    assertGt(BBPricePost, BBPricePre,
-      string(abi.encodePacked("BB price is not the same after stopping epoch: ", epochNum))
-    );
+    if (IERC20(address(AAtranche)).totalSupply() > 0 && funds != 0) {
+      assertGt(AAPricePost, AAPricePre,
+        string(abi.encodePacked("AA price is not increased after stopping epoch: ", epochNum))
+      );
+    }
+    if (IERC20(address(BBtranche)).totalSupply() > 0 && funds != 0) {
+      assertGt(BBPricePost, BBPricePre,
+        string(abi.encodePacked("BB price is not increased after stopping epoch: ", epochNum))
+      );
+    }
   }
 
   function testStopEpoch() external {
@@ -522,11 +606,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 fees = cdoEpoch.fee() * expectedInterest / FULL_ALLOC;
     uint256 expectedNet = expectedInterest - fees;
     uint256 feeReceiverBal = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+    uint256 strategyTokenBalPre = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
 
     // end epoch with gain, almost same apr so normal withdrawal are available
     _stopEpochAndCheckPrices(0, initialProvidedApr - 999, _expectedFundsEndEpoch());
 
-    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(cdoEpoch)), expectedNet, 'cdo got wrong amount of funds');
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBalPre, expectedNet, 'cdo got wrong amount of strategyTokens');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(strategy)), expectedNet, 'strategy got wrong amount of funds');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) > 0, true, 'fee receiver got some fees');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal, fees, 'fee receiver got wrong amount of fees');
     assertEq(cdoEpoch.unclaimedFees(), 0, 'unclaimedFees is reset');
@@ -546,19 +632,25 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // start epoch
     _startEpochAndCheckPrices(1);
 
+    uint256 pendingWithdrawFees = cdoEpoch.pendingWithdrawFees();
     expectedInterest = cdoEpoch.expectedEpochInterest();
-    uint256 fee = cdoEpoch.fee() * expectedInterest / FULL_ALLOC;
+    fees = cdoEpoch.fee() * (expectedInterest - pendingWithdrawFees) / FULL_ALLOC + pendingWithdrawFees;
+    strategyTokenBalPre = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
     uint256 pending = IdleCreditVault(address(strategy)).pendingWithdraws();
     uint256 balPreStrategy = IERC20Detailed(defaultUnderlying).balanceOf(address(strategy));
 
     // stop epoch 
     _stopEpochAndCheckPrices(1, initialProvidedApr, _expectedFundsEndEpoch());
 
-    // interest minus fees are in the cdo contract
-    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(cdoEpoch)), expectedInterest - fee, 'cdo got wrong amount of funds with pending withdraw');
+    // all pending withdrawals were fullfilled
+    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), 0, 'wrong value of pendingWithdraw');
+    // interest minus fees are sent directly to the strategy
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(cdoEpoch)), 0, 'cdo got wrong amount of funds with pending withdraw');
+    // interest minus fees are mint as strategyTokens in the cdo
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBalPre, expectedInterest - fees, 'cdo got wrong amount of strategyTokens in second epoch');
     // pending withdraw requests are in the strategy contract
     uint256 balPostStrategy = IERC20Detailed(defaultUnderlying).balanceOf(address(strategy));
-    assertEq(balPostStrategy - balPreStrategy, pending, 'strategy got wrong amount of funds with pending withdraw');
+    assertEq(balPostStrategy - balPreStrategy, pending + (expectedInterest - fees), 'strategy got wrong amount of funds with pending withdraw');
   }
 
   function testStopEpochWithDefault() external {
@@ -582,6 +674,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _checkDefault();
     assertEq(cdoEpoch.allowInstantWithdraw(), true, 'allowInstantWithdraw is wrong');
+    assertEq(cdoEpoch.isEpochRunning(), false, 'isEpochRunning is wrong');
   }
   
   function _checkDefault() internal view {
@@ -685,9 +778,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 amountWei = amount * ONE_SCALE;
 
     // AARatio 50%
-    idleCDO.depositAA(amountWei);
-    idleCDO.depositBB(amountWei);
-    
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    uint256 mintedBB = idleCDO.depositBB(amountWei);
+
     // start epoch
     _startEpochAndCheckPrices(0);
     // stop epoch
@@ -695,27 +788,323 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // request normal withdraw, but with amount too high
     uint256 trancheReqAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this)) + 1;
-    vm.expectRevert(abi.encodeWithSelector(AmountTooHigh.selector));
+    vm.expectRevert();
     cdoEpoch.requestWithdrawAA(trancheReqAA);
     uint256 trancheReqBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this)) + 1;
-    vm.expectRevert(abi.encodeWithSelector(AmountTooHigh.selector));
+    vm.expectRevert();
     cdoEpoch.requestWithdrawBB(trancheReqBB);
 
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
     uint256 maxAA = cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche());
+    uint256 lastNAVAA = cdoEpoch.lastNAVAA();
+    uint256 netInterest = _calcInterestForTranche(address(AAtranche), mintedAA / 2);
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
+    uint256 strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
+    uint256 requestedAA1 = cdoEpoch.requestWithdrawAA(mintedAA / 2);
+
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedAA1, 'strategyTokens for user not minted properly on first request');
+    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedAA1 - netInterest, 'strategyTokens for cdo not burned properly on first request');
+    assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), mintedAA / 2, 'AA tranches not burned after first request');
+    assertEq(requestedAA1, maxAA / 2, 'first requested amount for AA is wrong');
+    assertEq(lastNAVAA - cdoEpoch.lastNAVAA(), requestedAA1 - netInterest, 'lastNAVAA is wrong after first request');
+
+    // between first and second request the AA tranche apr split ratio changes so we need to refetch it
+    maxAA = cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche());
+    strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
+    strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
+    // recalculate interest as trancheAPRSplitRatio changed
+    netInterest = _calcInterestForTranche(address(AAtranche), mintedAA / 2);
+
+    uint256 requestedAA2 = cdoEpoch.requestWithdrawAA(0);
+
+    assertEq(requestedAA2, maxAA, 'first requested amount for AA is wrong');
+    assertEq(cdoEpoch.lastNAVAA(), 0, 'lastNAVAA should be 0');
+    assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'AA tranches not burned');
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedAA2, 'strategyTokens for user not minted properly on second request');
+    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedAA2 - netInterest, 'strategyTokens for cdo not burned properly on second request');
+    assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2, 'pendingWithdraws for AA is wrong');
+    assertEq(_strategy.withdrawsRequests(address(this)), requestedAA1 + requestedAA2, 'withdrawsRequests for AA is wrong');
+
+    strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
+    strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
+    // recalculate interest as trancheAPRSplitRatio changed
+    netInterest = _calcInterestForTranche(address(BBtranche), mintedBB);
     uint256 maxBB = cdoEpoch.maxWitdrawable(address(this), idleCDO.BBTranche());
 
-    // request max withdraw
-    uint256 requestedAA = cdoEpoch.requestWithdrawAA(0);
-    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), requestedAA, 'pendingWithdraws for AA is wrong');
-    assertEq(IdleCreditVault(address(strategy)).withdrawsRequests(address(this)), requestedAA, 'withdrawsRequests for AA is wrong');
-    assertEq(maxAA > 0, true, 'maxAA is wrong');
-    assertEq(requestedAA, maxAA, 'requested amount for AA is wrong');
-
     uint256 requestedBB = cdoEpoch.requestWithdrawBB(0);
-    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), requestedAA + requestedBB, 'pendingWithdraws for BB is wrong');
-    assertEq(IdleCreditVault(address(strategy)).withdrawsRequests(address(this)), requestedAA + requestedBB, 'withdrawsRequests for BB is wrong');
+
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'lastNAVBB should be 0');
+    assertEq(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), 0, 'AA tranches not burned');
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedBB, 'strategyTokens for user not minted properly on BB request');
+    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedBB - netInterest, 'strategyTokens for cdo not burned properly on BB request');
+    assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2 + requestedBB, 'pendingWithdraws for BB request is wrong');
+    assertEq(_strategy.withdrawsRequests(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'withdrawsRequests for BB is wrong');
     assertEq(maxBB > 0, true, 'maxBB is wrong');
     assertEq(requestedBB, maxBB, 'requested amount for BB is wrong');
+  }
+
+  function _calcInterest(uint256 _amount) internal view returns (uint256) {
+    return _amount * (IdleCreditVault(address(strategy)).getApr() / 100) * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN);
+  }
+
+  function _calcInterestForTranche(address _tranche, uint256 trancheAmount) internal view returns (uint256) {
+    uint256 interest = _calcInterest(
+      trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN
+    ) * cdoEpoch.trancheAPRSplitRatio() / FULL_ALLOC;
+    uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
+    return interest - fees;
+  }
+
+  function testRequestWithdrawInstant() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+    
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch with less apr so instant withdrawal are available
+    _stopEpochAndCheckPrices(0, initialProvidedApr - (cdoEpoch.instantWithdrawAprDelta() + 1), _expectedFundsEndEpoch());
+
+    // request instant withdraw, but with amount too high
+    uint256 trancheReqAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this)) + 1;
+    vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
+    cdoEpoch.requestWithdrawAA(trancheReqAA);
+    uint256 trancheReqBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this)) + 1;
+    vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
+    cdoEpoch.requestWithdrawBB(trancheReqBB);
+
+    uint256 maxAA = cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.AATranche());
+    uint256 maxBB = cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.BBTranche());
+
+    // request max withdraw
+    uint256 strategyTokenBalPre = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
+    uint256 strategyTokenUserBalPre = IERC20Detailed(strategyToken).balanceOf(address(this));
+    uint256 lastNAVAAPre = cdoEpoch.lastNAVAA();
+
+    uint256 requestedAA = cdoEpoch.requestWithdrawAA(0);
+
+    assertEq(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), requestedAA, 'pendingWithdraws for AA is wrong');
+    assertEq(IdleCreditVault(address(strategy)).instantWithdrawsRequests(address(this)), requestedAA, 'withdrawsRequests for AA is wrong');
+    assertEq(maxAA > 0, true, 'maxAA is wrong');
+    assertEq(requestedAA, maxAA, 'requested amount for AA is wrong');
+    assertEq(strategyTokenBalPre - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)), requestedAA, 'strategyToken bal is wrong for cdo');
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)) - strategyTokenUserBalPre, requestedAA, 'strategyToken bal is wrong for user');
+    assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'trancheToken bal is wrong for user');
+    assertEq(lastNAVAAPre - cdoEpoch.lastNAVAA(), requestedAA, 'lastNAVAA is wrong');
+
+    uint256 strategyTokenBalPreBB = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
+    uint256 strategyTokenUserBalPreBB = IERC20Detailed(strategyToken).balanceOf(address(this));
+    uint256 lastNAVBBPre = cdoEpoch.lastNAVBB();
+
+    uint256 requestedBB = cdoEpoch.requestWithdrawBB(0);
+
+    assertEq(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), requestedAA + requestedBB, 'pendingWithdraws for BB is wrong');
+    assertEq(IdleCreditVault(address(strategy)).instantWithdrawsRequests(address(this)), requestedAA + requestedBB, 'withdrawsRequests for BB is wrong');
+    assertEq(maxBB > 0, true, 'maxBB is wrong');
+    assertEq(requestedBB, maxBB, 'requested amount for BB is wrong');
+    assertEq(strategyTokenBalPreBB - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)), requestedBB, 'strategyToken bal is wrong for cdo');
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)) - strategyTokenUserBalPreBB, requestedBB, 'strategyToken bal is wrong for user');
+    assertEq(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), 0, 'trancheToken bal is wrong for user');
+    assertEq(lastNAVBBPre - cdoEpoch.lastNAVBB(), requestedBB, 'lastNAVBB is wrong');
+  }
+  
+  function testClaimWithdrawRequest() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    uint256 mintedBB = idleCDO.depositBB(amountWei);
+    
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    // request withdraw
+    uint256 requestedAA1 = cdoEpoch.requestWithdrawAA(mintedAA / 2);
+
+    // do some intermediate deposits to check that everything works even when there are new deposits
+    mintedAA = idleCDO.depositAA(amountWei);
+    mintedBB = idleCDO.depositBB(amountWei / 2);
+
+    uint256 requestedAA2 = cdoEpoch.requestWithdrawAA(0);
+    uint256 requestedBB = cdoEpoch.requestWithdrawBB(0);
+
+    // start epoch
+    _startEpochAndCheckPrices(1);
+
+    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    cdoEpoch.claimWithdrawRequest();
+
+    // stop epoch
+    _stopEpochAndCheckPrices(1, initialProvidedApr, _expectedFundsEndEpoch());
+    assertEq(_strategy.pendingWithdraws(), 0, 'wrong value of pendingWithdraw');
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    uint256 strategyTokensPre = IERC20Detailed(strategyToken).balanceOf(address(this));
+
+    cdoEpoch.claimWithdrawRequest();
+
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimWithdrawRequest is wrong');
+    assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'trancheToken bal is wrong for user');
+    assertEq(_strategy.withdrawsRequests(address(this)), 0, 'withdrawsRequests is wrong');
+    assertEq(strategyTokensPre - IERC20Detailed(strategyToken).balanceOf(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'strategyToken bal is wrong for cdo');
+  }
+
+  function testClaimWithdrawRequestWithInstantDefault() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+    
+    // run epoch 0 till the end
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // request normal withdraw
+    uint256 requestedAA1 = cdoEpoch.requestWithdrawAA(mintedAA / 2);
+
+    // run epoch 0 till the end, with less apr so instant withdrawal are available
+    _startEpochAndCheckPrices(1);
+    _stopEpochAndCheckPrices(1, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    // request instant withdraw
+    cdoEpoch.requestWithdrawAA(mintedAA / 3);
+
+    _startEpochAndCheckPrices(2);
+    // skip to instant withdraw deadline
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    // we don't deal funds to borrower so the pool will default on instant withdraw
+    vm.prank(manager);
+    cdoEpoch.getInstantWithdrawFunds();
+
+    // we stop epoch with 0 funds back from borrower
+    _toggleEpoch(false, initialProvidedApr / 2, 0);
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    // we try to claim the previous normal withdraw requests which should work
+    cdoEpoch.claimWithdrawRequest();
+
+    // user can only claim the first funds back as the second ones were
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1, 'claimWithdrawRequestAA is wrong');
+  }
+
+  function testClaimWithdrawRequestWithDefault() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+    
+    // run epoch 0 till the end
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // request normal withdraw
+    cdoEpoch.requestWithdrawAA(mintedAA / 2);
+
+    // run epoch 0 till the end, with same apr
+    _startEpochAndCheckPrices(1);
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+
+    vm.expectRevert(abi.encodeWithSelector(Default.selector));
+    // we try to claim the previous normal withdraw requests which should work
+    cdoEpoch.claimWithdrawRequest();
+  }
+
+  function testClaimInstantWithdrawRequest() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    uint256 mintedBB = idleCDO.depositBB(amountWei);
+    
+    // run epoch 0
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    // request instant withdraw
+    uint256 requestedAA1 = cdoEpoch.requestWithdrawAA(mintedAA / 2);
+
+    // do some intermediate deposits to check that everything works even when there are new deposits
+    mintedAA = idleCDO.depositAA(amountWei);
+    mintedBB = idleCDO.depositBB(amountWei / 2);
+    _depositWithUser(makeAddr('user1'), amountWei, false);
+
+    // request another instant withdraw for the same tranche
+    uint256 requestedAA2 = cdoEpoch.requestWithdrawAA(mintedAA / 2);
+    // request instant withdraw for the other tranche
+    uint256 requestedBB = cdoEpoch.requestWithdrawBB(0);
+
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'strategyToken bal is wrong for user');
+    assertEq(_strategy.instantWithdrawsRequests(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'instantWithdrawsRequests for user is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(1);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    // skip to instant withdraw deadline
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    // get pending instant withdraw funds from borrower
+    _getInstantFunds();
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), 0, 'user has no strategy tokens');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimInstantWithdrawRequest is wrong');
+    assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim is wrong');
+  }
+
+  function testOnlyCDOMethods() external {
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.requestWithdraw(1, address(1), 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.claimWithdrawRequest(address(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.requestInstantWithdraw(1, address(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.claimInstantWithdrawRequest(address(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.collectInstantWithdrawFunds(1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.collectWithdrawFunds(1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.sendInterestAndDeposits(1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _strategy.deposit(1);
   }
 
   // function testMultipleDeposits() external {

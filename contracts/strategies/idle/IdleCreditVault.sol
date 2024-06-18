@@ -52,7 +52,7 @@ contract IdleCreditVault is
 
   /// @notice user withdraw requests
   mapping (address => uint256) public withdrawsRequests;
-  
+
   /// @notice user instant withdraw requests
   mapping (address => uint256) public instantWithdrawsRequests;
 
@@ -135,8 +135,14 @@ contract IdleCreditVault is
   /// @dev we don't burn strategy tokens here, but we increase the withdraw requests
   /// @param _amount number of tokens to withdraw
   /// @param _user address of the user
-  function requestWithdraw(uint256 _amount, address _user) external {
+  /// @param _netInterest net interest gained in the next epoch
+  function requestWithdraw(uint256 _amount, address _user, uint256 _netInterest) external {
     _onlyIdleCDO();
+    // burn strategy tokens from cdo (we don't burn interest here, only the principal)
+    _burn(msg.sender, _amount - _netInterest);
+    // mint equal amount of strategy tokens to the user as receipt (interest included), useful in case of default
+    _mint(_user, _amount);
+
     // increase the withdraw requests for the user
     withdrawsRequests[_user] += _amount;
     // increase the total withdraw requests
@@ -149,11 +155,11 @@ contract IdleCreditVault is
   /// @return amount number of tokens claimed
   function claimWithdrawRequest(address _user) external returns (uint256 amount) {
     _onlyIdleCDO();
+    // get amount of underlyings
     amount = withdrawsRequests[_user];
-    // burn strategy tokens
-    _burn(msg.sender, amount);
+    // burn strategy tokens 1:1 with the amount of underlyings
+    _burn(_user, amount);
     withdrawsRequests[_user] = 0;
-    pendingWithdraws -= amount;
     underlyingToken.safeTransfer(_user, amount);
   }
 
@@ -206,14 +212,26 @@ contract IdleCreditVault is
     underlyingToken.safeTransferFrom(idleCDO, address(this), _amount);
   }
 
-  /// @notice Mint strategy tokens
-  /// @param _amount number of underlyings to mint
-  function mintStrategyTokens(uint256 _amount) external returns (uint256 minted) {
+  /// @notice Send funds to the IdleCDO
+  /// @param _amount number of underlyings to transfer
+  function sendInterestAndDeposits(uint256 _amount) external {
     _onlyIdleCDO();
-    _mint(msg.sender, _amount);
-    minted = _amount;
+    IERC20Detailed(token).safeTransfer(idleCDO, _amount);
   }
 
+  /// @notice Get funds from IdleCDO and mint strategy tokens. Funds are not sent to the borrower here
+  /// @param _amount number of underlyings to transfer
+  function deposit(uint256 _amount)
+    external
+    virtual
+    override
+    returns (uint256) {
+    _onlyIdleCDO();
+    underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
+    _mint(msg.sender, _amount);
+    return _amount;
+  }
+  
   /// @notice allow to update whitelisted address
   function setWhitelistedCDO(address _cdo) external onlyOwner {
     require(_cdo != address(0), "IS_0");
@@ -226,13 +244,6 @@ contract IdleCreditVault is
       revert NotAllowed();
     }
   }
-
-  /// @notice Not used as deposits to borrower and mint of strategy tokens are done via IdleCDO
-  function deposit(uint256 _amount)
-    external
-    virtual
-    override
-    returns (uint256 minted) {}
 
   /// @notice Not used as redeems happens only via requestWithdraw and requestInstantWithdraw
   function redeem(uint256 _amount)
