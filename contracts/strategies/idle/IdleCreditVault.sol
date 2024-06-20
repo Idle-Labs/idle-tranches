@@ -238,6 +238,14 @@ contract IdleCreditVault is
     idleCDO = _cdo;
   }
 
+  /// @notice Emergency method to rescue funds
+  /// @param _token address of the token to transfer
+  /// @param value amount of `_token` to transfer
+  /// @param _to receiver address
+  function transferToken(address _token, uint256 value, address _to) external onlyOwner {
+    IERC20Detailed(_token).safeTransfer(_to, value);
+  }
+
   /// @notice Modifier to make sure that caller os only the idleCDO contract
   function _onlyIdleCDO() internal view {
     if (msg.sender != idleCDO) {

@@ -977,7 +977,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _emergencyShutdown(false);
   }
 
-  function _emergencyShutdown(bool isAAWithdrawAllowed) internal {
+  function _emergencyShutdown(bool isAAWithdrawAllowed) internal virtual {
     // prevent deposits
     _pause();
     // prevent withdraws
@@ -991,7 +991,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice allow deposits and redeems for all classes of tranches
   /// @dev can be called by the owner only
-  function restoreOperations() external {
+  function restoreOperations() external virtual {
     _checkOnlyOwner();
     // restore deposits
     _unpause();

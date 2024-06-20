@@ -366,6 +366,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _tranche Tranche to withdraw from
   /// @return Amount of underlyings requested
   function _requestWithdraw(uint256 _amount, address _tranche) internal returns (uint256) {
+    // we trigger an update accounting to check for eventual losses
+    _updateAccounting();
+
     IdleCreditVault creditVault = IdleCreditVault(strategy);
     uint256 _underlyings = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     uint256 _userTrancheTokens = IERC20Detailed(_tranche).balanceOf(msg.sender);
@@ -481,5 +484,31 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert NotAllowed();
     }
     IdleCreditVault(strategy).claimInstantWithdrawRequest(msg.sender);
+  }
+
+  function _emergencyShutdown(bool) internal override {
+    // prevent deposits
+    _pause();
+    // prevent withdraws requests
+    allowAAWithdrawRequest = false;
+    allowBBWithdrawRequest = false;
+    // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
+    // without checking for lending protocol default
+    skipDefaultCheck = true;
+    revertIfTooLow = true;
+  }
+
+  /// @notice allow deposits and redeems for all classes of tranches
+  /// @dev can be called by the owner only
+  function restoreOperations() external override {
+    _checkOnlyOwner();
+    // restore deposits
+    _unpause();
+    // restore withdraws
+    allowAAWithdrawRequest = true;
+    allowBBWithdrawRequest = true;
+    // Allow deposits/withdraws but checks for lending protocol default
+    skipDefaultCheck = false;
+    revertIfTooLow = true;
   }
 }

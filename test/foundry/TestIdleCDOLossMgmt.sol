@@ -18,7 +18,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     function _donateToken(address to, uint256 amount) internal virtual {}
 
     // @dev Loss is between lossToleranceBps and maxDecreaseDefault and is covered by junior holders
-    function testDepositWithLossCovered() external {
+    function testDepositWithLossCovered() external virtual {
         uint256 amount = 10000 * ONE_SCALE;
         // fee is set to 10% and release block period to 0
         uint256 preAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -100,7 +100,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     }
 
     // @dev Loss is > maxDecreaseDefault and is absorbed by junior holders if possible
-    function testDepositRedeemWithLossShutdown() external {
+    function testDepositRedeemWithLossShutdown() external virtual {
         uint256 amount = 10000 * ONE_SCALE;
         // AA Ratio is 98%
         idleCDO.depositAA(amount - amount / 50);
@@ -264,7 +264,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         uint16 _ratio,
         uint16 _redeemRatioAA,
         uint16 _redeemRatioBB
-    ) external override {
+    ) external virtual override {
         vm.assume(_ratio <= 1000 && _ratio > 0);
         // > 0 because it's a requirement of the withdraw
         vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
