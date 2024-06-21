@@ -104,7 +104,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       } else {
         emit AccrueInterest(expectedInterest, fees + pendingFees);
       }
-      _vault.stopEpoch(newApr);
+      _vault.stopEpoch(newApr, 0);
     }
     vm.stopPrank(); 
   }
@@ -556,7 +556,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _stopEpochAndCheckPrices(uint256 epochNum, uint256 newApr, uint256 funds) internal {
-    // start epoch
+    // stop epoch
     uint256 AAPricePre = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePre = cdoEpoch.virtualPrice(address(BBtranche));
     _toggleEpoch(false, newApr, funds);
@@ -583,7 +583,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // check that manager cannot call stopEpoch if there is no epoch running
     vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
     vm.prank(manager);
-    cdoEpoch.stopEpoch(initialApr);
+    cdoEpoch.stopEpoch(initialApr, 0);
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -599,7 +599,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.warp(cdoEpoch.epochEndDate() - 1);
     vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
     vm.prank(manager);
-    cdoEpoch.stopEpoch(initialApr);
+    cdoEpoch.stopEpoch(initialApr, 0);
 
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
     uint256 fees = cdoEpoch.fee() * expectedInterest / FULL_ALLOC;
@@ -650,6 +650,63 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // pending withdraw requests are in the strategy contract
     uint256 balPostStrategy = IERC20Detailed(defaultUnderlying).balanceOf(address(strategy));
     assertEq(balPostStrategy - balPreStrategy, pending + (expectedInterest - fees), 'strategy got wrong amount of funds with pending withdraw');
+  }
+
+  function testStopEpochWithInterest() external {
+    vm.startPrank(manager);
+    cdoEpoch.setInstantWithdrawAprDelta(1000);
+    cdoEpoch.setDisableInstantWithdraw(true);
+    vm.stopPrank();
+
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+
+    // AARatio 50%
+    idleCDO.depositAA(amountWei / 2);
+    idleCDO.depositBB(amountWei / 2);
+    
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    // skip to end date
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+
+    // cannot stop epoch with interest AND apr > 0
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialApr, ONE_SCALE);
+
+    // stop epoch normally
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // instant withdraw are disabled so this is a normal withdraw request
+    cdoEpoch.requestWithdrawAA(0);
+    uint256 pendingWithdrawFee = cdoEpoch.pendingWithdrawFees();
+    uint256 pendingWithdraw = _strategy.pendingWithdraws();
+    assertEq(pendingWithdrawFee > 0, true, 'pendingWithdrawFees are wrong');
+
+    // start new epoch
+    _startEpochAndCheckPrices(1);
+
+    // cannot stop the epoch with an amount of interest less then pendingWithdrawFee
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, pendingWithdrawFee - 1);
+
+    // end epoch with 100 underlyings as intrerest + pendingWithdrawFee
+    uint256 interest = ONE_SCALE * 100;
+    deal(defaultUnderlying, borrower, interest + pendingWithdraw + pendingWithdrawFee);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, interest + pendingWithdrawFee);
+
+    assertEq(cdoEpoch.lastEpochInterest(), 90 * ONE_SCALE, 'lastEpochInterest is wrong');
+    assertEq(_strategy.getApr(), 0, 'apr is wrong');
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'pendingWithdrawFees must be 0');
   }
 
   function testStopEpochWithDefault() external {

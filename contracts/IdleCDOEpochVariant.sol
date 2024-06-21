@@ -183,8 +183,11 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Stop epoch, accrue interest to the vault and get funds to fullfill normal
   /// (ie non-instant) withdraw requests from the prev epoch.
   /// @param _newApr New apr to set for the next epoch
+  /// @param _interest Interest gained in the epoch. This will overwrite the expected interest
+  /// must be 0 if there is no need to overwrite the expected interest and if > 0 then it should
+  /// be greater than the pending withdraw fees and newApr must be 0
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
-  function stopEpoch(uint256 _newApr) external {
+  function stopEpoch(uint256 _newApr, uint256 _interest) external {
     _checkOnlyOwnerOrManager();
 
     // Check that epoch is running
@@ -197,8 +200,17 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-    uint256 _expectedInterest = expectedEpochInterest;
+    uint256 _pendingWithdrawFees = pendingWithdrawFees;
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+
+    // overridden interest should be greater than pending withdraw fees and the apr should be 
+    // 0 otherwise withdrawal requests may not be fullfilled as they consider also the interest
+    // gained in the next epoch 
+    if (_interest > 0 && (_interest < _pendingWithdrawFees || _newApr != 0)) {
+      revert NotAllowed();
+    }
+
+    uint256 _expectedInterest = _interest > 0 ? _interest : expectedEpochInterest;
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
@@ -208,9 +220,8 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       // Transfer pending withdraw fees to feeReceiver before update accounting
       // NOTE: Fees are sent with 2 different transfer calls to avoid complicated calculations
-      uint256 _pendingWithdrawFees = pendingWithdrawFees;
       if (_pendingWithdrawFees > 0) {
-        IERC20Detailed(token).safeTransfer(feeReceiver, pendingWithdrawFees);
+        IERC20Detailed(token).safeTransfer(feeReceiver, _pendingWithdrawFees);
       }
 
       // update tranche prices and unclaimed fees
@@ -222,9 +233,10 @@ contract IdleCDOEpochVariant is IdleCDO {
       unclaimedFees = 0;
 
       // save net gain (this does not include interest gained for pending withdrawals)
-      lastEpochInterest = _expectedInterest - _fees - _pendingWithdrawFees;
+      uint256 netInterest = _expectedInterest - _fees - _pendingWithdrawFees;
+      lastEpochInterest = netInterest;
       // mint strategyTokens equal to interest and send underlying to strategy to avoid double counting for NAV
-      _strategy.deposit(lastEpochInterest);
+      _strategy.deposit(netInterest);
 
       // save last apr
       lastEpochApr = _strategy.getApr();
