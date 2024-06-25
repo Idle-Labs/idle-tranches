@@ -37,15 +37,7 @@ const minimalSizeConfig = {
     }
   }
 };
-const absMinimalSizeConfig = {
-  version: "0.8.10",
-  settings: {
-    optimizer: {
-      enabled: true,
-      runs: 1
-    }
-  }
-};
+
 const highRunConfig = {
   version: "0.8.10",
   settings: {
@@ -74,7 +66,15 @@ module.exports = {
       "contracts/IdleCDOInstadappLiteVariant.sol": overrideConfig,
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
-      "contracts/IdleCDOEpochVariant.sol": absMinimalSizeConfig,
+      "contracts/IdleCDOEpochVariant.sol": {
+        version: "0.8.10",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 150
+          }
+        }
+      },
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,

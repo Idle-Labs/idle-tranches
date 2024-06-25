@@ -12,6 +12,10 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
+interface IdleCDOEpochVariant {
+  function isEpochRunning() external view returns (bool);
+}
+
 error NotAllowed();
 
 contract IdleCreditVault is
@@ -25,42 +29,32 @@ contract IdleCreditVault is
 
   /// @notice underlying token address (pool currency for Clearpool)
   address public override token;
-
   /// @notice decimals of the underlying asset
   uint256 public override tokenDecimals;
-
   /// @notice one underlying token
   uint256 public override oneToken;
-
   /// @notice underlying ERC20 token contract (pool currency for Clearpool)
   IERC20Detailed public underlyingToken;
-
   /// @notice address of the IdleCDO
   address public idleCDO;
-
   /// @notice one year, used to calculate the APR
   uint256 public constant YEAR = 365 days;
-
   /// @notice latest saved apr
   uint256 public lastApr;
-
   /// @notice address of the borrower
   address public borrower;
-
   /// @notice address of the manager
   address public manager;
-
   /// @notice user withdraw requests
   mapping (address => uint256) public withdrawsRequests;
-
   /// @notice user instant withdraw requests
   mapping (address => uint256) public instantWithdrawsRequests;
-
   /// @notice total withdraw requests
   uint256 public pendingWithdraws;
-
   /// @notice pending instant withdraw requests
   uint256 public pendingInstantWithdraws;
+  /// @notice counter for epoch deposits
+  uint256 public totEpochDeposits;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -229,6 +223,15 @@ contract IdleCreditVault is
     _onlyIdleCDO();
     underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
     _mint(msg.sender, _amount);
+
+    if (IdleCDOEpochVariant(idleCDO).isEpochRunning()) {
+      // deposit done on stopEpoch (before setting the var to false) so we reset the counter
+      totEpochDeposits = 0;
+    } else {
+      // deposit done between epochs so we increase the counter
+      totEpochDeposits += _amount;
+    }
+
     return _amount;
   }
   

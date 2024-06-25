@@ -5,6 +5,7 @@ import {IdleCDO} from "./IdleCDO.sol";
 import {IdleCDOTranche} from "./IdleCDOTranche.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
+import {IIdleCDOStrategy} from "./interfaces/IIdleCDOStrategy.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 error EpochRunning();
@@ -42,8 +43,6 @@ contract IdleCDOEpochVariant is IdleCDO {
   uint256 public lastEpochApr;
   /// @notice min apr change to trigger instant withdraw
   uint256 public instantWithdrawAprDelta;
-  /// @notice total deposits in the current epoch
-  uint256 public totEpochDeposits;
   /// @notice fees from pending withdraw request for the curr epoch
   uint256 public pendingWithdrawFees;
   /// @notice net underlyings gained last epoch
@@ -68,6 +67,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     // all yield to senior
     isAYSActive = false;
     trancheAPRSplitRatio = FULL_ALLOC;
+    // deposit directly in the strategy
+    directDeposit = true;
 
     // set epoch params
     epochDuration = 30 days;
@@ -100,25 +101,11 @@ contract IdleCDOEpochVariant is IdleCDO {
     epochDuration = _epochDuration;
   }
 
-  /// @notice update instant withdraw delay
-  /// @param _instantWithdrawDelay delay in seconds
-  function setInstantWithdrawDelay(uint256 _instantWithdrawDelay) external {
+  function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) external {
     _checkOnlyOwnerOrManager();
-    instantWithdrawDelay = _instantWithdrawDelay;
-  }
-
-  /// @notice update instant withdraw apr delta
-  /// @param _instantWithdrawAprDelta min apr change to trigger instant withdraw
-  function setInstantWithdrawAprDelta(uint256 _instantWithdrawAprDelta) external {
-    _checkOnlyOwnerOrManager();
-    instantWithdrawAprDelta = _instantWithdrawAprDelta;
-  }
-
-  /// @notice update disable instant withdraw flag
-  /// @param _disableInstantWithdraw flag to disable instant withdraw
-  function setDisableInstantWithdraw(bool _disableInstantWithdraw) external {
-    _checkOnlyOwnerOrManager();
-    disableInstantWithdraw = _disableInstantWithdraw;
+    instantWithdrawDelay = _delay;
+    instantWithdrawAprDelta = _aprDelta;
+    disableInstantWithdraw = _disable;
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -157,9 +144,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     instantWithdrawDeadline = block.timestamp + instantWithdrawDelay;
 
     // transfer in this contract funds from interest payment, that were sent to the strategy in stopEpoch
-    _strategy.sendInterestAndDeposits(lastEpochInterest + totEpochDeposits);
-    // reset counters for deposits and pending withdraws fees
-    totEpochDeposits = 0;
+    _strategy.sendInterestAndDeposits(lastEpochInterest + _strategy.totEpochDeposits());
 
     // we should first check if there are *instant* redeem requests pending 
     // and if yes we should send as much underlyings as possible to the IdleCreditVault contract
@@ -216,7 +201,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Send also tot withdraw requests amount to the IdleCreditVault contract
     try this.getFundsFromBorrower(_expectedInterest, _pendingWithdraws, 0) {
       // transfer in strategy and decrease pendingWithdraws
-      _collectFundsInStrategy(_pendingWithdraws, 0);
+      if (_pendingWithdraws > 0) {
+        _strategy.collectWithdrawFunds(_pendingWithdraws);
+      }
 
       // Transfer pending withdraw fees to feeReceiver before update accounting
       // NOTE: Fees are sent with 2 different transfer calls to avoid complicated calculations
@@ -282,20 +269,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     );
   }
 
-  /// @dev Transfer funds to the IdleCreditVault contract and updated relative vars
-  /// @param _withdrawRequest Amount of withdraw requests
-  /// @param _instantWithdrawRequest Amount of instant withdraw requests
-  function _collectFundsInStrategy(uint256 _withdrawRequest, uint256 _instantWithdrawRequest) internal {
-    // transfer funds for withdraw to the IdleCreditVault contract
-    if (_withdrawRequest > 0) {
-      IdleCreditVault(strategy).collectWithdrawFunds(_withdrawRequest);
-    }
-    // transfer funds for instant withdraw to the IdleCreditVault contract
-    if (_instantWithdrawRequest > 0) {
-      IdleCreditVault(strategy).collectInstantWithdrawFunds(_instantWithdrawRequest);
-    }
-  }
-
   /// @notice Get funds from borrower to fullfill instant withdraw requests
   /// Manager should call this method after instantWithdrawDeadline (when epoch is running)
   function getInstantWithdrawFunds() external {
@@ -314,7 +287,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     // transfer funds for instant withdraw to this contract
     try this.getFundsFromBorrower(0, 0, _instantWithdraws) {
       // transfer funds to IdleCreditVault and decrease pendingInstantWithdraws
-      _collectFundsInStrategy(0, _instantWithdraws);
+      if (_instantWithdraws > 0) {
+        _strategy.collectInstantWithdrawFunds(_instantWithdraws);
+      }
       // allow instant withdraws
       allowInstantWithdraw = true;
     } catch {
@@ -342,42 +317,26 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// User methods
   ///
 
-  /// @dev See {IdleCDO-_deposit}. In addition we update totEpochDeposits and deposit in the strategy
-  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256 _minted) {
-    totEpochDeposits += _amount;
-    _minted = super._deposit(_amount, _tranche, _referral);
-    // deposit underlyings in the strategy and mint strategy tokens to this contract
-    IdleCreditVault(strategy).deposit(_amount);
-  }
-
   /// @dev Normal withdraws are not allowed
   function _withdraw(uint256, address) override pure internal returns (uint256) {
     revert NotAllowed();
-  }
-
-  /// @notice Request a withdraw from the vault of AA tranche
-  /// @param _amount Amount of tranche tokens 
-  function requestWithdrawAA(uint256 _amount) external returns (uint256) {
-    if (!allowAAWithdrawRequest) {
-      revert NotAllowed();
-    }
-    return _requestWithdraw(_amount, AATranche);
-  }
-
-  /// @notice Request a withdraw from the vault of BB tranche
-  /// @param _amount Amount of tranche tokens 
-  function requestWithdrawBB(uint256 _amount) external returns (uint256) {
-    if (!allowBBWithdrawRequest) {
-      revert NotAllowed();
-    }
-    return _requestWithdraw(_amount, BBTranche);
   }
 
   /// @notice Request a withdraw from the vault
   /// @param _amount Amount of tranche tokens 
   /// @param _tranche Tranche to withdraw from
   /// @return Amount of underlyings requested
-  function _requestWithdraw(uint256 _amount, address _tranche) internal returns (uint256) {
+  function requestWithdraw(uint256 _amount, address _tranche) external returns (uint256) {
+    address aa = AATranche;
+    address bb = BBTranche;
+    // check if _tranche is valid and if withdraws for that tranche are allowed 
+    if (!(_tranche == aa || _tranche == bb) || 
+      (!allowAAWithdrawRequest && _tranche == aa) || 
+      (!allowBBWithdrawRequest && _tranche == bb)
+    ) {
+      revert NotAllowed();
+    }
+  
     // we trigger an update accounting to check for eventual losses
     _updateAccounting();
 
@@ -433,7 +392,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
-  function maxWitdrawable(address _user, address _tranche) public view returns (uint256) {
+  function maxWitdrawable(address _user, address _tranche) external view returns (uint256) {
     uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     // add interest for one epoch
     uint256 interest = _calcInterest(currentUnderlyings) * trancheAPRSplitRatio / FULL_ALLOC;
@@ -523,4 +482,27 @@ contract IdleCDOEpochVariant is IdleCDO {
     skipDefaultCheck = false;
     revertIfTooLow = true;
   }
+
+  /// 
+  /// Overridden method not used in this contract (to reduce bytcode size)
+  ///
+
+  function harvest(
+    bool[] calldata,
+    bool[] calldata,
+    uint256[] calldata,
+    uint256[] calldata,
+    bytes[] calldata
+  ) public override returns (uint256[][] memory) {}
+  function _sellAllRewards(IIdleCDOStrategy, uint256[] memory, uint256[] memory, bool[] memory, bytes memory)
+    internal override returns (uint256[] memory, uint256[] memory, uint256) {}
+  function _sellReward(address, bytes memory, uint256, uint256)
+    internal override returns (uint256, uint256) {}
+  function toggleStkIDLEForTranche(address) external override {}
+  function setReleaseBlocksPeriod(uint256) external override {}
+  function setStkIDLEPerUnderlying(uint256) external override {}
+  function liquidate(uint256, bool) external override returns (uint256) {}
+  function _lockedRewards() internal view override returns (uint256) {}
+  function _liquidate(uint256, bool) internal override returns (uint256) {}
+  function _checkStkIDLEBal(address, uint256) internal view override {}
 }
