@@ -159,7 +159,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice pausable in _deposit
   /// @param _amount amount of AA tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawAA(uint256 _amount) external returns (uint256) {
+  function withdrawAA(uint256 _amount) external virtual returns (uint256) {
     require(!paused() || allowAAWithdraw, '3');
     return _withdraw(_amount, AATranche);
   }
@@ -167,7 +167,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice pausable
   /// @param _amount amount of BB tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawBB(uint256 _amount) external returns (uint256) {
+  function withdrawBB(uint256 _amount) external virtual returns (uint256) {
     require(!paused() || allowBBWithdraw, '3');
     return _withdraw(_amount, BBTranche);
   }
@@ -233,7 +233,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice [DEPRECATED]
   /// @return array with addresses of incentiveTokens (can be empty)
-  function getIncentiveTokens() external view returns (address[] memory) {
+  function getIncentiveTokens() external view virtual returns (address[] memory) {
     return incentiveTokens;
   }
 
@@ -481,7 +481,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice convert fees (`unclaimedFees`) in AA tranche tokens
   /// @dev this will be called only during harvests
-  function _depositFees() internal {
+  function _depositFees() internal virtual {
     uint256 _amount = unclaimedFees;
     if (_amount != 0) {
       // mint tranches tokens (always AA) to this contract
@@ -549,7 +549,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (isAYSActive) {
       uint256 aux;
       if (tvlAARatio >= AA_RATIO_LIM_UP) {
-        aux = AA_RATIO_LIM_UP;
+        aux = tvlAARatio == FULL_ALLOC ? FULL_ALLOC : AA_RATIO_LIM_UP;
       } else if (tvlAARatio > _minSplit) {
         aux = tvlAARatio;
       } else {
@@ -854,25 +854,25 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _allowed flag to allow AA withdraws
-  function setAllowAAWithdraw(bool _allowed) external {
+  function setAllowAAWithdraw(bool _allowed) external virtual {
     _checkOnlyOwner();
     allowAAWithdraw = _allowed;
   }
 
   /// @param _allowed flag to allow BB withdraws
-  function setAllowBBWithdraw(bool _allowed) external {
+  function setAllowBBWithdraw(bool _allowed) external virtual {
     _checkOnlyOwner();
     allowBBWithdraw = _allowed;
   }
 
   /// @param _allowed flag to enable the 'default' check (whether _strategyPrice decreased or not)
-  function setSkipDefaultCheck(bool _allowed) external {
+  function setSkipDefaultCheck(bool _allowed) external virtual {
     _checkOnlyOwner();
     skipDefaultCheck = _allowed;
   }
 
   /// @param _allowed flag to enable the check if redeemed amount during liquidations is enough
-  function setRevertIfTooLow(bool _allowed) external {
+  function setRevertIfTooLow(bool _allowed) external virtual {
     _checkOnlyOwner();
     revertIfTooLow = _allowed;
   }
@@ -896,7 +896,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _diff max liquidation diff tolerance in underlyings
-  function setLiquidationTolerance(uint256 _diff) external {
+  function setLiquidationTolerance(uint256 _diff) external virtual {
     _checkOnlyOwner();
     liquidationTolerance = _diff;
   }

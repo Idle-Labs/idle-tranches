@@ -160,28 +160,21 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   // @notice normal redeems are blocked
   function testRedeems() external override {
     uint256 amount = 1 * ONE_SCALE;
-    idleCDO.depositAA(amount);
-    idleCDO.depositBB(amount);
+    uint256 mintedAA = idleCDO.depositAA(amount);
+    uint256 mintedBB = idleCDO.depositBB(amount);
     vm.roll(block.number + 1);
 
     // start epoch
     _toggleEpoch(true, 0, 0);
 
-    // When epoch is running the withdraw flows is blocked right away
-    vm.expectRevert(bytes('3'));
-    idleCDO.withdrawAA(0);
-    vm.expectRevert(bytes('3'));
-    idleCDO.withdrawBB(0);
-
     // stop epoch
     _toggleEpoch(false, 1e18, 1e18);
 
-    // While the epoch is stopped the withdraw flows is blocked in the _withdraw (overridden)
-    // hence the different error
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    // nothing happens if normal withdraw is triggered
     idleCDO.withdrawAA(0);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    assertEq(mintedAA, IERC20(AAtranche).balanceOf(address(this)), "AAtranche balance changed");
     idleCDO.withdrawBB(0);
+    assertEq(mintedBB, IERC20(BBtranche).balanceOf(address(this)), "BBtranche balance changed");
   }
 
   function testMinStkIDLEBalance() external override {
@@ -263,6 +256,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 1e18, 'instantWithdrawAprDelta is wrong');
     assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
+    assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
 
     // IdleCreditVault vars
     assertEq(_strategy.manager(), manager, 'manager is wrong');
@@ -1226,6 +1220,30 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(0);
   }
 
+  function testEmergencyShutdown() external override {
+    uint256 amount = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    // call with non owner
+    vm.expectRevert(bytes("6"));
+    vm.prank(address(0xbabe));
+    idleCDO.emergencyShutdown();
+
+    // call with owner
+    vm.prank(owner);
+    idleCDO.emergencyShutdown();
+
+    vm.expectRevert(bytes("Pausable: paused")); // default
+    idleCDO.depositAA(amount);
+    vm.expectRevert(bytes("Pausable: paused")); // default
+    idleCDO.depositBB(amount);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(amount, address(AAtranche));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(amount, address(BBtranche));
+  }
+
   function testCheckMaxDecreaseDefault() external override {
     uint256 amount = 10000 * ONE_SCALE;
 
@@ -1516,5 +1534,39 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
     assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
     assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
+  }
+
+  function testOnlyKeyringUsersCanInteract() external {
+    address keyring = makeAddr('keyring');
+
+    vm.prank(owner);
+    cdoEpoch.setKeyringChecker(keyring);
+
+    vm.mockCall(
+      keyring,
+      abi.encodeWithSelector(IdleCDOEpochVariant.isWalletAllowed.selector, address(this)),
+      abi.encode(false)
+    );
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    idleCDO.depositAA(1e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    idleCDO.depositBB(1e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(0, address(1));
+
+    vm.clearMockedCalls();
+
+    vm.mockCall(
+      keyring,
+      abi.encodeWithSelector(IdleCDOEpochVariant.isWalletAllowed.selector, address(this)),
+      abi.encode(true)
+    );
+
+    idleCDO.depositAA(1);
+    idleCDO.depositBB(1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    vm.clearMockedCalls();
   }
 }

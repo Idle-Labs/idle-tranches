@@ -569,7 +569,7 @@ abstract contract TestIdleCDOBase is Test {
   function _calcNewAPRSplit(uint256 ratio) internal view returns (uint256 _new){
     uint256 aux;
     if (ratio >= AA_RATIO_LIM_UP) {
-      aux = AA_RATIO_LIM_UP;
+      aux = ratio == FULL_ALLOC ? FULL_ALLOC : AA_RATIO_LIM_UP;
     } else if (ratio > idleCDO.minAprSplitAYS()) {
       aux = ratio;
     } else {

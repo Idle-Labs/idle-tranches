@@ -2,6 +2,7 @@
 pragma solidity 0.8.10;
 
 import {IdleCDO} from "./IdleCDO.sol";
+import {IKeyring} from "./interfaces/keyring/IKeyring.sol";
 import {IdleCDOTranche} from "./IdleCDOTranche.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
@@ -53,6 +54,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   bool public disableInstantWithdraw;
   /// @notice flag to check if borrower defaulted
   bool public defaulted;
+  /// @notice Keyring wallet checker address
+  address public keyring;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -81,6 +84,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     allowBBWithdrawRequest = true;
     // min apr delta to trigger instant withdraw
     instantWithdrawAprDelta = 1e18; // 1%
+
+    // TODO set keyring address
+    keyring = address(0);
   }
 
   /// @notice Check if msg sender is owner or manager
@@ -101,11 +107,22 @@ contract IdleCDOEpochVariant is IdleCDO {
     epochDuration = _epochDuration;
   }
 
+  /// @notice update instant withdraw params
+  /// @param _delay delay in seconds
+  /// @param _aprDelta min apr delta to trigger instant withdraw
+  /// @param _disable flag to disable instant withdraw
   function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) external {
     _checkOnlyOwnerOrManager();
     instantWithdrawDelay = _delay;
     instantWithdrawAprDelta = _aprDelta;
     disableInstantWithdraw = _disable;
+  }
+
+  /// @notice update keyring address
+  /// @param _keyring address of the keyring contract
+  function setKeyringChecker(address _keyring) external {
+    _checkOnlyOwnerOrManager();
+    keyring = _keyring;
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -313,13 +330,43 @@ contract IdleCDOEpochVariant is IdleCDO {
     emit BorrowerDefault(funds);
   }
 
+  /// @notice Prevent deposits and redeems for all classes of tranches
+  function _emergencyShutdown(bool) internal override {
+    // prevent deposits
+    _pause();
+    // prevent withdraws requests
+    allowAAWithdrawRequest = false;
+    allowBBWithdrawRequest = false;
+    // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
+    // without checking for lending protocol default
+    skipDefaultCheck = true;
+    revertIfTooLow = true;
+  }
+
+  /// @notice allow deposits and redeems for all classes of tranches
+  /// @dev can be called by the owner only
+  function restoreOperations() external override {
+    _checkOnlyOwner();
+    // restore deposits
+    _unpause();
+    // restore withdraws
+    allowAAWithdrawRequest = true;
+    allowBBWithdrawRequest = true;
+    // Allow deposits/withdraws but checks for lending protocol default
+    skipDefaultCheck = false;
+    revertIfTooLow = true;
+  }
+
   /// 
   /// User methods
   ///
 
-  /// @dev Normal withdraws are not allowed
-  function _withdraw(uint256, address) override pure internal returns (uint256) {
-    revert NotAllowed();
+  /// @notice Deposit funds in the vault. Overrides the parent method and adds a check for wallet 
+  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256) {
+    if (!isWalletAllowed(msg.sender)) {
+      revert NotAllowed();
+    }
+    return super._deposit(_amount, _tranche, _referral);
   }
 
   /// @notice Request a withdraw from the vault
@@ -332,7 +379,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     // check if _tranche is valid and if withdraws for that tranche are allowed 
     if (!(_tranche == aa || _tranche == bb) || 
       (!allowAAWithdrawRequest && _tranche == aa) || 
-      (!allowBBWithdrawRequest && _tranche == bb)
+      (!allowBBWithdrawRequest && _tranche == bb) ||
+      !isWalletAllowed(msg.sender)
     ) {
       revert NotAllowed();
     }
@@ -457,36 +505,34 @@ contract IdleCDOEpochVariant is IdleCDO {
     IdleCreditVault(strategy).claimInstantWithdrawRequest(msg.sender);
   }
 
-  function _emergencyShutdown(bool) internal override {
-    // prevent deposits
-    _pause();
-    // prevent withdraws requests
-    allowAAWithdrawRequest = false;
-    allowBBWithdrawRequest = false;
-    // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
-    // without checking for lending protocol default
-    skipDefaultCheck = true;
-    revertIfTooLow = true;
-  }
-
-  /// @notice allow deposits and redeems for all classes of tranches
-  /// @dev can be called by the owner only
-  function restoreOperations() external override {
-    _checkOnlyOwner();
-    // restore deposits
-    _unpause();
-    // restore withdraws
-    allowAAWithdrawRequest = true;
-    allowBBWithdrawRequest = true;
-    // Allow deposits/withdraws but checks for lending protocol default
-    skipDefaultCheck = false;
-    revertIfTooLow = true;
+  function isWalletAllowed(address _user) public view returns (bool) {
+    address _keyring = keyring;
+    if (_keyring == address(0)) {
+      return true;
+    }
+    return IKeyring(_keyring).isWalletAllowed(_user);
   }
 
   /// 
   /// Overridden method not used in this contract (to reduce bytcode size)
   ///
 
+  /// NOTE: normal withdraw are not allowed
+  function withdrawAA(uint256) external override returns (uint256) {}
+  function withdrawBB(uint256) external override returns (uint256) {}
+  function _withdraw(uint256, address) override pure internal returns (uint256) {}
+  function setAllowAAWithdraw(bool) external override {}
+  function setAllowBBWithdraw(bool) external override {}
+  function liquidate(uint256, bool) external override returns (uint256) {}
+  function _liquidate(uint256, bool) internal override returns (uint256) {}
+  function setRevertIfTooLow(bool) external override {}
+  function setLiquidationTolerance(uint256) external override {}
+
+  /// NOTE: strategy price is alway equal to 1 underlying
+  function _checkDefault() override internal {}
+  function setSkipDefaultCheck(bool) external override {}
+
+  /// NOTE: harvest is not performed to transfer funds to the strategy (startEpoch is used)
   function harvest(
     bool[] calldata,
     bool[] calldata,
@@ -494,15 +540,21 @@ contract IdleCDOEpochVariant is IdleCDO {
     uint256[] calldata,
     bytes[] calldata
   ) public override returns (uint256[][] memory) {}
+
+  /// NOTE: there are no rewards to sell nor incentives
   function _sellAllRewards(IIdleCDOStrategy, uint256[] memory, uint256[] memory, bool[] memory, bytes memory)
     internal override returns (uint256[] memory, uint256[] memory, uint256) {}
   function _sellReward(address, bytes memory, uint256, uint256)
     internal override returns (uint256, uint256) {}
-  function toggleStkIDLEForTranche(address) external override {}
+  function getIncentiveTokens() external view override returns (address[] memory) {}
   function setReleaseBlocksPeriod(uint256) external override {}
-  function setStkIDLEPerUnderlying(uint256) external override {}
-  function liquidate(uint256, bool) external override returns (uint256) {}
   function _lockedRewards() internal view override returns (uint256) {}
-  function _liquidate(uint256, bool) internal override returns (uint256) {}
+
+  /// NOTE: stkIDLE gating is not used
+  function toggleStkIDLEForTranche(address) external override {}
   function _checkStkIDLEBal(address, uint256) internal view override {}
+  function setStkIDLEPerUnderlying(uint256) external override {}
+
+  /// NOTE: fees are not deposited in this contract
+  function _depositFees() internal override {}
 }
