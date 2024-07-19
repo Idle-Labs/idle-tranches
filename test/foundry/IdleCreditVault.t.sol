@@ -254,7 +254,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.allowBBWithdraw(), false, 'allowBBWithdraw is wrong');
     assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'allowAAWithdrawRequest is wrong');
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
-    assertEq(cdoEpoch.instantWithdrawAprDelta(), 1e18, 'instantWithdrawAprDelta is wrong');
+    assertEq(cdoEpoch.instantWithdrawAprDelta(), 1.5e18, 'instantWithdrawAprDelta is wrong');
     assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
     assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
 
@@ -1082,25 +1082,50 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
 
     IdleCreditVault _strategy = IdleCreditVault(address(strategy));
-    // request instant withdraw
+    // request instant withdraw (5000)
     uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
 
     // do some intermediate deposits to check that everything works even when there are new deposits
+    // deposit 15000 with this contract
     mintedAA = idleCDO.depositAA(amountWei);
     mintedBB = idleCDO.depositBB(amountWei / 2);
-    _depositWithUser(makeAddr('user1'), amountWei, false);
 
-    // request another instant withdraw for the same tranche
+    // deposit 10000 with user1
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amountWei, false);
+
+    // request another instant withdraw for the same tranche (5000)
     uint256 requestedAA2 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
-    // request instant withdraw for the other tranche
+    // request instant withdraw for the other tranche (5000 + (10000 + interest))
     uint256 requestedBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
 
     assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'strategyToken bal is wrong for user');
+    // tot requested is 25000 + interest
     assertEq(_strategy.instantWithdrawsRequests(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'instantWithdrawsRequests for user is wrong');
 
     // start epoch
     _startEpochAndCheckPrices(1);
 
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+
+    // can redeem right away because new deposits are enough to cover all instant withdraws
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), 0, 'user has no strategy tokens');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimInstantWithdrawRequest is wrong');
+    assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim is wrong');
+
+    // we start a new epoch with less apr so instant withdrawal are available
+    _stopEpochAndCheckPrices(1, initialProvidedApr / 4, _expectedFundsEndEpoch());
+    // make instant redeem request for user1
+    vm.startPrank(user1);
+    uint256 requestedAAUser1 = cdoEpoch.requestWithdraw(0, address(BBtranche));
+    vm.stopPrank();
+
+    _startEpochAndCheckPrices(2);
+
+    // user cannot claim right away because there are no underlyings available and funds must be 
+    // requested from the borrower
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.claimInstantWithdrawRequest();
 
@@ -1109,13 +1134,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // get pending instant withdraw funds from borrower
     _getInstantFunds();
 
-    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    uint256 balUser1Pre = IERC20Detailed(defaultUnderlying).balanceOf(user1);
 
+    // user can now claim
+    vm.prank(user1);
     cdoEpoch.claimInstantWithdrawRequest();
 
-    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), 0, 'user has no strategy tokens');
-    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimInstantWithdrawRequest is wrong');
-    assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim is wrong');
+    assertEq(IERC20Detailed(strategyToken).balanceOf(user1), 0, 'user1 has no strategy tokens');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(user1) - balUser1Pre, requestedAAUser1, 'claimInstantWithdrawRequest for user1 is wrong');
+    assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim of user1 is wrong');
   }
 
   /// Tests inherited from TestIdleCDOBase/TestIdleCDOLossMgmt

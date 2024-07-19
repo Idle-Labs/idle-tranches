@@ -83,7 +83,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     allowAAWithdrawRequest = true;
     allowBBWithdrawRequest = true;
     // min apr delta to trigger instant withdraw
-    instantWithdrawAprDelta = 1e18; // 1%
+    instantWithdrawAprDelta = 1.5e18; // 1.5%
 
     // TODO set keyring address
     keyring = address(0);
@@ -178,6 +178,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
     // otherwise we send the amount needed to satisfy the requests to the strategy 
     _strategy.collectInstantWithdrawFunds(pendingInstant);
+    // allow instant withdraws right away without waiting for the deadline
+    allowInstantWithdraw = true;
     // and transfer the surplus to the borrower
     IERC20Detailed(token).safeTransfer(_strategy.borrower(), totUnderlyings - pendingInstant);
   }
@@ -279,11 +281,12 @@ contract IdleCDOEpochVariant is IdleCDO {
     if (msg.sender != address(this)) {
       revert NotAllowed();
     }
-    IERC20Detailed(token).safeTransferFrom(
-      IdleCreditVault(strategy).borrower(), 
-      address(this), 
-      _amount + _withdrawRequests + _instantWithdrawRequests
-    );
+
+    uint256 _tot = _amount + _withdrawRequests + _instantWithdrawRequests;
+    if (_tot == 0) {
+      return;
+    }
+    IERC20Detailed(token).safeTransferFrom(IdleCreditVault(strategy).borrower(), address(this), _tot);
   }
 
   /// @notice Get funds from borrower to fullfill instant withdraw requests
