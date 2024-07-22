@@ -6,6 +6,7 @@ import "./TestIdleCDOLossMgmt.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
+import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 
 error EpochRunning();
 error EpochNotRunning();
@@ -67,6 +68,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setIsAYSActive(true);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochDuration(36.5 days); // set this to have an epoch during 1/10 of the year
+    cdoEpoch.setKeyringParams(address(0), 0); // deactivate keyring
     vm.stopPrank();
   }
 
@@ -256,7 +258,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 1.5e18, 'instantWithdrawAprDelta is wrong');
     assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
-    assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
+    // assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
+    // assertEq(cdoEpoch.keyringPolicyId() != 0, true, 'keyring policy id is wrong');
 
     // IdleCreditVault vars
     assertEq(_strategy.manager(), manager, 'manager is wrong');
@@ -1564,14 +1567,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testOnlyKeyringUsersCanInteract() external {
-    address keyring = makeAddr('keyring');
+    address keyring = address(1);
 
     vm.prank(owner);
-    cdoEpoch.setKeyringChecker(keyring);
+    cdoEpoch.setKeyringParams(keyring, 1);
 
     vm.mockCall(
       keyring,
-      abi.encodeWithSelector(IdleCDOEpochVariant.isWalletAllowed.selector, address(this)),
+      abi.encodeWithSelector(IKeyring.checkCredential.selector),
       abi.encode(false)
     );
 
@@ -1586,7 +1589,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.mockCall(
       keyring,
-      abi.encodeWithSelector(IdleCDOEpochVariant.isWalletAllowed.selector, address(this)),
+      abi.encodeWithSelector(IKeyring.checkCredential.selector),
       abi.encode(true)
     );
 

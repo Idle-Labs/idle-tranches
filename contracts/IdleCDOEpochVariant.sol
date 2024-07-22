@@ -56,6 +56,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   bool public defaulted;
   /// @notice Keyring wallet checker address
   address public keyring;
+  /// @notice keyring policyId
+  uint256 public keyringPolicyId;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -85,8 +87,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     // min apr delta to trigger instant withdraw
     instantWithdrawAprDelta = 1.5e18; // 1.5%
 
-    // TODO set keyring address
-    keyring = address(0);
+    // set keyring address
+    keyring = 0xD18d17791f2071Bf3C855bA770420a9EdEa0728d;
+    keyringPolicyId = 4;
   }
 
   /// @notice Check if msg sender is owner or manager
@@ -120,9 +123,11 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice update keyring address
   /// @param _keyring address of the keyring contract
-  function setKeyringChecker(address _keyring) external {
+  /// @param _keyringPolicyId policyId to check for wallet
+  function setKeyringParams(address _keyring, uint256 _keyringPolicyId) external {
     _checkOnlyOwnerOrManager();
     keyring = _keyring;
+    keyringPolicyId = _keyringPolicyId;
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -513,7 +518,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     if (_keyring == address(0)) {
       return true;
     }
-    return IKeyring(_keyring).isWalletAllowed(_user);
+    return IKeyring(_keyring).checkCredential(keyringPolicyId, _user);
   }
 
   /// 
