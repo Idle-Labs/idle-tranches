@@ -1044,8 +1044,21 @@ const optimismCDOs = {
     strategy: '0x98c1E0261Fe4C4c701Cc509Cce2168084944bA4B',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x8324cB085Ffdce6256C2aEe4a63Bc878870Ff04d',
+    AATranche: '0x834cB085Ffdce6256C2aEe4a63Bc878870Ff04d',
     BBTranche: '0x9837cC130FB339FAB85Dc09E9de6343b3324246F'
+  },
+  credittestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x2D445eCA81bE26692F88ec33dA583068C48b8197',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0xFf5a45994a79732B9FEEC1055419290BBa70EeEE',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x2D445eCA81bE26692F88ec33dA583068C48b8197',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xD04319282Fdd87F7E46BD72160eFdA02bF791515',
+    BBTranche: '0x4E3b27ed953a4893C318085D60A97B21B70fc53e'
   },
 };
 
@@ -2347,6 +2360,38 @@ exports.deployTokensOptimism = {
   //   isAYSActive: true,
   //   proxyCdoAddress: '',
   // },
+  credittestusdc: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // borrower
+      'TestBorrower', // borrower name
+      0,
+    ],
+    // cdo: optimismCDOs.gearboxusdc,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    epochDuration: '604800',
+    // ## instant params
+    instantWithdrawDelay: '86400',
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: addr0,
+    keyringPolicy: 4,
+    // #########
+    proxyCdoAddress: ''
+    // proxyCdoAddress: optimismCDOs.gearboxweth.cdoAddr
+  },
 };
 
 exports.deployTokensBYOptimism = {

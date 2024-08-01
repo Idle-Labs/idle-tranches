@@ -356,6 +356,27 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setLossToleranceBps(100000);
     }
 
+    if (deployToken.isCreditVault) {
+      console.log('Setting credit vault');
+      const cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
+      if (deployToken.epochDuration) {
+        console.log(`Setting epoch duration to ${deployToken.epochDuration}`);
+        await cdoEpoch.connect(signer).setEpochDuration(BN(deployToken.epochDuration));
+      }
+      if (deployToken.disableInstantWithdraw || deployToken.instantWithdrawDelay || deployToken.instantWithdrawAprDelta) {
+        console.log(`Setting instant withdraw params disable: ${deployToken.disableInstantWithdraw}, instant delay: ${deployToken.instantWithdrawDelay}, instant apr delta ${deployToken.instantWithdrawAprDelta}`);
+        await cdoEpoch.connect(signer).setInstantWithdrawParams(
+          BN(deployToken.instantWithdrawDelay), 
+          BN(deployToken.instantWithdrawAprDelta), 
+          deployToken.disableInstantWithdraw
+        );
+      }
+      if (deployToken.keyring) {
+        console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy);
+      }
+    }
+
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
 

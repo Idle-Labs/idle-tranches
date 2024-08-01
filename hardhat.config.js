@@ -37,6 +37,15 @@ const minimalSizeConfig = {
     }
   }
 };
+const ultraminimalSizeConfig = {
+  version: "0.8.10",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 1
+    }
+  }
+};
 
 const highRunConfig = {
   version: "0.8.10",
@@ -66,15 +75,8 @@ module.exports = {
       "contracts/IdleCDOInstadappLiteVariant.sol": overrideConfig,
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
-      "contracts/IdleCDOEpochVariant.sol": {
-        version: "0.8.10",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 1
-          }
-        }
-      },
+      "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
+      "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,
@@ -183,7 +185,7 @@ module.exports = {
       chainId: 1101
     },
     optimism: {
-      url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`,
+      url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,
