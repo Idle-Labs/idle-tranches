@@ -62,7 +62,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
 
-  function _additionalInit() internal override {
+  function _additionalInit() internal virtual override {
     // no unlent perc
     unlentPerc = 0;
 
@@ -404,7 +404,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
       if (lastEpochApr > (creditVault.getApr() + instantWithdrawAprDelta)) {
         // Calc max withdrawable if amount passed is 0
-        _underlyings = _amount == 0 ? maxWitdrawableInstant(msg.sender, _tranche) : _underlyings;
+        _underlyings = _amount == 0 ? maxWithdrawableInstant(msg.sender, _tranche) : _underlyings;
         // burn strategy tokens from cdo
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
 
@@ -448,7 +448,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
-  function maxWitdrawable(address _user, address _tranche) external view returns (uint256) {
+  function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
     uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     // add interest for one epoch
     uint256 interest = _calcInterest(currentUnderlyings) * trancheAPRSplitRatio / FULL_ALLOC;
@@ -459,7 +459,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Get the max amount of underlyings that can be withdrawn instantly by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
-  function maxWitdrawableInstant(address _user, address _tranche) public view returns (uint256) {
+  function maxWithdrawableInstant(address _user, address _tranche) public view returns (uint256) {
     return IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 

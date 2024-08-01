@@ -303,30 +303,30 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testMaxWithdrawable() external {
-    assertEq(cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche()), 0, 'maxWitdrawable AA is wrong');
-    assertEq(cdoEpoch.maxWitdrawable(address(this), idleCDO.BBTranche()), 0, 'maxWitdrawable BB is wrong');
+    assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), 0, 'maxWithdrawable AA is wrong');
+    assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.BBTranche()), 0, 'maxWithdrawable BB is wrong');
 
     // make a deposit
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
     uint256 interest = (strategy.getApr() / 100) * amount * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN) * cdoEpoch.trancheAPRSplitRatio() / FULL_ALLOC;
-    assertEq(cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche()), amount + interest, 'maxWitdrawable is wrong');
+    assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest, 'maxWithdrawable is wrong');
 
     vm.prank(owner);
     cdoEpoch.setFee(10000); // 10%
-    assertEq(cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche()), amount + interest - (interest / 10), 'maxWitdrawable with fees is wrong');
+    assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest - (interest / 10), 'maxWithdrawable with fees is wrong');
   }
 
   function testMaxInstantWithdrawable() external {
-    assertEq(cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.AATranche()), 0, 'maxWitdrawableInstant AA is wrong');
-    assertEq(cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.BBTranche()), 0, 'maxWitdrawableInstant BB is wrong');
+    assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.AATranche()), 0, 'maxWithdrawableInstant AA is wrong');
+    assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.BBTranche()), 0, 'maxWithdrawableInstant BB is wrong');
 
     // make a deposit
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
 
-    assertEq(cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.AATranche()), amount, 'maxWitdrawableInstant is wrong');
+    assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.AATranche()), amount, 'maxWithdrawableInstant is wrong');
   }
 
   function testStartEpoch() external {
@@ -830,7 +830,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.requestWithdraw(trancheReqBB, address(BBtranche));
 
     IdleCreditVault _strategy = IdleCreditVault(address(strategy));
-    uint256 maxAA = cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche());
+    uint256 maxAA = cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche());
     uint256 lastNAVAA = cdoEpoch.lastNAVAA();
     uint256 netInterest = _calcInterestForTranche(address(AAtranche), mintedAA / 2);
 
@@ -846,7 +846,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(lastNAVAA - cdoEpoch.lastNAVAA(), requestedAA1 - netInterest, 'lastNAVAA is wrong after first request');
 
     // between first and second request the AA tranche apr split ratio changes so we need to refetch it
-    maxAA = cdoEpoch.maxWitdrawable(address(this), idleCDO.AATranche());
+    maxAA = cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche());
     strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
     strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
     // recalculate interest as trancheAPRSplitRatio changed
@@ -866,7 +866,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
     // recalculate interest as trancheAPRSplitRatio changed
     netInterest = _calcInterestForTranche(address(BBtranche), mintedBB);
-    uint256 maxBB = cdoEpoch.maxWitdrawable(address(this), idleCDO.BBTranche());
+    uint256 maxBB = cdoEpoch.maxWithdrawable(address(this), idleCDO.BBTranche());
 
     uint256 requestedBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
 
@@ -916,8 +916,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
     cdoEpoch.requestWithdraw(trancheReqBB, address(BBtranche));
 
-    uint256 maxAA = cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.AATranche());
-    uint256 maxBB = cdoEpoch.maxWitdrawableInstant(address(this), idleCDO.BBTranche());
+    uint256 maxAA = cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.AATranche());
+    uint256 maxBB = cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.BBTranche());
 
     // request max withdraw
     uint256 strategyTokenBalPre = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
