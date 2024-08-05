@@ -1031,8 +1031,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.getInstantWithdrawFunds();
 
-    // we stop epoch with 0 funds back from borrower
-    _toggleEpoch(false, initialProvidedApr / 2, 0);
+    // stopEpoch will revert as isEpochRunning = false
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
+    cdoEpoch.stopEpoch(initialProvidedApr / 2, 0);
 
     uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
     // we try to claim the previous normal withdraw requests which should work
