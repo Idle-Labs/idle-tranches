@@ -186,7 +186,20 @@ contract IdleCDOEpochVariant is IdleCDO {
     // allow instant withdraws right away without waiting for the deadline
     allowInstantWithdraw = true;
     // and transfer the surplus to the borrower
-    IERC20Detailed(token).safeTransfer(_strategy.borrower(), totUnderlyings - pendingInstant);
+    try this.sendFundsToBorrower(totUnderlyings - pendingInstant) {
+      // funds transferred correctly
+    } catch {
+      _handleBorrowerDefault(totUnderlyings - pendingInstant);
+    }
+  }
+
+  /// @notice workaround to have safeTransfer to borrower as external and use it in a try/catch block
+  /// @param _amount Amount of underlyings to transfer
+  function sendFundsToBorrower(uint256 _amount) external {
+     if (msg.sender != address(this)) {
+      revert NotAllowed();
+    }
+    IERC20Detailed(token).safeTransfer(IdleCreditVault(strategy).borrower(), _amount);
   }
 
   /// @notice Stop epoch, accrue interest to the vault and get funds to fullfill normal
@@ -513,6 +526,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     IdleCreditVault(strategy).claimInstantWithdrawRequest(msg.sender);
   }
 
+  /// @notice Check if wallet is allowed to interact with the contract
+  /// @param _user User address
+  /// @return true if wallet is allowed
   function isWalletAllowed(address _user) public view returns (bool) {
     address _keyring = keyring;
     if (_keyring == address(0)) {
