@@ -222,6 +222,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
+
+    // Check that there are no pending instant withdraws, ie `getInstantWithdrawFunds` was called
+    // before closing the epoch
+    if (_strategy.pendingInstantWithdraws() > 0) {
+      revert NotAllowed();
+    }
+
     uint256 _pendingWithdrawFees = pendingWithdrawFees;
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
 
@@ -344,6 +351,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       _pause();
     }
 
+    // stop the current epoch
+    isEpochRunning = false;
+
     // prevent withdrawals requests
     allowAAWithdrawRequest = false;
     allowBBWithdrawRequest = false;
@@ -368,6 +378,10 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @dev can be called by the owner only
   function restoreOperations() external override {
     _checkOnlyOwner();
+    // Check if the pool was defaulted
+    if (defaulted) {
+      revert NotAllowed();
+    }
     // restore deposits
     _unpause();
     // restore withdraws
