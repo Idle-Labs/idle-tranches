@@ -55,6 +55,8 @@ contract IdleCreditVault is
   uint256 public pendingInstantWithdraws;
   /// @notice counter for epoch deposits
   uint256 public totEpochDeposits;
+  /// @notice flag to allow transfers
+  bool public canTransfer;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -235,6 +237,21 @@ contract IdleCreditVault is
     return _amount;
   }
   
+  /// @inheritdoc ERC20Upgradeable
+  /// @dev we don't allow transfers of strategy tokens normally, transfers are allowed only after a default
+  function _transfer(address sender, address recipient, uint256 amount) internal virtual override {
+    if (msg.sender != idleCDO && !canTransfer) {
+      revert NotAllowed();
+    }
+    super._transfer(sender, recipient, amount);
+  }
+
+  /// @notice allow transfers of strategy tokens
+  function allowTransfers() external {
+    _onlyIdleCDO();
+    canTransfer = true;
+  }
+
   /// @notice allow to update whitelisted address
   function setWhitelistedCDO(address _cdo) external onlyOwner {
     require(_cdo != address(0), "IS_0");
