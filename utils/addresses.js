@@ -1050,15 +1050,15 @@ const optimismCDOs = {
   credittestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x2D445eCA81bE26692F88ec33dA583068C48b8197',
+    strategyToken: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
     underlying: optimismContracts.USDC,
-    cdoAddr: '0xFf5a45994a79732B9FEEC1055419290BBa70EeEE',
+    cdoAddr: '0x0581f1F01E05b77612Feaf529da3E048E1424A7E',
     proxyAdmin: optimismContracts.proxyAdmin,
-    strategy: '0x2D445eCA81bE26692F88ec33dA583068C48b8197',
+    strategy: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0xD04319282Fdd87F7E46BD72160eFdA02bF791515',
-    BBTranche: '0x4E3b27ed953a4893C318085D60A97B21B70fc53e'
+    AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
+    BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
   },
 };
 
@@ -2369,10 +2369,10 @@ exports.deployTokensOptimism = {
       'owner', // owner address
       '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
       '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // borrower
-      'TestBorrower', // borrower name
+      'TestBorrower2', // borrower name
       0,
     ],
-    // cdo: optimismCDOs.gearboxusdc,
+    cdo: optimismCDOs.credittestusdc,
     cdoVariant: 'IdleCDOEpochVariantOptimism',
     ...baseCDOArgs,
     AARatio: '100000',
