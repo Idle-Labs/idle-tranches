@@ -159,7 +159,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice pausable in _deposit
   /// @param _amount amount of AA tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawAA(uint256 _amount) external returns (uint256) {
+  function withdrawAA(uint256 _amount) external virtual returns (uint256) {
     require(!paused() || allowAAWithdraw, '3');
     return _withdraw(_amount, AATranche);
   }
@@ -167,7 +167,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @notice pausable
   /// @param _amount amount of BB tranche tokens to burn
   /// @return underlying tokens redeemed
-  function withdrawBB(uint256 _amount) external returns (uint256) {
+  function withdrawBB(uint256 _amount) external virtual returns (uint256) {
     require(!paused() || allowBBWithdraw, '3');
     return _withdraw(_amount, BBTranche);
   }
@@ -233,7 +233,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice [DEPRECATED]
   /// @return array with addresses of incentiveTokens (can be empty)
-  function getIncentiveTokens() external view returns (address[] memory) {
+  function getIncentiveTokens() external view virtual returns (address[] memory) {
     return incentiveTokens;
   }
 
@@ -247,7 +247,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// ratio (eg: deposit+transfer). This will be mitigated by the fee rebate mechanism (airdrop) as otherwise those
   /// rebates will be lost.
   /// @param _amount amount of underlying to deposit
-  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view {
+  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view virtual {
     uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
     // check if stkIDLE requirement is active for _tranche
     if (_stkIDLEPerUnderlying == 0 || 
@@ -298,6 +298,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _minted = _mintShares(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
+
+    if (directDeposit) {
+      IIdleCDOStrategy(strategy).deposit(_amount);
+    }
 
     if (_referral != address(0)) {
       emit Referral(_amount, _referral);
@@ -477,7 +481,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice convert fees (`unclaimedFees`) in AA tranche tokens
   /// @dev this will be called only during harvests
-  function _depositFees() internal {
+  function _depositFees() internal virtual {
     uint256 _amount = unclaimedFees;
     if (_amount != 0) {
       // mint tranches tokens (always AA) to this contract
@@ -545,7 +549,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (isAYSActive) {
       uint256 aux;
       if (tvlAARatio >= AA_RATIO_LIM_UP) {
-        aux = AA_RATIO_LIM_UP;
+        aux = tvlAARatio == FULL_ALLOC ? FULL_ALLOC : AA_RATIO_LIM_UP;
       } else if (tvlAARatio > _minSplit) {
         aux = tvlAARatio;
       } else {
@@ -671,7 +675,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return _swappedAmounts array with amounts of _token actually bought
   /// @return _totSold total rewards sold in `_token`
   function _sellAllRewards(IIdleCDOStrategy _strategy, uint256[] memory _sellAmounts, uint256[] memory _minAmount, bool[] memory _skipReward, bytes memory _extraData)
-    internal
+    internal virtual
     returns (uint256[] memory _soldAmounts, uint256[] memory _swappedAmounts, uint256 _totSold) {
     // Fetch state variables once to save gas
     // get all rewards addresses
@@ -732,7 +736,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @return _locked amount of harvested rewards that are still not available to be redeemed
-  function _lockedRewards() internal view returns (uint256 _locked) {
+  function _lockedRewards() internal view virtual returns (uint256 _locked) {
     uint256 _releaseBlocksPeriod = releaseBlocksPeriod;
     uint256 _blocksSinceLastHarvest = block.number - latestHarvestBlock;
     uint256 _harvestedRewards = harvestedRewards;
@@ -826,7 +830,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount in underlyings to liquidate from lending provider
   /// @param _revertIfNeeded flag to revert if amount liquidated is too low
   /// @return liquidated amount in underlyings
-  function liquidate(uint256 _amount, bool _revertIfNeeded) external returns (uint256) {
+  function liquidate(uint256 _amount, bool _revertIfNeeded) external virtual returns (uint256) {
     _checkOnlyOwnerOrRebalancer();
     return _liquidate(_amount, _revertIfNeeded);
   }
@@ -850,25 +854,25 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _allowed flag to allow AA withdraws
-  function setAllowAAWithdraw(bool _allowed) external {
+  function setAllowAAWithdraw(bool _allowed) external virtual {
     _checkOnlyOwner();
     allowAAWithdraw = _allowed;
   }
 
   /// @param _allowed flag to allow BB withdraws
-  function setAllowBBWithdraw(bool _allowed) external {
+  function setAllowBBWithdraw(bool _allowed) external virtual {
     _checkOnlyOwner();
     allowBBWithdraw = _allowed;
   }
 
   /// @param _allowed flag to enable the 'default' check (whether _strategyPrice decreased or not)
-  function setSkipDefaultCheck(bool _allowed) external {
+  function setSkipDefaultCheck(bool _allowed) external virtual {
     _checkOnlyOwner();
     skipDefaultCheck = _allowed;
   }
 
   /// @param _allowed flag to enable the check if redeemed amount during liquidations is enough
-  function setRevertIfTooLow(bool _allowed) external {
+  function setRevertIfTooLow(bool _allowed) external virtual {
     _checkOnlyOwner();
     revertIfTooLow = _allowed;
   }
@@ -892,13 +896,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _diff max liquidation diff tolerance in underlyings
-  function setLiquidationTolerance(uint256 _diff) external {
+  function setLiquidationTolerance(uint256 _diff) external virtual {
     _checkOnlyOwner();
     liquidationTolerance = _diff;
   }
 
   /// @param _val stkIDLE per underlying required for deposits
-  function setStkIDLEPerUnderlying(uint256 _val) external {
+  function setStkIDLEPerUnderlying(uint256 _val) external virtual {
     _checkOnlyOwner();
     stkIDLEPerUnderlying = _val;
   }
@@ -926,7 +930,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// are no active rewards being unlocked
   /// @param _releaseBlocksPeriod new # of blocks after an harvest during which
   /// harvested rewards gets progressively redistriburted to users
-  function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external {
+  function setReleaseBlocksPeriod(uint256 _releaseBlocksPeriod) external virtual {
     _checkOnlyOwner();
     releaseBlocksPeriod = _releaseBlocksPeriod;
   }
@@ -939,13 +943,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
   function setLossToleranceBps(uint256 _diffBps) external {
-      _checkOnlyOwner();
-      lossToleranceBps = _diffBps;
+    _checkOnlyOwner();
+    lossToleranceBps = _diffBps;
   }
 
   /// @dev toggle stkIDLE requirement for tranche
   /// @param _tranche address
-  function toggleStkIDLEForTranche(address _tranche) external {
+  function toggleStkIDLEForTranche(address _tranche) external virtual {
     _checkOnlyOwner();
     address aa = AATranche;
     require(_tranche == BBTranche || _tranche == aa, '9');
@@ -977,7 +981,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _emergencyShutdown(false);
   }
 
-  function _emergencyShutdown(bool isAAWithdrawAllowed) internal {
+  function _emergencyShutdown(bool isAAWithdrawAllowed) internal virtual {
     // prevent deposits
     _pause();
     // prevent withdraws
@@ -991,7 +995,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @notice allow deposits and redeems for all classes of tranches
   /// @dev can be called by the owner only
-  function restoreOperations() external {
+  function restoreOperations() external virtual {
     _checkOnlyOwner();
     // restore deposits
     _unpause();
