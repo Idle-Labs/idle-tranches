@@ -863,6 +863,19 @@ const CDOs = {
     AATranche: '0x450C055a00226F1Eba09E8D9627034565b7C4C8A',
     BBTranche: '0x2a84A042DB06222C486BcB815E961f26599D0dF6'
   },
+  creditfasanarausdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x1cbd086e16f1188e0e15a153124d6f5c81e57f3e',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xFb77eE48b6A69b4C97af7474b4f175591AeB61b3',
+    proxyAdmin: mainnetContracts.proxyAdmin,
+    strategy: '0x1cbd086e16f1188e0e15a153124d6f5c81e57f3e',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3283FA1EeC2A50783813f30EBE60Eb27f8A40dEd',
+    BBTranche: '0x2Db73Fbae554CFE4cB13e638Fc36339Cf85c6bae'
+  }
 };
 
 const trancheErc4626Wrappers = {
@@ -2201,6 +2214,35 @@ exports.deployTokens = {
     limit: '0',
     isAYSActive: true,
     proxyCdoAddress: CDOs.gearboxweth.cdoAddr
+  },
+  creditfasanarausdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      mainnetContracts.treasuryMultisig, // manager
+      '0xB0b621b2911F44548233e9437F256942dC16694A', // borrower
+      'Fasanara', // borrower name
+      0,
+    ],
+    cdo: mainnetContracts.creditfasanarausdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    epochDuration: '604800',
+    // ## instant params
+    instantWithdrawDelay: '86400',
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: true,
+    // #########
+    proxyCdoAddress: ''
+    // proxyCdoAddress: mainnetContracts.creditfasanarausdc.cdoAddr
   },
 };
 
