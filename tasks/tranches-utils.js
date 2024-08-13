@@ -293,7 +293,7 @@ task("find-convex-params", "Find depositPosition for depositToken of a convex po
 /**
 * @name base58
 */
-task("fetch-morpho-rewards")
+task("fetch-morpho-rewards-old")
   .addParam('cdoname')
   .setAction(async function (args) {
     if (!args.cdoname) {
@@ -330,6 +330,114 @@ task("fetch-morpho-rewards")
       const userRewards = json.rewards[cdoAddr];
       console.log('CDO rewards:', userRewards);
       console.log('---');
+    }
+  });
+
+task("collect-morpho-rewards")
+  .addParam('cdoname')
+  .setAction(async function (args) {
+    if (!args.cdoname) {
+      console.log("🛑 cdoname and it's params must be defined");
+      return;
+    }
+    // Get config params
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const cdoAddr = deployToken.cdo.cdoAddr;
+    console.log('cdoAddr:', cdoAddr);
+    const cdoContract = await ethers.getContractAt("IdleCDO", cdoAddr);
+    const strategyAddr = await cdoContract.strategy();
+    const strategyContract = await ethers.getContractAt("MetaMorphoStrategy", strategyAddr);
+    const currentRewards = await strategyContract.getRewardTokens();
+    console.log('current rewards: ');
+    for (let r = 0; r < currentRewards.length; r++) {
+      const reward = currentRewards[r];
+      const rewardContract = await ethers.getContractAt("IERC20Detailed", reward);
+      const rewardSymbol = await rewardContract.symbol();
+      console.log(`reward ${reward} (${rewardSymbol})`);
+    }
+    console.log('-----------------');
+
+    // fetch last distributions
+    const response = await fetch(`https://rewards.morpho.org/v1/users/${cdoAddr}/distributions`);
+    const json = await response.json();
+
+    console.log('reward pages:', json.pagination.total_pages);
+    if (json.pagination.totalPages > 1) {
+      console.log('WARN: this script supports only 1 page of rewards and there are more!');
+    }
+    const rewards = json.data;
+    const txs = [];
+    for (let i = 0; i < rewards.length; i++) {
+      const reward = rewards[i];
+      const rewardContract = await ethers.getContractAt("IERC20Detailed", reward.asset.address);
+      const rewardSymbol = await rewardContract.symbol();
+      console.log(`reward ${reward.asset.address} (${rewardSymbol})`);
+      console.log('distributor', reward.distributor.address);
+      console.log('amount', reward.claimable);
+      // console.log('proof', reward.proof);
+      // console.log('txData', reward.tx_data);
+
+      txs.push({
+        to: reward.distributor.address,
+        value: '0',
+        data: reward.tx_data
+      })
+    }
+
+    if (txs.length == 0) {
+      return;
+    }
+    const signer = await run('get-signer-or-fake');
+    await helpers.batchTxsEOA(txs.map(tx => ({ target: tx.to, callData: tx.data })), signer);
+
+    // // do the same with multisig
+    // const networkContracts = getNetworkContracts(hre);
+    // await helpers.proposeBatchTxsMainnet(networkContracts.devLeagueMultisig, txs);
+  });
+
+task("fetch-morpho-rewards")
+  .addParam('cdoname')
+  .setAction(async function (args) {
+    if (!args.cdoname) {
+      console.log("🛑 cdoname and it's params must be defined");
+      return;
+    }
+    // Get config params
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const cdoAddr = deployToken.cdo.cdoAddr;
+    console.log('cdoAddr:', cdoAddr);
+    const cdoContract = await ethers.getContractAt("IdleCDO", cdoAddr);
+    const strategyAddr = await cdoContract.strategy();
+    const strategyContract = await ethers.getContractAt("MetaMorphoStrategy", strategyAddr);
+    const currentRewards = await strategyContract.getRewardTokens();
+    console.log('current rewards: ');
+    for (let r = 0; r < currentRewards.length; r++) {
+      const reward = currentRewards[r];
+      const rewardContract = await ethers.getContractAt("IERC20Detailed", reward);
+      const rewardSymbol = await rewardContract.symbol();
+      console.log(`reward ${reward} (${rewardSymbol})`);
+    }
+    console.log('-----------------');
+
+    // fetch last distributions
+    const response = await fetch(`https://rewards.morpho.org/v1/users/${cdoAddr}/distributions`);
+    const json = await response.json();
+
+    console.log('reward pages:', json.pagination.total_pages);
+    if (json.pagination.totalPages > 1) {
+      console.log('WARN: this script supports only 1 page of rewards and there are more!');
+    }
+    const rewards = json.data;
+    for (let i = 0; i < rewards.length; i++) {
+      const reward = rewards[i];
+      const rewardContract = await ethers.getContractAt("IERC20Detailed", reward.asset.address);
+      const rewardSymbol = await rewardContract.symbol();
+      console.log(`reward ${reward.asset.address} (${rewardSymbol})`);
+      console.log('distributor', reward.distributor.address);
+      console.log('amount', reward.claimable);
+      console.log('proof', reward.proof);
     }
   });
 

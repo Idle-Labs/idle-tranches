@@ -70,6 +70,33 @@ const getMultisigSigner = async (skipLog) => {
   }
   return signer;
 };
+const batchTxsEOA = async (txs, signer) => {
+  console.log('WARNING: This works only if msg.sender does not matter in the txs!')
+  let multicall = await ethers.getContractAt("IMulticall3", '0xcA11bde05977b3631167028862bE2a173976CA11');
+  multicall = multicall.connect(signer);
+  await multicall.aggregate(txs);
+};
+
+const proposeBatchTxsMainnet = async (multisig, txs) => {
+  const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
+  const safe = await Safe.create({
+    ethAdapter: new EthersAdapter({ ethers, signer: ledgerSigner }),
+    safeAddress: multisig,
+  });
+  const service = new SafeService('https://safe-transaction-mainnet.safe.global');
+  const signer = new SafeEthersSigner(safe, service, ethers.provider);
+  const safeTransaction = await safe.createTransaction(txs);
+
+  console.log('txs', txs);
+  console.log('safeTransaction.data', safeTransaction.data);
+
+  try {
+    await signer.sendTransaction(safeTransaction.data);
+    console.log(`Submitted a batch of ${txs.length} transactions to the safe ${multisig}`);
+  } catch (err) {
+    console.log('ERROR', err);
+  }
+};
 const getSigner = async (acc) => {
   let signer;
   if (acc) {
@@ -438,4 +465,6 @@ module.exports = {
   encodeParams,
   depositAndStake,
   withdrawAndUnstakeWithGain,
+  proposeBatchTxsMainnet,
+  batchTxsEOA
 }
