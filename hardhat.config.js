@@ -192,10 +192,19 @@ module.exports = {
       timeout: 1200000,
       chainId: 10
     },
+    arbitrum: {
+      url: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      timeout: 1200000,
+      chainId: 42161
+    },
   },
   etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
+      arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
       polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
       optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY
