@@ -8,21 +8,24 @@ const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals))
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
-const polygonZKCDOs = addresses.polygonZKCDOs;
-const ICurveRegistryAbi = require("../abi/ICurveRegistry.json");
-
 const optimismContracts = addresses.IdleTokens.optimism;
+const arbitrumContracts = addresses.IdleTokens.arbitrum;
+const ICurveRegistryAbi = require("../abi/ICurveRegistry.json")
 
 const getNetworkContracts = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+
   if (isMatic) {
     return polygonContracts;
   } else if (isPolygonZK) {
     return polygonZKContracts;
   } else if (isOptimism) {
     return optimismContracts;
+  } else if (isArbitrum) {
+    return arbitrumContracts;
   }
   return mainnetContracts;
 }
@@ -31,12 +34,16 @@ const getDeployTokens = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+
   if (isMatic) {
     return addresses.deployTokensPolygon;
   } else if (isPolygonZK) {
     return addresses.deployTokensPolygonZK;
   } else if (isOptimism) {
     return addresses.deployTokensOptimism;
+  } else if (isArbitrum) {
+    return addresses.deployTokensArbitrum;
   }
   return addresses.deployTokens;
 }
@@ -90,9 +97,13 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
     const deployToken = networkTokens[args.cdoname];
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
+    const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+
     let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (isOptimism) {
       contractName = 'IdleCDOOptimism';
+    } else if (isArbitrum) {
+      contractName = 'IdleCDOArbitrum';
     }
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
@@ -505,7 +516,7 @@ subtask("upgrade-with-multisig", "Get signer")
 subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
@@ -521,7 +532,7 @@ subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
     const networkContracts = getNetworkContracts(hre);
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
       signer = await helpers.impersonateSigner(args.fakeAddress || networkContracts.treasuryMultisig);
     } else {
       signer = await helpers.getMultisigSigner();

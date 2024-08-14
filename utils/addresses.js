@@ -235,11 +235,28 @@ const optimismContracts = {
   cpBAS_USDT: '0xe6be721CCC9552D79bDC0d9CC3638606C3bDaDB5',
 }
 
+const arbitrumContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0xe5441efbda7a3613597eb8e2c42ae4c837ea2149',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
+  treasuryMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
+  devLeagueMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
+  pauserMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
+  proxyAdmin: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
+
+  ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548',
+  WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+  tfWIN_USDC: '0xA909a4AA2A6DB0C1A3617A5Cf763ae0d780E5C64',
+  USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonzk: polygonZKContracts,
   mainnet: mainnetContracts,
   optimism: optimismContracts,
+  arbitrum: arbitrumContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -1073,6 +1090,22 @@ const optimismCDOs = {
     AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
     BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
   },
+};
+
+const arbitrumCDOs = {
+  tfwinusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: arbitrumContracts.tfWIN_USDC,
+    underlying: arbitrumContracts.USDC,
+    cdoAddr: '0x6b8A1e78Ac707F9b0b5eB4f34B02D9af84D2b689',
+    proxyAdmin: arbitrumContracts.proxyAdmin,
+    strategy: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6AaB2db845b23729aF1F5B0902Ff4BDc32BBf948',
+    BBTranche: '0x1FdAF221fF3929e86266D6A5930fa7263c1bD4DF'
+  }
 };
 
 const polygonZKCDOs = {
@@ -2436,6 +2469,27 @@ exports.deployTokensOptimism = {
   },
 };
 
+exports.deployTokensArbitrum = {
+  tfwinusdc: {
+    decimals: 6,
+    underlying: arbitrumContracts.USDC,
+    strategyName: 'TruefiCreditLineStrategy',
+    strategyParams: [
+      arbitrumContracts.tfWIN_USDC, // _strategyToken
+      arbitrumContracts.USDC, // _underlyingToken
+      'owner', // owner address
+    ],
+    // cdo: arbitrumCDOs.tfwinusdc,
+    cdoVariant: 'IdleCDOTruefiCreditVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '20000000',
+    isAYSActive: true,
+    proxyCdoAddress: '',
+    // proxyCdoAddress: arbitrumCDOs.cpporusdt.cdoAddr,
+  }
+};
+
 exports.deployTokensBYOptimism = {
   idleusdtrwa: {
     decimals: 6,
@@ -2522,4 +2576,5 @@ exports.idleTokenErc4626Wrappers = idleTokenErc4626Wrappers;
 exports.polygonCDOs = polygonCDOs;
 exports.polygonZKCDOs = polygonZKCDOs;
 exports.optimismCDOs = optimismCDOs;
+exports.arbitrumCDOs = arbitrumCDOs;
 exports.mainnetContracts = mainnetContracts;

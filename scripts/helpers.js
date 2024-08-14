@@ -32,14 +32,23 @@ const impersonateSigner = async (acc) => {
 const getMultisigSigner = async (skipLog) => {
   const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
   const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
-  let safeServiceUrl = isOptimism ? 
-    'https://safe-transaction-optimism.safe.global/' : 
-    'https://safe-transaction-mainnet.safe.global/';
-  if (isPolygonZK) {
-    safeServiceUrl = 'https://safe-transaction-zkevm.safe.global/'
+  const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+  let safeServiceUrl;
+  let networkKey;
+  if (isOptimism) {
+    safeServiceUrl = 'https://safe-transaction-optimism.safe.global/';
+    networkKey = 'optimism';
+  } else if (isPolygonZK) {
+    safeServiceUrl = 'https://safe-transaction-zkevm.safe.global/';
+    networkKey = 'polygonzk';
+  } else if (isArbitrum) {
+    safeServiceUrl = 'https://safe-transaction-arbitrum.safe.global/';
+    networkKey = 'arbitrum';
+  } else {
+    safeServiceUrl = 'https://safe-transaction-mainnet.safe.global/';
+    networkKey = 'mainnet';
   }
 
-  const networkKey = isOptimism ? 'optimism' : (isPolygonZK ? 'polygonzk' : 'mainnet');
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   const service = new SafeService(safeServiceUrl);
   // needed for polygon zkevm as we are using an old version of the sdk
@@ -116,7 +125,8 @@ const getSigner = async (acc) => {
     hre.network.name == 'mainnet' || 
     hre.network.name == 'matic' || 
     hre.network.name == 'polygonzk' || 
-    hre.network.name == 'optimism'
+    hre.network.name == 'optimism' ||
+    hre.network.name == 'arbitrum'
   ) {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }
