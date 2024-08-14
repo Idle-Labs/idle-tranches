@@ -6,7 +6,7 @@ import "./TestIdleCDOLossMgmt.sol";
 import {TruefiCreditLineStrategy} from "../../contracts/arbitrum/strategies/truefi/TruefiCreditLineStrategy.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IERC4626Upgradeable} from "../../contracts/interfaces/IERC4626Upgradeable.sol";
-import {IdleCDOArbitrum} from "../../contracts/arbitrum/IdleCDOArbitrum.sol";
+import {IdleCDOTruefiCreditVariant} from "../../contracts/arbitrum/IdleCDOTruefiCreditVariant.sol";
 import {ITruefiCreditLine} from "../../contracts/arbitrum/interfaces/truefi/ITruefiCreditLine.sol";
 import {IWETH} from "../../contracts/interfaces/IWETH.sol";
 
@@ -26,7 +26,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
   }
 
   function _deployCDO() internal override returns (IdleCDO _cdo) {
-    _cdo = new IdleCDOArbitrum();
+    _cdo = new IdleCDOTruefiCreditVariant();
   }
 
   function _deployStrategy(address _owner)
