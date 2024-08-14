@@ -21,9 +21,14 @@ contract IdleCDOArbitrum is IdleCDO {
 
   /// @notice used by child contracts (cdo variants) if anything needs to be done on/after init
   function _additionalInit() internal virtual override {
+    // given that _sellReward is overridden we do not use weth var, but we kept it for compatibility
     weth = address(WETH);
     feeReceiver = address(FEE_RECEIVER); // treasury multisig
     releaseBlocksPeriod = 288000 * 7; // 60 * 60 * 24 / 2 * 7 = ~1 week (blocktime 0.3s)
+    // gas is low so we let users deposits directly in the strategy
+    directDeposit = true;
+    // gas is low so we set unlentPerc to 0
+    unlentPerc = 0;
   }
 
   /// @notice method used to sell `_rewardToken` for `_token` on uniswap

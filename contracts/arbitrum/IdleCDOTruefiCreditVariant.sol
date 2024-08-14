@@ -10,6 +10,7 @@ contract IdleCDOTruefiCreditVariant is IdleCDOArbitrum {
   /// if 1% < loss < 5% (ie maxDecreaseDefault) => junior tranche will absorb the loss
   /// if loss > 5% => junior will absorb the loss and pool goes into default
   function _additionalInit() internal override {
+    super._additionalInit();
     lossToleranceBps = 1000; // 1% (there is a 0.5% fee on TVL over a year + some buffer)
   }
 }
