@@ -12,17 +12,21 @@ const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
 const optimismContracts = addresses.IdleTokens.optimism;
+const arbitrumContracts = addresses.IdleTokens.arbitrum;
 
 const getNetworkContracts = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   if (isMatic) {
     return polygonContracts;
   } else if (isPolygonZK) {
     return polygonZKContracts;
   } else if (isOptimism) {
     return optimismContracts;
+  } else if (isArbitrum) {
+    return arbitrumContracts;
   }
   return mainnetContracts;
 }
@@ -31,12 +35,16 @@ const getDeployTokens = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+
   if (isMatic) {
     return addresses.deployTokensPolygon;
   } else if (isPolygonZK) {
     return addresses.deployTokensPolygonZK;
   } else if (isOptimism) {
     return addresses.deployTokensOptimism;
+  } else if (isArbitrum) {
+    return addresses.deployTokensArbitrum;
   }
   return addresses.deployTokens;
 }
@@ -123,6 +131,8 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
+    const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+
     const networkContracts = getNetworkContracts(hre);
 
     if (!proxyAdminAddress) {
@@ -196,6 +206,8 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
       contractName = "IdleCDOPolygonZK";
     } else if (isOptimism) {
       contractName = "IdleCDOOptimism";
+    } else if (isArbitrum) {
+      contractName = "IdleCDOArbitrum";
     }
     const idleCDO = await ethers.getContractAt(contractName, cdoImplementationAddress, signer);
     
@@ -244,6 +256,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
+    const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
 
     const networkTokens = getDeployTokens(hre);
 
@@ -265,6 +278,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       networkCDOName = 'IdleCDOPolygonZK';
     } else if (isOptimism) {
       networkCDOName = 'IdleCDOOptimism';
+    } else if (isArbitrum) {
+      networkCDOName = 'IdleCDOArbitrum';
     }
     let idleCDOAddress;
     const contractName = deployToken.cdoVariant || networkCDOName;
@@ -341,7 +356,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
 
     const feeReceiver = await idleCDO.feeReceiver();
-    if ((isMatic || isPolygonZK || isOptimism) && feeReceiver != networkContracts.feeReceiver) {
+    if ((isMatic || isPolygonZK || isOptimism || isArbitrum) && feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase()) {
       console.log('Setting fee receiver to Treasury Multisig')
       await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
     }
@@ -380,7 +395,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
 
-    if (!(isMatic || isPolygonZK || isOptimism)) {
+    if (!(isMatic || isPolygonZK || isOptimism || isArbitrum)) {
       const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
       console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
       const tx = await pauseModule.updateProtectedContracts([{

@@ -11,6 +11,7 @@ interface IIdleCDO {
   function token() external view returns(address);
   function rebalancer() external view returns(address);
   function owner() external view returns(address);
+  function paused() external view returns(bool);
 
   function allowAAWithdraw() external view returns(bool);
   function allowBBWithdraw() external view returns(bool);
@@ -30,6 +31,8 @@ interface IIdleCDO {
   function depositBB(uint256) external returns(uint256);
   function withdrawAA(uint256) external returns(uint256);
   function withdrawBB(uint256) external returns(uint256);
+  function emergencyShutdown() external;
+  function setGuardian(address) external;
 
   function harvest(
     bool[] calldata _skipFlags,

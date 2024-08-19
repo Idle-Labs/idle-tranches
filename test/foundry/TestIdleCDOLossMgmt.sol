@@ -196,7 +196,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external virtual {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
-
+    
         vm.prank(idleCDO.owner());
         idleCDO.setLossToleranceBps(500);
 
@@ -306,8 +306,10 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
     }
 
     function testCheckMaxDecreaseDefault() external virtual {
-        uint256 amount = 10000 * ONE_SCALE;
+        _testCheckMaxDecreaseDefault(10000 * ONE_SCALE);
+    }
 
+    function _testCheckMaxDecreaseDefault(uint256 amount) internal virtual {
         // AA Ratio 98%
         uint256 amountAA = amount - amount / 50;
         uint256 amountBB = amount - amountAA;

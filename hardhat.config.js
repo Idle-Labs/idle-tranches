@@ -77,6 +77,8 @@ module.exports = {
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
+      "contracts/arbitrum/IdleCDOTruefiCreditVariant.sol": overrideConfig,
+      "contracts/arbitrum/IdleCDOArbitrum.sol": overrideConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,
@@ -104,6 +106,7 @@ module.exports = {
       //   // url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url:`https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url: `https://polygonzkevm-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_POLYGON_ZK_KEY}`,
+      //   // url: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
       //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
@@ -192,10 +195,19 @@ module.exports = {
       timeout: 1200000,
       chainId: 10
     },
+    arbitrum: {
+      url: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      timeout: 1200000,
+      chainId: 42161
+    },
   },
   etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
+      arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
       polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
       optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY

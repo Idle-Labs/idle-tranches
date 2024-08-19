@@ -21,6 +21,7 @@ solc = '0.8.10'
 mainnet = "${ETH_RPC_URL}"
 polygonzk = "${POLYGON_ZK_RPC_URL}"
 optimism = "${OPTIMISM_RPC_URL}"
+arbitrum = "${ARBITRUM_RPC_URL}"
 goerli = "${GOERLI_RPC_URL}"
 
 [etherscan]
