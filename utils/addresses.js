@@ -219,8 +219,11 @@ const optimismContracts = {
   feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
-  pauserMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   proxyAdmin: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: '0x290C4dC2402CD77643aF42Ba926A15Aba4d3508b',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
 
   OP: '0x4200000000000000000000000000000000000042',
   WETH: '0x4200000000000000000000000000000000000006',
@@ -242,8 +245,12 @@ const arbitrumContracts = {
   feeReceiver: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   treasuryMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   devLeagueMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
-  pauserMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   proxyAdmin: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
+
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: '0x59CDF902b6A964CD5dB04d28f12b774bFB876Be9',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
 
   ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548',
   WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',

@@ -89,6 +89,63 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
   })
 
 /**
+* @name deploy
+* deploy factory for CDOs
+*/
+task("deploy-hypernative-pauser", "Deploy HypernativeBatchPauser")
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+
+    const networkContracts = getNetworkContracts(hre);
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+    const contractName = "HypernativeBatchPauser";
+
+    console.log("creator: ", creator);
+    console.log("network: ", hre.network.name);
+    
+    const pauser = networkContracts.hypernativePauserEOA;
+    // arbitrum contracts
+    const protectedContracts = [
+      '0x6b8A1e78Ac707F9b0b5eB4f34B02D9af84D2b689'
+    ];
+    console.log("Params :");
+    console.log("pauser: ", pauser);
+    console.log("protectedContracts: ", protectedContracts);
+
+    await helpers.prompt("continue? [y/n]", true);
+
+    const contractAddr = await helpers.deployContract(contractName, [pauser, protectedContracts], signer);
+    console.log(`${contractName} deployed at ${contractAddr}`);
+    return contractAddr;
+  });
+
+/**
+ * @name deploy
+ * deploy factory for CDOs
+ */
+task("deploy-generic-contract", "Deploy generic contract")
+  .addParam('contractname')
+  .setAction(async (args) => {
+    // Run 'compile' task
+    await run("compile");
+
+    const contractName = args.contractname;
+    const signer = await helpers.getSigner();
+    const creator = await signer.getAddress();
+
+    console.log("creator: ", creator);
+    console.log("network: ", hre.network.name);
+    console.log("contractName: ", contractName);
+    await helpers.prompt("continue? [y/n]", true);
+
+    const contractAddr = await helpers.deployContract(contractName, [], signer);
+    console.log(`${contractName} deployed at ${contractAddr}`);
+    return contractAddr;
+  });
+
+/**
  * @name deploy
  * deploy factory for CDOs
  */
@@ -395,6 +452,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
 
+    // In mainnet
     if (!(isMatic || isPolygonZK || isOptimism || isArbitrum)) {
       const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
       console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
@@ -407,6 +465,28 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
     }
 
+    if (networkContracts.hypernativePauserEOA) {
+      const pauseModule = await ethers.getContractAt("HypernativeBatchPauser", networkContracts.pauserMultisig, signer);
+      console.log(`Setting contract to hypernative batch pauser ${networkContracts.pauserMultisig}`);
+      const tx = await pauseModule.addProtectedContracts([idleCDO.address]);
+      await tx.wait();
+
+      // This contract do not have `isContractProtected` method so we try to get first 20 protected contracts
+      // if it reverts it means that we reached the end of the list, the last contract should be the idleCDO
+      // that we just deployed
+      let contractProtected;
+      for (let i = 0; i < 20; i++) {
+        try {
+          contractProtected = await pauseModule.protectedContracts(i);
+        } catch (error) {
+          // This should be the contract we just added
+          contractProtected = await pauseModule.protectedContracts(i - 1);
+        }
+      }
+
+      console.log('isContractProtected: ', contractProtected.toLowerCase() == idleCDO.address.toLowerCase());
+      console.log(`IMPORTANT: manually add contract to watchlists in hypernative module`);
+    }
     // // adding CDO to IdleCDO registry (TODO multisig)
     // const reg = await ethers.getContractAt("IIdleCDORegistry", mainnetContracts.idleCDORegistry);
     // const isValid = await reg.isValidCdo(idleCDO.address);
