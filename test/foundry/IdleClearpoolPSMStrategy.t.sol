@@ -8,8 +8,8 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
   address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
   address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address public constant CPOOL = 0x66761Fa41377003622aEE3c7675Fc7b5c1C2FaC5;
-  // clearpool Folkvang USDC pool
-  address public constant cpToken = 0xe3D20A721522874D32548B4097d1afc6f024e45b;
+  // clearpool Portofino USDC pool
+  address public constant cpToken = 0x4a90c14335E81829D7cb0002605f555B8a784106;
 
   function _deployLocalContracts() internal override returns (IdleCDO _cdo) {
     address _owner = address(2);
@@ -73,7 +73,7 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
   }
 
   function _selectFork() public override {
-    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 15133116));
+    vm.selectFork(vm.createFork(vm.envString("ETH_RPC_URL"), 20621109));
   }
 
   function testOnlyOwner()

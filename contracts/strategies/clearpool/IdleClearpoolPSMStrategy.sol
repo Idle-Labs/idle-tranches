@@ -20,7 +20,7 @@ contract IdleClearpoolPSMStrategy is
     using SafeERC20Upgradeable for IERC20Detailed;
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    IPSM public constant DAIPSM = IPSM(0x89B78CfA322F6C5dE0aBcEecab66Aee45393cC5A);
+    IPSM public constant DAIPSM = IPSM(0xf6e72Db5454dd049d0788e411b06CfAF16853042);
 
     /// @notice can be only called once
     /// @param _cpToken address of the strategy token (lending pool)
@@ -36,6 +36,13 @@ contract IdleClearpoolPSMStrategy is
         super.initialize(_cpToken, _underlyingToken, _owner, _uniswapV2Router);
 
         // approve psm and helper to spend DAI and USDC
+        IERC20Detailed(DAI).safeApprove(address(DAIPSM), type(uint256).max);
+        address psmGemJoin = DAIPSM.gemJoin();
+        underlyingToken.safeApprove(address(psmGemJoin), type(uint256).max);
+    }
+
+    /// @notice this is needed in case PSM address needs to be changed
+    function approvePSM() external onlyOwner {
         IERC20Detailed(DAI).safeApprove(address(DAIPSM), type(uint256).max);
         address psmGemJoin = DAIPSM.gemJoin();
         underlyingToken.safeApprove(address(psmGemJoin), type(uint256).max);
