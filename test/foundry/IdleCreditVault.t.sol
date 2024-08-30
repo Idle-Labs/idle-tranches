@@ -1150,6 +1150,81 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim of user1 is wrong');
   }
 
+  function testClaimInstantWithdrawRequestAfterAnEpoch() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    
+    // run epoch 0
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    // request instant withdraw (5000)
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+
+    // run epoch 1 (same apr for the next one)
+    _startEpochAndCheckPrices(1);
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    _getInstantFunds();
+    // Here we could have claimed but we did not
+    _stopEpochAndCheckPrices(1, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    // run epoch 2
+    _startEpochAndCheckPrices(2);
+
+    // claim right away as it was an old withdraw request
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    cdoEpoch.claimInstantWithdrawRequest();
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1, 'claimInstantWithdrawRequest is wrong');
+  }
+
+  function testClaimInstantWithdrawRequestAfterAnEpochWithInstantWithdraw() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    
+    // run epoch 0
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    // request instant withdraw (5000)
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+
+    // run epoch 1 (lower apr for the next one)
+    _startEpochAndCheckPrices(1);
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    _getInstantFunds();
+    // Here we could have claimed but we did not
+    _stopEpochAndCheckPrices(1, initialProvidedApr / 4, _expectedFundsEndEpoch());
+
+    // request another instant withdraw
+    uint256 requestedAA2 = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    // run epoch 2
+    _startEpochAndCheckPrices(2);
+    // if we claim right away it reverts as there are pending instant not fulfilled
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    // we still need to wait the instant withdraw delay
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    _getInstantFunds();
+    // claim right away as it was an old withdraw request
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    cdoEpoch.claimInstantWithdrawRequest();
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2, 'claimInstantWithdrawRequest is wrong');
+  }
+
   /// Tests inherited from TestIdleCDOBase/TestIdleCDOLossMgmt
   function _doDepositsWithInterest(uint256 aa, uint256 bb) 
     internal override
