@@ -58,6 +58,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   address public keyring;
   /// @notice keyring policyId
   uint256 public keyringPolicyId;
+  /// @notice time between 2 epochs
+  uint256 public bufferPeriod;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -77,6 +79,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     // set epoch params
     epochDuration = 30 days;
+    bufferPeriod = 5 days;
     instantWithdrawDelay = 3 days;
     // prevent normal withdrawals, only requests for withdrawal are allowed
     allowAAWithdraw = false;
@@ -105,9 +108,11 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice update epoch duration
   /// @param _epochDuration duration in seconds
-  function setEpochDuration(uint256 _epochDuration) external {
+  /// @param _bufferPeriod time between 2 epochs
+  function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) external {
     _checkOnlyOwnerOrManager();
     epochDuration = _epochDuration;
+    bufferPeriod = _bufferPeriod;
   }
 
   /// @notice update instant withdraw params
@@ -454,7 +459,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       _amount = _userTrancheTokens;
     }
 
-    uint256 interest = _calcInterest(_underlyings) * trancheAPRSplitRatio / FULL_ALLOC;
+    uint256 interest = _calcInterestWithdrawRequest(_underlyings) * trancheAPRSplitRatio / FULL_ALLOC;
     uint256 fees = interest * fee / FULL_ALLOC;
     uint256 netInterest = interest - fees;
     // user is requesting principal + interest of next epoch minus fees
@@ -475,13 +480,27 @@ contract IdleCDOEpochVariant is IdleCDO {
     return _amount * (IdleCreditVault(strategy).getApr() / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
   }
 
+  /// @notice Calculate the interest of an epoch for a withdraw request
+  /// @dev to avoid having funds not getting interest during buffer period, the apr 
+  /// set in the stopEpoch is higher than then intended one so it will cover also the buffer period
+  /// eg epoch = 30 days, buffer = 5 days, then if we want to give 10% apr for all the 35 days then
+  /// in stop epoch we set the apr to 10% * 35/30 = 11.67%. For this reason people who instead request
+  /// a withdraw should not get the additional interest for the buffer period because they can withdraw
+  /// a block after the buffer period starts. So we calculate the interest for the 30 days only,
+  /// eg. if apr is set to 11.67% and we want to calculate the interest for 30 days at 10% we need to do the 
+  /// the opposite -> 11.67% * 30/35 = 10%
+  /// @param _amount Amount of underlyings
+  function _calcInterestWithdrawRequest(uint256 _amount) internal view returns (uint256) {
+    return _calcInterest(_amount) * epochDuration / (epochDuration + bufferPeriod);
+  }
+
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
     uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     // add interest for one epoch
-    uint256 interest = _calcInterest(currentUnderlyings) * trancheAPRSplitRatio / FULL_ALLOC;
+    uint256 interest = _calcInterestWithdrawRequest(currentUnderlyings) * trancheAPRSplitRatio / FULL_ALLOC;
     // sum and remove fees
     return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
   }
