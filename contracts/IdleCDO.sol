@@ -835,7 +835,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @dev automatically reverts if strategyPrice decreased more than `_maxDecreaseDefault`
   /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
-  function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external {
+  function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external virtual {
     _checkOnlyOwner();
     require(_maxDecreaseDefault < FULL_ALLOC, '7');
     maxDecreaseDefault = _maxDecreaseDefault;
@@ -915,7 +915,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _unlentPerc new unlent percentage
-  function setUnlentPerc(uint256 _unlentPerc) external {
+  function setUnlentPerc(uint256 _unlentPerc) external virtual {
     _checkOnlyOwner();
     require((unlentPerc = _unlentPerc) <= FULL_ALLOC, '7');
   }
@@ -930,7 +930,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _trancheAPRSplitRatio new apr split ratio
-  function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external {
+  function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external virtual {
     _checkOnlyOwner();
     require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
   }

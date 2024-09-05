@@ -107,7 +107,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(_owner); 
     if (_start) {
       if (_vault.epochEndDate() != 0) {
-        vm.warp(_vault.bufferPeriod() + 1);
+        vm.warp(block.timestamp + _vault.bufferPeriod() + 1);
       }
       _vault.startEpoch();
     } else {
@@ -363,7 +363,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(true, 0, 0);
 
     // check that manager cannot call startEpoch again
-    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.startEpoch();
 
@@ -376,6 +376,26 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.instantWithdrawDeadline(), time + cdoEpoch.instantWithdrawDelay(), 'instantWithdrawDeadline is wrong');
     assertEq(IERC20Detailed(strategyToken).balanceOf(address(idleCDO)), totAmount, 'strategyToken bal in cdo is wrong');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower), totAmount, 'funds are not sent to borrower');
+  }
+
+  function testStartEpochWithoutWaitingBuffer() external {
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    // start epoch
+    _toggleEpoch(true, 0, 0);
+
+    // stop epoch
+    _toggleEpoch(false, 1e18, _expectedFundsEndEpoch());
+
+    // check that manager cannot call startEpoch again without waiting for the buffer period
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
   }
 
   function testStartEpochWithSpecificData() external {

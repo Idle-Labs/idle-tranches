@@ -58,7 +58,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   address public keyring;
   /// @notice keyring policyId
   uint256 public keyringPolicyId;
-  /// @notice time between 2 epochs
+  /// @notice time between 2 epochs, can be set to 0 to start the next epoch without waiting a specified time
   uint256 public bufferPeriod;
 
   event AccrueInterest(uint256 interest, uint256 fees);
@@ -148,9 +148,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   function startEpoch() external {
     _checkOnlyOwnerOrManager();
 
-    // Check that epoch is not running
-    if (isEpochRunning) {
-      revert EpochRunning();
+    // Check that buffer period passed (and epoch is not running as epochEndDate is set)
+    if (block.timestamp < (epochEndDate + bufferPeriod)) {
+      revert NotAllowed();
     }
 
     isEpochRunning = true;
@@ -605,6 +605,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// NOTE: strategy price is alway equal to 1 underlying
   function _checkDefault() override internal {}
   function setSkipDefaultCheck(bool) external override {}
+  function setMaxDecreaseDefault(uint256) external override {}
 
   /// NOTE: harvest is not performed to transfer funds to the strategy (startEpoch is used)
   function harvest(
@@ -632,4 +633,10 @@ contract IdleCDOEpochVariant is IdleCDO {
   function _depositFees() internal override {}
   function depositAARef(uint256, address) external override returns (uint256) {}
   function depositBBRef(uint256, address) external override returns (uint256) {}
+
+  /// NOTE: unlent perc should always be 0 and set in additionalInit
+  function setUnlentPerc(uint256) external override {}
+
+  /// NOTE: the vault is either a single tranche (ie all interest to senior and set in additionalInit) or AYS is active
+  function setTrancheAPRSplitRatio(uint256) external override {}
 }

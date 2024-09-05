@@ -68,7 +68,7 @@ abstract contract TestIdleCDOBase is Test {
     AAtranche = IdleCDOTranche(idleCDO.AATranche());
     BBtranche = IdleCDOTranche(idleCDO.BBTranche());
     rewards = strategy.getRewardTokens();
-    incentives = idleCDO.getIncentiveTokens();
+    // incentives = idleCDO.getIncentiveTokens();
 
     // fund
     _fundTokens();
