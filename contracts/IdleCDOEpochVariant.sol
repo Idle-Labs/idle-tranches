@@ -90,6 +90,10 @@ contract IdleCDOEpochVariant is IdleCDO {
     // min apr delta to trigger instant withdraw
     instantWithdrawAprDelta = 1.5e18; // 1.5%
 
+    // scale the apr to include the buffer period
+    IdleCreditVault _strategy = IdleCreditVault(strategy); 
+    _strategy.setApr(_scaleAprWithBuffer(_strategy.getApr()));
+
     // set keyring address
     keyring = 0xD18d17791f2071Bf3C855bA770420a9EdEa0728d;
     keyringPolicyId = 4;
@@ -277,7 +281,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       // save last apr
       lastEpochApr = _strategy.getApr();
       // set apr for next epoch
-      _strategy.setApr(_newApr);
+      _strategy.setApr(_scaleAprWithBuffer(_newApr));
 
       // stop epoch
       isEpochRunning = false;
@@ -300,6 +304,15 @@ contract IdleCDOEpochVariant is IdleCDO {
       allowInstantWithdraw = true;
       _handleBorrowerDefault(_expectedInterest + _pendingWithdraws);
     }
+  }
+
+  /// @notice The apr should be increased by an amount proportional to the buffer period in this 
+  /// way during a buffer period lenders will still get interest. Eg if epoch is 30 days and buffer 
+  /// is 5 days and the apr lenders should receive is 10% then _newApr should be 10% * 35/30 = 11.67%.
+  /// @param _apr Apr to scale
+  function _scaleAprWithBuffer(uint256 _apr) internal view returns (uint256) {
+    uint256 _duration = epochDuration;
+    return _apr * (_duration + bufferPeriod) / _duration;
   }
 
   /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
@@ -437,7 +450,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     if (!disableInstantWithdraw) {
       // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
-      if (lastEpochApr > (creditVault.getApr() + instantWithdrawAprDelta)) {
+      if (lastEpochApr > (creditVault.getApr() + _scaleAprWithBuffer(instantWithdrawAprDelta))) {
         // Calc max withdrawable if amount passed is 0
         _underlyings = _amount == 0 ? maxWithdrawableInstant(msg.sender, _tranche) : _underlyings;
         // burn strategy tokens from cdo
@@ -491,7 +504,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// the opposite -> 11.67% * 30/35 = 10%
   /// @param _amount Amount of underlyings
   function _calcInterestWithdrawRequest(uint256 _amount) internal view returns (uint256) {
-    return _calcInterest(_amount) * epochDuration / (epochDuration + bufferPeriod);
+    uint256 _duration = epochDuration;
+    return _calcInterest(_amount) * _duration / (_duration + bufferPeriod);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
@@ -606,7 +620,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     internal override returns (uint256[] memory, uint256[] memory, uint256) {}
   function _sellReward(address, bytes memory, uint256, uint256)
     internal override returns (uint256, uint256) {}
-  function getIncentiveTokens() external view override returns (address[] memory) {}
   function setReleaseBlocksPeriod(uint256) external override {}
   function _lockedRewards() internal view override returns (uint256) {}
 
@@ -617,4 +630,6 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// NOTE: fees are not deposited in this contract
   function _depositFees() internal override {}
+  function depositAARef(uint256, address) external override returns (uint256) {}
+  function depositBBRef(uint256, address) external override returns (uint256) {}
 }

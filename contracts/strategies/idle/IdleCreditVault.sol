@@ -119,10 +119,16 @@ contract IdleCreditVault is
   }
 
   /// @notice set the fixed apr
-  /// @dev only manager can set the apr
+  /// @dev only cdo and manager can set the apr. If manager manually set apr from 
+  /// here it will not be scaled to include the buffer period
   function setApr(uint256 _apr) external {
-    if (msg.sender != idleCDO && msg.sender != manager) {
-      revert NotAllowed();
+    address _cdo = idleCDO;
+
+    // if cdo is not yet set we skip the check (this can happen only during the setup)
+    if (_cdo != address(0)) {
+      if (msg.sender != _cdo && msg.sender != manager) {
+        revert NotAllowed();
+      }
     }
     lastApr = _apr;
   }

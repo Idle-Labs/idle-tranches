@@ -143,7 +143,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of `token` to deposit
   /// @param _referral address of the referral
   /// @return AA tranche tokens minted
-  function depositAARef(uint256 _amount, address _referral) external returns (uint256) {
+  function depositAARef(uint256 _amount, address _referral) external virtual returns (uint256) {
     return _deposit(_amount, AATranche, _referral);
   }
 
@@ -152,7 +152,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of `token` to deposit
   /// @param _referral address of the referral
   /// @return BB tranche tokens minted
-  function depositBBRef(uint256 _amount, address _referral) external returns (uint256) {
+  function depositBBRef(uint256 _amount, address _referral) external virtual returns (uint256) {
     return _deposit(_amount, BBTranche, _referral);
   }
 
@@ -229,12 +229,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _tranche == AATranche ? _lastNAVAA : _lastNAVBB, // lastTrancheNAV
       trancheAPRSplitRatio
     );
-  }
-
-  /// @notice [DEPRECATED]
-  /// @return array with addresses of incentiveTokens (can be empty)
-  function getIncentiveTokens() external view virtual returns (address[] memory) {
-    return incentiveTokens;
   }
 
   // ###############
