@@ -467,9 +467,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     if (deployToken.isCreditVault) {
       console.log('Setting credit vault');
       const cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
-      if (deployToken.epochDuration) {
+      if (deployToken.epochDuration || deployToken.bufferPeriod) {
         console.log(`Setting epoch duration to ${deployToken.epochDuration}`);
-        await cdoEpoch.connect(signer).setEpochDuration(BN(deployToken.epochDuration));
+        await cdoEpoch.connect(signer).setEpochParams(BN(deployToken.epochDuration));
       }
       if (deployToken.disableInstantWithdraw || deployToken.instantWithdrawDelay || deployToken.instantWithdrawAprDelta) {
         console.log(`Setting instant withdraw params disable: ${deployToken.disableInstantWithdraw}, instant delay: ${deployToken.instantWithdrawDelay}, instant apr delta ${deployToken.instantWithdrawAprDelta}`);
