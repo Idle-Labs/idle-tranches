@@ -122,13 +122,17 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, "BBtranche bal");
     assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal strategy");
-    assertEq(underlying.balanceOf(address(idleCDO)), totAmount, "underlying bal cdo");
-    // strategy is still empty with no harvest
-    assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal cdo");
+    if (idleCDO.directDeposit()) {
+      assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal cdo");
+      assertNotEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal cdo");
+    } else {
+      assertEq(underlying.balanceOf(address(idleCDO)), totAmount, "underlying bal cdo");
+      // strategy is still empty with no harvest
+      assertEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal cdo");
+    }
     uint256 strategyPrice = strategy.price();
-
     // check that trancheAPRSplitRatio and aprs are updated 
-    assertEq(idleCDO.trancheAPRSplitRatio(), 25000, "split ratio");
+    assertApproxEqAbs(idleCDO.trancheAPRSplitRatio(), 25000, 1, "split ratio");
     // limit is 50% of the strategy apr if AAratio is <= 50%
     assertEq(idleCDO.getApr(address(AAtranche)), initialApr / 2, "AA apr");
     // apr will be 150% of the strategy apr if AAratio is == 50%

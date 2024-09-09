@@ -12,6 +12,7 @@ interface IIdleCDO {
   function rebalancer() external view returns(address);
   function owner() external view returns(address);
   function paused() external view returns(bool);
+  function directDeposit() external view returns(bool);
 
   function allowAAWithdraw() external view returns(bool);
   function allowBBWithdraw() external view returns(bool);

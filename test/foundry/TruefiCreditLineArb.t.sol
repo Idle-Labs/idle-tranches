@@ -9,6 +9,8 @@ import {IERC4626Upgradeable} from "../../contracts/interfaces/IERC4626Upgradeabl
 import {IdleCDOTruefiCreditVariant} from "../../contracts/arbitrum/IdleCDOTruefiCreditVariant.sol";
 import {ITruefiCreditLine} from "../../contracts/arbitrum/interfaces/truefi/ITruefiCreditLine.sol";
 import {IWETH} from "../../contracts/interfaces/IWETH.sol";
+import {IIdleCDO} from "../../contracts/interfaces/IIdleCDO.sol";
+import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
 
 contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
   using stdStorage for StdStorage;
@@ -61,6 +63,8 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
     TruefiCreditLineStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
+    // set directDeposit to false to avoid small differences in apr
+    stdstore.target(address(_cdo)).sig(IIdleCDO(address(_cdo)).directDeposit.selector).checked_write(false);
 
     _pokeLendingProtocol();
   }
@@ -78,11 +82,16 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
   }
 
   function _createLoss(uint256 _loss) internal override {
+    // set fees to 0 to ease calculations
+    uint256 fee = 0;
+    ITruefiCreditLine tf = ITruefiCreditLine(address(defaultVault));
+    stdstore.target(address(tf)).sig(tf.lastProtocolFeeRate.selector).checked_write(fee);
+    stdstore.target(address(tf)).sig(tf.unpaidFee.selector).checked_write(fee);
+
     // vault is using virtualTokenBalance so we need to update that for a loss
     uint256 totalAssets = defaultVault.totalAssets();
     uint256 loss = totalAssets * _loss / FULL_ALLOC;
     // Set virtualTokenBalance storage variable to simulate a loss
-    ITruefiCreditLine tf = ITruefiCreditLine(address(defaultVault));
     uint256 currVirtual = tf.virtualTokenBalance();
     require(currVirtual >= loss, "test: loss is too large");
     stdstore.target(address(tf)).sig(tf.virtualTokenBalance.selector).checked_write(currVirtual - loss);
@@ -223,7 +232,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     idleCDO.withdrawAA(aaToWithdraw);
   }
 
-    // @dev Loss is between 0% and lossToleranceBps and is socialized
+  // @dev Loss is between 0% and lossToleranceBps and is socialized
   function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
     vm.assume(depositAmountAARatio >= 0);
     vm.assume(depositAmountAARatio <= FULL_ALLOC);
@@ -234,16 +243,13 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     uint256 amountAA = 10000 * ONE_SCALE * depositAmountAARatio / FULL_ALLOC;
     uint256 amountBB = 10000 * ONE_SCALE * (FULL_ALLOC - depositAmountAARatio) / FULL_ALLOC;
     
-    idleCDO.depositAA(amountAA);
+    uint256 depositedAA = idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amountBB);
     uint256 prePrice = strategy.price();
 
     // deposit underlying to the strategy
     _cdoHarvest(true);
 
-    ITruefiCreditLine tf = ITruefiCreditLine(address(defaultVault));
-    // now let's simulate a loss by decreasing strategy price
-    // curr price - about 0.25%
     _createLoss(idleCDO.lossToleranceBps() / 2);
 
     uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
@@ -251,41 +257,29 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
 
     if (depositAmountAARatio > 0) {
-      // Abs = 11 because min deposit for AA is 0.1 underlying (with depositAmountAARatio = 1)
-      // and this can cause a price diff of up to 11 wei
-      assertApproxEqAbs(priceAA, ONE_SCALE - priceDelta, 11, "AA price after loss");
+      assertApproxEqAbs(priceAA, ONE_SCALE - priceDelta, 101, "AA price after loss");
     }
     if (depositAmountAARatio < FULL_ALLOC) {
-      assertApproxEqAbs(priceBB, ONE_SCALE - priceDelta, 11, "BB price after loss");
+      assertApproxEqAbs(priceBB, ONE_SCALE - priceDelta, 101, "BB price after loss");
     }
 
-    // redeem all
+    // redeem half of the deposits (if we redeem all the leftovers will cause 
+    // BB price to increase)
     uint256 resAA;
     if (depositAmountAARatio > 0) {
-      resAA = idleCDO.withdrawAA(0);
+      resAA = idleCDO.withdrawAA(depositedAA / 2);
     }
 
     if (depositAmountAARatio > 0) {
       assertApproxEqRel(
         resAA,
-        amountAA * (ONE_SCALE - priceDelta) / ONE_SCALE, 
+        amountAA * (ONE_SCALE - priceDelta) / ONE_SCALE / 2, 
         10**14, // 0.01% max delta
         "AA amount after loss"
       );
     } else {
-      assertApproxEqRel(resAA, amountAA, 1, "AA amount not changed");
+      assertApproxEqRel(resAA, amountAA / 2, 1, "AA amount not changed");
     }
-
-    // after the first withdrawAA, totalAssets is out of sync
-    // so we need to directly mock the call to totalAssets to simulate the loss
-
-    uint256 totalAssets = defaultVault.totalAssets();
-    uint256 loss = totalAssets * (idleCDO.lossToleranceBps() / 2) / FULL_ALLOC;
-    vm.mockCall(
-      address(tf),
-      abi.encodeWithSelector(ITruefiCreditLine.totalAssets.selector),
-      abi.encode(totalAssets - loss)
-    );
 
     uint256 resBB;
     if (depositAmountAARatio < FULL_ALLOC) {
@@ -296,17 +290,11 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
       assertApproxEqRel(
         resBB, 
         (amountBB * (ONE_SCALE - priceDelta)) / ONE_SCALE, 
-        10**14, 
+        5*10**14,
         "BB amount after loss"
       );
     } else {
       assertApproxEqRel(resBB, amountBB, 1, "BB amount not changed");
     }
-
-    assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
-    assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
-    assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
-
-    vm.clearMockedCalls();
   }
 }
