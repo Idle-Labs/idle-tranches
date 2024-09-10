@@ -11,6 +11,5 @@ contract IdleCDOEpochVariantOptimism is IdleCDOEpochVariant {
 
     weth = address(0x4200000000000000000000000000000000000006);
     feeReceiver = address(0xFDbB4d606C199F091143BD604C85c191a526fbd0); // treasury multisig
-    releaseBlocksPeriod = 302400; // 60 * 60 * 24 / 2 * 7 = ~1 week (blocktime 2s)
   }
 }

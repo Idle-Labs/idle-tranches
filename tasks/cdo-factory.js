@@ -466,10 +466,15 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     if (deployToken.isCreditVault) {
       console.log('Setting credit vault');
-      const cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
+      let cdoEpoch;
+      if (isOptimism) {
+        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantOptimism', idleCDOAddress, signer);
+      } else {
+        cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
+      }
       if (deployToken.epochDuration || deployToken.bufferPeriod) {
-        console.log(`Setting epoch duration to ${deployToken.epochDuration}`);
-        await cdoEpoch.connect(signer).setEpochParams(BN(deployToken.epochDuration));
+        console.log(`Setting epoch duration to ${deployToken.epochDuration}, buffer period to ${deployToken.bufferPeriod}`);
+        await cdoEpoch.connect(signer).setEpochParams(BN(deployToken.epochDuration), BN(deployToken.bufferPeriod));
       }
       if (deployToken.disableInstantWithdraw || deployToken.instantWithdrawDelay || deployToken.instantWithdrawAprDelta) {
         console.log(`Setting instant withdraw params disable: ${deployToken.disableInstantWithdraw}, instant delay: ${deployToken.instantWithdrawDelay}, instant apr delta ${deployToken.instantWithdrawAprDelta}`);
