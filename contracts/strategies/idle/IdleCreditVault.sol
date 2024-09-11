@@ -118,6 +118,12 @@ contract IdleCreditVault is
     return lastApr;
   }
 
+  /// @notice set manager address
+  /// @param _manager address of the new manager
+  function setManager(address _manager) external onlyOwner {
+    manager = _manager;
+  }
+
   /// @notice set the fixed apr
   /// @dev only cdo and manager can set the apr. If manager manually set apr from 
   /// here it will not be scaled to include the buffer period

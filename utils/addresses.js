@@ -1097,6 +1097,19 @@ const optimismCDOs = {
     AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
     BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
   },
+  credittestsamUSDC: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x8186AbBDF9AF3a1fc59A7C5BC34bab66a2e7bEF2',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0x7F70Ec0bdc89f0D61e108Afe921311205b4C3431',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x8186AbBDF9AF3a1fc59A7C5BC34bab66a2e7bEF2',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xfA6bA4b504814f3fB524Ea506c79D76077E5D540',
+    BBTranche: '0xe89577e5687bB7a1f78739452Ec99907aF23aD36'
+  },
 };
 
 const arbitrumCDOs = {
@@ -2267,7 +2280,7 @@ exports.deployTokens = {
       'Fasanara', // borrower name
       0,
     ],
-    cdo: mainnetContracts.creditfasanarausdc,
+    cdo: CDOs.creditfasanarausdc,
     cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -2275,14 +2288,15 @@ exports.deployTokens = {
     limit: '0',
     // #########
     isCreditVault: true,
-    epochDuration: '604800',
+    // ## epoch params 
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '0', // manually managed buffer period
     // ## instant params
-    instantWithdrawDelay: '86400',
+    instantWithdrawDelay: '86400', // 1 days
     instantWithdrawAprDelta: 1e18.toString(),
     disableInstantWithdraw: true,
     // #########
     proxyCdoAddress: ''
-    // proxyCdoAddress: mainnetContracts.creditfasanarausdc.cdoAddr
   },
 };
 
@@ -2473,6 +2487,39 @@ exports.deployTokensOptimism = {
     // #########
     proxyCdoAddress: ''
     // proxyCdoAddress: optimismCDOs.gearboxweth.cdoAddr
+  },
+  credittestsamUSDC: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0x442Aea0Fd2AFbd3391DAE768F7046f132F0a6300', // manager
+      '0x442Aea0Fd2AFbd3391DAE768F7046f132F0a6300', // borrower
+      'Sam Test', // borrower name
+      10e18.toString(),
+    ],
+    // cdo: optimismContracts.creditfalconxusdc,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params default values
+    epochDuration: '120', // 30 days
+    bufferPeriod: '120', // 5 days
+    // ## instant params default values
+    instantWithdrawDelay: '60', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: addr0,
+    keyringPolicy: 4,
+    // #########
+    proxyCdoAddress: ''
   },
 };
 
