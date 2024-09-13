@@ -85,7 +85,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     return _apr * (_duration + cdoEpoch.bufferPeriod()) / _duration;
   }
 
-
   function _donateToken(address to, uint256 amount) internal override {
     deal(defaultUnderlying, to, amount);
   }
@@ -1724,5 +1723,44 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.requestWithdraw(0, address(AAtranche));
 
     vm.clearMockedCalls();
+  }
+
+  function testRequestOnlyInterest() external {
+    uint256 amount = 100 * ONE_SCALE;
+    uint256 trancheTokens = idleCDO.depositAA(amount);
+
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    vm.stopPrank();
+
+    // Set new block.height to avoid reentrancy check on deposit/withdraw
+    vm.roll(block.number + 1);
+
+    // calculate how much tranches tokens should be redeemed to 
+    // get only *net* interest of principal deposited for next epoch
+    uint256 currPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 maxWithdrawable = cdoEpoch.maxWithdrawable(address(this), address(AAtranche));
+    uint256 newPrice = maxWithdrawable * ONE_TRANCHE_TOKEN / trancheTokens;
+    uint256 trancheTokensRequested = (newPrice - currPrice) * trancheTokens / newPrice;
+
+    // calculate *net* interest for pending withdraw
+    (uint256 interestPendingWithdraw,) = _calcInterestForTranche(address(AAtranche), trancheTokensRequested);
+    
+    uint256 interest = (newPrice - currPrice) * trancheTokens / ONE_TRANCHE_TOKEN;
+    uint256 requested = cdoEpoch.requestWithdraw(trancheTokensRequested, address(AAtranche));
+    assertApproxEqAbs(requested, interest, 1, "interest request is wrong");
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch.
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 balPre = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(address(this)) - balPre, requested, 'interest redeemed is wrong');
+
+    // contract value will be eq to 
+    // initial amount - requested amount + interest for the epoch + interest for pending withdraw
+    assertEq(cdoEpoch.getContractValue(), amount - interest + cdoEpoch.lastEpochInterest() + interestPendingWithdraw, 'contract value is wrong');
   }
 }
