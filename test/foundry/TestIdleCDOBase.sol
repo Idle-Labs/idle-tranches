@@ -526,7 +526,6 @@ abstract contract TestIdleCDOBase is Test {
       .target(address(_cdo))
       .sig(_cdo.token.selector)
       .checked_write(address(0));
-    address[] memory incentiveTokens = new address[](0);
     _cdo.initialize(
       0,
       _underlying,
@@ -534,9 +533,7 @@ abstract contract TestIdleCDOBase is Test {
       _owner, // owner,
       _rebalancer, // rebalancer,
       _strategy, // strategyToken
-      20000, // apr split: 100000 is 100% to AA
-      50000, // ideal value: 50% AA and 50% BB tranches
-      incentiveTokens
+      20000 // apr split: 100000 is 100% to AA
     );
 
     vm.startPrank(_owner);

@@ -40,9 +40,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
             _owner, // owner,
             _rebalancer, // rebalancer,
             _strategy, // strategy
-            0, // NOTE: apr split: 0% to AA
-            0, // deprecated
-            incentiveTokens
+            0 // NOTE: apr split: 0% to AA
         );
 
         vm.startPrank(_owner);

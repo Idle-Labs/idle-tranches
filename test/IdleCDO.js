@@ -68,9 +68,7 @@ describe("IdleCDO", function () {
         owner.address,
         owner.address,
         strategy.address,
-        BN('20000'), // apr split: 20% interest to AA and 80% BB
-        BN('50000'), // ideal value: 50% AA and 50% BB tranches
-        incentiveTokens
+        BN('20000') // apr split: 20% interest to AA and 80% BB
       ],
       owner
     );
@@ -105,9 +103,7 @@ describe("IdleCDO", function () {
         owner.address,
         owner.address,
         strategy.address,
-        BN('20000'), // apr split: 20% interest to AA and 80% BB
-        BN('50000'),
-        incentiveTokens
+        BN('20000') // apr split: 20% interest to AA and 80% BB
       )
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
@@ -788,11 +784,6 @@ describe("IdleCDO", function () {
     priceBB = await idleCDO.virtualPrice(BB.address);
     expect(priceAA).to.be.equal(BN('1360000000000000000'));
     expect(priceBB).to.be.equal(BN('2440000000000000000'));
-  });
-
-  it("getIncentiveTokens should return the current incentiveTokens array", async () => {
-    let rewards = await idleCDO.getIncentiveTokens();
-    expect(rewards.length).to.be.equal(0);
   });
 
   // ###############

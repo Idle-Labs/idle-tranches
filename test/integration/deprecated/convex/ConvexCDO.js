@@ -119,9 +119,7 @@ describe("IdleConvexCDO", function () {
         owner.address,
         owner.address,
         strategy.address,
-        BN('20000'), // apr split: 20% interest to AA and 80% BB
-        BN('50000'), // ideal value: 50% AA and 50% BB tranches
-        incentiveTokens
+        BN('20000') // apr split: 20% interest to AA and 80% BB
       )
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });

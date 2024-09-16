@@ -33,9 +33,7 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
       _owner, // owner,
       _rebalancer, // rebalancer,
       _strategy, // strategyToken
-      20000, // apr split: 100000 is 100% to AA
-      50000, // ideal value: 50% AA and 50% BB tranches
-      incentiveTokens
+      20000 // apr split: 100000 is 100% to AA
     );
 
     vm.startPrank(_owner);

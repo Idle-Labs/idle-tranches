@@ -51,15 +51,14 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _rebalancer rebalancer address
   /// @param _strategy strategy address
   /// @param _trancheAPRSplitRatio trancheAPRSplitRatio value
-  /// @param // deprecated
-  /// @param // deprecated _incentiveTokens array of addresses for incentive tokens
   function initialize(
-    uint256 _limit, address _guardedToken, address _governanceFund, address _owner, // GuardedLaunch args
+    uint256 _limit, 
+    address _guardedToken, 
+    address _governanceFund, 
+    address _owner, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
-    uint256 _trancheAPRSplitRatio, // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
-    uint256, // Deprecated
-    address[] memory // Deprecated
+    uint256 _trancheAPRSplitRatio // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
   ) external initializer {
     require(token == address(0), '1');
     require(_rebalancer != address(0), '0');

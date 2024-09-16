@@ -215,8 +215,6 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
   .addParam('governanceFund', "CDO param _governanceFund")
   .addParam('strategy', "CDO param _strategy")
   .addParam('trancheAPRSplitRatio', "CDO param _trancheAPRSplitRatio")
-  .addParam('trancheIdealWeightRatio', "CDO param _trancheIdealWeightRatio")
-  .addParam('incentiveTokens', "A comma separated list of incentive tokens", undefined, types.string, true)
   .setAction(async (args) => {
     const signer = await helpers.getSigner();
     const creator = await signer.getAddress();
@@ -250,8 +248,6 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     const governanceFund = args.governanceFund;
     const strategyAddress = args.strategy;
     const trancheAPRSplitRatio = args.trancheAPRSplitRatio;
-    const trancheIdealWeightRatio = args.trancheIdealWeightRatio;
-    const incentiveTokens = args.incentiveTokens ? args.incentiveTokens.split(",").map(s => s.trim()) : [];
 
     console.log("🔎 Retrieving underlying token from strategy (", strategyAddress, ")");
     const strategy = await ethers.getContractAt("IIdleCDOStrategy", strategyAddress, signer);
@@ -286,8 +282,6 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
     console.log("governanceFund:          ", governanceFund);
     console.log("Strategy address:        ", strategyAddress);
     console.log("trancheAPRSplitRatio:    ", trancheAPRSplitRatio.toString());
-    console.log("trancheIdealWeightRatio: ", trancheIdealWeightRatio.toString());
-    console.log("incentiveTokens:         ", incentiveTokens.toString());
     console.log()
     
     await helpers.prompt("continue? [y/n]", true);
@@ -311,9 +305,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
       creator, // guardian
       networkContracts.rebalancer,
       strategyAddress,
-      trancheAPRSplitRatio,
-      trancheIdealWeightRatio,
-      incentiveTokens
+      trancheAPRSplitRatio
     ]);
     
     console.log("deploying with factory...");
@@ -364,7 +356,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     
     const signer = await helpers.getSigner();
     let strategy = await ethers.getContractAt(args.strategyName, strategyAddress, signer);
-    const incentiveTokens = deployToken.incentiveTokens || [];
     const creator = await signer.getAddress();
     let networkCDOName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
     if (isPolygonZK) {
@@ -390,9 +381,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
           creator, // guardian
           networkContracts.rebalancer,
           strategy.address,
-          BN(args.aaRatio), // apr split: 10% interest to AA and 90% BB
-          BN('50000'), // ideal value: 50% AA and 50% BB tranches
-          incentiveTokens
+          BN(args.aaRatio) // apr split: 10% interest to AA and 90% BB
         ],
         signer
       );
@@ -407,8 +396,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         governanceFund: networkContracts.treasuryMultisig, // recovery address
         strategy: strategy.address,
         trancheAPRSplitRatio: BN(args.aaRatio).toString(), // apr split: 10% interest to AA and 80% BB
-        trancheIdealWeightRatio: BN('50000').toString(), // ideal value: 50% AA and 50% BB tranches
-        incentiveTokens: incentiveTokens.join(","),
       }
       idleCDOAddress = await hre.run("deploy-cdo-with-factory", deployParams);
     }
