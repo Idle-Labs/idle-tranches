@@ -60,6 +60,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   uint256 public keyringPolicyId;
   /// @notice time between 2 epochs, can be set to 0 to start the next epoch without waiting a specified time
   uint256 public bufferPeriod;
+  /// @notice flag for enabling anyone to request a withdraw (needed for liquidations)
+  bool keyringAllowWithdraw;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -133,10 +135,12 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice update keyring address
   /// @param _keyring address of the keyring contract
   /// @param _keyringPolicyId policyId to check for wallet
-  function setKeyringParams(address _keyring, uint256 _keyringPolicyId) external {
+  /// @param _keyringAllowWithdraw flag to allow anyone to request a withdraw
+  function setKeyringParams(address _keyring, uint256 _keyringPolicyId, bool _keyringAllowWithdraw) external {
     _checkOnlyOwnerOrManager();
     keyring = _keyring;
     keyringPolicyId = _keyringPolicyId;
+    keyringAllowWithdraw = _keyringAllowWithdraw;
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -436,7 +440,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     if (!(_tranche == aa || _tranche == bb) || 
       (!allowAAWithdrawRequest && _tranche == aa) || 
       (!allowBBWithdrawRequest && _tranche == bb) ||
-      !isWalletAllowed(msg.sender)
+      (!keyringAllowWithdraw && !isWalletAllowed(msg.sender))
     ) {
       revert NotAllowed();
     }

@@ -486,7 +486,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       }
       if (deployToken.keyring) {
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
-        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
     }
 

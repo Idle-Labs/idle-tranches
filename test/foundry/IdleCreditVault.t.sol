@@ -70,7 +70,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setIsAYSActive(true);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(epochDuration, buffer); // set this to have an epoch during 1/10 of the year
-    cdoEpoch.setKeyringParams(address(0), 0); // deactivate keyring
+    cdoEpoch.setKeyringParams(address(0), 0, false); // deactivate keyring
     vm.stopPrank();
 
     // we set the apr again manually for tests because we changed epoch params
@@ -1695,7 +1695,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     address keyring = address(1);
 
     vm.prank(owner);
-    cdoEpoch.setKeyringParams(keyring, 1);
+    cdoEpoch.setKeyringParams(keyring, 1, false);
 
     vm.mockCall(
       keyring,
@@ -1708,7 +1708,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     idleCDO.depositBB(1e18);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    cdoEpoch.requestWithdraw(0, address(1));
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    vm.prank(owner);
+    // allow request redeem even if checkCredential is false
+    cdoEpoch.setKeyringParams(keyring, 1, true);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
 
     vm.clearMockedCalls();
 
