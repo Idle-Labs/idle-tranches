@@ -3,8 +3,6 @@ pragma solidity 0.8.10;
 
 import "../../interfaces/IIdleCDOStrategy.sol";
 import "../../interfaces/IERC20Detailed.sol";
-import "../../interfaces/clearpool/IPoolFactory.sol";
-import "../../interfaces/clearpool/IPoolMaster.sol";
 
 import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -12,7 +10,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-interface IdleCDOEpochVariant {
+interface IIdleCDOEpochVariant {
   function isEpochRunning() external view returns (bool);
 }
 
@@ -238,7 +236,7 @@ contract IdleCreditVault is
     underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
     _mint(msg.sender, _amount);
 
-    if (IdleCDOEpochVariant(idleCDO).isEpochRunning()) {
+    if (IIdleCDOEpochVariant(idleCDO).isEpochRunning()) {
       // deposit done on stopEpoch (before setting the var to false) so we reset the counter
       totEpochDeposits = 0;
     } else {
