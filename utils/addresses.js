@@ -1097,7 +1097,7 @@ const optimismCDOs = {
     AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
     BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
   },
-  credittestsamUSDC: {
+  credittestsamusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x8186AbBDF9AF3a1fc59A7C5BC34bab66a2e7bEF2',
@@ -1109,6 +1109,19 @@ const optimismCDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xfA6bA4b504814f3fB524Ea506c79D76077E5D540',
     BBTranche: '0xe89577e5687bB7a1f78739452Ec99907aF23aD36'
+  },
+  creditmaventestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x8C1B4A409098b5326E3103458bdFE23eEEB1Aa5F',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0xD7d76180e12D53b6c4d835cb0F5e3df3732055a3',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x8C1B4A409098b5326E3103458bdFE23eEEB1Aa5F',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3353348Fa9526Bf76569B93d04d731cb7B46B343',
+    BBTranche: '0xa9976626918b8D788E8be8b83F7584479Bf1F0e9'
   },
 };
 
@@ -2486,9 +2499,8 @@ exports.deployTokensOptimism = {
     keyringPolicy: 4,
     // #########
     proxyCdoAddress: ''
-    // proxyCdoAddress: optimismCDOs.gearboxweth.cdoAddr
   },
-  credittestsamUSDC: {
+  credittestsamusdc: {
     decimals: 6,
     underlying: optimismContracts.USDC,
     strategyName: 'IdleCreditVault',
@@ -2500,7 +2512,7 @@ exports.deployTokensOptimism = {
       'Sam Test', // borrower name
       10e18.toString(),
     ],
-    // cdo: optimismContracts.creditfalconxusdc,
+    cdo: optimismCDOs.credittestsamusdc,
     cdoVariant: 'IdleCDOEpochVariantOptimism',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -2518,8 +2530,43 @@ exports.deployTokensOptimism = {
     // ## keyring params
     keyring: addr0,
     keyringPolicy: 4,
+    keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: ''
+  },
+  creditmaventestusdc: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0xbF56762Cd00cD68347ddA29f307811fE15Bc9c49', // manager
+      '0xb6Cd2FfF9f3d60f055FA16cF0ff6f1653C048073', // borrower
+      'Maven Test', // borrower name
+      10e18.toString(),
+    ],
+    // cdo: optimismCDOs.creditmaventestusdc,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '180', // 3 minutes
+    bufferPeriod: '60', // 1 minutes
+    // ## instant params default values
+    instantWithdrawDelay: '60', // 1 min
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: addr0,
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // #########
+    proxyCdoAddress: optimismCDOs.credittestsamusdc.cdoAddr
   },
 };
 

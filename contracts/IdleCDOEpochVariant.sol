@@ -61,7 +61,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice time between 2 epochs, can be set to 0 to start the next epoch without waiting a specified time
   uint256 public bufferPeriod;
   /// @notice flag for enabling anyone to request a withdraw (needed for liquidations)
-  bool keyringAllowWithdraw;
+  bool public keyringAllowWithdraw;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -635,7 +635,6 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// NOTE: fees are not deposited in this contract
   function _depositFees() internal override {}
-  function depositAARef(uint256, address) external override returns (uint256) {}
   function depositBBRef(uint256, address) external override returns (uint256) {}
 
   /// NOTE: unlent perc should always be 0 and set in additionalInit
