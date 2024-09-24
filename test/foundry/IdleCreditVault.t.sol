@@ -924,6 +924,48 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(requestedBB, maxBB, 'requested amount for BB is wrong');
   }
 
+  function testRequestWithdrawNormalWithPrevRequests() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(0); // 10%
+
+    // deposit 10000 with this contract
+    uint256 amountWei = 10000 * ONE_SCALE;
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    // deposit 10000 with user1
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amountWei, true);
+
+    // we request a withdraw right after deposit for user1 for the whole amount + interest of next epoch
+    vm.startPrank(user1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.stopPrank();
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // we now request a withdraw for address(this) for half of the funds
+    cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+    // and now we try to claim directly right after, trying 
+    // to take funds that were reserved for user1 without waiting for the epoch
+    vm.expectRevert();
+    cdoEpoch.claimWithdrawRequest();
+
+    // now claim with user1
+    vm.startPrank(user1);
+    cdoEpoch.claimWithdrawRequest();
+    vm.stopPrank();
+
+    // start epoch
+    _startEpochAndCheckPrices(1);
+    // stop epoch
+    _stopEpochAndCheckPrices(1, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // after an epoch the user can claim
+    cdoEpoch.claimWithdrawRequest();
+  }
+
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
     return _amount * (IdleCreditVault(address(strategy)).getApr() / 100) * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN);
   }

@@ -12,6 +12,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 interface IIdleCDOEpochVariant {
   function isEpochRunning() external view returns (bool);
+  function epochDuration() external view returns (uint256);
 }
 
 error NotAllowed();
@@ -55,6 +56,8 @@ contract IdleCreditVault is
   uint256 public totEpochDeposits;
   /// @notice flag to allow transfers
   bool public canTransfer;
+  /// @notice last withdraw request timestamp for a user
+  mapping (address => uint256) public lastWithdrawRequest;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -153,6 +156,8 @@ contract IdleCreditVault is
     withdrawsRequests[_user] += _amount;
     // increase the total withdraw requests
     pendingWithdraws += _amount;
+    // save the timestamp of the last withdraw request
+    lastWithdrawRequest[_user] = block.timestamp;
   }
 
   /// @notice claim the withdraw request
@@ -161,11 +166,22 @@ contract IdleCreditVault is
   /// @return amount number of tokens claimed
   function claimWithdrawRequest(address _user) external returns (uint256 amount) {
     _onlyIdleCDO();
+    // user should wait at least an epoch before claiming the withdraw.
+    // Given that requests can be done only in the buffer period we simply add 
+    // the epochDuration as a minimum time to wait since the last request, the result timestamp will be 
+    // *in* the epoch but in the epoch user can't claim a withdraw request so the result is that 
+    // users will be able to claim only in the next buffer period as expected.
+    // NOTE: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
+    // for another epoch to claim both requests.
+    if (block.timestamp < lastWithdrawRequest[_user] + IIdleCDOEpochVariant(idleCDO).epochDuration()) {
+      revert NotAllowed();
+    }
     // get amount of underlyings
     amount = withdrawsRequests[_user];
     // burn strategy tokens 1:1 with the amount of underlyings
     _burn(_user, amount);
     withdrawsRequests[_user] = 0;
+    lastWithdrawRequest[_user] = 0;
     underlyingToken.safeTransfer(_user, amount);
   }
 
