@@ -304,6 +304,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.epochDuration(), 2, 'epochDuration is wrong');
     assertEq(cdoEpoch.bufferPeriod(), 3 days, 'bufferPeriod is wrong');
 
+    // epochDuration cannot be 0
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.setEpochParams(0, 1 days);
+
     // setInstantWithdrawParams
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.setInstantWithdrawParams(1, 1, true);
@@ -319,6 +324,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.instantWithdrawDelay(), 2, 'instantWithdrawDelay update 2 is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 2, 'instantWithdrawAprDelta update 2 is wrong');
     assertEq(cdoEpoch.disableInstantWithdraw(), false, 'disableInstantWithdraw update 2 is wrong');
+
+    _toggleEpoch(true, 0, 0);
+
+    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.prank(manager);
+    cdoEpoch.setEpochParams(4, 3 days);
+
+    vm.startPrank(manager);
+    IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
+    vm.warp(_vault.epochEndDate() + 1);
+    // stopEpoch and close pool by passing 1 as second param
+    _vault.stopEpoch(0, 1);
+    // epoch params cannot be updated anymore
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.setEpochParams(1, 1 days);
+    vm.stopPrank();
   }
 
   function testMaxWithdrawable() external {
@@ -1809,5 +1830,91 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // contract value will be eq to 
     // initial amount - requested amount + interest for the epoch + interest for pending withdraw
     assertEq(cdoEpoch.getContractValue(), amount - interest + cdoEpoch.lastEpochInterest() + interestPendingWithdraw, 'contract value is wrong');
+  }
+
+  function testClosePool() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    vm.stopPrank();
+
+    IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
+
+    // deposit 10000 with this contract
+    uint256 balThisPre = underlying.balanceOf(address(this));
+    uint256 amountWei = 10000 * ONE_SCALE;
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+
+    // deposit 10000 with user1
+    address user1 = makeAddr('user1');
+    uint256 balUser1Pre = underlying.balanceOf(user1);
+    _depositWithUser(user1, amountWei, true);
+
+    // request a normal withdraw before starting epoch with this contract
+    cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    // request an instant withdraw to check that this also work
+    vm.prank(user1);
+    cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+
+    // start epoch 1
+    _startEpochAndCheckPrices(1);
+
+    // borrower wants to close the pool so manager will set newApr = 0 and interest = 1 (special case indicating
+    // that all funds should be paid back at stop epoch)
+    address _manager = IdleCreditVault(_vault.strategy()).manager();
+    uint256 totFunds = _expectedFundsEndEpoch() + _vault.getContractValue();
+    uint256 _expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 fees = _expectedInterest * cdoEpoch.fee() / FULL_ALLOC;
+    uint256 strategyTokensBalPre = IERC20Detailed(address(strategy)).balanceOf(address(_vault));
+    uint256 AAPricePre = cdoEpoch.virtualPrice(address(AAtranche));
+
+    // skip to instant withdraw deadline
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    // get pending instant withdraw funds from borrower
+    _getInstantFunds();
+
+    // stop epoch
+    deal(defaultUnderlying, borrower, totFunds);
+    vm.startPrank(_manager);
+    vm.warp(_vault.epochEndDate() + 1);
+    _vault.stopEpoch(0, 1);
+    vm.stopPrank();
+
+    uint256 AAPricePos = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 strategyTokensBalPost = IERC20Detailed(address(strategy)).balanceOf(address(_vault));
+    assertApproxEqAbs(strategyTokensBalPost, strategyTokensBalPre + _expectedInterest - fees, 1, 'IdleCDO has wrong amount of strategyTokens');
+    assertGt(AAPricePos, AAPricePre, 'AA price did not increase');
+    assertApproxEqAbs(AAPricePos, 1.02e6, 0.01e6, 'AA price is wrong after stop epoch');
+
+    assertApproxEqAbs(_vault.lastEpochInterest(), _expectedInterest - fees, 1, 'lastEpochInterest is wrong');
+    assertEq(_vault.epochEndDate(), 0, 'epochEndDate is wrong');
+    assertEq(_vault.allowInstantWithdraw(), true, 'allowInstantWithdraw is wrong');
+    assertEq(_vault.epochDuration(), 0, 'epochDuration is wrong');
+    assertEq(_vault.disableInstantWithdraw(), true, 'disableInstantWithdraw is wrong');
+
+    // new epochs cannot be started
+    vm.startPrank(_manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    _vault.startEpoch();
+    vm.stopPrank();
+
+    // request and claim with user1
+    vm.startPrank(user1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    cdoEpoch.claimWithdrawRequest();
+    // claim also the prev instant request
+    cdoEpoch.claimInstantWithdrawRequest();
+    vm.stopPrank();
+    assertGt(underlying.balanceOf(user1), balUser1Pre, 'Bal for user1 did not increase');
+
+    // request and claim with this contract
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(underlying.balanceOf(address(this)), balThisPre, 'Bal for this contract did not increase');
   }
 }

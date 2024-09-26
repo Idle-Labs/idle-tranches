@@ -117,6 +117,14 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _bufferPeriod time between 2 epochs
   function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) external {
     _checkOnlyOwnerOrManager();
+    if (isEpochRunning) {
+      revert EpochRunning();
+    }
+    // cannot set epochDuration to 0 as it's reserved for closing the pool
+    // and cannot set epochDuration if previously was set to 0 as borrower repaid all funds
+    if (_epochDuration == 0 || epochDuration == 0) {
+      revert NotAllowed();
+    }
     epochDuration = _epochDuration;
     bufferPeriod = _bufferPeriod;
   }
@@ -153,7 +161,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     _checkOnlyOwnerOrManager();
 
     // Check that buffer period passed (and epoch is not running as epochEndDate is set)
-    if (block.timestamp < (epochEndDate + bufferPeriod)) {
+    // and that the pool is not closed (ie epochDuration == 0)
+    if (block.timestamp < (epochEndDate + bufferPeriod) || epochDuration == 0) {
       revert NotAllowed();
     }
 
@@ -220,7 +229,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _newApr New apr to set for the next epoch
   /// @param _interest Interest gained in the epoch. This will overwrite the expected interest
   /// must be 0 if there is no need to overwrite the expected interest and if > 0 then it should
-  /// be greater than the pending withdraw fees and newApr must be 0
+  /// be greater than the pending withdraw fees and newApr must be 0. If `_interest` is 1 then
+  /// it is interpreted as a special case where we request everything back from the borrower
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
   function stopEpoch(uint256 _newApr, uint256 _interest) external {
     _checkOnlyOwnerOrManager();
@@ -248,11 +258,18 @@ contract IdleCDOEpochVariant is IdleCDO {
     // overridden interest should be greater than pending withdraw fees and the apr should be 
     // 0 otherwise withdrawal requests may not be fullfilled as they consider also the interest
     // gained in the next epoch 
-    if (_interest > 0 && (_interest < _pendingWithdrawFees || _newApr != 0)) {
+    if (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0)) {
       revert NotAllowed();
     }
 
-    uint256 _expectedInterest = _interest > 0 ? _interest : expectedEpochInterest;
+    uint256 _expectedInterest = _interest > 1 ? _interest : expectedEpochInterest;
+    uint256 _totBorrowed;
+    bool _isRequestingAllFunds = _interest == 1;
+    // special case where we get everything back from the borrower
+    if (_isRequestingAllFunds) {
+      _totBorrowed = getContractValue();
+      _expectedInterest += _totBorrowed;
+    }
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
@@ -268,6 +285,13 @@ contract IdleCDOEpochVariant is IdleCDO {
         IERC20Detailed(token).safeTransfer(feeReceiver, _pendingWithdrawFees);
       }
 
+      if (_isRequestingAllFunds) {
+        // we already have strategyTokens equal to _totBorrowed in this contract
+        // so we simply transfer _totBorrowed to the strategy to avoid double counting
+        // for getContractValue
+        IERC20Detailed(token).safeTransfer(address(_strategy), _totBorrowed);
+      }
+
       // update tranche prices and unclaimed fees
       _updateAccounting();
 
@@ -277,7 +301,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       unclaimedFees = 0;
 
       // save net gain (this does not include interest gained for pending withdrawals)
-      uint256 netInterest = _expectedInterest - _fees - _pendingWithdrawFees;
+      uint256 netInterest = (_isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest) - _fees - _pendingWithdrawFees;
       lastEpochInterest = netInterest;
       // mint strategyTokens equal to interest and send underlying to strategy to avoid double counting for NAV
       _strategy.deposit(netInterest);
@@ -297,8 +321,15 @@ contract IdleCDOEpochVariant is IdleCDO {
       // allow withdrawals requests
       allowAAWithdrawRequest = true;
       allowBBWithdrawRequest = true;
-      // block instant withdraws as these can be done only after the deadline
-      allowInstantWithdraw = false;
+      // block instant withdraws claims as these can be done only after the deadline
+      // or only if borrower is repaying all funds
+      allowInstantWithdraw = _isRequestingAllFunds;
+      if (_isRequestingAllFunds) {
+        // user will request normal withdraw and can claim right after
+        disableInstantWithdraw = true;
+        epochDuration = 0;
+        epochEndDate = 0;
+      }
 
       emit AccrueInterest(_expectedInterest, _fees + _pendingWithdrawFees);
     } catch {
@@ -316,7 +347,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _apr Apr to scale
   function _scaleAprWithBuffer(uint256 _apr) internal view returns (uint256) {
     uint256 _duration = epochDuration;
-    return _apr * (_duration + bufferPeriod) / _duration;
+    return _duration == 0 ? _apr : _apr * (_duration + bufferPeriod) / _duration;
   }
 
   /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
@@ -457,7 +488,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       if (lastEpochApr > (creditVault.getApr() + _scaleAprWithBuffer(instantWithdrawAprDelta))) {
         // Calc max withdrawable if amount passed is 0
         _underlyings = _amount == 0 ? maxWithdrawableInstant(msg.sender, _tranche) : _underlyings;
-        // burn strategy tokens from cdo
+        // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
 
         // burn tranche tokens and decrease NAV
@@ -484,7 +515,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += fees;
     
-    // request normal withdraw, we burn strategy tokens without interest for the new epoch
+    // request normal withdraw, we burn strategy tokens without interest for the new epoch and mint and eq amount to msg.sender
     creditVault.requestWithdraw(_underlyings, msg.sender, netInterest);
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
     _withdrawOps(_amount, _underlyings - netInterest, _tranche);
@@ -509,7 +540,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _amount Amount of underlyings
   function _calcInterestWithdrawRequest(uint256 _amount) internal view returns (uint256) {
     uint256 _duration = epochDuration;
-    return _calcInterest(_amount) * _duration / (_duration + bufferPeriod);
+    return _duration == 0 ? 0 : _calcInterest(_amount) * _duration / (_duration + bufferPeriod);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
@@ -566,7 +597,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert Default();
     }
 
-    // underlyings requested
+    // underlyings requested, here we check that user waited at least one epoch
     _strategy.claimWithdrawRequest(msg.sender);
   }
 

@@ -12,7 +12,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 interface IIdleCDOEpochVariant {
   function isEpochRunning() external view returns (bool);
-  function epochDuration() external view returns (uint256);
+  function epochEndDate() external view returns (uint256);
 }
 
 error NotAllowed();
@@ -166,14 +166,13 @@ contract IdleCreditVault is
   /// @return amount number of tokens claimed
   function claimWithdrawRequest(address _user) external returns (uint256 amount) {
     _onlyIdleCDO();
-    // user should wait at least an epoch before claiming the withdraw.
-    // Given that requests can be done only in the buffer period we simply add 
-    // the epochDuration as a minimum time to wait since the last request, the result timestamp will be 
-    // *in* the epoch but in the epoch user can't claim a withdraw request so the result is that 
-    // users will be able to claim only in the next buffer period as expected.
-    // NOTE: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
+    // user should wait at least an epoch before claiming the withdraw. We check this by comparing the last withdraw request
+    // timestamp with the epochEndDate. If the last withdraw request is after the epochEndDate we revert as it means that 
+    // no new epoch has started and the user should wait for the next one.
+    // NOTE 2: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
     // for another epoch to claim both requests.
-    if (block.timestamp < lastWithdrawRequest[_user] + IIdleCDOEpochVariant(idleCDO).epochDuration()) {
+    uint256 _epochEndDate = IIdleCDOEpochVariant(idleCDO).epochEndDate();
+    if (_epochEndDate != 0 && lastWithdrawRequest[_user] > _epochEndDate) {
       revert NotAllowed();
     }
     // get amount of underlyings
