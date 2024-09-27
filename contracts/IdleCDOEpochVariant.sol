@@ -10,8 +10,6 @@ import {IIdleCDOStrategy} from "./interfaces/IIdleCDOStrategy.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 error EpochRunning();
-error EpochNotRunning();
-error DeadlineNotMet();
 error NotAllowed();
 error Default();
 
@@ -75,30 +73,23 @@ contract IdleCDOEpochVariant is IdleCDO {
     lossToleranceBps = FULL_ALLOC;
     // all yield to senior
     isAYSActive = false;
-    trancheAPRSplitRatio = FULL_ALLOC;
     // deposit directly in the strategy
     directDeposit = true;
 
     // set epoch params
     epochDuration = 30 days;
     bufferPeriod = 5 days;
-    instantWithdrawDelay = 3 days;
-    // prevent normal withdrawals, only requests for withdrawal are allowed
-    allowAAWithdraw = false;
-    allowBBWithdraw = false;
+
     // allow requests for withdrawals
     allowAAWithdrawRequest = true;
     allowBBWithdrawRequest = true;
-    // min apr delta to trigger instant withdraw
-    instantWithdrawAprDelta = 1.5e18; // 1.5%
+
+    // default no instant withdraw allowed
+    disableInstantWithdraw = true;
 
     // scale the apr to include the buffer period
     IdleCreditVault _strategy = IdleCreditVault(strategy); 
     _strategy.setApr(_scaleAprWithBuffer(_strategy.getApr()));
-
-    // set keyring address
-    keyring = 0xD18d17791f2071Bf3C855bA770420a9EdEa0728d;
-    keyringPolicyId = 4;
   }
 
   /// @notice Check if msg sender is owner or manager
@@ -117,12 +108,10 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _bufferPeriod time between 2 epochs
   function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) external {
     _checkOnlyOwnerOrManager();
-    if (isEpochRunning) {
-      revert EpochRunning();
-    }
+    // cannot set epoch params if epoch is running
     // cannot set epochDuration to 0 as it's reserved for closing the pool
     // and cannot set epochDuration if previously was set to 0 as borrower repaid all funds
-    if (_epochDuration == 0 || epochDuration == 0) {
+    if (isEpochRunning || _epochDuration == 0 || epochDuration == 0) {
       revert NotAllowed();
     }
     epochDuration = _epochDuration;
@@ -135,6 +124,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _disable flag to disable instant withdraw
   function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) external {
     _checkOnlyOwnerOrManager();
+    if (isEpochRunning) {
+      revert EpochRunning();
+    }
     instantWithdrawDelay = _delay;
     instantWithdrawAprDelta = _aprDelta;
     disableInstantWithdraw = _disable;
@@ -162,7 +154,8 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     // Check that buffer period passed (and epoch is not running as epochEndDate is set)
     // and that the pool is not closed (ie epochDuration == 0)
-    if (block.timestamp < (epochEndDate + bufferPeriod) || epochDuration == 0) {
+    uint256 _epochDuration = epochDuration; 
+    if (block.timestamp < (epochEndDate + bufferPeriod) || _epochDuration == 0) {
       revert NotAllowed();
     }
 
@@ -183,7 +176,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     expectedEpochInterest = _calcInterest(getContractValue()) + pendingWithdrawFees;
 
     // set expected epoch end date
-    epochEndDate = block.timestamp + epochDuration;
+    epochEndDate = block.timestamp + _epochDuration;
     // set instant withdraw deadline
     instantWithdrawDeadline = block.timestamp + instantWithdrawDelay;
 
@@ -235,30 +228,22 @@ contract IdleCDOEpochVariant is IdleCDO {
   function stopEpoch(uint256 _newApr, uint256 _interest) external {
     _checkOnlyOwnerOrManager();
 
-    // Check that epoch is running
-    if (!isEpochRunning) {
-      revert EpochNotRunning();
-    }
-    // Check that end date is passed
-    if (block.timestamp < epochEndDate) {
-      revert EpochRunning();
-    }
-
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-
-    // Check that there are no pending instant withdraws, ie `getInstantWithdrawFunds` was called
-    // before closing the epoch
-    if (_strategy.pendingInstantWithdraws() > 0) {
-      revert NotAllowed();
-    }
-
-    uint256 _pendingWithdrawFees = pendingWithdrawFees;
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    uint256 _pendingWithdrawFees = pendingWithdrawFees;
 
-    // overridden interest should be greater than pending withdraw fees and the apr should be 
-    // 0 otherwise withdrawal requests may not be fullfilled as they consider also the interest
-    // gained in the next epoch 
-    if (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0)) {
+    if (
+      // Check that epoch is running
+      !isEpochRunning || 
+      // Check that end date is passed
+      block.timestamp < epochEndDate || 
+      // Check that there are no pending instant withdraws, ie `getInstantWithdrawFunds` was called
+      // before closing the epoch
+      _strategy.pendingInstantWithdraws() > 0 ||
+      // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
+      // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
+      (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
+    ) {
       revert NotAllowed();
     }
 
@@ -280,7 +265,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       }
 
       // Transfer pending withdraw fees to feeReceiver before update accounting
-      // NOTE: Fees are sent with 2 different transfer calls to avoid complicated calculations
+      // NOTE: Fees are sent with 2 different transfer calls, here and after updateAccounting, to avoid complicated calculations
       if (_pendingWithdrawFees > 0) {
         IERC20Detailed(token).safeTransfer(feeReceiver, _pendingWithdrawFees);
       }
@@ -324,8 +309,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       // block instant withdraws claims as these can be done only after the deadline
       // or only if borrower is repaying all funds
       allowInstantWithdraw = _isRequestingAllFunds;
+
       if (_isRequestingAllFunds) {
-        // user will request normal withdraw and can claim right after
+        // user will request only normal withdraw and can claim right after
         disableInstantWithdraw = true;
         epochDuration = 0;
         epochEndDate = 0;
@@ -372,12 +358,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   function getInstantWithdrawFunds() external {
     _checkOnlyOwnerOrManager();
 
-    if (!isEpochRunning) {
-      revert EpochNotRunning();
-    }
-
-    if (block.timestamp < instantWithdrawDeadline) {
-      revert DeadlineNotMet();
+    // Check that epoch is running and that current time is after the deadline
+    if (!isEpochRunning || block.timestamp < instantWithdrawDeadline) {
+      revert NotAllowed();
     }
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
@@ -427,7 +410,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
     // without checking for lending protocol default
     skipDefaultCheck = true;
-    revertIfTooLow = true;
   }
 
   /// @notice allow deposits and redeems for all classes of tranches
@@ -445,7 +427,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     allowBBWithdrawRequest = true;
     // Allow deposits/withdraws but checks for lending protocol default
     skipDefaultCheck = false;
-    revertIfTooLow = true;
   }
 
   /// 
@@ -467,7 +448,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   function requestWithdraw(uint256 _amount, address _tranche) external returns (uint256) {
     address aa = AATranche;
     address bb = BBTranche;
-    // check if _tranche is valid and if withdraws for that tranche are allowed 
+    // check if _tranche is valid and if withdraws for that tranche are allowed and if user is allowed
     if (!(_tranche == aa || _tranche == bb) || 
       (!allowAAWithdrawRequest && _tranche == aa) || 
       (!allowBBWithdrawRequest && _tranche == bb) ||
@@ -613,13 +594,10 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice Check if wallet is allowed to interact with the contract
   /// @param _user User address
-  /// @return true if wallet is allowed
+  /// @return true if wallet is allowed or keyring address is not set
   function isWalletAllowed(address _user) public view returns (bool) {
     address _keyring = keyring;
-    if (_keyring == address(0)) {
-      return true;
-    }
-    return IKeyring(_keyring).checkCredential(keyringPolicyId, _user);
+    return _keyring == address(0) || IKeyring(_keyring).checkCredential(keyringPolicyId, _user);
   }
 
   /// 

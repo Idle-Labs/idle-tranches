@@ -9,8 +9,6 @@ import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 
 error EpochRunning();
-error EpochNotRunning();
-error DeadlineNotMet();
 error NotAllowed();
 error Default();
 
@@ -55,6 +53,37 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault(_strategy).initialize(_underlying, _owner, manager, borrower, borrowerName, initialProvidedApr);
   }
 
+  function _deployLocalContracts() internal override returns (IdleCDO _cdo) {
+    // We modified only the initial apr split ratio
+    address _owner = address(0xdeadbad);
+    address _rebalancer = address(0xbaddead);
+    (address _strategy, address _underlying) = _deployStrategy(_owner);
+    
+    // deploy idleCDO and tranches
+    _cdo = _deployCDO();
+    stdstore
+      .target(address(_cdo))
+      .sig(_cdo.token.selector)
+      .checked_write(address(0));
+    _cdo.initialize(
+      0,
+      _underlying,
+      address(this), // governanceFund,
+      _owner, // owner,
+      _rebalancer, // rebalancer,
+      _strategy, // strategyToken
+      100000 // apr split: 100000 is 100% to AA
+    );
+
+    vm.startPrank(_owner);
+    _cdo.setIsAYSActive(true);
+    _cdo.setUnlentPerc(0);
+    _cdo.setFee(0);
+    vm.stopPrank();
+
+    _postDeploy(address(_cdo), _owner);
+  }
+
   function _postDeploy(address _cdo, address _owner) internal override {
     vm.prank(_owner);
     IdleCreditVault cv = IdleCreditVault(address(strategy));
@@ -68,6 +97,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // For testing let's support both tranches with AYS
     vm.startPrank(_owner);
     cdoEpoch.setIsAYSActive(true);
+    cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(epochDuration, buffer); // set this to have an epoch during 1/10 of the year
     cdoEpoch.setKeyringParams(address(0), 0, false); // deactivate keyring
@@ -269,8 +299,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.epochDuration(), 36.5 days, 'epochDuration is wrong');
     assertEq(cdoEpoch.bufferPeriod(), 5 days, 'bufferPeriod is wrong');
     assertEq(cdoEpoch.instantWithdrawDelay(), 3 days, 'instantWithdrawDelay is wrong');
-    assertEq(cdoEpoch.allowAAWithdraw(), false, 'allowAAWithdraw is wrong');
-    assertEq(cdoEpoch.allowBBWithdraw(), false, 'allowBBWithdraw is wrong');
     assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'allowAAWithdrawRequest is wrong');
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 1.5e18, 'instantWithdrawAprDelta is wrong');
@@ -327,9 +355,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _toggleEpoch(true, 0, 0);
 
-    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.setEpochParams(4, 3 days);
+
+    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.prank(manager);
+    cdoEpoch.setInstantWithdrawParams(4, 3 days, false);
 
     vm.startPrank(manager);
     IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
@@ -623,7 +655,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setFee(10000); // 10%
 
     // check that manager cannot call stopEpoch if there is no epoch running
-    vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialApr, 0);
 
@@ -639,7 +671,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // check that manager cannot call stopEpoch before end date
     vm.warp(cdoEpoch.epochEndDate() - 1);
-    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialApr, 0);
 
@@ -815,7 +847,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.requestWithdraw(0, address(AAtranche));
 
     // owner or manager cannot get funds if epoch is not running
-    vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.getInstantWithdrawFunds();
 
@@ -823,7 +855,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _startEpochAndCheckPrices(0);
 
     // owner or manager cannot get funds before deadline
-    vm.expectRevert(abi.encodeWithSelector(DeadlineNotMet.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.getInstantWithdrawFunds();
 
@@ -1144,7 +1176,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // stopEpoch will revert as isEpochRunning = false
     vm.prank(manager);
-    vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.stopEpoch(initialProvidedApr / 2, 0);
 
     uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
@@ -1563,8 +1595,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
     assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
     assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-    assertEq(idleCDO.allowAAWithdraw(), false, "Default flag for AA set to true");
-    assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for BB set to true");
     assertEq(cdoEpoch.allowAAWithdrawRequest(), false, "allowAAWithdrawRequest set to true");
     assertEq(cdoEpoch.allowBBWithdrawRequest(), false, "allowBBWithdrawRequest set to true");
     assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
