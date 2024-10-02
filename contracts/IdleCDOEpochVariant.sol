@@ -561,16 +561,10 @@ contract IdleCDOEpochVariant is IdleCDO {
     _updateSplitRatio(_getAARatio(true));
   }
 
-  /// @notice Claim a withdraw request from the vault. Can be done when epoch is not running
-  /// as funds will get transferred from borrower when epoch ends
+  /// @notice Claim a withdraw request from the vault. Can be done when at least 1 epoch passed
+  /// since last withdraw request
   function claimWithdrawRequest() external {
-    // Check that epoch is not running
-    if (isEpochRunning) {
-      revert EpochRunning();
-    }
-
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-
     // if borrower did not paid prev withdraw requests, revert. if instead he defaulted
     // only on instant withdraw requests but prev normal withdraws were fullfilled, we can still
     // allow normal withdraws

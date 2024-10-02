@@ -56,8 +56,10 @@ contract IdleCreditVault is
   uint256 public totEpochDeposits;
   /// @notice flag to allow transfers
   bool public canTransfer;
-  /// @notice last withdraw request timestamp for a user
+  /// @notice last withdraw request epoch for a user
   mapping (address => uint256) public lastWithdrawRequest;
+  /// @notice current epoch number
+  uint256 public epochNumber;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -156,8 +158,8 @@ contract IdleCreditVault is
     withdrawsRequests[_user] += _amount;
     // increase the total withdraw requests
     pendingWithdraws += _amount;
-    // save the timestamp of the last withdraw request
-    lastWithdrawRequest[_user] = block.timestamp;
+    // save the epoch of the last withdraw request (buffer + epochDuration is 1 epoch)
+    lastWithdrawRequest[_user] = epochNumber;
   }
 
   /// @notice claim the withdraw request
@@ -166,13 +168,12 @@ contract IdleCreditVault is
   /// @return amount number of tokens claimed
   function claimWithdrawRequest(address _user) external returns (uint256 amount) {
     _onlyIdleCDO();
-    // user should wait at least an epoch before claiming the withdraw. We check this by comparing the last withdraw request
-    // timestamp with the epochEndDate. If the last withdraw request is after the epochEndDate we revert as it means that 
-    // no new epoch has started and the user should wait for the next one.
+    // User should wait at least an epoch before claiming the withdraw. Once the epoch is over user can withdraw 
+    // at any time even if a new epoch started. 
+    // So if epochNumber is the same as the last withdraw request then we revert. Epoch number is increased at stopEpoch
     // NOTE 2: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
     // for another epoch to claim both requests.
-    uint256 _epochEndDate = IIdleCDOEpochVariant(idleCDO).epochEndDate();
-    if (_epochEndDate != 0 && lastWithdrawRequest[_user] > _epochEndDate) {
+    if (IIdleCDOEpochVariant(idleCDO).epochEndDate() != 0 && (epochNumber <= lastWithdrawRequest[_user])) {
       revert NotAllowed();
     }
     // get amount of underlyings
@@ -254,6 +255,7 @@ contract IdleCreditVault is
     if (IIdleCDOEpochVariant(idleCDO).isEpochRunning()) {
       // deposit done on stopEpoch (before setting the var to false) so we reset the counter
       totEpochDeposits = 0;
+      epochNumber += 1;
     } else {
       // deposit done between epochs so we increase the counter
       totEpochDeposits += _amount;

@@ -307,6 +307,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // assertEq(cdoEpoch.keyringPolicyId() != 0, true, 'keyring policy id is wrong');
 
     // IdleCreditVault vars
+    assertEq(_strategy.epochNumber(), 0, 'epochNumber is wrong');
     assertEq(_strategy.manager(), manager, 'manager is wrong');
     assertEq(_strategy.borrower(), borrower, 'borrower is wrong');
     assertEq(_strategy.lastApr(), _scaleAprWithBuffer(initialProvidedApr), 'lastApr is wrong');
@@ -685,6 +686,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _stopEpochAndCheckPrices(0, initialProvidedApr - 999, _expectedFundsEndEpoch());
 
     assertEq(IdleCreditVault(address(strategy)).totEpochDeposits(), 0, 'totEpochDeposits is wrong');
+    assertEq(IdleCreditVault(address(strategy)).epochNumber(), 1, 'epochNumber is wrong');
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBalPre, expectedNet, 'cdo got wrong amount of strategyTokens');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(strategy)), expectedNet, 'strategy got wrong amount of funds');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) > 0, true, 'fee receiver got some fees');
@@ -718,6 +720,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // all pending withdrawals were fullfilled
     assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), 0, 'wrong value of pendingWithdraw');
+    // epoch number updated
+    assertEq(IdleCreditVault(address(strategy)).epochNumber(), 2, 'wrong value of epochNumber');
     // interest minus fees are sent directly to the strategy
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(cdoEpoch)), 0, 'cdo got wrong amount of funds with pending withdraw');
     // interest minus fees are mint as strategyTokens in the cdo
@@ -1124,7 +1128,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // start epoch
     _startEpochAndCheckPrices(1);
 
-    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.claimWithdrawRequest();
+
+    // we skip right before the end epoch
+    vm.warp(block.timestamp + cdoEpoch.epochDuration() - 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.claimWithdrawRequest();
 
     // stop epoch
@@ -1140,6 +1149,39 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'trancheToken bal is wrong for user');
     assertEq(_strategy.withdrawsRequests(address(this)), 0, 'withdrawsRequests is wrong');
     assertEq(strategyTokensPre - IERC20Detailed(strategyToken).balanceOf(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'strategyToken bal is wrong for cdo');
+  }
+
+  function testClaimWithdrawRequestEpochRunning() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    uint256 amount = 10000;
+    uint256 amountWei = amount * ONE_SCALE;
+
+    // AARatio 50%
+    uint256 mintedAA = idleCDO.depositAA(amountWei);
+    
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // stop epoch
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // request withdraw
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+
+    // start epoch
+    _startEpochAndCheckPrices(1);
+    // stop epoch
+    _stopEpochAndCheckPrices(1, initialProvidedApr, _expectedFundsEndEpoch());
+
+    // start another epoch
+    _startEpochAndCheckPrices(2);
+
+    // try to claim while epoch is running
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1, 'claimWithdrawRequest is wrong');
   }
 
   function testClaimWithdrawRequestWithInstantDefault() external {
