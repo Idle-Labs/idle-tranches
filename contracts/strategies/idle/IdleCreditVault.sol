@@ -171,8 +171,9 @@ contract IdleCreditVault is
     // User should wait at least an epoch before claiming the withdraw. Once the epoch is over user can withdraw 
     // at any time even if a new epoch started. 
     // So if epochNumber is the same as the last withdraw request then we revert. Epoch number is increased at stopEpoch
-    // NOTE 2: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
+    // NOTE: If a user does not claim a withdraw request and instead requests another withdraw, he will have to wait
     // for another epoch to claim both requests.
+    // NOTE 2: if borrower defaults, old withdraw requests can still be claimed
     if (IIdleCDOEpochVariant(idleCDO).epochEndDate() != 0 && (epochNumber <= lastWithdrawRequest[_user])) {
       revert NotAllowed();
     }

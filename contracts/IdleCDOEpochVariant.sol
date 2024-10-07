@@ -572,16 +572,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Claim a withdraw request from the vault. Can be done when at least 1 epoch passed
   /// since last withdraw request
   function claimWithdrawRequest() external {
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
-    // if borrower did not paid prev withdraw requests, revert. if instead he defaulted
-    // only on instant withdraw requests but prev normal withdraws were fullfilled, we can still
-    // allow normal withdraws
-    if (defaulted && _strategy.pendingWithdraws() != 0) {
-      revert Default();
-    }
-
-    // underlyings requested, here we check that user waited at least one epoch
-    _strategy.claimWithdrawRequest(msg.sender);
+    // underlyings requested, here we check that user waited at least one epoch and that borrower
+    // did not default upon repayment (old requests can still be claimed)
+    IdleCreditVault(strategy).claimWithdrawRequest(msg.sender);
   }
 
   /// @notice Claim an instant withdraw request from the vault. Can be done when epoch is running

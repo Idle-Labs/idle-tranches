@@ -1239,21 +1239,35 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // AARatio 50%
     uint256 mintedAA = idleCDO.depositAA(amountWei);
     idleCDO.depositBB(amountWei);
-    
+
+    // deposit 10000 with user1
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amountWei, true);
+    uint256 balUser1 = underlying.balanceOf(user1);
+
+    // request withdraw right away with user1
+    vm.prank(user1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
     // run epoch 0 till the end
     _startEpochAndCheckPrices(0);
     _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
 
-    // request normal withdraw
+    // request normal withdraw with this contract
     cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
 
-    // run epoch 0 till the end, with same apr
+    // run epoch 0 till the end, with same apr but borrower defaults
     _startEpochAndCheckPrices(1);
     _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
 
-    vm.expectRevert(abi.encodeWithSelector(Default.selector));
-    // we try to claim the previous normal withdraw requests which should work
+    // we try to claim the previous normal withdraw request but new epoch did not roll due to default
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.claimWithdrawRequest();
+
+    // user1 can still withdraw
+    vm.prank(user1);
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(underlying.balanceOf(user1), balUser1, 'User 1 bal did not increase');
   }
 
   function testClaimInstantWithdrawRequest() external {
