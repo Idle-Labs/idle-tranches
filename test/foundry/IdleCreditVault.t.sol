@@ -967,14 +967,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // recalculate interest as trancheAPRSplitRatio changed
     (netInterest,) = _calcInterestForTranche(address(BBtranche), mintedBB);
     uint256 maxBB = cdoEpoch.maxWithdrawable(address(this), idleCDO.BBTranche());
-
     uint256 requestedBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
-
     // approximated because of different decimals between tranche token and underlying
     assertApproxEqAbs(cdoEpoch.lastNAVBB(), 0, 10000, 'lastNAVBB should be 0');
     assertEq(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), 0, 'AA tranches not burned');
-    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedBB, 'strategyTokens for user not minted properly on BB request');
-    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedBB - netInterest, 'strategyTokens for cdo not burned properly on BB request');
+    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)) - strategyTokenBalUser, requestedBB, 'strategyTokens for user not minted properly on BB request');
+    assertEq(strategyTokenBalCDO - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)), requestedBB - netInterest, 'strategyTokens for cdo not burned properly on BB request');
     assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2 + requestedBB, 'pendingWithdraws for BB request is wrong');
     assertEq(_strategy.withdrawsRequests(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'withdrawsRequests for BB is wrong');
     assertEq(maxBB > 0, true, 'maxBB is wrong');
@@ -1032,9 +1030,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _calcInterestForTranche(address _tranche, uint256 trancheAmount) internal view returns (uint256, uint256) {
+    uint256 trancheAPRSplitRatio = cdoEpoch.trancheAPRSplitRatio();
+    uint256 aprRatio = _tranche == address(AAtranche) ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
     uint256 interest = _calcInterestWithdrawRequest(
       trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN
-    ) * cdoEpoch.trancheAPRSplitRatio() / FULL_ALLOC;
+    ) * aprRatio / FULL_ALLOC;
     uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
     return (interest - fees, fees);
   }

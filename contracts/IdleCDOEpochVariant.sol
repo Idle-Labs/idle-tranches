@@ -488,7 +488,8 @@ contract IdleCDOEpochVariant is IdleCDO {
       _amount = _userTrancheTokens;
     }
 
-    uint256 interest = _calcInterestWithdrawRequest(_underlyings) * trancheAPRSplitRatio / FULL_ALLOC;
+
+    uint256 interest = _calcInterestWithdrawRequest(_underlyings) * _trancheAprRatio(_tranche) / FULL_ALLOC;
     uint256 fees = interest * fee / FULL_ALLOC;
     uint256 netInterest = interest - fees;
     // user is requesting principal + interest of next epoch minus fees
@@ -501,6 +502,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
     _withdrawOps(_amount, _underlyings - netInterest, _tranche);
     return _underlyings;
+  }
+
+  /// @notice Get the tranche apr split ratio
+  /// @param _tranche address
+  /// @return _aprRatio apr split ratio for the tranche
+  function _trancheAprRatio(address _tranche) internal view returns (uint256 _aprRatio) {
+    _aprRatio = _tranche == AATranche ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
   }
 
   /// @notice Calculate the interest of an epoch for the given amount
@@ -530,7 +538,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
     uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     // add interest for one epoch
-    uint256 interest = _calcInterestWithdrawRequest(currentUnderlyings) * trancheAPRSplitRatio / FULL_ALLOC;
+    uint256 interest = _calcInterestWithdrawRequest(currentUnderlyings) * _trancheAprRatio(_tranche) / FULL_ALLOC;
     // sum and remove fees
     return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
   }
