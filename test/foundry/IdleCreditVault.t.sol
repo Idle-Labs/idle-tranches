@@ -2003,4 +2003,34 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     assertGt(underlying.balanceOf(address(this)), balThisPre, 'Bal for this contract did not increase');
   }
+
+  function testClosePoolWithUnderlyingInContract() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    vm.stopPrank();
+
+    IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
+    address _manager = IdleCreditVault(_vault.strategy()).manager();
+
+    // deposit 10000 with this contract
+    idleCDO.depositAA(10000 * ONE_SCALE);
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    // calc the exact amount the borrower should pay when closing the epoch
+    uint256 totFunds = _expectedFundsEndEpoch() + _vault.getContractValue();
+    deal(defaultUnderlying, borrower, totFunds + 1);
+
+    // 'maliciously' send underlyings to the contract to default the borrower
+    deal(defaultUnderlying, address(_vault), 100);
+
+    // stop epoch
+    vm.startPrank(_manager);
+    vm.warp(_vault.epochEndDate() + 1);
+    _vault.stopEpoch(0, 1);
+    vm.stopPrank();
+
+    assertEq(_vault.defaulted(), false, 'borrower defaulted');
+  }
 }

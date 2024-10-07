@@ -253,7 +253,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     bool _isRequestingAllFunds = _interest == 1;
     // special case where we get everything back from the borrower
     if (_isRequestingAllFunds) {
-      _totBorrowed = getContractValue();
+      // do not consider underlyings already in this contract
+      _totBorrowed = getContractValue() - _contractTokenBalance(token);
       _expectedInterest += _totBorrowed;
     }
 
@@ -318,7 +319,7 @@ contract IdleCDOEpochVariant is IdleCDO {
         epochEndDate = 0;
       }
 
-      emit AccrueInterest(_expectedInterest, _fees + _pendingWithdrawFees);
+      emit AccrueInterest(_expectedInterest - _totBorrowed, _fees + _pendingWithdrawFees);
     } catch {
       isEpochRunning = false;
       // if borrower defaults, prev instant withdraw requests can still be withdrawn
@@ -488,7 +489,6 @@ contract IdleCDOEpochVariant is IdleCDO {
       _underlyings = _userTrancheTokens * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
       _amount = _userTrancheTokens;
     }
-
 
     uint256 interest = _calcInterestWithdrawRequest(_underlyings) * _trancheAprRatio(_tranche) / FULL_ALLOC;
     uint256 fees = interest * fee / FULL_ALLOC;
