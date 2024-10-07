@@ -104,6 +104,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   ///
 
   /// @notice update epoch duration
+  /// @dev IMPORTANT: bufferPeriod should not be changed once set otherwise interest calculations will be wrong
   /// @param _epochDuration duration in seconds
   /// @param _bufferPeriod time between 2 epochs
   function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) external {
