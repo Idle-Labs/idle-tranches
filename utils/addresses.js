@@ -890,15 +890,15 @@ const CDOs = {
   creditfasanarausdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x1cbd086e16f1188e0e15a153124d6f5c81e57f3e',
+    strategyToken: '0xC35D078092872Ec1f2ae82bcd6f0b6b89F0850de',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0xFb77eE48b6A69b4C97af7474b4f175591AeB61b3',
+    cdoAddr: '0xf6223C567F21E33e859ED7A045773526E9E3c2D5',
     proxyAdmin: mainnetContracts.proxyAdmin,
-    strategy: '0x1cbd086e16f1188e0e15a153124d6f5c81e57f3e',
+    strategy: '0xC35D078092872Ec1f2ae82bcd6f0b6b89F0850de',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x3283FA1EeC2A50783813f30EBE60Eb27f8A40dEd',
-    BBTranche: '0x2Db73Fbae554CFE4cB13e638Fc36339Cf85c6bae'
+    AATranche: '0x45054c6753b4Bce40C5d54418DabC20b070F85bE',
+    BBTranche: '0xed9cD82076160Bbc5F734D596a039Baf616D44c4'
   }
 };
 
@@ -2288,7 +2288,7 @@ exports.deployTokens = {
     strategyParams: [
       mainnetContracts.USDC,
       'owner', // owner address
-      mainnetContracts.treasuryMultisig, // manager
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // fin wallet
       '0xB0b621b2911F44548233e9437F256942dC16694A', // borrower
       'Fasanara', // borrower name
       0,
@@ -2304,13 +2304,17 @@ exports.deployTokens = {
     // ## epoch params 
     epochDuration: '604800', // 7 days
     bufferPeriod: '0', // manually managed buffer period
-    // ## instant params
-    instantWithdrawDelay: '86400', // 1 days
-    instantWithdrawAprDelta: 1e18.toString(),
-    disableInstantWithdraw: true,
+    // // ## instant params
+    // instantWithdrawDelay: '86400', // 1 days
+    // instantWithdrawAprDelta: 1e18.toString(),
+    // disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '0xD18d17791f2071Bf3C855bA770420a9EdEa0728d',
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: ''
-  },
+  }
 };
 
 exports.deployTokensPolygon = {

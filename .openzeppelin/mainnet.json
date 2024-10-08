@@ -419,6 +419,16 @@
       "address": "0xFb77eE48b6A69b4C97af7474b4f175591AeB61b3",
       "txHash": "0x67db0c9e7f02ddfe5f874dacd69ebed28ef2682a970df745ef7fd80f42893fb8",
       "kind": "transparent"
+    },
+    {
+      "address": "0xC35D078092872Ec1f2ae82bcd6f0b6b89F0850de",
+      "txHash": "0xe4189390f6276238ffa3b81769d4dd6749b49699d28671921832a9d12a2f502b",
+      "kind": "transparent"
+    },
+    {
+      "address": "0xf6223C567F21E33e859ED7A045773526E9E3c2D5",
+      "txHash": "0x6ae27b7305946b3efd5d7b5edf6c1e63fd27d14191339722b5852e745c927c2f",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -27286,7 +27296,7 @@
             "slot": "201",
             "type": "t_address",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:31"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:29"
           },
           {
             "label": "tokenDecimals",
@@ -27294,7 +27304,7 @@
             "slot": "202",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:33"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:31"
           },
           {
             "label": "oneToken",
@@ -27302,15 +27312,15 @@
             "slot": "203",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:35"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:33"
           },
           {
             "label": "underlyingToken",
             "offset": 0,
             "slot": "204",
-            "type": "t_contract(IERC20Detailed)8338",
+            "type": "t_contract(IERC20Detailed)2300",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:37"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:35"
           },
           {
             "label": "idleCDO",
@@ -27318,7 +27328,7 @@
             "slot": "205",
             "type": "t_address",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:39"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:37"
           },
           {
             "label": "lastApr",
@@ -27326,7 +27336,7 @@
             "slot": "206",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:43"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:41"
           },
           {
             "label": "borrower",
@@ -27334,7 +27344,7 @@
             "slot": "207",
             "type": "t_address",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:45"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:43"
           },
           {
             "label": "manager",
@@ -27342,7 +27352,7 @@
             "slot": "208",
             "type": "t_address",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:47"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:45"
           },
           {
             "label": "withdrawsRequests",
@@ -27350,7 +27360,7 @@
             "slot": "209",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:49"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:47"
           },
           {
             "label": "instantWithdrawsRequests",
@@ -27358,7 +27368,7 @@
             "slot": "210",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:51"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:49"
           },
           {
             "label": "pendingWithdraws",
@@ -27366,7 +27376,7 @@
             "slot": "211",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:53"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:51"
           },
           {
             "label": "pendingInstantWithdraws",
@@ -27374,7 +27384,7 @@
             "slot": "212",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:55"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:53"
           },
           {
             "label": "totEpochDeposits",
@@ -27382,7 +27392,7 @@
             "slot": "213",
             "type": "t_uint256",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:57"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:55"
           },
           {
             "label": "canTransfer",
@@ -27390,7 +27400,7 @@
             "slot": "214",
             "type": "t_bool",
             "contract": "IdleCreditVault",
-            "src": "contracts/strategies/idle/IdleCreditVault.sol:59"
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:57"
           }
         ],
         "types": {
@@ -27414,7 +27424,7 @@
             "label": "bool",
             "numberOfBytes": "1"
           },
-          "t_contract(IERC20Detailed)8338": {
+          "t_contract(IERC20Detailed)2300": {
             "label": "contract IERC20Detailed",
             "numberOfBytes": "20"
           },
@@ -28365,6 +28375,1054 @@
             "label": "keyringAllowWithdraw",
             "type": "t_bool",
             "src": "contracts/IdleCDOEpochVariant.sol:64"
+          }
+        ],
+        "types": {
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_contract(IUniswapV2Router02)3118": {
+            "label": "contract IUniswapV2Router02"
+          },
+          "t_array(t_uint256)46_storage": {
+            "label": "uint256[46]"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          }
+        }
+      }
+    },
+    "73963dcae3d5d86af9bac329b4c241dd0bd3da643e58a4b74b5fcbadb6f46efc": {
+      "address": "0x838A31b8735cf36592066A50E2f7579ce52141Ac",
+      "txHash": "0x7827000ea2c54c8672f89abd178b85ecd93d6676c918d2f873a34a00273e1598",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_balances",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "label": "_allowances",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:42"
+          },
+          {
+            "label": "_totalSupply",
+            "offset": 0,
+            "slot": "103",
+            "type": "t_uint256",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:44"
+          },
+          {
+            "label": "_name",
+            "offset": 0,
+            "slot": "104",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:46"
+          },
+          {
+            "label": "_symbol",
+            "offset": 0,
+            "slot": "105",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:47"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "106",
+            "type": "t_array(t_uint256)45_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:376"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:30"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:32"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:34"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_contract(IERC20Detailed)8370",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:36"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:38"
+          },
+          {
+            "label": "lastApr",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:42"
+          },
+          {
+            "label": "borrower",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:44"
+          },
+          {
+            "label": "manager",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:46"
+          },
+          {
+            "label": "withdrawsRequests",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:48"
+          },
+          {
+            "label": "instantWithdrawsRequests",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:50"
+          },
+          {
+            "label": "pendingWithdraws",
+            "offset": 0,
+            "slot": "211",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:52"
+          },
+          {
+            "label": "pendingInstantWithdraws",
+            "offset": 0,
+            "slot": "212",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:54"
+          },
+          {
+            "label": "totEpochDeposits",
+            "offset": 0,
+            "slot": "213",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:56"
+          },
+          {
+            "label": "canTransfer",
+            "offset": 0,
+            "slot": "214",
+            "type": "t_bool",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:58"
+          },
+          {
+            "label": "lastWithdrawRequest",
+            "offset": 0,
+            "slot": "215",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:60"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]",
+            "numberOfBytes": "1440"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)8370": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "38d803cebfa79871fb4d7ca4698a10ccd1b5f8e33ebbc9ef58d5d503cbb4933f": {
+      "address": "0xed4C67ba05c0f30A437e94b7Ed03Efb79A363158",
+      "txHash": "0xbb3b3b4dbdeba8366b1e69e8a8c5b95824f255cd8f03898d165a3f5decdbd369",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_balances",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "label": "_allowances",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:42"
+          },
+          {
+            "label": "_totalSupply",
+            "offset": 0,
+            "slot": "103",
+            "type": "t_uint256",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:44"
+          },
+          {
+            "label": "_name",
+            "offset": 0,
+            "slot": "104",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:46"
+          },
+          {
+            "label": "_symbol",
+            "offset": 0,
+            "slot": "105",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:47"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "106",
+            "type": "t_array(t_uint256)45_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:376"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "token",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:30"
+          },
+          {
+            "label": "tokenDecimals",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:32"
+          },
+          {
+            "label": "oneToken",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:34"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_contract(IERC20Detailed)8375",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:36"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:38"
+          },
+          {
+            "label": "lastApr",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:42"
+          },
+          {
+            "label": "borrower",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:44"
+          },
+          {
+            "label": "manager",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_address",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:46"
+          },
+          {
+            "label": "withdrawsRequests",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:48"
+          },
+          {
+            "label": "instantWithdrawsRequests",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:50"
+          },
+          {
+            "label": "pendingWithdraws",
+            "offset": 0,
+            "slot": "211",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:52"
+          },
+          {
+            "label": "pendingInstantWithdraws",
+            "offset": 0,
+            "slot": "212",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:54"
+          },
+          {
+            "label": "totEpochDeposits",
+            "offset": 0,
+            "slot": "213",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:56"
+          },
+          {
+            "label": "canTransfer",
+            "offset": 0,
+            "slot": "214",
+            "type": "t_bool",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:58"
+          },
+          {
+            "label": "lastWithdrawRequest",
+            "offset": 0,
+            "slot": "215",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:60"
+          },
+          {
+            "label": "epochNumber",
+            "offset": 0,
+            "slot": "216",
+            "type": "t_uint256",
+            "contract": "IdleCreditVault",
+            "src": "contracts/strategies/idle/IdleCreditVault.sol:62"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]",
+            "numberOfBytes": "1440"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)8375": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "71037e4c83b47b11ea4684d495f705f75599af207a816660730f5634f8e83793": {
+      "address": "0xd29c4CBA2422476295ECE570508C825145E792A4",
+      "txHash": "0xa0ff79adb4549f63585e541fd6e1272544b8a1dcfcf7412854bceb15246ed20e",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_uint8",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "_paused",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:29"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:116"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "contract": "GuardedLaunchUpgradable",
+            "label": "limit",
+            "type": "t_uint256",
+            "src": "contracts/GuardedLaunchUpgradable.sol:23"
+          },
+          {
+            "contract": "GuardedLaunchUpgradable",
+            "label": "governanceRecoveryFund",
+            "type": "t_address",
+            "src": "contracts/GuardedLaunchUpgradable.sol:25"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "_lastCallerBlock",
+            "type": "t_bytes32",
+            "src": "contracts/IdleCDOStorage.sol:14"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "latestHarvestBlock",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:16"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "weth",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:18"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "incentiveTokens",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/IdleCDOStorage.sol:20"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "token",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:22"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "guardian",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:24"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "oneToken",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:26"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "rebalancer",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:28"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "uniswapRouterV2",
+            "type": "t_contract(IUniswapV2Router02)3118",
+            "src": "contracts/IdleCDOStorage.sol:30"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "allowAAWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:33"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "allowBBWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:35"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "revertIfTooLow",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:38"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "skipDefaultCheck",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:40"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "strategy",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:43"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "strategyToken",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:45"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "AATranche",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:47"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "BBTranche",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:49"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "AAStaking",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:51"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "BBStaking",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:53"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "trancheAPRSplitRatio",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:57"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "trancheIdealWeightRatio",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:60"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "priceAA",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:62"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "priceBB",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:64"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastNAVAA",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:66"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastNAVBB",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:68"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lastStrategyPrice",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:70"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "unclaimedFees",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:72"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "unlentPerc",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:74"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "fee",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:77"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "feeReceiver",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:79"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "idealRange",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:82"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "releaseBlocksPeriod",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:84"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "harvestedRewards",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:86"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "directDeposit",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:92"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "referral",
+            "type": "t_address",
+            "src": "contracts/IdleCDOStorage.sol:94"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "feeSplit",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:96"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "isAYSActive",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOStorage.sol:99"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "liquidationTolerance",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:110"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "minAprSplitAYS",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:116"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "maxDecreaseDefault",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:118"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "lossToleranceBps",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:120"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "stkIDLEPerUnderlying",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOStorage.sol:122"
+          },
+          {
+            "contract": "IdleCDOStorage",
+            "label": "__gap",
+            "type": "t_array(t_uint256)46_storage",
+            "src": "contracts/IdleCDOStorage.sol:136"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "isEpochRunning",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:26"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "allowAAWithdrawRequest",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:28"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "allowBBWithdrawRequest",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:30"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "epochDuration",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:32"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "instantWithdrawDelay",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:34"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "expectedEpochInterest",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:36"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "epochEndDate",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:38"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "instantWithdrawDeadline",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:40"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "lastEpochApr",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:42"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "instantWithdrawAprDelta",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:44"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "pendingWithdrawFees",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:46"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "lastEpochInterest",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:48"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "allowInstantWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:50"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "disableInstantWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:52"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "defaulted",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:54"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "keyring",
+            "type": "t_address",
+            "src": "contracts/IdleCDOEpochVariant.sol:56"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "keyringPolicyId",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:58"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "bufferPeriod",
+            "type": "t_uint256",
+            "src": "contracts/IdleCDOEpochVariant.sol:60"
+          },
+          {
+            "contract": "IdleCDOEpochVariant",
+            "label": "keyringAllowWithdraw",
+            "type": "t_bool",
+            "src": "contracts/IdleCDOEpochVariant.sol:62"
           }
         ],
         "types": {
