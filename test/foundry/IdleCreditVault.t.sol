@@ -2033,4 +2033,39 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertEq(_vault.defaulted(), false, 'borrower defaulted');
   }
+
+  function testStopEpochWithDuration() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    vm.stopPrank();
+
+    IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
+    address _manager = IdleCreditVault(_vault.strategy()).manager();
+    uint256 bufferPeriodPre = _vault.bufferPeriod();
+
+    // deposit 10000 with this contract
+    idleCDO.depositAA(10000 * ONE_SCALE);
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // give funds to borrower for repaying
+    uint256 totFunds = _expectedFundsEndEpoch();
+    deal(defaultUnderlying, borrower, totFunds);
+
+    // stop epoch with new duration
+    vm.startPrank(_manager);
+    vm.warp(_vault.epochEndDate() + 1);
+    _vault.stopEpochWithDuration(initialProvidedApr, 0, 3 days);
+    vm.stopPrank();
+
+    // check some params done in stopEpoch to see if called
+    assertEq(IdleCreditVault(address(strategy)).epochNumber(), 1, 'epochNumber is wrong');
+    assertEq(_vault.isEpochRunning(), false, 'isEpochRunning is wrong');
+    assertEq(_vault.expectedEpochInterest(), 0, 'expectedEpochInterest is wrong');
+    assertEq(_vault.defaulted(), false, 'borrower defaulted');
+    // check that epoch duration is updated
+    assertEq(_vault.epochDuration(), 3 days, 'epoch duration is wrong');
+    // check that bufferPeriod did not change
+    assertEq(bufferPeriodPre, _vault.bufferPeriod(), 'buffer period changed');
+  }
 }

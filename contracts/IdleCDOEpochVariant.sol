@@ -107,7 +107,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @dev IMPORTANT: bufferPeriod should not be changed once set otherwise interest calculations will be wrong
   /// @param _epochDuration duration in seconds
   /// @param _bufferPeriod time between 2 epochs
-  function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) external {
+  function setEpochParams(uint256 _epochDuration, uint256 _bufferPeriod) public {
     _checkOnlyOwnerOrManager();
     // cannot set epoch params if epoch is running
     // cannot set epochDuration to 0 as it's reserved for closing the pool
@@ -226,7 +226,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// be greater than the pending withdraw fees and newApr must be 0. If `_interest` is 1 then
   /// it is interpreted as a special case where we request everything back from the borrower
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
-  function stopEpoch(uint256 _newApr, uint256 _interest) external {
+  function stopEpoch(uint256 _newApr, uint256 _interest) public {
     _checkOnlyOwnerOrManager();
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
@@ -327,6 +327,18 @@ contract IdleCDOEpochVariant is IdleCDO {
       allowInstantWithdraw = true;
       _handleBorrowerDefault(_expectedInterest + _pendingWithdraws);
     }
+  }
+
+  /// @notice Stop epoch and set new duration
+  /// @dev see stopEpoch and setEpochParams for more details, bufferPeriod is not modified
+  /// @param _newApr New apr to set for the next epoch
+  /// @param _interest Interest gained in the epoch
+  /// @param _duration New epoch duration
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration) external {
+    // stop epoch checks that msg.sender is allowed
+    stopEpoch(_newApr, _interest);
+    // buffer period is not changed
+    setEpochParams(_duration, bufferPeriod);
   }
 
   /// @notice The apr should be increased by an amount proportional to the buffer period in this 
