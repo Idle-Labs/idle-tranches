@@ -218,6 +218,19 @@ contract TestIdleCDOEpochDepositQueue is Test {
     _requestDepositWithUser(user1, amount1);
     uint256 balUser1 = underlying.balanceOf(user1);
 
+    // request deposit with user2
+    uint256 amount2 = 10 * 1e6;
+    address user2 = makeAddr('user2');
+    _requestDepositWithUser(user2, amount2);
+
+    // trying to delete request while the epoch is running
+    vm.prank(user1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.deleteRequest(depositEpoch);
+
+    // stop epoch
+    _stopCurrentEpoch();
+
     // trying to delete a non existent request
     address badUser = makeAddr('badUser');
     uint256 balBadUser = underlying.balanceOf(badUser);
@@ -226,14 +239,6 @@ contract TestIdleCDOEpochDepositQueue is Test {
     queue.deleteRequest(depositEpoch);
     assertEq(underlying.balanceOf(badUser) - balBadUser, 0, 'badUser balance is wrong after badUser delete');
     assertEq(queue.pendingDeposits(), pendingDepositsPre, 'pending deposits is wrong after badUser delete');
-
-    // request deposit with user2
-    uint256 amount2 = 10 * 1e6;
-    address user2 = makeAddr('user2');
-    _requestDepositWithUser(user2, amount2);
-
-    // stop epoch
-    _stopCurrentEpoch();
 
     // delete request with user1
     vm.prank(user1);

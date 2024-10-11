@@ -86,8 +86,9 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
   /// @param _requestEpoch epoch of the deposit request
   function deleteRequest(uint256 _requestEpoch) external {
     // if the epoch price is already set, deposits were already processed so
-    // the deposit request can't be deleted
-    if (epochPrice[_requestEpoch] != 0) {
+    // the deposit request can't be deleted.
+    // if epoch is running revert, delete of deposits requests can be done only during buffer period
+    if (epochPrice[_requestEpoch] != 0 || IdleCDOEpochVariant(idleCDOEpoch).isEpochRunning()) {
       revert NotAllowed();
     }
 
