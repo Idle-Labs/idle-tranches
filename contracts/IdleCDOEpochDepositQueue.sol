@@ -28,12 +28,12 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
   address public underlying;
   /// @notice address of the tranche
   address public tranche;
-  /// @notice amount of pending deposits
-  uint256 public pendingDeposits;
   /// @notice mapping of deposits per user per epoch
   mapping(address => mapping (uint256 => uint256)) public userDepositsEpochs;
   /// @notice mapping of tranche price per epoch
   mapping(uint256 => uint256) public epochPrice;
+  /// @notice amount of pending deposits per epoch
+  mapping(uint256 => uint256) public epochPendingDeposits;
 
   /// @notice initialize the implementation contract to avoid malicious initialization
   constructor() {
@@ -79,7 +79,7 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     // updated user queued amount for the next epoch
     userDepositsEpochs[msg.sender][nextEpoch] += amount;
     // update pending deposits
-    pendingDeposits += amount;
+    epochPendingDeposits[nextEpoch] += amount;
   }
 
   /// @notice delete a deposit request
@@ -99,7 +99,7 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     // reset user deposit for the epoch
     userDepositsEpochs[msg.sender][_requestEpoch] = 0;
     // update pending deposits
-    pendingDeposits -= amount;
+    epochPendingDeposits[_requestEpoch] -= amount;
     // transfer underlyings back to the user
     IERC20Detailed(underlying).safeTransfer(msg.sender, amount);
   }
@@ -114,12 +114,14 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
       revert NotAllowed();
     }
 
-    uint256 _pending = pendingDeposits;
+    uint256 _epoch = _strategy.epochNumber();
+    uint256 _pending = epochPendingDeposits[_epoch];
 
     if (_pending == 0) {
       return;
     }
-    // deposit underlyings in the CDO contract
+
+    // deposit underlyings in the CDO contract, if the epoch is running it will revert
     uint256 _trancheMinted;
     if (tranche == _cdo.AATranche()) {
       _trancheMinted = _cdo.depositAA(_pending);
@@ -127,13 +129,17 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
       _trancheMinted = _cdo.depositBB(_pending);
     }
     // save current implied tranche price for this epoch based on underlyings deposited and tranche tokens minted
-    epochPrice[_strategy.epochNumber()] = _pending * ONE_TRANCHE / _trancheMinted;
-    pendingDeposits = 0;
+    epochPrice[_epoch] = _pending * ONE_TRANCHE / _trancheMinted;
+    epochPendingDeposits[_epoch] = 0;
   }
 
   /// @notice claim deposit request
   /// @param _epoch epoch of the deposit request
   function claimDepositRequest(uint256 _epoch) external {
+    // check if deposits were processed for the epoch
+    if (epochPendingDeposits[_epoch] != 0) {
+      revert NotAllowed();
+    }
     uint256 amount = userDepositsEpochs[msg.sender][_epoch];
     if (amount == 0) {
       return;

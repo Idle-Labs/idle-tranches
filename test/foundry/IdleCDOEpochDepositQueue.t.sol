@@ -97,20 +97,20 @@ contract TestIdleCDOEpochDepositQueue is Test {
 
     assertEq(underlying.balanceOf(address(this)), 0, 'underlying balance is wrong'); 
     assertEq(underlying.balanceOf(address(queue)), amount, 'underlying balance of queue contract is wrong'); 
-    assertEq(queue.pendingDeposits(), amount, 'pending deposits is wrong');
+    assertEq(queue.epochPendingDeposits(1), amount, 'pending deposits is wrong');
     assertEq(queue.userDepositsEpochs(address(this), strategy.epochNumber() + 1), amount, 'user deposits is wrong');
 
     // do another deposit
     deal(address(underlying), address(this), amount);
     queue.requestDeposit(amount);
     assertEq(queue.userDepositsEpochs(address(this), strategy.epochNumber() + 1), 2 * amount, 'user deposits is wrong after second deposit');
-    assertEq(queue.pendingDeposits(), 2 * amount, 'pending deposits is wrong after second deposit');
+    assertEq(queue.epochPendingDeposits(1), 2 * amount, 'pending deposits is wrong after second deposit');
 
     // do another deposit with different user
     address user1 = makeAddr('user1');
     _requestDepositWithUser(user1, amount);
     assertEq(queue.userDepositsEpochs(user1, strategy.epochNumber() + 1), amount, 'user deposits is wrong after user1 deposit');
-    assertEq(queue.pendingDeposits(), 3 * amount, 'pending deposits is wrong after user1 deposit');
+    assertEq(queue.epochPendingDeposits(1), 3 * amount, 'pending deposits is wrong after user1 deposit');
   }
 
   function testProcessDeposits() external {
@@ -140,7 +140,7 @@ contract TestIdleCDOEpochDepositQueue is Test {
 
     assertEq(underlying.balanceOf(address(queue)), 0, 'underlying balance of queue contract is wrong');
     assertEq(underlying.balanceOf(address(strategy)) - balStrategyPre, 10 * amount, 'underlying balance of cdoEpoch contract is wrong');
-    assertEq(queue.pendingDeposits(), 0, 'pending deposits is wrong');
+    assertEq(queue.epochPendingDeposits(1), 0, 'pending deposits is wrong');
 
     uint256 tranchePrice = cdoEpoch.virtualPrice(address(tranche));
     uint256 trancheTokensMinted = amount * 10 * ONE_TRANCHE / tranchePrice;
@@ -240,18 +240,18 @@ contract TestIdleCDOEpochDepositQueue is Test {
     // trying to delete a non existent request
     address badUser = makeAddr('badUser');
     uint256 balBadUser = underlying.balanceOf(badUser);
-    uint256 pendingDepositsPre = queue.pendingDeposits();
+    uint256 pendingDepositsPre = queue.epochPendingDeposits(1);
     vm.prank(badUser);
     queue.deleteRequest(depositEpoch);
     assertEq(underlying.balanceOf(badUser) - balBadUser, 0, 'badUser balance is wrong after badUser delete');
-    assertEq(queue.pendingDeposits(), pendingDepositsPre, 'pending deposits is wrong after badUser delete');
+    assertEq(queue.epochPendingDeposits(1), pendingDepositsPre, 'pending deposits is wrong after badUser delete');
 
     // delete request with user1
     vm.prank(user1);
     queue.deleteRequest(depositEpoch);
 
     assertEq(queue.userDepositsEpochs(user1, depositEpoch), 0, 'user1 userDepositsEpochs is wrong after delete');
-    assertEq(queue.pendingDeposits(), amount2, 'pending deposits is wrong after delete');
+    assertEq(queue.epochPendingDeposits(1), amount2, 'pending deposits is wrong after delete');
     assertEq(underlying.balanceOf(user1) - balUser1, amount1, 'user1 balance is wrong after delete');
 
     // process deposits
@@ -262,6 +262,76 @@ contract TestIdleCDOEpochDepositQueue is Test {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(user2);
     queue.deleteRequest(depositEpoch);
+  }
+
+  function testDeleteRequestForNonProcessedEpoch() public {
+    // request deposit with user1
+    uint256 depositEpochUser1 = strategy.epochNumber() + 1;
+    uint256 amount1 = 1e6; // 1USDC
+    address user1 = makeAddr('user1');
+    _requestDepositWithUser(user1, amount1);
+    uint256 balUser1 = underlying.balanceOf(user1);
+
+    _stopCurrentEpoch();
+    // epoch 1 buffer
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request deposit with user2
+    uint256 amount2 = 10 * 1e6;
+    address user2 = makeAddr('user2');
+    _requestDepositWithUser(user2, amount2);
+
+    _stopCurrentEpoch();
+    // epoch 2 buffer
+
+    vm.prank(manager);
+    queue.processDeposits();
+
+    assertEq(queue.epochPendingDeposits(1), amount1, 'pending deposits for epoch 1 is wrong after processDeposits');
+    assertEq(queue.epochPendingDeposits(2), 0, 'pending deposits for epoch 2 is wrong after processDeposits');
+
+    // delete request with user1 for epoch 1
+    vm.prank(user1);
+    queue.deleteRequest(depositEpochUser1);
+
+    assertEq(underlying.balanceOf(user1), balUser1 + amount1, 'user1 balance is wrong after delete');
+  }
+
+  function testClaimRequestForNonProcessedEpoch() public {
+    uint256 depositEpoch = strategy.epochNumber() + 1;
+    // request deposit with user1
+    uint256 amount1 = 1e6; // 1USDC
+    address user1 = makeAddr('user1');
+    _requestDepositWithUser(user1, amount1);
+
+    // request deposit with user2
+    uint256 amount2 = 10 * 1e6;
+    address user2 = makeAddr('user2');
+    _requestDepositWithUser(user2, amount2);
+
+    _stopCurrentEpoch();
+    // epoch 1 buffer
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    _stopCurrentEpoch();
+    // epoch 2 buffer
+
+    // claim request with user1 for epoch 1 before next process deposit (of epoch 2)
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(user1);
+    queue.claimDepositRequest(depositEpoch);
+
+    vm.prank(manager);
+    queue.processDeposits();
+
+    // claim request with user2 for epoch 1 after process deposit (of epoch 2)
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(user2);
+    queue.claimDepositRequest(depositEpoch);
   }
 
   function _requestDepositWithUser(address _user, uint256 amount) internal {
