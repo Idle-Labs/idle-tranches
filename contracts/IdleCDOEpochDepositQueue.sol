@@ -108,6 +108,12 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
   /// @dev will revert in IdleCDOEpochVariant if called when epoch running
   function processDeposits() external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    // only owner or strategy manager can call this
+    if (msg.sender != owner() && msg.sender != _strategy.manager()) {
+      revert NotAllowed();
+    }
+
     uint256 _pending = pendingDeposits;
 
     if (_pending == 0) {
@@ -121,7 +127,7 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
       _trancheMinted = _cdo.depositBB(_pending);
     }
     // save current implied tranche price for this epoch based on underlyings deposited and tranche tokens minted
-    epochPrice[IdleCreditVault(strategy).epochNumber()] = _pending * ONE_TRANCHE / _trancheMinted;
+    epochPrice[_strategy.epochNumber()] = _pending * ONE_TRANCHE / _trancheMinted;
     pendingDeposits = 0;
   }
 

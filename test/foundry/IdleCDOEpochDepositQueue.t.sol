@@ -128,6 +128,12 @@ contract TestIdleCDOEpochDepositQueue is Test {
     _stopCurrentEpoch();
 
     uint256 balStrategyPre = underlying.balanceOf(address(strategy));
+
+    // only owner or manager can call processDeposits
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(address(1));
+    queue.processDeposits();
+
     // process deposits
     vm.prank(manager);
     queue.processDeposits();
@@ -166,7 +172,7 @@ contract TestIdleCDOEpochDepositQueue is Test {
     uint256 epochNumber = strategy.epochNumber();
 
     // process deposits
-    vm.prank(manager);
+    vm.prank(queue.owner());
     queue.processDeposits();
 
     // claim deposit request with user0 who had no deposit requests
