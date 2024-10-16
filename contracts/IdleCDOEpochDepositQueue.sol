@@ -104,7 +104,7 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     IERC20Detailed(underlying).safeTransfer(msg.sender, amount);
   }
 
-  /// @notice process deposits during buffer period. Anyone can call this
+  /// @notice process deposits during buffer period. Only owner or strategy manager can call this
   /// @dev will revert in IdleCDOEpochVariant if called when epoch running
   function processDeposits() external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
