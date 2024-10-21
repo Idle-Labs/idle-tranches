@@ -589,3 +589,43 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       isAYSActive: deployToken.isAYSActive,
     });
 });
+
+/**
+ * @name deploy-queue
+ * task to deploy IdleCDOEpochDepositQueue for a credit vault
+ */
+task("deploy-queue", "Deploy IdleCDOEpochDepositQueue")
+  .addParam('cdo')
+  .addOptionalParam('owner')
+  .addOptionalParam('isaa')
+  .setAction(async (args) => {
+    // Run compile task
+    await run("compile");
+    // Check that cdo is passed
+    if (!args.cdo) {
+      console.log("🛑 cdo address must be defined");
+      return;
+    }
+
+    // Get signer
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+
+    console.log(`Deploying with ${addr}`);
+    console.log()
+
+    const params = [
+      args.cdo, 
+      args.owner || '0xE5Dab8208c1F4cce15883348B72086dBace3e64B', 
+      args.isaa || true
+    ];
+
+    console.log('Params for IdleCDOEpochDepositQueue', params);
+
+    // Deploy queue contract
+    const queue = await helpers.deployUpgradableContract(
+      'IdleCDOEpochDepositQueue',
+      params,
+      signer
+    );
+});

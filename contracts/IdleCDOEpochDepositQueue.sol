@@ -36,6 +36,7 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
   mapping(uint256 => uint256) public epochPendingDeposits;
 
   /// @notice initialize the implementation contract to avoid malicious initialization
+  /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
     idleCDOEpoch = address(1);
   }
