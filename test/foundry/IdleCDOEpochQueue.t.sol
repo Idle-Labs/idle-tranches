@@ -3,20 +3,20 @@ pragma solidity 0.8.10;
 import "forge-std/Test.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
-import {IdleCDOEpochDepositQueue} from "../../contracts/IdleCDOEpochDepositQueue.sol";
+import {IdleCDOEpochQueue} from "../../contracts/IdleCDOEpochQueue.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 
 error NotAllowed();
 error EpochNotRunning();
 
-contract TestIdleCDOEpochDepositQueue is Test {
+contract TestIdleCDOEpochQueue is Test {
   using stdStorage for StdStorage;
 
   uint256 public constant ONE_TRANCHE = 1e18;
   uint256 public constant ONE_TOKEN = 1e6; // vault uses USDC with 6 decimals
   IdleCDOEpochVariant public constant cdoEpoch = IdleCDOEpochVariant(0xf6223C567F21E33e859ED7A045773526E9E3c2D5);
-  IdleCDOEpochDepositQueue public queue;
+  IdleCDOEpochQueue public queue;
   IERC20Detailed public underlying;
   IERC20Detailed public tranche;
   IdleCreditVault public strategy;
@@ -35,7 +35,7 @@ contract TestIdleCDOEpochDepositQueue is Test {
     vm.etch(address(cdoEpoch), address(dummy).code);
     vm.etch(cdoEpoch.strategy(), address(dummyStrategy).code);
 
-    queue = new IdleCDOEpochDepositQueue();
+    queue = new IdleCDOEpochQueue();
     stdstore.target(address(queue)).sig(queue.idleCDOEpoch.selector).checked_write(address(0));
     queue.initialize(address(cdoEpoch), address(this), true);
     underlying = IERC20Detailed(cdoEpoch.token());

@@ -592,9 +592,9 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
 
 /**
  * @name deploy-queue
- * task to deploy IdleCDOEpochDepositQueue for a credit vault
+ * task to deploy IdleCDOEpochQueue for a credit vault
  */
-task("deploy-queue", "Deploy IdleCDOEpochDepositQueue")
+task("deploy-queue", "Deploy IdleCDOEpochQueue")
   .addParam('cdo')
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
@@ -620,11 +620,11 @@ task("deploy-queue", "Deploy IdleCDOEpochDepositQueue")
       args.isaa || true
     ];
 
-    console.log('Params for IdleCDOEpochDepositQueue', params);
+    console.log('Params for IdleCDOEpochQueue', params);
 
     // Deploy queue contract
     const queue = await helpers.deployUpgradableContract(
-      'IdleCDOEpochDepositQueue',
+      'IdleCDOEpochQueue',
       params,
       signer
     );

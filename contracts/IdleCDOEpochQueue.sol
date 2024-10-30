@@ -12,10 +12,10 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 error EpochNotRunning();
 error NotAllowed();
 
-/// @title IdleCDOEpochDepositQueue
+/// @title IdleCDOEpochQueue
 /// @dev Contract that collects deposits during an epoch to be processed in the next
 /// buffer period (ie between two epochs)
-contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice 1 tranche token = 1e18
