@@ -28,12 +28,22 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
   address public underlying;
   /// @notice address of the tranche
   address public tranche;
-  /// @notice mapping of deposits per user per epoch
+  /// @notice mapping of deposits (underlyings) per user per epoch
   mapping(address => mapping (uint256 => uint256)) public userDepositsEpochs;
   /// @notice mapping of tranche price per epoch
   mapping(uint256 => uint256) public epochPrice;
-  /// @notice amount of pending deposits per epoch
+  /// @notice amount of pending deposits (underlyings) per epoch
   mapping(uint256 => uint256) public epochPendingDeposits;
+  /// @notice mapping of withdraw requests (tranche tokens) per user per epoch
+  mapping(address => mapping (uint256 => uint256)) public userWithdrawalsEpochs;
+  /// @notice amount of pending withdrawals (tranche tokens) per epoch
+  mapping(uint256 => uint256) public epochPendingWithdrawals;
+  /// @notice amount of pending claims (underlyings) per epoch
+  mapping(uint256 => uint256) public epochPendingClaims;
+  /// @notice mapping of withdraw price per epoch
+  mapping(uint256 => uint256) public epochWithdrawPrice;
+  /// @notice flag to check if there are pending claims
+  bool public pendingClaims;
 
   /// @notice initialize the implementation contract to avoid malicious initialization
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -83,6 +93,22 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     epochPendingDeposits[nextEpoch] += amount;
   }
 
+  /// @notice request withdraw of tranche tokens
+  /// @param amount of tranche tokens to withdraw
+  function requestWithdraw(uint256 amount) external nonReentrant {
+    // check if the wallet is allowed to deposit (ie epoch is running and keyring KYC completed)
+    _checkAllowed(msg.sender);
+    // get tranche tokens from user
+    IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), amount);
+    // withdraw requests will be made in the next buffer period (ie next epoch)
+    uint256 nextEpoch = IdleCreditVault(strategy).epochNumber() + 1;
+    // updated user queued withdraw amount for the next epoch. Epoch number
+    // is considered the epoch when processWithdrawRequests will be called
+    userWithdrawalsEpochs[msg.sender][nextEpoch] += amount;
+    // update pending withdraw requests
+    epochPendingWithdrawals[nextEpoch] += amount;
+  }
+
   /// @notice delete a deposit request
   /// @param _requestEpoch epoch of the deposit request
   function deleteRequest(uint256 _requestEpoch) external {
@@ -103,6 +129,27 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     epochPendingDeposits[_requestEpoch] -= amount;
     // transfer underlyings back to the user
     IERC20Detailed(underlying).safeTransfer(msg.sender, amount);
+  }
+
+  /// @notice delete a withdraw request
+  /// @param _requestEpoch epoch of the withdraw request
+  function deleteWithdrawRequest(uint256 _requestEpoch) external {
+    // if the epoch withdraw price is already set, withdrawal requests were already processed so
+    // the deposit request can't be deleted. Withdraw requests can be deleted even if the epoch is running
+    if (epochWithdrawPrice[_requestEpoch] != 0) {
+      revert NotAllowed();
+    }
+
+    uint256 amount = userWithdrawalsEpochs[msg.sender][_requestEpoch];
+    if (amount == 0) {
+      return;
+    }
+    // reset user withdraw request for the epoch
+    userWithdrawalsEpochs[msg.sender][_requestEpoch] = 0;
+    // update pending withdraw requests
+    epochPendingWithdrawals[_requestEpoch] -= amount;
+    // transfer tranche tokens back to the user
+    IERC20Detailed(tranche).safeTransfer(msg.sender, amount);
   }
 
   /// @notice process deposits during buffer period. Only owner or strategy manager can call this
@@ -134,6 +181,71 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     epochPendingDeposits[_epoch] = 0;
   }
 
+  /// @notice process withdraw requests during buffer period. Only owner or strategy manager can call this
+  /// @dev will revert in IdleCDOEpochVariant if called when epoch running. Note that withdrawals are a 2-step 
+  /// process where first one request the withdrawl and then he claims the withdraw after an epoch is passed.
+  /// Withdrawals can be of 2 types, normal withdrawals (ie users wait for a full epoch) and instant withdrawals
+  /// where users wait for the instant delay period after an epoch is started (eg 3 days after epoch started)
+  function processWithdrawRequests() external {
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    uint256 _epoch = _strategy.epochNumber();
+    // only owner or strategy manager can call this
+    // we revert if the are claims that needs to be processed
+    if ((msg.sender != owner() && msg.sender != _strategy.manager()) || pendingClaims) {
+      revert NotAllowed();
+    }
+
+    uint256 _pending = epochPendingWithdrawals[_epoch];
+    if (_pending == 0) {
+      return;
+    }
+
+    // here we receive strategyTokens for the queue contract, strategyTokens are 1:1 with underlyings
+    // This call will set isEpochInstant to true in strategy if the epoch is an instant withdraw epoch
+    uint256 _underlyingsRequested = _cdo.requestWithdraw(_pending, tranche);
+    // save current implied tranche price for this epoch based on underlyings that will be received on claim
+    epochWithdrawPrice[_epoch] = _underlyingsRequested * ONE_TRANCHE / _pending;
+    // set pending withdraw requests to 0
+    epochPendingWithdrawals[_epoch] = 0;
+    // set pending claims to the amount of underlyings requested
+    // the epoch number used depends on the type of withdraw
+    // we use current epoch if withdraw is instant and next epoch if normal withdraw
+    epochPendingClaims[_epoch + (_strategy.isEpochInstant(_epoch) ? 0 : 1)] = _underlyingsRequested;
+    // set flag for pending claims to true
+    pendingClaims = true;
+  }
+
+  /// @notice process withdrawal claims. Claims can be done during the epoch for instant withdrawals
+  /// an only in the buffer or after one epoch for the normal withdrawals
+  /// @param _epoch epoch to claim (should be epoch of the withdraw request + 1 for normal withdraws)
+  function processWithdrawalClaims(uint256 _epoch) external {
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    // only owner or strategy manager can call this
+    if (msg.sender != owner() && msg.sender != _strategy.manager()) {
+      revert NotAllowed();
+    }
+
+    uint256 _pending = epochPendingClaims[_epoch];
+    if (_pending == 0) {
+      return;
+    }
+
+    // check if the epoch is an instant withdraw epoch.
+    // These calls will transfer underlyings to this contract and burn strategyTokens
+    if (_strategy.isEpochInstant(_epoch)) {
+      _cdo.claimInstantWithdrawRequest();
+    } else {
+      _cdo.claimWithdrawRequest();
+    }
+
+    // reset epoch pending claims
+    epochPendingClaims[_epoch] = 0;
+    // reset pending claims flag
+    pendingClaims = false;
+  }
+
   /// @notice claim deposit request
   /// @param _epoch epoch of the deposit request
   function claimDepositRequest(uint256 _epoch) external {
@@ -149,6 +261,25 @@ contract IdleCDOEpochDepositQueue is Initializable, OwnableUpgradeable, Reentran
     userDepositsEpochs[msg.sender][_epoch] = 0;
     // transfer tranche tokens to user based on the price of that epoch
     IERC20Detailed(tranche).safeTransfer(msg.sender, amount * ONE_TRANCHE / epochPrice[_epoch]);
+  }
+
+  /// @notice claim withdraw request
+  /// @param _epoch epoch when withdraw request were processed
+  function claimWithdrawRequest(uint256 _epoch) external {
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    // check if withdraw requests were processed and claimed for the epoch
+    if (epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch + (_strategy.isEpochInstant(_epoch) ? 0 : 1)] != 0) {
+      revert NotAllowed();
+    }
+    // amount is in tranche tokens
+    uint256 amount = userWithdrawalsEpochs[msg.sender][_epoch];
+    if (amount == 0) {
+      return;
+    }
+    // reset user withdraw request counter for the epoch
+    userWithdrawalsEpochs[msg.sender][_epoch] = 0;
+    // transfer underlyings to user based on the withdraw price of that epoch
+    IERC20Detailed(underlying).safeTransfer(msg.sender, amount * epochWithdrawPrice[_epoch] / ONE_TRANCHE);
   }
 
   /// @notice check if the wallet is allowed to deposit
