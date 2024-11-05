@@ -11,6 +11,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 
 error EpochNotRunning();
 error NotAllowed();
+error Is0();
 
 /// @title IdleCDOEpochQueue
 /// @dev Contract that collects deposits during an epoch to be processed in the next
@@ -205,7 +206,11 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // This call will set isEpochInstant to true in strategy if the epoch is an instant withdraw epoch
     uint256 _underlyingsRequested = _cdo.requestWithdraw(_pending, tranche);
     // save current implied tranche price for this epoch based on underlyings that will be received on claim
-    epochWithdrawPrice[_epoch] = _underlyingsRequested * ONE_TRANCHE / _pending;
+    uint256 _epochPrice = _underlyingsRequested * ONE_TRANCHE / _pending;
+    if (_epochPrice == 0) {
+      revert Is0();
+    }
+    epochWithdrawPrice[_epoch] = _epochPrice;
     // set pending withdraw requests to 0
     epochPendingWithdrawals[_epoch] = 0;
     // set pending claims to the amount of underlyings requested

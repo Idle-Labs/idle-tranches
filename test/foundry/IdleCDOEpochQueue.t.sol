@@ -9,6 +9,7 @@ import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 
 error NotAllowed();
 error EpochNotRunning();
+error Is0();
 
 contract TestIdleCDOEpochQueue is Test {
   using stdStorage for StdStorage;
@@ -821,6 +822,33 @@ contract TestIdleCDOEpochQueue is Test {
     queue.deleteWithdrawRequest(requestWithdrawEpoch);
     // user1 redeemed tranche tokens eq to the number requested
     assertEq(tranche.balanceOf(user1) - trancheBalPre, tranches1, 'user1 tranche balance is wrong after delete');
+  }
+
+  function testProcessWithdrawRequestsWith0Price() external {
+    // stop epoch #0
+    _stopCurrentEpoch();
+    // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
+
+    // deposit with user1
+    uint256 amount1 = 1e6; // 1 USDC
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amount1);
+
+    // start epoch #1
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request withdrawals with both users
+    _requestWithdrawWithUser(user1, 100);
+
+    // stopEpoch, deposits got some interest
+    _stopCurrentEpoch();
+    // we are now in epoch #2
+
+    // can't call process deposits with 0 price
+    vm.expectRevert(abi.encodeWithSelector(Is0.selector));
+    vm.prank(manager);
+    queue.processWithdrawRequests();
   }
 
   function _requestDepositWithUser(address _user, uint256 amount) internal {
