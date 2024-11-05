@@ -136,7 +136,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @param _requestEpoch epoch of the withdraw request
   function deleteWithdrawRequest(uint256 _requestEpoch) external {
     // if the epoch withdraw price is already set, withdrawal requests were already processed so
-    // the deposit request can't be deleted. Withdraw requests can be deleted even if the epoch is running
+    // the withdraw request can't be deleted. Withdraw requests can be deleted even if the epoch is running
     if (epochWithdrawPrice[_requestEpoch] != 0) {
       revert NotAllowed();
     }
