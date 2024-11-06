@@ -60,8 +60,6 @@ contract IdleCreditVault is
   mapping (address => uint256) public lastWithdrawRequest;
   /// @notice current epoch number
   uint256 public epochNumber;
-  /// @notice flag for each epoch to know if it's an instant withdraw epoch
-  mapping (uint256 => bool) public isEpochInstant;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -207,12 +205,6 @@ contract IdleCreditVault is
     instantWithdrawsRequests[_user] += _amount;
     // increase the total instant withdraw requests
     pendingInstantWithdraws += _amount;
-    // set the epoch as instant withdraw epoch. We set it only when a request is made
-    // because if no requests are made we don't need to set it
-    uint256 _epochNumber = epochNumber;
-    if (!isEpochInstant[_epochNumber]) {
-      isEpochInstant[_epochNumber] = true;
-    }
   }
 
   /// @notice claim the instant withdraw request

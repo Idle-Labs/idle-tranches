@@ -445,8 +445,7 @@ contract TestIdleCDOEpochQueue is Test {
     // This credit vault has apr set to 0 so on withdraw requests the interest is not accrued during the waiting epoch. Deposits however got some interest at stopEpoch
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(queue)), pendingClaims, 'strategy token balance of queue contract is wrong');
     assertApproxEqAbs(queue.epochWithdrawPrice(2), tranchePrice, 1, 'pending withdraw is wrong');
-    // epoch number for claims is #3 as claims will be available in current epoch + 1 given that wait period is one epoch for normal withdraws
-    assertEq(queue.epochPendingClaims(3), pendingClaims, 'pending claims is wrong');
+    assertEq(queue.epochPendingClaims(2), pendingClaims, 'pending claims is wrong');
     assertEq(queue.epochPendingWithdrawals(2), 0, 'pending withdraw is wrong');
     assertEq(queue.pendingClaims(), true, 'pendingClaims is wrong');
 
@@ -488,7 +487,7 @@ contract TestIdleCDOEpochQueue is Test {
     // process withdraw requests, claims will be available at epoch #3
     vm.prank(manager);
     queue.processWithdrawRequests();
-    uint256 expectedUnderlyings = queue.epochPendingClaims(epoch + 1);
+    uint256 expectedUnderlyings = queue.epochPendingClaims(epoch);
 
     // start epoch #2
     vm.prank(manager);
@@ -500,16 +499,16 @@ contract TestIdleCDOEpochQueue is Test {
     // only owner or manager can call processWithdrawalClaims
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(address(1));
-    queue.processWithdrawalClaims(epoch + 1);
+    queue.processWithdrawalClaims(epoch);
 
     // claim withdraw requests
     uint256 balPre = underlying.balanceOf(address(queue));
-    queue.processWithdrawalClaims(epoch + 1);
+    queue.processWithdrawalClaims(epoch);
 
     // strategy tokens are burned for underlyings
     assertEq(strategy.balanceOf(address(queue)), 0, 'strategy token balance of queue contract is wrong');
     assertEq(queue.pendingClaims(), false, 'pendingClaims is wrong');
-    assertEq(queue.epochPendingClaims(epoch + 1), 0, 'epochPendingClaims is wrong');
+    assertEq(queue.epochPendingClaims(epoch), 0, 'epochPendingClaims is wrong');
     assertEq(underlying.balanceOf(address(queue)) - balPre, expectedUnderlyings, 'underlying balance of queue contract is wrong');
   }
 
@@ -575,6 +574,177 @@ contract TestIdleCDOEpochQueue is Test {
     assertEq(underlying.balanceOf(address(queue)) - balPre, expectedUnderlyings, 'underlying balance of queue contract is wrong');
   }
 
+  function testProcessWithdrawalClaimsMixedInstantAndNormalEpoch() external {
+    // stop epoch #0 and set apr for next epoch to 10%
+    _stopCurrentEpochWithApr(10e18);
+    // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
+
+    // enable instant withdrawals
+    uint256 instantDelay = 100;
+    vm.prank(manager);
+    // 100s of delay after ne epoch started to make instant withdrawals, min apr diff 1%
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 1e18, false);
+
+    // deposit with user1
+    uint256 amount1 = 1e6; // 1 USDC
+    address user1 = makeAddr('user1');
+    uint256 tranches1 = _depositWithUser(user1, amount1);
+
+    // deposit with user2
+    uint256 amount2 = 100e6; // 100 USDC
+    address user2 = makeAddr('user2');
+    uint256 tranches2 = _depositWithUser(user2, amount2);
+
+    // start epoch
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request withdrawals with user1
+    _requestWithdrawWithUser(user1, tranches1);
+
+    // stopEpoch with same apr so to have normal withdraws
+    _stopCurrentEpochWithApr(10e18);
+    // we are now in epoch #2 (epoch starts at the beginning of the buffer period)
+
+    uint256 epoch = strategy.epochNumber();
+
+    // process withdraw requests, claims will be available at epoch #4
+    vm.prank(manager);
+    queue.processWithdrawRequests();
+
+    // start epoch
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    // stopEpoch with lower apr so to trigger instant withdraws
+    _stopCurrentEpochWithApr(1e18);
+    // we are now in epoch #3, normal claims are available
+
+    // user2 calls requestWithdraw directly in the cdoEpoch
+    // before processWithdrawalClaims is called
+    vm.prank(user2);
+    cdoEpoch.requestWithdraw(tranches2, address(tranche));
+
+    uint256 expectedUnderlyings = queue.epochPendingClaims(epoch);
+    uint256 balPre = underlying.balanceOf(address(queue));
+    // process claims for the previous epoch
+    queue.processWithdrawalClaims(epoch);
+    assertEq(underlying.balanceOf(address(queue)) - balPre, expectedUnderlyings, 'underlying balance of queue contract is wrong');
+  }
+
+  function testProcessWithdrawalClaimsWithProcessRequestsInSameBuffer() external {
+    // stop epoch #0 and set apr for next epoch to 10%
+    _stopCurrentEpochWithApr(10e18);
+    // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
+
+    // enable instant withdrawals
+    uint256 instantDelay = 100;
+    vm.prank(manager);
+    // 100s of delay after ne epoch started to make instant withdrawals, min apr diff 1%
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 1e18, false);
+
+    // deposit with user1
+    uint256 amount1 = 1e6; // 1 USDC
+    address user1 = makeAddr('user1');
+    uint256 tranches1 = _depositWithUser(user1, amount1);
+
+    // deposit with user2
+    uint256 amount2 = 100e6; // 100 USDC
+    address user2 = makeAddr('user2');
+    uint256 tranches2 = _depositWithUser(user2, amount2);
+
+    // start epoch
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request withdrawals with user1
+    _requestWithdrawWithUser(user1, tranches1);
+
+    // stopEpoch with same apr so to have normal withdraws
+    _stopCurrentEpochWithApr(10e18);
+    // we are now in epoch #2 (epoch starts at the beginning of the buffer period)
+
+    uint256 epoch = strategy.epochNumber();
+
+    // process withdraw requests, claims will be available at epoch #4
+    vm.prank(manager);
+    queue.processWithdrawRequests();
+
+    // start epoch
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request withdrawals with user2
+    _requestWithdrawWithUser(user2, tranches2);
+
+    // stopEpoch with lower apr so to trigger instant withdraws
+    _stopCurrentEpochWithApr(1e18);
+    // we are now in epoch #3, normal claims are available
+
+    // process claims for the previous epoch
+    queue.processWithdrawalClaims(epoch);
+    // epochPendingClaims is set to 0
+    assertEq(queue.epochPendingClaims(epoch), 0, 'pending claims is wrong');
+
+    // process withdraw requests for the instant withdraws
+    queue.processWithdrawRequests();
+    // assertEq(queue.epochPendingClaims(epoch + 1), 0, 'pending claims is wrong');
+
+    // claim with user1
+    uint256 expectedUnderlyings = tranches1 * queue.epochWithdrawPrice(epoch) / ONE_TRANCHE;
+    uint256 balPre = underlying.balanceOf(address(user1));
+    vm.prank(user1);
+    queue.claimWithdrawRequest(epoch);
+    assertEq(underlying.balanceOf(user1) - balPre, expectedUnderlyings, 'user1 balance is wrong after claim');
+  }
+
+  function testProcessWithdrawWhenInstantAreDisabled() external {
+    // stop epoch #0 and set apr for next epoch to 10%
+    _stopCurrentEpochWithApr(10e18);
+    // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
+
+    // enable instant withdrawals
+    uint256 instantDelay = 100;
+    vm.prank(manager);
+    // 100s of delay after ne epoch started to make instant withdrawals, min apr diff 1%
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 1e18, false);
+
+    // deposit with user1
+    uint256 amount1 = 1e6; // 1 USDC
+    address user1 = makeAddr('user1');
+    uint256 tranches1 = _depositWithUser(user1, amount1);
+
+    // deposit with user2
+    uint256 amount2 = 100e6; // 100 USDC
+    address user2 = makeAddr('user2');
+    uint256 tranches2 = _depositWithUser(user2, amount2);
+
+    // start epoch
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    // request withdrawals with user2
+    _requestWithdrawWithUser(user2, tranches2);
+
+    _stopCurrentEpochWithApr(1e18);
+    // we are now in epoch #2, instant withdrawals are enabled
+
+    uint256 _epoch = strategy.epochNumber();
+
+    // user1 requests instant withdraw directly in cdoEpoch
+    vm.prank(user1);
+    cdoEpoch.requestWithdraw(tranches1, address(tranche));
+
+    // instant withdrawals are disabled
+    vm.prank(manager);
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 10e18, true);
+
+    // process withdraw requests
+    queue.processWithdrawRequests();
+
+    // epochPendingClaims should be set for next epoch as now the available withdraws are only the normal ones
+    assertGt(queue.epochPendingClaims(_epoch), 0, 'pending claims for epoch + 1 is wrong');
+  }
+
   function testClaimWithdrawRequest() external {
     // stop epoch #0
     _stopCurrentEpoch();
@@ -626,7 +796,7 @@ contract TestIdleCDOEpochQueue is Test {
     queue.claimWithdrawRequest(epoch);
 
     // claim withdraw requests
-    queue.processWithdrawalClaims(epoch + 1);
+    queue.processWithdrawalClaims(epoch);
 
     // check that user1 can claim right away for epoch #2 withdraw request
     uint256 underlyingsExpected1 = tranches1 * queue.epochWithdrawPrice(epoch) / ONE_TRANCHE;

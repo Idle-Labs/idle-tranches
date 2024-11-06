@@ -43,6 +43,8 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   mapping(uint256 => uint256) public epochPendingClaims;
   /// @notice mapping of withdraw price per epoch
   mapping(uint256 => uint256) public epochWithdrawPrice;
+  /// @notice mapping of epoch to flag if instant withdrawals are enabled
+  mapping(uint256 => bool) public isEpochInstant;
   /// @notice flag to check if there are pending claims
   bool public pendingClaims;
 
@@ -202,9 +204,12 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       return;
     }
 
+    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
     // here we receive strategyTokens for the queue contract, strategyTokens are 1:1 with underlyings
     // This call will set isEpochInstant to true in strategy if the epoch is an instant withdraw epoch
     uint256 _underlyingsRequested = _cdo.requestWithdraw(_pending, tranche);
+    // save if the epoch is an instant withdraw epoch by comparing value of pendingWithdraws which gets updated only for instant withdraws
+    isEpochInstant[_epoch] = _strategy.pendingWithdraws() == _pendingWithdraws;
     // save current implied tranche price for this epoch based on underlyings that will be received on claim
     uint256 _epochPrice = _underlyingsRequested * ONE_TRANCHE / _pending;
     if (_epochPrice == 0) {
@@ -214,21 +219,18 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // set pending withdraw requests to 0
     epochPendingWithdrawals[_epoch] = 0;
     // set pending claims to the amount of underlyings requested
-    // the epoch number used depends on the type of withdraw
-    // we use current epoch if withdraw is instant and next epoch if normal withdraw
-    epochPendingClaims[_epoch + (_strategy.isEpochInstant(_epoch) ? 0 : 1)] = _underlyingsRequested;
+    epochPendingClaims[_epoch] = _underlyingsRequested;
     // set flag for pending claims to true
     pendingClaims = true;
   }
 
   /// @notice process withdrawal claims. Claims can be done during the epoch for instant withdrawals
   /// an only in the buffer or after one epoch for the normal withdrawals
-  /// @param _epoch epoch to claim (should be epoch of the withdraw request + 1 for normal withdraws)
+  /// @param _epoch epoch to claim, should be the epoch in which processWithdrawRequests is called
   function processWithdrawalClaims(uint256 _epoch) external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
     // only owner or strategy manager can call this
-    if (msg.sender != owner() && msg.sender != _strategy.manager()) {
+    if (msg.sender != owner() && msg.sender != IdleCreditVault(strategy).manager()) {
       revert NotAllowed();
     }
 
@@ -239,7 +241,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
 
     // check if the epoch is an instant withdraw epoch.
     // These calls will transfer underlyings to this contract and burn strategyTokens
-    if (_strategy.isEpochInstant(_epoch)) {
+    if (isEpochInstant[_epoch]) {
       _cdo.claimInstantWithdrawRequest();
     } else {
       _cdo.claimWithdrawRequest();
@@ -271,9 +273,8 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @notice claim withdraw request
   /// @param _epoch epoch when withdraw request were processed
   function claimWithdrawRequest(uint256 _epoch) external {
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
     // check if withdraw requests were processed and claimed for the epoch
-    if (epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch + (_strategy.isEpochInstant(_epoch) ? 0 : 1)] != 0) {
+    if (epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch] != 0) {
       revert NotAllowed();
     }
     // amount is in tranche tokens
