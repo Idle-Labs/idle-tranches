@@ -89,9 +89,12 @@ contract IdleCreditVault is
     manager = _manager;
     lastApr = _apr;
 
+    // name will be like: Idle Credit Vault Borrower USDC
+    // symbol will be like: BorrowerUSDC
+    string memory _symbol = IERC20Detailed(token).symbol();
     ERC20Upgradeable.__ERC20_init(
-      string(abi.encodePacked("Idle Credit Vault ", borrowerName)),
-      string(abi.encodePacked("idle_", borrowerName))
+      _concat(_concat(_concat(string("Idle Credit Vault "), borrowerName), " "), _symbol),
+      _concat(borrowerName, _symbol)
     );
     //------//-------//
 
@@ -299,6 +302,14 @@ contract IdleCreditVault is
     if (msg.sender != idleCDO) {
       revert NotAllowed();
     }
+  }
+
+  /// @notice concat 2 strings in a single one
+  /// @param a first string
+  /// @param b second string
+  /// @return new string with a and b concatenated
+  function _concat(string memory a, string memory b) internal pure returns (string memory) {
+    return string(abi.encodePacked(a, b));
   }
 
   /// @notice Not used as redeems happens only via requestWithdraw and requestInstantWithdraw
