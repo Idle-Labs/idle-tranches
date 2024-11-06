@@ -1124,6 +1124,20 @@ const optimismCDOs = {
     AATranche: '0x3353348Fa9526Bf76569B93d04d731cb7B46B343',
     BBTranche: '0xa9976626918b8D788E8be8b83F7584479Bf1F0e9'
   },
+  creditfalcontestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x58BA1463fB0a781571079859D6fcdbc00b50cD55',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0x34f54d3Dd46Fd9bef92B54c3CDe526c54F62452d',
+    proxyAdmin: optimismContracts.proxyAdmin,
+    strategy: '0x58BA1463fB0a781571079859D6fcdbc00b50cD55',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x5e8cd1a018DB46f7FA47925C22E8e3325EaC1923',
+    BBTranche: '0xE09736A41898e63A2F32cE100878f260d066b868',
+    queue: '0x07EE2F1272914e869D0E47E08b5a10007b8FdF31'
+  },
 };
 
 const arbitrumCDOs = {
@@ -2572,6 +2586,41 @@ exports.deployTokensOptimism = {
     keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: optimismCDOs.credittestsamusdc.cdoAddr
+  },
+  creditfalcontestusdc: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0x1fb0f3602F52e2420aCff5CF04DBfDE96378Df58', // manager
+      '0x20322eF8857ebeF4fAf2bF4c4A37515E3ae3a745', // borrower
+      'FxTest', // borrower name
+      15e18.toString(), // intialApr
+    ],
+    // cdo: optimismCDOs.creditfalcontestusdc,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '86400', // 1 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params default values
+    instantWithdrawDelay: '43200', // 12 hours
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: addr0,
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // #########
+    queue: true,
+    proxyCdoAddress: ''
   },
 };
 

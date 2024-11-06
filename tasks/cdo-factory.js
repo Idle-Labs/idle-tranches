@@ -475,6 +475,9 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
+      if (deployToken.queue) {
+        await hre.run("deploy-queue", { cdo: idleCDOAddress, owner: networkContracts.treasuryMultisig, isaa: 'true' });
+      }
     }
 
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
