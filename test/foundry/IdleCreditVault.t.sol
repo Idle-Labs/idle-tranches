@@ -2058,7 +2058,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _vault.stopEpochWithDuration(initialProvidedApr, 0, 3 days);
     vm.stopPrank();
 
-    // check some params done in stopEpoch to see if called
+    // check some params done in stopEpoch to see if called properly
+    assertEq(IdleCreditVault(address(strategy)).getApr(), _scaleAprWithBuffer(initialProvidedApr), 'apr is wrong');
     assertEq(IdleCreditVault(address(strategy)).epochNumber(), 1, 'epochNumber is wrong');
     assertEq(_vault.isEpochRunning(), false, 'isEpochRunning is wrong');
     assertEq(_vault.expectedEpochInterest(), 0, 'expectedEpochInterest is wrong');

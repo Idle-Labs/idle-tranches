@@ -88,8 +88,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     disableInstantWithdraw = true;
 
     // scale the apr to include the buffer period
-    IdleCreditVault _strategy = IdleCreditVault(strategy); 
-    _strategy.setApr(_scaleAprWithBuffer(_strategy.getApr()));
+    _setScaledApr(IdleCreditVault(strategy).getApr());
   }
 
   /// @notice Check if msg sender is owner or manager
@@ -296,7 +295,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       // save last apr
       lastEpochApr = _strategy.getApr();
       // set apr for next epoch
-      _strategy.setApr(_scaleAprWithBuffer(_newApr));
+      _setScaledApr(_newApr);
 
       // stop epoch
       isEpochRunning = false;
@@ -339,6 +338,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     stopEpoch(_newApr, _interest);
     // buffer period is not changed
     setEpochParams(_duration, bufferPeriod);
+
+    // scale the apr with the new durantion and buffer
+    _setScaledApr(_newApr);
   }
 
   /// @notice The apr should be increased by an amount proportional to the buffer period in this 
@@ -348,6 +350,12 @@ contract IdleCDOEpochVariant is IdleCDO {
   function _scaleAprWithBuffer(uint256 _apr) internal view returns (uint256) {
     uint256 _duration = epochDuration;
     return _duration == 0 ? _apr : _apr * (_duration + bufferPeriod) / _duration;
+  }
+
+  /// @notice Set the scaled apr for the next epoch
+  /// @param _newApr New apr to set for the next epoch
+  function _setScaledApr(uint256 _newApr) internal {
+    IdleCreditVault(strategy).setApr(_scaleAprWithBuffer(_newApr));
   }
 
   /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
