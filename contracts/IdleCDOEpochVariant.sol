@@ -425,7 +425,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Prevent deposits and redeems for all classes of tranches
   function _emergencyShutdown(bool) internal override {
     // prevent deposits
-    _pause();
+    if (!paused()) {
+      _pause();
+    }
     // prevent withdraws requests
     allowAAWithdrawRequest = false;
     allowBBWithdrawRequest = false;
@@ -443,7 +445,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert NotAllowed();
     }
     // restore deposits
-    _unpause();
+    if (paused()) {
+      _unpause();
+    }
     // restore withdraws
     allowAAWithdrawRequest = true;
     allowBBWithdrawRequest = true;
