@@ -72,28 +72,22 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
       // tranches
       // lido
       { contractAddress: '0x34dCd573C5dE4672C8248cd12A99f875Ca112Ad8', contractType: 1 },
-      // **** stMATIC
+      // stMATIC
       { contractAddress: '0xF87ec7e1Ee467d7d78862089B92dd40497cBa5B8', contractType: 1 },
-      // cpPOR_USDC
-      { contractAddress: '0x1329E8DB9Ed7a44726572D44729427F132Fa290D', contractType: 1 },
-      // cpPOR_DAI
-      { contractAddress: '0x5dcA0B3Ed7594A6613c1A2acd367d56E1f74F92D', contractType: 1 },
-      // cpfasusdc
-      { contractAddress: '0xE7C6A4525492395d65e736C3593aC933F33ee46e', contractType: 1 },
       // instasteth
       { contractAddress: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37', contractType: 1 },
       // mmusdcsteakusdc
       { contractAddress: '0x87E53bE99975DA318056af5c4933469a6B513768', contractType: 1 },
-      // mmwethre7weth
-      { contractAddress: '0xA8d747Ef758469e05CF505D708b2514a1aB9Cc08', contractType: 1 },
-      // mmwethre7wethfarm
-      { contractAddress: '0xD071EA5D2575E155E4e9c2234968D1E11B8a920E', contractType: 1 },
       // ethenasusde
       { contractAddress: '0x1EB1b47D0d8BCD9D761f52D26FCD90bBa225344C', contractType: 1 },
       // gearboxweth
       { contractAddress: '0xbc48967C34d129a2ef25DD4dc693Cc7364d02eb9', contractType: 1 },
       // gearboxusdc
       { contractAddress: '0xdd4D030A4337CE492B55bc5169F6A9568242C0Bc', contractType: 1 },
+
+      // credit vaults
+      // fasanara usdc 
+      { contractAddress: '0xf6223C567F21E33e859ED7A045773526E9E3c2D5', contractType: 1 },
 
       // DEPRECATED BY
       // { contractAddress: '0xC8E6CA6E96a326dC448307A5fDE90a0b21fd7f80', contractType: 0 },
@@ -119,6 +113,16 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
       // { contractAddress: '0x9e0c5ee5e4B187Cf18B23745FCF2b6aE66a9B52f', contractType: 1 },
       // mmwethbbweth
       // { contractAddress: '0x260D1E0CB6CC9E34Ea18CE39bAB879d450Cdd706', contractType: 1 },
+      // // cpPOR_USDC
+      // { contractAddress: '0x1329E8DB9Ed7a44726572D44729427F132Fa290D', contractType: 1 },
+      // // cpPOR_DAI
+      // { contractAddress: '0x5dcA0B3Ed7594A6613c1A2acd367d56E1f74F92D', contractType: 1 },
+      // // cpfasusdc
+      // { contractAddress: '0xE7C6A4525492395d65e736C3593aC933F33ee46e', contractType: 1 },
+      // // mmwethre7weth
+      // { contractAddress: '0xA8d747Ef758469e05CF505D708b2514a1aB9Cc08', contractType: 1 },
+      // // mmwethre7wethfarm
+      // { contractAddress: '0xD071EA5D2575E155E4e9c2234968D1E11B8a920E', contractType: 1 },
     ]);
     await tx.wait();
     console.log('Hypernative setup done');
@@ -631,4 +635,69 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       params,
       signer
     );
+});
+
+/**
+ * @name deploy-proxy-admin
+ * task to deploy ProxyAdmin
+ */
+task("deploy-proxy-admin", "Deploy ProxyAdmin")
+  .addOptionalParam('owner')
+  .setAction(async (args) => {
+    // Run compile task
+    await run("compile");
+
+    // Get signer
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+
+    console.log(`Deploying ProxyAdmin with ${addr}`);
+    console.log()
+
+    const proxyAdmin = await helpers.deployContract('ProxyAdmin', [], signer);
+
+    if (args.owner) {
+      console.log(`Transferring ownership to ${args.owner}`);
+      await proxyAdmin.transferOwnership(args.owner);
+    }
+});
+
+/**
+ * @name deploy-timelock
+ * task to deploy Timelock
+ */
+task("deploy-timelock", "Deploy Timelock")
+  .addOptionalParam('delay')
+  .setAction(async (args) => {
+    // Run compile task
+    await run("compile");
+
+    // Get signer
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+    const networkContracts = getNetworkContracts(hre);
+    const delay = args.delay;
+
+    if (!delay) {
+      console.log("🛑 delay must be specified");
+      return;
+    }
+
+    console.log(`Deploying Timelock (delay ${delay}s) with ${addr}`);
+    console.log()
+    
+    const deployer = networkContracts.deployer;
+    const tlMultisig = networkContracts.treasuryMultisig;
+    const biafAddr = '0xeA173648F959790baea225cE3E75dF8A53a6BDE5';
+    console.log(`Treasury multisig: ${tlMultisig}`);
+
+    const proposers = [deployer, tlMultisig];
+    const executors = [deployer, tlMultisig, biafAddr];
+    const owner = tlMultisig;
+    console.log('Proposers: ', proposers);
+    console.log('Executors: ', executors);
+    console.log('Owner: ', owner);
+
+    const params = [delay, proposers, executors, owner];
+    await helpers.deployContract('Timelock', params, signer);
 });

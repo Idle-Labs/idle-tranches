@@ -87,6 +87,17 @@ task("upgrade-cdo", "Upgrade IdleCDO instance")
     console.log(`IdleCDO upgraded`);
   });
 
+task("gen-calldata", 'Generate bytes calldata')
+  .addParam('contract')
+  .addParam('address')
+  .addParam('method')
+  .addParam('params')
+  .setAction(async (args) => {
+    const contract = await ethers.getContractAt(args.contract, args.address);
+    const calldata = contract.interface.encodeFunctionData(args.method, [args.params]);
+    console.log('calldata:', calldata);
+  });
+
 /**
  * @name upgrade-cdo-multisig
  */
@@ -118,6 +129,36 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
   });
 
 /**
+ * @name upgrade-cdo-multisig-timelock
+ */
+task("upgrade-cdo-multisig-timelock", "Upgrade IdleCDO instance with multisig timelock module")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
+    const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+
+    let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
+    if (isOptimism) {
+      contractName = 'IdleCDOOptimism';
+    } else if (isArbitrum) {
+      contractName = 'IdleCDOArbitrum';
+    }
+    if (deployToken.cdoVariant) {
+      contractName = deployToken.cdoVariant;
+    }
+    await run("upgrade-with-multisig-timelock", {
+      cdoname: args.cdoname,
+      contractName,
+      contractKey: 'cdoAddr',
+      // initMethod: '_init',
+      // initParams: []
+    });
+  });
+
+/**
  * @name upgrade-strategy
  */
 task("upgrade-strategy", "Upgrade IdleCDO strategy")
@@ -127,6 +168,22 @@ task("upgrade-strategy", "Upgrade IdleCDO strategy")
     const deployToken = networkTokens[args.cdoname];
     
     await run("upgrade-with-multisig", {
+      cdoname: args.cdoname,
+      contractName: deployToken.strategyName,
+      contractKey: 'strategy' // check eg CDOs.idleDAI.*
+    });
+  });
+
+/**
+ * @name upgrade-strategy-timelock
+ */
+task("upgrade-strategy-timelock", "Upgrade IdleCDO strategy")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    
+    await run("upgrade-with-multisig-timelock", {
       cdoname: args.cdoname,
       contractName: deployToken.strategyName,
       contractKey: 'strategy' // check eg CDOs.idleDAI.*
@@ -455,7 +512,7 @@ task("fetch-morpho-rewards")
 /**
  * @name upgrade-with-multisig
  */
-subtask("upgrade-with-multisig", "Get signer")
+subtask("upgrade-with-multisig", "Upgrade contract with multisig")
   .addParam('cdoname')
   .addParam('contractName')
   .addParam('contractKey')
@@ -508,6 +565,97 @@ subtask("upgrade-with-multisig", "Get signer")
     }
 
     console.log(`${args.contractKey} (contract: ${contractName}) Upgraded, new impl ${newImpl}`);
+  });
+
+/**
+ * @name upgrade-with-multisig-timelock
+ */
+subtask("upgrade-with-multisig-timelock", "Upgrade contract with multisig timelock module")
+  .addParam('cdoname')
+  .addParam('contractName')
+  .addParam('contractKey')
+  .addOptionalParam('initMethod')
+  .addOptionalParam('initParams')
+  .setAction(async (args) => {
+    await run("compile");
+    const networkTokens = getDeployTokens(hre);
+    const networkContracts = getNetworkContracts(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const contractName = args.contractName;
+
+    const contractAddress = deployToken.cdo[args.contractKey];
+    console.log(`To upgrade: ${contractName} @ ${contractAddress}`)
+    console.log('deployToken', deployToken)
+
+    if (!contractAddress || !contractName) {
+      console.log(`contractAddress and contractName must be defined`);
+      return;
+    }
+
+    await helpers.prompt("continue? [y/n]", true);
+    let signer = await run('get-signer-or-fake');
+    // deploy implementation with any signer
+    let newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+    // to checksum address
+    newImpl = ethers.utils.getAddress(newImpl);
+    const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+    if (isPolygonZK) {
+      console.log('PolygonZK: continue with multisig UI');
+      return;
+    }
+
+    signer = await run('get-multisig-or-fake');
+
+    // we need to get the timelock and proxyWithTimelock address or exit
+    if (!networkContracts.timelock || !networkContracts.proxyAdminWithTimelock) {
+      console.log('timelock or proxyAdminWithTimelock not defined');
+      return;
+    }
+    
+    let timelock = await ethers.getContractAt("Timelock", networkContracts.timelock);
+    timelock = timelock.connect(signer);
+    console.log('Timelock: ', timelock.address);
+
+    let proxyAdminWithTimelock = await ethers.getContractAt("IProxyAdmin", deployToken.cdo.proxyAdmin);
+    proxyAdminWithTimelock = proxyAdminWithTimelock.connect(signer);
+    console.log('ProxyAdmin with timelock: ', proxyAdminWithTimelock.address);
+    
+    if (!newImpl) {
+      console.log(`New impl address is null`);
+      return;
+    }
+
+    console.log(`Upgrading ${contractName} (addr: ${contractAddress}) with new impl ${newImpl}`);
+    const bytes0 = ethers.constants.HashZero;
+
+    if (args.initMethod) {
+      let contract = await ethers.getContractAt(contractName, contractAddress);
+      const initMethodCall = contract.interface.encodeFunctionData(args.initMethod, args.initParams || []);
+
+      await timelock.schedule(
+        proxyAdminWithTimelock.address, // to
+        0, // value
+        proxyAdminWithTimelock.interface.encodeFunctionData(
+          'upgradeAndCall', [contractAddress, newImpl, initMethodCall]
+        ), // data
+        bytes0, // predecessor (the id of a prev scehduled operation if dependent)
+        bytes0, // salt
+        await timelock.getMinDelay() // delay
+      );
+    } else {
+      await timelock.schedule(
+        proxyAdminWithTimelock.address,
+        0,
+        proxyAdminWithTimelock.interface.encodeFunctionData(
+          'upgrade', [contractAddress, newImpl]
+        ),
+        bytes0,
+        bytes0,
+        await timelock.getMinDelay()
+      );
+    }
+
+    console.log(`${args.contractKey} (contract: ${contractName}) Upgrade queued, new impl ${newImpl}`);
   });
 
 /**

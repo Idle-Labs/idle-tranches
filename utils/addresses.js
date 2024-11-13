@@ -220,6 +220,8 @@ const optimismContracts = {
   treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
   proxyAdmin: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  proxyAdminWithTimelock: '0x73B4F354fD8d37fDB7CF13390D366E959E1E2BDf',
+  timelock: '0xa3a3741c48298e21EEbE5A59bEAF6f89DC0E0c4c',
   // This is an instance of HypernativeBatchPauser
   pauserMultisig: '0x290C4dC2402CD77643aF42Ba926A15Aba4d3508b',
   // This is generated in hypernative dashboard
@@ -1084,19 +1086,19 @@ const optimismCDOs = {
     AATranche: '0x834cB085Ffdce6256C2aEe4a63Bc878870Ff04d',
     BBTranche: '0x9837cC130FB339FAB85Dc09E9de6343b3324246F'
   },
-  credittestusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
-    underlying: optimismContracts.USDC,
-    cdoAddr: '0x0581f1F01E05b77612Feaf529da3E048E1424A7E',
-    proxyAdmin: optimismContracts.proxyAdmin,
-    strategy: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
-    BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
-  },
+  // credittestusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
+  //   underlying: optimismContracts.USDC,
+  //   cdoAddr: '0x0581f1F01E05b77612Feaf529da3E048E1424A7E',
+  //   proxyAdmin: optimismContracts.proxyAdminWithTimelock,
+  //   strategy: '0x6C748E4ea9f15e9c4121b90b5e5689c4deE3a938',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x55cf0BB9F893De8000D4d63F5c621283eE930e59',
+  //   BBTranche: '0x6e2a21F6fEC6f2093503AB1a12EB6eF1e3BA89F1'
+  // },
   credittestsamusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1117,7 +1119,7 @@ const optimismCDOs = {
     strategyToken: '0x8C1B4A409098b5326E3103458bdFE23eEEB1Aa5F',
     underlying: optimismContracts.USDC,
     cdoAddr: '0xD7d76180e12D53b6c4d835cb0F5e3df3732055a3',
-    proxyAdmin: optimismContracts.proxyAdmin,
+    proxyAdmin: optimismContracts.proxyAdminWithTimelock,
     strategy: '0x8C1B4A409098b5326E3103458bdFE23eEEB1Aa5F',
     AArewards: '0x0000000000000000000000000000000000000000',
     BBrewards: '0x0000000000000000000000000000000000000000',
@@ -2565,7 +2567,7 @@ exports.deployTokensOptimism = {
       'Maven Test', // borrower name
       10e18.toString(),
     ],
-    // cdo: optimismCDOs.creditmaventestusdc,
+    cdo: optimismCDOs.creditmaventestusdc,
     cdoVariant: 'IdleCDOEpochVariantOptimism',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -2599,7 +2601,7 @@ exports.deployTokensOptimism = {
       'FxTest', // borrower name
       15e18.toString(), // intialApr
     ],
-    // cdo: optimismCDOs.creditfalcontestusdc,
+    cdo: optimismCDOs.creditfalcontestusdc,
     cdoVariant: 'IdleCDOEpochVariantOptimism',
     ...baseCDOArgs,
     AARatio: '100000',
