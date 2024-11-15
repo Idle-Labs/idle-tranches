@@ -429,6 +429,11 @@
       "address": "0xf6223C567F21E33e859ED7A045773526E9E3c2D5",
       "txHash": "0x6ae27b7305946b3efd5d7b5edf6c1e63fd27d14191339722b5852e745c927c2f",
       "kind": "transparent"
+    },
+    {
+      "address": "0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E",
+      "txHash": "0x4e381ba80bf8f00ccc2304c7235b4725b44063e89e0dec88cd86f181f4ceb0d3",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -30415,6 +30420,214 @@
           },
           "t_uint8": {
             "label": "uint8"
+          }
+        }
+      }
+    },
+    "4711bf4bcde664a7b3871bb3c37a9dc5fe9862969c9c5f069ad1a171a8cd546d": {
+      "address": "0x420d54C94810C303986aE3B7688709a6Bb552057",
+      "txHash": "0x03d572fe699454bf0d07f3b3a214181e9527421a9c76d50cbcb59ed08e62c9c4",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "idleCDOEpoch",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:25"
+          },
+          {
+            "label": "strategy",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_address",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:27"
+          },
+          {
+            "label": "underlying",
+            "offset": 0,
+            "slot": "153",
+            "type": "t_address",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:29"
+          },
+          {
+            "label": "tranche",
+            "offset": 0,
+            "slot": "154",
+            "type": "t_address",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:31"
+          },
+          {
+            "label": "userDepositsEpochs",
+            "offset": 0,
+            "slot": "155",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:33"
+          },
+          {
+            "label": "epochPrice",
+            "offset": 0,
+            "slot": "156",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:35"
+          },
+          {
+            "label": "epochPendingDeposits",
+            "offset": 0,
+            "slot": "157",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:37"
+          },
+          {
+            "label": "userWithdrawalsEpochs",
+            "offset": 0,
+            "slot": "158",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:39"
+          },
+          {
+            "label": "epochPendingWithdrawals",
+            "offset": 0,
+            "slot": "159",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:41"
+          },
+          {
+            "label": "epochPendingClaims",
+            "offset": 0,
+            "slot": "160",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:43"
+          },
+          {
+            "label": "epochWithdrawPrice",
+            "offset": 0,
+            "slot": "161",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:45"
+          },
+          {
+            "label": "isEpochInstant",
+            "offset": 0,
+            "slot": "162",
+            "type": "t_mapping(t_uint256,t_bool)",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:47"
+          },
+          {
+            "label": "pendingClaims",
+            "offset": 0,
+            "slot": "163",
+            "type": "t_bool",
+            "contract": "IdleCDOEpochQueue",
+            "src": "contracts/IdleCDOEpochQueue.sol:49"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_mapping(t_uint256,t_uint256))": {
+            "label": "mapping(address => mapping(uint256 => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_bool)": {
+            "label": "mapping(uint256 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint256)": {
+            "label": "mapping(uint256 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
           }
         }
       }
