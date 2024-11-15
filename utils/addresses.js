@@ -1143,6 +1143,20 @@ const optimismCDOs = {
     BBTranche: '0xE09736A41898e63A2F32cE100878f260d066b868',
     queue: '0x07EE2F1272914e869D0E47E08b5a10007b8FdF31'
   },
+  creditfalconusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xca0E467Cf2d0011EF3424D0a2c1999009991405a',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0x218Fcd276d03A2942e97833c92b66Eb3447b4309',
+    proxyAdmin: optimismContracts.proxyAdminWithTimelock,
+    strategy: '0xca0E467Cf2d0011EF3424D0a2c1999009991405a',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x62426336067c37c10A681Da6275c01D373AbC7E0',
+    BBTranche: '0xC55Dc4592dcdBAD5EF4bc0Dfa87745791d041A82',
+    queue: '0x0D81b042bB9939B4d32CDf7861774c442A2685CE'
+  },
 };
 
 const arbitrumCDOs = {
@@ -2623,6 +2637,43 @@ exports.deployTokensOptimism = {
     keyring: addr0,
     keyringPolicy: 4,
     keyringAllowWithdraw: false,
+    // #########
+    queue: true,
+    proxyCdoAddress: ''
+  },
+  creditfalconusdc: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0x1fb0f3602F52e2420aCff5CF04DBfDE96378Df58', // manager
+      '0x20322eF8857ebeF4fAf2bF4c4A37515E3ae3a745', // borrower
+      'FalconX', // borrower name
+      145e17.toString(), // intialApr 14.5%
+    ],
+    cdo: optimismCDOs.creditfalconusdc,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '1036800', // 12 days
+    bufferPeriod: '43200', // 12 hours
+    // ## instant params default values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
     // #########
     queue: true,
     proxyCdoAddress: ''

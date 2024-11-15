@@ -433,12 +433,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       }
     }
 
-    console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
-    await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
-    
-    console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
-    await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
-
     const feeReceiver = await idleCDO.feeReceiver();
     if ((isMatic || isPolygonZK || isOptimism || isArbitrum) && feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase()) {
       console.log('Setting fee receiver to Treasury Multisig')
@@ -479,10 +473,20 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
+      if (deployToken.fees) {
+        console.log(`Setting fees ${deployToken.fees}`);
+        await cdoEpoch.connect(signer).setFee(deployToken.fees);
+      }
       if (deployToken.queue) {
         await hre.run("deploy-queue", { cdo: idleCDOAddress, owner: networkContracts.treasuryMultisig, isaa: 'true' });
       }
     }
+
+    console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
+    await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
+
+    console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
+    await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
 
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
@@ -492,7 +496,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
       console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
       const tx = await pauseModule.updateProtectedContracts([{
-        contractAddress: idleCDO.address, 
+        contractAddress: idleCDO.address,
         contractType: 1 // tranche contract
       }]);
       await tx.wait();
@@ -516,6 +520,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         } catch (error) {
           // This should be the contract we just added
           contractProtected = await pauseModule.protectedContracts(i - 1);
+          break;
         }
       }
 
