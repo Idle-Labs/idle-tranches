@@ -38,7 +38,7 @@ contract IdleCreditVault is
   address public idleCDO;
   /// @notice one year, used to calculate the APR
   uint256 public constant YEAR = 365 days;
-  /// @notice latest saved apr
+  /// @notice latest saved apr, already scaled to include the buffer period
   uint256 public lastApr;
   /// @notice address of the borrower
   address public borrower;
@@ -60,6 +60,8 @@ contract IdleCreditVault is
   mapping (address => uint256) public lastWithdrawRequest;
   /// @notice current epoch number
   uint256 public epochNumber;
+  /// @notice unscaled apr
+  uint256 public unscaledApr;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -87,7 +89,9 @@ contract IdleCreditVault is
     oneToken = 10**(tokenDecimals);
     borrower = _borrower;
     manager = _manager;
+    // on the first setup we set the lastApr equal to the unscaledApr
     lastApr = _apr;
+    unscaledApr = _apr;
 
     // name will be like: Idle Credit Vault Borrower USDC
     // symbol will be like: BorrowerUSDC
@@ -130,10 +134,20 @@ contract IdleCreditVault is
     manager = _manager;
   }
 
+  /// @notice set both the scaled and unscaled apr
+  /// @dev only cdo and manager can set the apr.
+  /// @param _unscaledApr unscaled apr
+  /// @param _apr scaled apr
+  function setAprs(uint256 _unscaledApr, uint256 _apr) external {
+    unscaledApr = _unscaledApr;
+    // here we also check that msg.sender is allowed
+    setApr(_apr);
+  }
+
   /// @notice set the fixed apr
   /// @dev only cdo and manager can set the apr. If manager manually set apr from 
   /// here it will not be scaled to include the buffer period
-  function setApr(uint256 _apr) external {
+  function setApr(uint256 _apr) public {
     address _cdo = idleCDO;
 
     // if cdo is not yet set we skip the check (this can happen only during the setup)

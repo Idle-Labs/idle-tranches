@@ -38,7 +38,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   uint256 public epochEndDate;
   /// @notice deadline to allow instant withdraw requests
   uint256 public instantWithdrawDeadline;
-  /// @notice apr of the last epoch
+  /// @notice apr of the last epoch, unscaled
   uint256 public lastEpochApr;
   /// @notice min apr change to trigger instant withdraw
   uint256 public instantWithdrawAprDelta;
@@ -292,8 +292,8 @@ contract IdleCDOEpochVariant is IdleCDO {
       // mint strategyTokens equal to interest and send underlying to strategy to avoid double counting for NAV
       _strategy.deposit(netInterest);
 
-      // save last apr
-      lastEpochApr = _strategy.getApr();
+      // save last apr, unscaled
+      lastEpochApr = _strategy.unscaledApr();
       // set apr for next epoch
       _setScaledApr(_newApr);
 
@@ -355,7 +355,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Set the scaled apr for the next epoch
   /// @param _newApr New apr to set for the next epoch
   function _setScaledApr(uint256 _newApr) internal {
-    IdleCreditVault(strategy).setApr(_scaleAprWithBuffer(_newApr));
+    IdleCreditVault(strategy).setAprs(_newApr, _scaleAprWithBuffer(_newApr));
   }
 
   /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
@@ -492,7 +492,8 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     if (!disableInstantWithdraw) {
       // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
-      if (lastEpochApr > (creditVault.getApr() + _scaleAprWithBuffer(instantWithdrawAprDelta))) {
+      // we compare unscaled aprs
+      if (lastEpochApr > (creditVault.unscaledApr() + instantWithdrawAprDelta)) {
         // Calc max withdrawable if amount passed is 0
         _underlyings = _amount == 0 ? maxWithdrawableInstant(msg.sender, _tranche) : _underlyings;
         // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt

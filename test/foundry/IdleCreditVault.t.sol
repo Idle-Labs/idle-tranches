@@ -693,8 +693,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal, fees, 'fee receiver got wrong amount of fees');
     assertEq(cdoEpoch.unclaimedFees(), 0, 'unclaimedFees is reset');
     assertEq(cdoEpoch.lastEpochInterest(), expectedNet, 'lastEpochInterest is wrong');
-    assertEq(cdoEpoch.lastEpochApr(), _scaleAprWithBuffer(initialProvidedApr), 'lastEpochApr is wrong');
+    assertEq(cdoEpoch.lastEpochApr(), initialProvidedApr, 'lastEpochApr is wrong');
     assertEq(strategy.getApr(), _scaleAprWithBuffer(initialProvidedApr - 999), 'strategy apr is wrong');
+    assertEq(IdleCreditVault(address(strategy)).unscaledApr(), initialProvidedApr - 999, 'strategy apr is wrong');
     assertEq(cdoEpoch.isEpochRunning(), false, 'isEpochRunning is wrong');
     assertEq(cdoEpoch.expectedEpochInterest(), 0, 'expectedEpochInterest is wrong');
     assertEq(cdoEpoch.paused(), false, 'isPaused is wrong');
@@ -2068,5 +2069,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_vault.epochDuration(), 3 days, 'epoch duration is wrong');
     // check that bufferPeriod did not change
     assertEq(bufferPeriodPre, _vault.bufferPeriod(), 'buffer period changed');
+  }
+
+  function testSetAprs() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setAprs(1, 2);
+
+    vm.prank(manager);
+    cv.setAprs(3, 4);
+
+    assertEq(cv.getApr(), 4, 'apr is wrong');
+    assertEq(cv.unscaledApr(), 3, 'unscaledApr is wrong');
   }
 }
