@@ -161,6 +161,7 @@ const mainnetContracts = {
   idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
   cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
   timelock: '0xDa86e15d0Cda3A05Db930b248d7a2f775e575A44',
+  keyringWhitelist: '0x6351370a1c982780da2d8c85dfedd421f7193fa5'
 }
 
 // format is tokenName_XXYY
@@ -229,6 +230,7 @@ const optimismContracts = {
   pauserMultisig: '0x290C4dC2402CD77643aF42Ba926A15Aba4d3508b',
   // This is generated in hypernative dashboard
   hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  keyringWhitelist: '0x685bc814f9ee40fa7bd35588ac6a9e882a2345f3',
 
   OP: '0x4200000000000000000000000000000000000042',
   WETH: '0x4200000000000000000000000000000000000006',
@@ -2344,7 +2346,8 @@ exports.deployTokens = {
     // instantWithdrawAprDelta: 1e18.toString(),
     // disableInstantWithdraw: true,
     // ## keyring params
-    keyring: '0xD18d17791f2071Bf3C855bA770420a9EdEa0728d',
+    // keyring: '0xD18d17791f2071Bf3C855bA770420a9EdEa0728d',
+    keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 4,
     keyringAllowWithdraw: false,
     // #########
@@ -2670,8 +2673,9 @@ exports.deployTokensOptimism = {
     instantWithdrawAprDelta: 1e18.toString(),
     disableInstantWithdraw: false,
     // ## keyring params
-    keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
-    keyringPolicy: 4,
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: optimismContracts.keyringWhitelist,
+    keyringPolicy: 18,
     keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
