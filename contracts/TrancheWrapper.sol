@@ -101,11 +101,11 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         return convertToAssets(shares);
     }
 
-    function previewWithdraw(uint256 assets) public view returns (uint256) {
+    function previewWithdraw(uint256 assets) public virtual view returns (uint256) {
         return convertToShares(assets);
     }
 
-    function previewRedeem(uint256 shares) public view returns (uint256) {
+    function previewRedeem(uint256 shares) public virtual view returns (uint256) {
         return convertToAssets(shares);
     }
 
@@ -146,7 +146,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         uint256 assets,
         address receiver,
         address owner
-    ) external nonReentrant returns (uint256) {
+    ) external nonReentrant virtual returns (uint256) {
         if (assets == 0) revert AmountZero();
 
         uint256 shares = (assets == type(uint256).max) ? balanceOf(owner) : previewWithdraw(assets);
@@ -167,7 +167,7 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         uint256 shares,
         address receiver,
         address owner
-    ) external nonReentrant returns (uint256) {
+    ) external nonReentrant virtual returns (uint256) {
         if (shares == type(uint256).max) shares = balanceOf(owner);
 
         (uint256 _withdrawn, uint256 _burntShares) = _redeem(shares, receiver, owner);
@@ -202,13 +202,13 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
         return convertToShares(_maxDeposit);
     }
 
-    function maxWithdraw(address owner) external view returns (uint256) {
+    function maxWithdraw(address owner) external virtual view returns (uint256) {
         bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
         if (!withdrawable) return 0;
         return convertToAssets(balanceOf(owner));
     }
 
-    function maxRedeem(address owner) external view returns (uint256) {
+    function maxRedeem(address owner) external virtual view returns (uint256) {
         bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
         if (!withdrawable) return 0;
         return balanceOf(owner);
