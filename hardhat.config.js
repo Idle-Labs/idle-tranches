@@ -12,9 +12,9 @@ require("hardhat-etherscan-abi");
 require("solidity-coverage");
 
 // Tasks
-require("./tasks/cdo-factory");
 require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
+require("./tasks/cdo-factory");
 require("./tasks/deploy-by");
 
 const BN = require("bignumber.js");
@@ -77,6 +77,7 @@ module.exports = {
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
+      "contracts/arbitrum/IdleCDOEpochVariantArbitrum.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOTruefiCreditVariant.sol": overrideConfig,
       "contracts/arbitrum/IdleCDOArbitrum.sol": overrideConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,

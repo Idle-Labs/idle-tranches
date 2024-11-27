@@ -640,6 +640,15 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       params,
       signer
     );
+
+    const networkContracts = getNetworkContracts(hre);
+    const multisig = await run('get-multisig-or-fake');
+
+    if (networkContracts.keyringWhitelist) {
+      console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
+      const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
+      await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
+    }
 });
 
 /**
