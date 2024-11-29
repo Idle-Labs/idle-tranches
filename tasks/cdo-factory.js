@@ -407,15 +407,15 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const idleCDO = await ethers.getContractAt(contractName, idleCDOAddress, signer);
     console.log('owner idleCDO', await idleCDO.owner());
 
-    if (strategy.setWhitelistedCDO) {
-      console.log("Setting whitelisted CDO");
-      await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
-    }
-
     const AAaddr = await idleCDO.AATranche();
     const BBaddr = await idleCDO.BBTranche();
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
     console.log()
+
+    if (strategy.setWhitelistedCDO) {
+      console.log("Setting whitelisted CDO");
+      await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
+    }
 
     const ays = await idleCDO.isAYSActive();
     if (args.isAYSActive != ays) {

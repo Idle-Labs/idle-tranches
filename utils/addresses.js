@@ -268,6 +268,7 @@ const arbitrumContracts = {
   WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
   tfWIN_USDC: '0xA909a4AA2A6DB0C1A3617A5Cf763ae0d780E5C64',
   USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
 }
 
 exports.IdleTokens = {
@@ -1194,6 +1195,20 @@ const arbitrumCDOs = {
     AATranche: '0xd7d7d88D753d05862B9c13d8b2637d2A03dFA445',
     BBTranche: '0x0968b9706F8a94854CDe67Cb44e70f4d1b0E760b',
     queue: '0x466cFDfF869666941CdB89daa412c3CddC55D6c1'
+  },
+  creditbastionusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x5b11507F8A91005aD1591F54ef64133AabA6d06E',
+    underlying: arbitrumContracts.USDT,
+    cdoAddr: '0x3919396Cd445b03E6Bb62995A7a4CB2AC544245D',
+    proxyAdmin: arbitrumContracts.proxyAdminWithTimelock,
+    strategy: '0x5b11507F8A91005aD1591F54ef64133AabA6d06E',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x97F476F664A95106931f78113489e0361Cf1c9Fa',
+    BBTranche: '0x42A2f36EC49dD9AF7928cF2Ec46E06866292495B',
+    queue: '0x133F1C751f25C2AAf0E83f0609A67074915144A4'
   },
 };
 
@@ -2735,7 +2750,45 @@ exports.deployTokensArbitrum = {
       'Bastion', // borrower name
       17e18.toString(), // intialApr 17%
     ],
-    // cdo: arbitrumCDOs.creditbastionusdc,
+    cdo: arbitrumCDOs.creditbastionusdc,
+    cdoVariant: 'IdleCDOEpochVariantArbitrum',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '2678400', // 31 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params default values
+    // instantWithdrawDelay: '259200', // 3 days
+    // instantWithdrawAprDelta: 1e18.toString(),
+    // disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: arbitrumContracts.keyringWhitelist,
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    proxyCdoAddress: ''
+  },
+  creditbastionusdt: {
+    decimals: 6,
+    underlying: arbitrumContracts.USDT,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      arbitrumContracts.USDT,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xF381ee632bF26d57f6d5F8717bA573aED835820a', // borrower
+      'Bastion', // borrower name
+      17e18.toString(), // intialApr 17%
+    ],
+    cdo: arbitrumCDOs.creditbastionusdt,
     cdoVariant: 'IdleCDOEpochVariantArbitrum',
     ...baseCDOArgs,
     AARatio: '100000',
