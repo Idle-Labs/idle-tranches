@@ -912,7 +912,7 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0x45054c6753b4Bce40C5d54418DabC20b070F85bE',
     BBTranche: '0xed9cD82076160Bbc5F734D596a039Baf616D44c4',
-    queue: '0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E'
+    queue: '0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E',
   }
 };
 
@@ -1152,7 +1152,7 @@ const optimismCDOs = {
     BBTranche: '0xE09736A41898e63A2F32cE100878f260d066b868',
     queue: '0x07EE2F1272914e869D0E47E08b5a10007b8FdF31'
   },
-  creditfalconusdc: {
+  creditfaxusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0xca0E467Cf2d0011EF3424D0a2c1999009991405a',
@@ -2679,7 +2679,7 @@ exports.deployTokensOptimism = {
     queue: true,
     proxyCdoAddress: ''
   },
-  creditfalconusdc: {
+  creditfaxusdc: {
     decimals: 6,
     underlying: optimismContracts.USDC,
     strategyName: 'IdleCreditVault',
@@ -2688,10 +2688,10 @@ exports.deployTokensOptimism = {
       'owner', // owner address
       '0x1fb0f3602F52e2420aCff5CF04DBfDE96378Df58', // manager
       '0x20322eF8857ebeF4fAf2bF4c4A37515E3ae3a745', // borrower
-      'FalconX', // borrower name
-      145e17.toString(), // intialApr 14.5%
+      'Redacted', // borrower name
+      0e17.toString(), // intialApr - redacted
     ],
-    cdo: optimismCDOs.creditfalconusdc,
+    cdo: optimismCDOs.creditfaxusdc,
     cdoVariant: 'IdleCDOEpochVariantOptimism',
     ...baseCDOArgs,
     AARatio: '100000',
