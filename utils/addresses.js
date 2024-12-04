@@ -913,6 +913,11 @@ const CDOs = {
     AATranche: '0x45054c6753b4Bce40C5d54418DabC20b070F85bE',
     BBTranche: '0xed9cD82076160Bbc5F734D596a039Baf616D44c4',
     queue: '0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E',
+    // Euler info:
+    eulerOracleRouter: '',
+    eulerOracle: '',
+    eulerVault: '',
+    eulerIRM: '0x5ceb1A6B4a16e8113665e1f3296fec5586F882Fe',
   }
 };
 
