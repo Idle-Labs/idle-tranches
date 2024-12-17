@@ -914,10 +914,15 @@ const CDOs = {
     BBTranche: '0xed9cD82076160Bbc5F734D596a039Baf616D44c4',
     queue: '0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E',
     // Euler info:
-    eulerOracleRouter: '',
-    eulerOracle: '',
-    eulerVault: '',
+    eulerGovernor: '0xF02Faf7CFEe786111eaE6747a0c344b48C1eD5E5',
+    eulerOracleRouter: '0xBD52853DB7205B57ca99745E91CB77A7BA43708d',
+    eulerOracleIdle: '0xfc15ec9c88ca6fe3edd96465e7c4092e57427c62',
+    eulerOracleUSD: '0xc9775fb90053119Ac99C67f5536dbC02dFd28b2a',
     eulerIRM: '0x5ceb1A6B4a16e8113665e1f3296fec5586F882Fe',
+    // tranche token vault
+    eulerVaultTranche: '0xd820C8129a853a04dC7e42C64aE62509f531eE5A',
+    // USDC token vault
+    eulerVaultUSDC: '0x166d8b62e1748d04edf39d0078f1fe4aa01d475e',
   }
 };
 
@@ -2811,7 +2816,7 @@ exports.deployTokensArbitrum = {
     // ## keyring params
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: arbitrumContracts.keyringWhitelist,
-    keyringPolicy: 4,
+    keyringPolicy: 20,
     keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
