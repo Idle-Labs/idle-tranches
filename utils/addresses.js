@@ -1176,6 +1176,20 @@ const optimismCDOs = {
     BBTranche: '0xC55Dc4592dcdBAD5EF4bc0Dfa87745791d041A82',
     queue: '0x0D81b042bB9939B4d32CDf7861774c442A2685CE'
   },
+  creditfaxusdcfinal: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x2bfcaC093774Ec1CbBeA994334C69279caEB4E6B',
+    underlying: optimismContracts.USDC,
+    cdoAddr: '0xBd9Ad85Ab0115ceFF7A1c51652D3DE3171dA1E56',
+    proxyAdmin: optimismContracts.proxyAdminWithTimelock,
+    strategy: '0x2bfcaC093774Ec1CbBeA994334C69279caEB4E6B',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x4898A7a2039f583170AbEf343a6110e68E4dd9CD',
+    BBTranche: '0xEFc4dFb27a736065F5151c8d27FfD95cCA6092D4',
+    queue: '0x42Ab464A3de110ac91cbdfCaa69B0E0C4f3a59A1'
+  },
 };
 
 const arbitrumCDOs = {
@@ -2712,6 +2726,44 @@ exports.deployTokensOptimism = {
     // ## epoch params
     epochDuration: '1036800', // 12 days
     bufferPeriod: '43200', // 12 hours
+    // ## instant params default values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: optimismContracts.keyringWhitelist,
+    keyringPolicy: 18,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    proxyCdoAddress: ''
+  },
+  creditfaxusdcfinal: {
+    decimals: 6,
+    underlying: optimismContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      optimismContracts.USDC,
+      'owner', // owner address
+      '0x1fb0f3602F52e2420aCff5CF04DBfDE96378Df58', // manager
+      '0x653f71339144e8641a645758f4df4e317fe998a3', // borrower
+      'Redacted', // borrower name
+      0e17.toString(), // intialApr - redacted
+    ],
+    cdo: optimismCDOs.creditfaxusdcfinal,
+    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '658800',
+    bufferPeriod: '21600', // 12 hours
     // ## instant params default values
     instantWithdrawDelay: '259200', // 3 days
     instantWithdrawAprDelta: 1e18.toString(),
