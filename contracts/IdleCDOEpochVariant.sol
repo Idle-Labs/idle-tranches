@@ -79,6 +79,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     // set epoch params
     epochDuration = 30 days;
     bufferPeriod = 5 days;
+    // we set epochEndDate to avoid issues with the first epoch, so we set
+    // it to current time minus bufferPeriod so that the first epoch can start right away
+    epochEndDate = block.timestamp - 5 days;
 
     // allow requests for withdrawals
     allowAAWithdrawRequest = true;
