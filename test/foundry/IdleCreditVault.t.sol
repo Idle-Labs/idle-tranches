@@ -411,9 +411,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(amountWei);
     idleCDO.depositBB(amountWei);
 
-    uint256 time = block.timestamp;
     // start epoch
     _toggleEpoch(true, 0, 0);
+    uint256 time = block.timestamp;
 
     // check that manager cannot call startEpoch again
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
@@ -2082,5 +2082,19 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertEq(cv.getApr(), 4, 'apr is wrong');
     assertEq(cv.unscaledApr(), 3, 'unscaledApr is wrong');
+  }
+
+  function testRequestAndClaimBeforeFirstEpoch() external {
+    address user1 = makeAddr("user1");
+    address user2 = makeAddr("user2");
+    _depositWithUser(user1, 10000 * ONE_SCALE, true);
+    _depositWithUser(user2, 10000 * ONE_SCALE, true);
+
+    vm.startPrank(user1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    // user1 tries to claim and steal from user 1 without waiting
+    cdoEpoch.claimWithdrawRequest();
+    vm.stopPrank();
   }
 }
