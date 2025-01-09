@@ -171,6 +171,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
 
         // funds in lending
         _cdoHarvest(true);
@@ -194,6 +196,9 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
     // @dev Loss is between 0% and lossToleranceBps and is socialized
     function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external virtual {
+        _testRedeemWithLossSocialized(depositAmountAARatio, 10**14); // 0.01%
+    }
+    function _testRedeemWithLossSocialized(uint256 depositAmountAARatio, uint256 _tolerance) public virtual {
         vm.assume(depositAmountAARatio >= 0);
         vm.assume(depositAmountAARatio <= FULL_ALLOC);
     
@@ -205,6 +210,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         idleCDO.depositAA(amountAA);
         idleCDO.depositBB(amountBB);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
         uint256 prePrice = strategy.price();
 
         // deposit underlying to the strategy
@@ -233,7 +240,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
             assertApproxEqRel(
                 resAA,
                 amountAA * (ONE_SCALE - priceDelta) / ONE_SCALE, 
-                10**14, 
+                _tolerance, 
                 "AA amount after loss"
             );
             // Abs = 11 because min deposit for AA is 0.1 underlying (with depositAmountAARatio = 1)
@@ -247,7 +254,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
             assertApproxEqRel(
                 resBB, 
                 (amountBB * (ONE_SCALE - priceDelta)) / ONE_SCALE, 
-                10**14, 
+                _tolerance, 
                 "BB amount after loss"
             );
             assertApproxEqAbs(priceBB, ONE_SCALE - priceDelta, 11, "BB price after loss");
@@ -280,7 +287,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         // as no harvest has been made
         idleCDO.depositAA(amountAA);
         idleCDO.depositBB(amountBB);
-
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
         // funds in lending
         _cdoHarvest(true);
 
