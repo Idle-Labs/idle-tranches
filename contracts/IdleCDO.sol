@@ -461,9 +461,16 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
   function _mintShares(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
+    IdleCDOTranche tr = IdleCDOTranche(_tranche);
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
-    IdleCDOTranche(_tranche).mint(_to, _minted);
+    // burn MIN_LIQUIDITY on first tranche deposit
+    if (tr.totalSupply() == 0) {
+      require(_amount >= MIN_LIQUIDITY, '5');
+      tr.mint(address(1), MIN_LIQUIDITY);
+      _minted = _minted - MIN_LIQUIDITY;
+    }
+    tr.mint(_to, _minted);
     // update NAV with the _amount of underlyings added
     if (_tranche == AATranche) {
       lastNAVAA += _amount;

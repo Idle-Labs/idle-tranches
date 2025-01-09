@@ -70,6 +70,8 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         // AARatio 50%
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
 
         uint256 totAmount = amount * 2;
 
@@ -160,6 +162,8 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         uint256 amount = 1000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
 
         // call with non owner
         vm.expectRevert(bytes("6"));

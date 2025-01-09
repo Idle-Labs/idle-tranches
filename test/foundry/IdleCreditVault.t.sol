@@ -240,9 +240,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // AARatio 50%
     idleCDO.depositAA(amountWei);
+    assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(1)), 10**3, 'Min liquidity for AA is not burned');
+    _transferBurnedTrancheTokens(address(this), true);
     assertEq(IdleCreditVault(address(strategy)).totEpochDeposits(), amountWei, "totEpochDeposits after AA deposit");
+
     idleCDO.depositBB(amountWei);
+    assertEq(IERC20Detailed(address(BBtranche)).balanceOf(address(1)), 10**3, 'Min liquidity for BB is not burned');
+    _transferBurnedTrancheTokens(address(this), false);
     assertEq(IdleCreditVault(address(strategy)).totEpochDeposits(), totAmount, "totEpochDeposits after BB deposit");
+
     assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal is != 0 in CDO after deposit");
     assertEq(
       strategyToken.balanceOf(address(idleCDO)), 
@@ -382,6 +388,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // make a deposit
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
 
     (uint256 interest,) = _calcInterestForTranche(address(AAtranche), 10000 * ONE_TRANCHE_TOKEN);
     assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest, 'maxWithdrawable is wrong');
@@ -398,6 +405,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // make a deposit
     uint256 amount = 10000 * ONE_SCALE;
     idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
 
     assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.AATranche()), amount, 'maxWithdrawableInstant is wrong');
   }
@@ -915,6 +923,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // AARatio 50%
     uint256 mintedAA = idleCDO.depositAA(amountWei);
     uint256 mintedBB = idleCDO.depositBB(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+    mintedAA += 10**3;
+    mintedBB += 10**3;
 
     // start epoch
     _startEpochAndCheckPrices(0);
@@ -1873,8 +1885,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       abi.encode(true)
     );
 
-    idleCDO.depositAA(1);
-    idleCDO.depositBB(1);
+    idleCDO.depositAA(10**3);
+    idleCDO.depositBB(10**3);
     cdoEpoch.requestWithdraw(0, address(AAtranche));
 
     vm.clearMockedCalls();
@@ -1883,6 +1895,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testRequestOnlyInterest() external {
     uint256 amount = 100 * ONE_SCALE;
     uint256 trancheTokens = idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+    trancheTokens += 10**3;
 
     vm.startPrank(owner);
     cdoEpoch.setFee(10000); // 10%

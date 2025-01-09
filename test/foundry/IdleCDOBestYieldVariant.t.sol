@@ -95,7 +95,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         uint256 amount = 10000 * ONE_SCALE;
         // AARatio 0%
         idleCDO.depositBB(amount);
-
+        _transferBurnedTrancheTokens(address(this), false);
         uint256 totAmount = amount + initialDepositedAmount;
 
         assertEq(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, "BBtranche bal");

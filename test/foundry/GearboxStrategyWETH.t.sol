@@ -132,6 +132,7 @@ contract TestGearboxStrategyWETH is TestIdleCDOLossMgmt {
     uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
+    _transferBurnedTrancheTokens(address(this), true);
     assertApproxEqAbs(
       IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 
       scaledVal, 
@@ -170,5 +171,12 @@ contract TestGearboxStrategyWETH is TestIdleCDOLossMgmt {
     assertApproxEqAbs(priceAAPost, priceAAPre, 1, 'AA price is not the same after deposit 1');
     assertApproxEqAbs(priceAAPost, priceAAPostHarvest, 1, 'AA price is not the same after harvest');
     assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
+  }
+
+  function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
+    // changes to tolerance and min depositAmount needed to avoid rounding issues
+    vm.assume(depositAmountAARatio >= 10);
+    vm.assume(depositAmountAARatio <= FULL_ALLOC - 10);
+    super._testRedeemWithLossSocialized(depositAmountAARatio, 10**15); // 0.1%
   }
 }

@@ -101,8 +101,10 @@ contract IdleCDOStorage {
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   // constant to represent 50% (for ADS AA ratio lower limit)
   uint256 internal constant AA_RATIO_LIM_DOWN = 50000;
-
+  // stkIDLE address
   address internal constant STK_IDLE = address(0xaAC13a116eA7016689993193FcE4BadC8038136f);
+  // liquidity burned at first tranche deposit
+  uint256 internal constant MIN_LIQUIDITY = 10**3;
 
   // Referral event
   event Referral(uint256 _amount, address _ref);

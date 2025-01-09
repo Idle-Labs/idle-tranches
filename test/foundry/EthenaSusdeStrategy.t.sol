@@ -129,6 +129,8 @@ contract TestEthenaSusdeStrategy is TestIdleCDOLossMgmt {
     // AARatio 50%
     idleCDO.depositAA(amountWei);
     idleCDO.depositBB(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
     _cdoHarvest(true);
     uint256 totAmount = amount * 2 * ONE_SCALE;
 
@@ -329,6 +331,7 @@ contract TestEthenaSusdeStrategy is TestIdleCDOLossMgmt {
     uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
+    _transferBurnedTrancheTokens(address(this), true);
     assertApproxEqAbs(
       IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 
       scaledVal, 

@@ -137,6 +137,8 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
     // AARatio 50%
     idleCDO.depositAA(amountWei);
     idleCDO.depositBB(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
 
     uint256 totAmount = amount * 2 * ONE_SCALE;
 

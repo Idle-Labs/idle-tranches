@@ -164,6 +164,9 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
 
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
+
         uint256 totAmount = amount * 2;
 
         assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, 1, "AAtranche bal");
@@ -321,6 +324,8 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
         uint256 amount = 10000 * ONE_SCALE;
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
         // funds in lending
         _cdoHarvest(true);
 

@@ -111,11 +111,28 @@ abstract contract TestIdleCDOBase is Test {
   function _pokeLendingProtocol() internal virtual {}
   function _createLoss(uint256) internal virtual {}
 
+  function _transferBurnedTrancheTokens(address to, bool isAA) internal virtual {
+    vm.startPrank(address(1));
+    if (isAA) {
+      if (IERC20(AAtranche).balanceOf(address(1)) > 0) {
+        IERC20(AAtranche).transfer(to, 10**3);
+      }
+    } else {
+      if (IERC20(BBtranche).balanceOf(address(1)) > 0) {
+        IERC20(BBtranche).transfer(to, 10**3);
+      }
+    }
+    vm.stopPrank();
+  }
+
   function testDeposits() external virtual {
     uint256 amount = 10000 * ONE_SCALE;
     // AARatio 50%
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
+
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
 
     uint256 totAmount = amount * 2;
 
@@ -352,8 +369,10 @@ abstract contract TestIdleCDOBase is Test {
     
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
+    _transferBurnedTrancheTokens(address(this), true);
     assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'AA Deposit is not successful');
     idleCDO.depositBB(_val);
+    _transferBurnedTrancheTokens(address(this), false);
     assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'BB Deposit is not successful');
 
     // try to deposit too much, considering what we already deposited previously in AA
@@ -430,6 +449,8 @@ abstract contract TestIdleCDOBase is Test {
     uint256 amountAA = amount * ratio / FULL_ALLOC;
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amount - amountAA);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
     assertApproxEqAbs(
       idleCDO.trancheAPRSplitRatio(), 
       _calcNewAPRSplit(ratio),
@@ -456,6 +477,8 @@ abstract contract TestIdleCDOBase is Test {
     uint256 amountBB = amount - amountAA;
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amountBB);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
 
     // Set new block.height to avoid reentrancy check on deposit/withdraw
     vm.roll(block.number + 1);
