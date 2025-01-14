@@ -464,12 +464,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     IdleCDOTranche tr = IdleCDOTranche(_tranche);
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
-    // burn MIN_LIQUIDITY on first tranche deposit
-    if (tr.totalSupply() == 0) {
-      require(_amount >= MIN_LIQUIDITY, '5');
-      tr.mint(address(1), MIN_LIQUIDITY);
-      _minted = _minted - MIN_LIQUIDITY;
-    }
     tr.mint(_to, _minted);
     // update NAV with the _amount of underlyings added
     if (_tranche == AATranche) {
