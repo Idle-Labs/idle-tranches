@@ -111,6 +111,7 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
   function testCannotRedeemWhenEpochRunning() external {
     uint256 amount = 1 * ONE_SCALE;
     idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
     vm.roll(block.number + 1);
     _toggleEpoch(true, 0);
 
@@ -210,6 +211,7 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
     uint256 priceAAPre = idleCDO.virtualPrice(address(AAtranche));
     // try to deposit the correct bal
     idleCDO.depositAA(_val);
+    _transferBurnedTrancheTokens(address(this), true);
     assertApproxEqAbs(
       IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 
       scaledVal, 
