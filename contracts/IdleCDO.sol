@@ -531,7 +531,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   
     // send underlying to msg.sender. Keep this at the end of the function to avoid 
     // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
-    IERC20Detailed(_token).safeTransfer(msg.sender, toRedeem);
+    _transferUnderlyings(msg.sender, toRedeem);
   }
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
@@ -713,7 +713,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _AATrancheSplitRatio AA split ratio used for calculations
   /// @return apr for the specific tranche
   function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
-    uint256 stratApr = IIdleCDOStrategy(strategy).getApr();
+    uint256 stratApr = _getStrategyApr();
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     bool isAATranche = _tranche == AATranche;
     if (_AATrancheSplitRatio == 0) {
@@ -837,8 +837,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
   function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external virtual {
     _checkOnlyOwner();
-    require(_maxDecreaseDefault < FULL_ALLOC, '7');
-    maxDecreaseDefault = _maxDecreaseDefault;
+    require((maxDecreaseDefault = _maxDecreaseDefault) < FULL_ALLOC, '7');
   }
 
   /// @param _active flag to allow Adaptive Yield Split
@@ -872,7 +871,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _rebalancer new rebalancer address
-  function setRebalancer(address _rebalancer) external {
+  function setRebalancer(address _rebalancer) external virtual {
     _checkOnlyOwner();
     require((rebalancer = _rebalancer) != address(0), '0');
   }
@@ -905,7 +904,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setMinAprSplitAYS(uint256 _aprSplit) external {
     _checkOnlyOwner();
     require((minAprSplitAYS = _aprSplit) <= FULL_ALLOC, '7');
-    minAprSplitAYS = _aprSplit;
   }
 
   /// @param _fee new fee
@@ -1055,6 +1053,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkSameTx() internal view {
     require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "8");
+  }
+
+  /// @dev transfer underlyings to a specific address
+  /// @param _to receiver address
+  /// @param _amount amount to transfer
+  function _transferUnderlyings(address _to, uint256 _amount) internal {
+    IERC20Detailed(token).safeTransfer(_to, _amount);
+  }
+
+  /// @dev Get the current strategy apr
+  function _getStrategyApr() internal view returns (uint256) {
+    return IIdleCDOStrategy(strategy).getApr();
   }
 
   /// @notice concat 2 strings in a single one
