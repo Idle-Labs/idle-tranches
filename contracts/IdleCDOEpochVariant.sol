@@ -467,6 +467,10 @@ contract IdleCDOEpochVariant is IdleCDO {
     if (!isWalletAllowed(msg.sender)) {
       revert NotAllowed();
     }
+
+    // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
+    _skimDonatedAssets();
+    // do the inherited deposit flow
     return super._deposit(_amount, _tranche, _referral);
   }
 
@@ -486,6 +490,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert NotAllowed();
     }
   
+    // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
+    _skimDonatedAssets();
+
     // we trigger an update accounting to check for eventual losses
     _updateAccounting();
 
@@ -531,6 +538,15 @@ contract IdleCDOEpochVariant is IdleCDO {
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
     _withdrawOps(_amount, _underlyings - netInterest, _tranche);
     return _underlyings;
+  }
+
+  /// @notice Transfer donated assets to the feeReceiver
+  function _skimDonatedAssets() internal {
+    address _token = token;
+    uint256 _underlyings = _contractTokenBalance(_token);
+    if (_underlyings > 0) {
+      IERC20Detailed(_token).transfer(feeReceiver, _underlyings);
+    }
   }
 
   /// @notice Get the tranche apr split ratio
