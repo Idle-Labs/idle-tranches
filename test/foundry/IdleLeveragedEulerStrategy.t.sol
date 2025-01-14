@@ -130,6 +130,8 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         uint256 balBefor1 = underlying.balanceOf(address(1));
         idleCDO.depositAA(amount);
         idleCDO.depositBB(amount);
+        _transferBurnedTrancheTokens(address(this), true);
+        _transferBurnedTrancheTokens(address(this), false);
         uint256 aaBal = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
         uint256 bbBal = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
         uint256 pricePre = strategy.price();

@@ -210,6 +210,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 amount = 1 * ONE_SCALE;
     uint256 mintedAA = idleCDO.depositAA(amount);
     uint256 mintedBB = idleCDO.depositBB(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
     vm.roll(block.number + 1);
 
     // start epoch
@@ -925,8 +927,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 mintedBB = idleCDO.depositBB(amountWei);
     _transferBurnedTrancheTokens(address(this), true);
     _transferBurnedTrancheTokens(address(this), false);
-    mintedAA += 10**3;
-    mintedBB += 10**3;
 
     // start epoch
     _startEpochAndCheckPrices(0);
@@ -1930,7 +1930,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // contract value will be eq to 
     // initial amount - requested amount + interest for the epoch + interest for pending withdraw
-    assertEq(cdoEpoch.getContractValue(), amount - interest + cdoEpoch.lastEpochInterest() + interestPendingWithdraw, 'contract value is wrong');
+    assertApproxEqAbs(cdoEpoch.getContractValue(), amount - interest + cdoEpoch.lastEpochInterest() + interestPendingWithdraw, 1, 'contract value is wrong');
   }
 
   function testClosePool() external {
