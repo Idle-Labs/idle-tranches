@@ -91,7 +91,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     disableInstantWithdraw = true;
 
     // scale the apr to include the buffer period
-    _setScaledApr(IdleCreditVault(strategy).getApr());
+    _setScaledApr(_getStrategyApr());
   }
 
   /// @notice Check if msg sender is owner or manager
@@ -217,7 +217,7 @@ contract IdleCDOEpochVariant is IdleCDO {
      if (msg.sender != address(this)) {
       revert NotAllowed();
     }
-    IERC20Detailed(token).safeTransfer(IdleCreditVault(strategy).borrower(), _amount);
+    _transferUnderlyings(IdleCreditVault(strategy).borrower(), _amount);
   }
 
   /// @notice Stop epoch, accrue interest to the vault and get funds to fullfill normal
@@ -271,14 +271,14 @@ contract IdleCDOEpochVariant is IdleCDO {
       // Transfer pending withdraw fees to feeReceiver before update accounting
       // NOTE: Fees are sent with 2 different transfer calls, here and after updateAccounting, to avoid complicated calculations
       if (_pendingWithdrawFees > 0) {
-        IERC20Detailed(token).safeTransfer(feeReceiver, _pendingWithdrawFees);
+        _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
       }
 
       if (_isRequestingAllFunds) {
         // we already have strategyTokens equal to _totBorrowed in this contract
         // so we simply transfer _totBorrowed to the strategy to avoid double counting
         // for getContractValue
-        IERC20Detailed(token).safeTransfer(address(_strategy), _totBorrowed);
+        _transferUnderlyings(address(_strategy), _totBorrowed);
       }
 
       // update tranche prices and unclaimed fees
@@ -286,7 +286,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       // transfer fees
       uint256 _fees = unclaimedFees;
-      IERC20Detailed(token).safeTransfer(feeReceiver, _fees);
+      _transferUnderlyings(feeReceiver, _fees);
       unclaimedFees = 0;
 
       // save net gain (this does not include interest gained for pending withdrawals)
@@ -467,6 +467,10 @@ contract IdleCDOEpochVariant is IdleCDO {
     if (!isWalletAllowed(msg.sender)) {
       revert NotAllowed();
     }
+
+    // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
+    _skimDonatedAssets();
+    // do the inherited deposit flow
     return super._deposit(_amount, _tranche, _referral);
   }
 
@@ -486,6 +490,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert NotAllowed();
     }
   
+    // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
+    _skimDonatedAssets();
+
     // we trigger an update accounting to check for eventual losses
     _updateAccounting();
 
@@ -533,6 +540,15 @@ contract IdleCDOEpochVariant is IdleCDO {
     return _underlyings;
   }
 
+  /// @notice Transfer donated assets to the feeReceiver
+  function _skimDonatedAssets() internal {
+    address _token = token;
+    uint256 _underlyings = _contractTokenBalance(_token);
+    if (_underlyings > 0) {
+      IERC20Detailed(_token).transfer(feeReceiver, _underlyings);
+    }
+  }
+
   /// @notice Get the tranche apr split ratio
   /// @param _tranche address
   /// @return _aprRatio apr split ratio for the tranche
@@ -543,7 +559,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice Calculate the interest of an epoch for the given amount
   /// @param _amount Amount of underlyings
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
-    return _amount * (IdleCreditVault(strategy).getApr() / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
+    return _amount * (_getStrategyApr() / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
   }
 
   /// @notice Calculate the interest of an epoch for a withdraw request
@@ -675,4 +691,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// NOTE: the vault is either a single tranche (ie all interest to senior and set in additionalInit) or AYS is active
   function setTrancheAPRSplitRatio(uint256) external override {}
+
+  /// NOTE: rebalancer is not used
+  function setRebalancer(address _rebalancer) external override {}
 }

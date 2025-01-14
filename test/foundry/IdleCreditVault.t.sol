@@ -2111,4 +2111,63 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     vm.stopPrank();
   }
+
+  function testPocWithdrawDos() external {
+    // We check if donating assets to the pool causes the last withdrawer to be unable to withdraw
+    // due to not minting strategyTokens on donations. Sherlock audit finding
+    address alice = vm.addr(0x1);
+    address bob = vm.addr(0x2);
+    address _strategyToken = cdoEpoch.strategy();
+
+    uint256 initialAlice = 10000e6;
+    uint256 initialBob = 1000e6;
+    deal(defaultUnderlying, alice, initialAlice);
+    deal(defaultUnderlying, bob, initialBob);
+    // to pay for interest
+    deal(defaultUnderlying, borrower, 200000e6);
+
+    // Alice deposit 9000 USDC.
+    vm.startPrank(alice);
+    IERC20Detailed(defaultUnderlying).approve(address(idleCDO), type(uint256).max);
+    idleCDO.depositAA(9000e6);
+    vm.stopPrank();
+
+    // Bob deposit 1000 USDC
+    vm.startPrank(bob);
+    IERC20Detailed(defaultUnderlying).approve(address(idleCDO), type(uint256).max);
+    idleCDO.depositAA(1000e6);
+    vm.stopPrank();
+
+    // start epoch
+    _toggleEpoch(true, 0, 0);
+
+    // close pool
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.startPrank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+    vm.stopPrank();
+
+    vm.startPrank(alice);
+    // donate 1000 USDC to the contract
+    IERC20Detailed(defaultUnderlying).transfer(address(cdoEpoch), 1000e6);
+    // request withdraw for the max amount before the tx reverts
+    cdoEpoch.requestWithdraw(0, cdoEpoch.AATranche());
+    cdoEpoch.claimWithdrawRequest();
+    uint256 afterBalance = IERC20Detailed(defaultUnderlying).balanceOf(alice);
+    vm.stopPrank();
+
+    // Alice will lose money because she donated assets
+    assertLt(afterBalance, initialAlice, 'Alice balance increased');
+    
+    // request withdraw for all and claim right away given that pool is closed
+    vm.startPrank(bob);
+    cdoEpoch.requestWithdraw(0, cdoEpoch.AATranche());
+    cdoEpoch.claimWithdrawRequest();
+    afterBalance = IERC20Detailed(defaultUnderlying).balanceOf(bob);
+    _strategyToken = cdoEpoch.strategy();
+    vm.stopPrank();
+
+    // Bob is unaffected by the donation
+    assertGt(afterBalance, initialBob, 'Bob balance decreased');
+  }
 }
