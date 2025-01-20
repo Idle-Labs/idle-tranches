@@ -60,6 +60,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   uint256 public bufferPeriod;
   /// @notice flag for enabling anyone to request a withdraw (needed for liquidations)
   bool public keyringAllowWithdraw;
+  /// @notice amount of over/under performance that withdrawal requests will cause
+  int256 public interestForOverUnderPerformance;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -176,7 +178,9 @@ contract IdleCDOEpochVariant is IdleCDO {
     // NOTE: all withdrawal requests, burn tranche tokens and decrease getContractValue,
     // this can be done only prior to the start of the epoch so getContractValue() is the total amount net
     // of all withdrawal requests. We add the fee that we should get for normal pending withdraws
-    expectedEpochInterest = _calcInterest(getContractValue()) + pendingWithdrawFees;
+    // we also add/remove the over/under performance cause by withdraw requests
+    expectedEpochInterest = uint256(int256(_calcInterest(getContractValue())) + int256(pendingWithdrawFees) + interestForOverUnderPerformance);
+    interestForOverUnderPerformance = 0;
 
     // set expected epoch end date
     epochEndDate = block.timestamp + _epochDuration;
@@ -525,13 +529,19 @@ contract IdleCDOEpochVariant is IdleCDO {
       _amount = _userTrancheTokens;
     }
 
-    uint256 interest = _calcInterestWithdrawRequest(_underlyings) * _trancheAprRatio(_tranche) / FULL_ALLOC;
+    (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
     uint256 netInterest = interest - fees;
     // user is requesting principal + interest of next epoch minus fees
     _underlyings += netInterest;
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += fees;
+
+    /// if there is an AA withdrawal the overperformance that the amount withdrawed would have generated for BB tranches
+    /// is saved in interestForOverUnderPerformance. This is used to calculate the interest that should be added to the
+    /// expectedEpochInterest at the startEpoch.
+    /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
+    interestForOverUnderPerformance += diff;
     
     // request normal withdraw, we burn strategy tokens without interest for the new epoch and mint and eq amount to msg.sender
     creditVault.requestWithdraw(_underlyings, msg.sender, netInterest);
@@ -545,15 +555,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     address _token = token;
     uint256 _underlyings = _contractTokenBalance(_token);
     if (_underlyings > 0) {
-      IERC20Detailed(_token).transfer(feeReceiver, _underlyings);
+      IERC20Detailed(_token).safeTransfer(feeReceiver, _underlyings);
     }
-  }
-
-  /// @notice Get the tranche apr split ratio
-  /// @param _tranche address
-  /// @return _aprRatio apr split ratio for the tranche
-  function _trancheAprRatio(address _tranche) internal view returns (uint256 _aprRatio) {
-    _aprRatio = _tranche == AATranche ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
   }
 
   /// @notice Calculate the interest of an epoch for the given amount
@@ -572,9 +575,35 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// eg. if apr is set to 11.67% and we want to calculate the interest for 30 days at 10% we need to do the 
   /// the opposite -> 11.67% * 30/35 = 10%
   /// @param _amount Amount of underlyings
-  function _calcInterestWithdrawRequest(uint256 _amount) internal view returns (uint256) {
+  /// @param _tranche Tranche to withdraw from
+  /// @return _interest Interest for the given amount and given tranche
+  /// @return _diff over/under performance that this withdraw will cause to the other tranche
+  function _calcInterestWithdrawRequest(uint256 _amount, address _tranche) internal view returns (uint256 _interest, int256 _diff) {
     uint256 _duration = epochDuration;
-    return _duration == 0 ? 0 : _calcInterest(_amount) * _duration / (_duration + bufferPeriod);
+    if (_duration == 0) {
+      return (_interest, _diff);
+    }
+
+    uint256 _buffer = bufferPeriod;
+    bool isAA = _tranche == AATranche;
+    uint256 tvl = getContractValue();
+    // get the tranche apr split ratio
+    uint256 aprRatio = isAA ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
+    // calculate total vault interest (they don't get the interest for the buffer period for withdraw requests so 
+    // we scale it back since _calcInterest is scaling the interest with tht buffer period),
+    uint256 totInterest = _calcInterest(tvl) * _duration / (_duration + _buffer);
+    // calculate total tranche interest for the whole tranche supply
+    uint256 totTrancheInterest = totInterest * aprRatio / FULL_ALLOC;
+    // calculate interest for the given tranche and given amount
+    uint256 _trancheBal = isAA ? lastNAVAA : lastNAVBB;
+    _interest = _trancheBal == 0 ? 0 : _amount * totTrancheInterest / _trancheBal;
+    // calculate the interest that the _amount would have received if there was no split ratio (ie interest split based only on tvl).
+    // This is used to calculate the interest that should be added to the expectedEpochInterest when 
+    // withdrawing an AA tranche or the interest that should be removed from expectedEpochInterest when
+    // withdrawing a BB tranche
+    uint256 interestWithoutSplitRatio = _calcInterest(_amount) * _duration / (_duration + _buffer);
+    // difference between total interest and tranche interest (positive for AA, negative for BB)
+    _diff = int256(interestWithoutSplitRatio) - int256(_interest);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
@@ -583,7 +612,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
     uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
     // add interest for one epoch
-    uint256 interest = _calcInterestWithdrawRequest(currentUnderlyings) * _trancheAprRatio(_tranche) / FULL_ALLOC;
+    (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // sum and remove fees
     return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
   }

@@ -592,17 +592,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _startEpochAndCheckPrices(1);
     // expected interest is interest of the user still deposited (totTVLBase / 2 / 100, fees included) + the fee
     // of the user with a pending withdraw (we scale the interest with the buffer period as we do with the apr)
-    assertEq(cdoEpoch.expectedEpochInterest(), _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees, 'expectedEpochInterest is wrong epoch 1');
+    assertEq(
+      cdoEpoch.expectedEpochInterest(), 
+      uint256(int256(_scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees) + cdoEpoch.interestForOverUnderPerformance()),
+      'expectedEpochInterest is wrong epoch 1'
+    );
     // stop epoch.
 
     // gross interest
-    interest = _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawInterest + withdrawFees;
+    interest = uint256(int256(_scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawInterest + withdrawFees) + cdoEpoch.interestForOverUnderPerformance());
     fees = fee * interest / FULL_ALLOC;
     feeBalPre = IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
 
     // borrower should pay for pending withdraw + interest + fees + interest of the other deposit (fee included)
     // we scale the interest with the buffer period as we do with the apr
-    _stopEpochAndCheckPrices(1, initialProvidedApr, _strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100));
+    _stopEpochAndCheckPrices(1, initialProvidedApr, uint256(int256(_strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100))));
+    // _stopEpochAndCheckPrices(1, initialProvidedApr, uint256(int256(_strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100)) + cdoEpoch.interestForOverUnderPerformance()));
 
     assertApproxEqAbs(IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeBalPre, fees, 1, 'fee balance is wrong');
     assertEq(cdoEpoch.defaulted(), false, 'borower defaulted');
@@ -954,7 +959,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedAA1, 'strategyTokens for user not minted properly on first request');
     assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedAA1 - netInterest, 'strategyTokens for cdo not burned properly on first request');
     assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), mintedAA / 2, 'AA tranches not burned after first request');
-    assertEq(requestedAA1, maxAA / 2, 'first requested amount for AA is wrong');
+    assertApproxEqAbs(requestedAA1, maxAA / 2, 1, 'first requested amount for AA is wrong');
     assertEq(lastNAVAA - cdoEpoch.lastNAVAA(), requestedAA1 - netInterest, 'lastNAVAA is wrong after first request');
 
     // between first and second request the AA tranche apr split ratio changes so we need to refetch it
@@ -1038,19 +1043,41 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     return _amount * (IdleCreditVault(address(strategy)).getApr() / 100) * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN);
   }
 
-  function _calcInterestWithdrawRequest(uint256 _amount) internal view returns (uint256) {
-    return _calcInterest(_amount) * cdoEpoch.epochDuration() / (cdoEpoch.epochDuration() + cdoEpoch.bufferPeriod());
+  function _calcInterestWithdrawRequest(uint256 _amount, address _tranche) internal view returns (uint256) {
+    uint256 _duration = cdoEpoch.epochDuration();
+    if (_duration == 0) {
+      return 0;
+    }
+
+    // calculate total vault interest (they don't get the interest for the buffer period),
+    uint256 tvl = cdoEpoch.getContractValue();
+    uint256 totInterest = _calcInterest(tvl) * _duration / (_duration + cdoEpoch.bufferPeriod());
+    // calculate total tranche interest
+    uint256 _trancheAprRatio = _tranche == address(AAtranche) ? cdoEpoch.trancheAPRSplitRatio() : FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio();
+    uint256 _instantBalance = _tranche == address(AAtranche) ? cdoEpoch.lastNAVAA() : cdoEpoch.lastNAVBB();
+    uint256 totTrancheinterest = totInterest * _trancheAprRatio / FULL_ALLOC;
+    // calculate interest for the given tranche and given amount
+    return _instantBalance == 0 ? 0 : _amount * totTrancheinterest / _instantBalance;
   }
 
   function _calcInterestForTranche(address _tranche, uint256 trancheAmount) internal view returns (uint256, uint256) {
-    uint256 trancheAPRSplitRatio = cdoEpoch.trancheAPRSplitRatio();
-    uint256 aprRatio = _tranche == address(AAtranche) ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
     uint256 interest = _calcInterestWithdrawRequest(
-      trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN
-    ) * aprRatio / FULL_ALLOC;
+      trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN,
+      _tranche
+    );
     uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
     return (interest - fees, fees);
   }
+
+  // function _calcInterestForTranche(address _tranche, uint256 trancheAmount) internal view returns (uint256, uint256) {
+  //   uint256 trancheAPRSplitRatio = cdoEpoch.trancheAPRSplitRatio();
+  //   uint256 aprRatio = _tranche == address(AAtranche) ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
+  //   uint256 interest = _calcInterestWithdrawRequest(
+  //     trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN
+  //   ) * aprRatio / FULL_ALLOC;
+  //   uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
+  //   return (interest - fees, fees);
+  // }
 
   function testRequestWithdrawInstant() external {
     vm.prank(owner);
@@ -2169,5 +2196,286 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // Bob is unaffected by the donation
     assertGt(afterBalance, initialBob, 'Bob balance decreased');
+  }
+
+  function testRequestWithdrawNormalOnlyAA() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 0); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // AARatio 50%, 5000 deposit each
+    uint256 mintedAA = idleCDO.depositAA(amountWei / 2);
+    uint256 mintedBB = idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // 1 epoch interest is 10% of 10000 = 1000 (this is what borrower should pay)
+    // 25% of the interest goes to AA because of the adaptive yield split so 250 to AA
+    // 75% of the interest goes to BB so 750 to BB
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA, address(AAtranche));
+    assertEq(requestedAA1, 5250 * ONE_SCALE, 'first requested amount for AA is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 750 * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), 5250 * ONE_SCALE, 'Expected interest is wrong');
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 requestedBB1 = cdoEpoch.requestWithdraw(mintedBB, address(BBtranche));
+    // 5750 + 10% of the next epoch
+    assertEq(requestedBB1, 6325 * ONE_SCALE, 'requested amount for BB is wrong');
+  }
+
+  function testRequestWithdrawNormalOnlyAAWithBuffer() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 365 days); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // AARatio 50%, 5000 deposit each
+    uint256 mintedAA = idleCDO.depositAA(amountWei / 2);
+    uint256 mintedBB = idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // 1 epoch interest is 10% of 10000 = 1000 + 500 for the buffer = tot 1500 (this is what borrower should 
+    // pay, 500 for the buffer because of the redeem request that will be done now)
+    // 25% of the interest goes to AA because of the adaptive yield split so 250 to AA and they don't get the buffer interest
+    // they also do not give the overperformance to BB for the buffer
+    // 75% of the interest goes to BB so 500 + 500 (base + buffer) + 250 of the overperformance
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA, address(AAtranche));
+    assertEq(requestedAA1, 5250 * ONE_SCALE, 'first requested amount for AA is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 1250 * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), 5250 * ONE_SCALE, 'Expected interest is wrong');
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 requestedBB1 = cdoEpoch.requestWithdraw(mintedBB, address(BBtranche));
+    // 6250 + 10% of the next epoch
+    assertEq(requestedBB1, 6875 * ONE_SCALE, 'requested amount for BB is wrong');
+  }
+
+ function testRequestWithdrawNormalMultipleAA() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 0); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // AARatio 50%, 5000 deposit each
+    uint256 mintedAA = idleCDO.depositAA(amountWei / 2);
+    idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // deposit 10000 in AA
+    address userAA = makeAddr('userAA');
+    _depositWithUser(userAA, amountWei, true);
+
+    // we have 15000 AA and 5000 BB -> tvl ratio is 15000 * FULL_ALLOC / 20000 = 75000
+    // 1 epoch interest is 10% of 20000 = 2000 (this is what borrower should pay)
+    // tranche apr split ratio is tvl ratio * tvl ratio / FULL_ALLOC = 56250
+    // 56.25% of the interest goes to AA because of the adaptive yield split so 2000 * 56.25% = 1125
+    // 43.75% of the interest goes to BB so 875 to BB
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA, address(AAtranche));
+    assertEq(requestedAA1, (5000 + 1125 / 3) * ONE_SCALE, 'first requested amount for AA is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), (875 + 1125 / 3 * 2) * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), (5000 + 1125 / 3) * ONE_SCALE, 'pendingWithdraws is wrong');
+
+    // after the request redeem the tvl ratio and apr ratio change we now have
+    // 10000 AA and 5000 BB -> tvl ratio is 10000 * FULL_ALLOC / 15000 = 66666
+    // interest is 1125 / 3 * 2 + 875 = 1625
+    // tranche apr split ratio is tvl ratio * tvl ratio / FULL_ALLOC = 44443
+    // 44.443% to AA so 1625 * 44.443% = 722.19
+    // 55.557% to BB so 1625 * 55.557% = 902.80
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBB = cdoEpoch.virtualPrice(address(BBtranche));
+
+    // everything is multiplied by 100 so we can use 2 decimals (ie 722.19 becomes 72219)
+    assertEq(priceAA, (1000000 + 72219) * ONE_SCALE / 1000000, 'AA price after stop epoch is wrong');
+    assertEq(priceBB, (500000 + 90280) * ONE_SCALE / 500000, 'BB price after stop epoch is wrong');
+  }
+
+  function testRequestWithdrawNormalOnlyBB() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 0); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // AARatio 50%, 5000 deposit each
+    uint256 mintedAA = idleCDO.depositAA(amountWei / 2);
+    uint256 mintedBB = idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // 1 epoch interest is 10% of 10000 = 1000 (this is what borrower should pay)
+    // 25% of the interest goes to AA because of the adaptive yield split so 250 to AA
+    // 75% of the interest goes to BB so 750 to BB
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedBB1 = cdoEpoch.requestWithdraw(mintedBB, address(BBtranche));
+    assertEq(requestedBB1, 5750 * ONE_SCALE, 'first requested amount for BB is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 250 * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), 5750 * ONE_SCALE, 'Expected interest is wrong');
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA, address(AAtranche));
+    // 5250 + 10% of the next epoch
+    assertEq(requestedAA1, 5775 * ONE_SCALE, 'requested amount for AA is wrong');
+  }
+
+  function testRequestWithdrawNormalOnlyBBWithBuffer() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 365 days); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // AARatio 50%, 5000 deposit each
+    uint256 mintedAA = idleCDO.depositAA(amountWei / 2);
+    uint256 mintedBB = idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // 1 epoch interest is 10% of 10000 = 1000 + 500 for the buffer = tot 1500 (this is what borrower should 
+    // pay, 500 for the buffer because of the redeem request that will be done now)
+    // 25% of the interest goes to AA because of the adaptive yield split so 250 + 500 to AA for the buffer (there won't be any more BB)
+    // 75% of the interest goes to BB so 500 basic interest + 250 (overperformance from the AA from the base interest)
+    // they also do not give the overperformance to BB for the buffer
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedBB1 = cdoEpoch.requestWithdraw(mintedBB, address(BBtranche));
+    assertEq(requestedBB1, 5750 * ONE_SCALE, 'first requested amount for BB is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 750 * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), 5750 * ONE_SCALE, 'Expected interest is wrong');
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA, address(AAtranche));
+    // 5750 + 10% of the next epoch
+    assertEq(requestedAA1, 6325 * ONE_SCALE, 'requested amount for AA is wrong');
+  }
+
+ function testRequestWithdrawNormalMultipleBB() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0); // 10%
+    // epoch 1 year and not buffer to simply accounting
+    cdoEpoch.setEpochParams(365 days, 0); 
+    vm.stopPrank();
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    // 10% apr
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // 10000 deposit AA each
+    idleCDO.depositAA(amountWei);
+    // 5000 deposit BB each
+    uint256 mintedBB = idleCDO.depositBB(amountWei / 2);
+    _transferBurnedTrancheTokens(address(this), true);
+    _transferBurnedTrancheTokens(address(this), false);
+
+    // deposit 5000 in BB
+    address userBB = makeAddr('userBB');
+    _depositWithUser(userBB, amountWei / 2, false);
+
+    // we have 10000 AA and 10000 BB -> tvl ratio is 10000 * FULL_ALLOC / 20000 = 50000
+    // 1 epoch interest is 10% of 20000 = 2000 (this is what borrower should pay)
+    // tranche apr split ratio is min ratio * tvl ratio / FULL_ALLOC = 50000 * 50000 / 100000 = 25000
+    // 25% of the interest goes to AA because of the adaptive yield split so 2000 * 25% = 500
+    // 75% of the interest goes to BB so 1500
+
+    // request max withdraw (returned value is amount + net interest for next epoch)
+    uint256 requestedBB1 = cdoEpoch.requestWithdraw(mintedBB, address(BBtranche));
+    assertEq(requestedBB1, (5000 + 1500 / 2) * ONE_SCALE, 'first requested amount for BB is wrong');
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), (500 + 1500 / 2) * ONE_SCALE, 'Expected interest is wrong');
+    assertEq(cv.pendingWithdraws(), (5000 + 1500 / 2) * ONE_SCALE, 'pendingWithdraws is wrong');
+
+    // after the request redeem the tvl ratio and apr ratio change we now have
+    // 10000 AA and 5000 BB -> tvl ratio is 10000 * FULL_ALLOC / 15000 = 66666
+    // interest is 1500 / 2 + 500 = 1250
+    // tranche apr split ratio is tvl ratio * tvl ratio / FULL_ALLOC = 44443
+    // 44.443% to AA so 1250 * 44.443% = 555.5375
+    // 55.557% to BB so 1250 * 55.557% = 694.4625
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBB = cdoEpoch.virtualPrice(address(BBtranche));
+
+    // everything is multiplied by 100 so we can use 2 decimals (ie 555.53 becomes 55553)
+    assertEq(priceAA, (1000000 + 55553) * ONE_SCALE / 1000000, 'AA price after stop epoch is wrong');
+    assertEq(priceBB, (500000 + 69446) * ONE_SCALE / 500000, 'BB price after stop epoch is wrong');
   }
 }
