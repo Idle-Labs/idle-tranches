@@ -57,6 +57,16 @@ const highRunConfig = {
   }
 };
 
+const medRunConfig = {
+  version: "0.8.10",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 500
+    }
+  }
+};
+
 module.exports = {
   solidity: {
     compilers: [
@@ -76,6 +86,7 @@ module.exports = {
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
+      "contracts/IdleCDOUsualVariant.sol": medRunConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOEpochVariantArbitrum.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOTruefiCreditVariant.sol": overrideConfig,
