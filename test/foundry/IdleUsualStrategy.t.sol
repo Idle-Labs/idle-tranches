@@ -193,6 +193,11 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     vm.prank(owner);
     _idleCDO.startEpoch();
 
+    // epoch is already running so cannot call startEpoch again
+    vm.prank(owner);
+    vm.expectRevert(bytes("9"));
+    _idleCDO.startEpoch();
+
     assertEq(tvlPre, _idleCDO.getContractValue(), "tvl is the same");
     assertEq(_idleCDO.isEpochRunning(), true, "epoch is not running");
     assertEq(_idleCDO.paused(), true, "deposits paused");
@@ -200,6 +205,14 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(_idleCDO.allowBBWithdraw(), false, "BB withdrawals paused");
     assertEq(_idleCDO.priceAtStartEpoch(), oraclePrice, 'price at start epoch is wrong');
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(_idleCDO)), tvlPre, 'strategyToken bal is wrong');
+
+    vm.startPrank(owner);
+    _idleCDO.stopEpoch();
+
+    // epoch ended, cannot start a new epoch
+    vm.expectRevert(bytes("9"));
+    _idleCDO.startEpoch();
+    vm.stopPrank();
   }
 
   function testStopEpoch() external {
@@ -217,6 +230,11 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     uint256 navAA = _idleCDO.lastNAVAA();
     assertEq(navAA, amount, 'lastNAVAA is wrong');
     assertEq(_idleCDO.lastNAVBB(), amount, 'lastNAVBB is wrong');
+
+    // epoch is not running so cannot stop an epoch
+    vm.prank(owner);
+    vm.expectRevert(bytes("9"));
+    _idleCDO.stopEpoch();
 
     vm.prank(owner);
     _idleCDO.startEpoch();
@@ -242,6 +260,11 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     _idleCDO.stopEpoch();
 
     vm.prank(owner);
+    _idleCDO.stopEpoch();
+
+    // cannot stop an epoch that is not running
+    vm.prank(owner);
+    vm.expectRevert(bytes("9"));
     _idleCDO.stopEpoch();
 
     // check that various parameters are set correctly

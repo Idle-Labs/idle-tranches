@@ -28,6 +28,7 @@ contract IdleCDOUsualVariant is IdleCDO {
   uint256 public priceAtStartEpoch;
   /// @notice flag to check if the epoch is running
   bool public isEpochRunning;
+  bool public epochEnded;
 
   function _additionalInit() internal override {
     // no unlent perc
@@ -43,6 +44,8 @@ contract IdleCDOUsualVariant is IdleCDO {
   /// @notice start the epoch, disable new deposits / redeems
   function startEpoch() external {
     _checkOnlyOwner();
+    // if the epoch is already ended or running we revert
+    require(!epochEnded && !isEpochRunning, "9");
 
     // we pause deposits
     _pause();
@@ -63,6 +66,8 @@ contract IdleCDOUsualVariant is IdleCDO {
   /// @notice stop the epoch, enable redeems only
   function stopEpoch() external {
     _checkOnlyOwner();
+    // if the epoch is not running we revert
+    require(isEpochRunning, "9");
 
     IdleUsualStrategy _strategy = IdleUsualStrategy(strategy);
     // we fetch and set oracle price for reference
@@ -74,6 +79,8 @@ contract IdleCDOUsualVariant is IdleCDO {
     allowBBWithdraw = true;
     // set epoch as not running
     isEpochRunning = false;
+    // set epoch as ended
+    epochEnded = true;
 
     // if usd0++ price is 1$ or more then junior doesn't owe anything to senior
     if (_oraclePrice >= oneToken) {
