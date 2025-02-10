@@ -63,8 +63,14 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
 
   function _createLoss(uint256 _loss) internal override {
     // we simulate the loss by transferring out strategyTokens from the CDO
+    uint256 strategyBal = strategyToken.balanceOf(address(idleCDO));
+    uint256 lossUnderlyings = _loss * idleCDO.getContractValue() / FULL_ALLOC;
     vm.startPrank(address(idleCDO));
-    IERC20Detailed(address(strategy)).transfer(address(1), _loss * idleCDO.getContractValue() / FULL_ALLOC);
+    if (strategyBal > 0) {
+      strategyToken.transfer(address(1), lossUnderlyings);
+    } else {
+      underlying.transfer(address(1), lossUnderlyings);
+    }
     vm.stopPrank();
   }
 
@@ -77,6 +83,9 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     // Given that this CDO will get rewards only in the form of USUAL tokens
     // we send some USUAL tokens to the CDO at each harvest to simulate the tranche price increase
     deal(USUAL, address(idleCDO), 1e18);
+    if (!IdleCDOUsualVariant(address(idleCDO)).isEpochRunning()) {
+      return;
+    }
     super._cdoHarvest(_skipRewards);
   }
 
@@ -149,20 +158,13 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     // check that trancheAPRSplitRatio and aprs are updated 
     assertApproxEqAbs(idleCDO.trancheAPRSplitRatio(), 25000, 1, "split ratio");
 
-    // skip rewards and deposit underlyings to the strategy
-    _cdoHarvest(true);
-
-    // claim rewards
-    _cdoHarvest(false);
-    assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal after harvest");    
-
     // Strategy price will be the same until the end of the 'epoch'
     assertEq(strategy.price(), strategyPrice, "strategy price");
 
-    // virtualPrice should increase for AA tranche
+    // virtualPrice should be the same for AA tranche
     assertEq(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
-    // virtualPrice should be increase for BB tranche only because of the rewards harvest
-    assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
+    // virtualPrice should be the same for BB tranche
+    assertEq(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
 
     vm.prank(owner);
     IdleCDOUsualVariant(address(idleCDO)).startEpoch();
@@ -518,6 +520,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     // uint256 preBBPrice = idleCDO.virtualPrice(address(BBtranche));
     _cdoHarvest(true);
 
+    vm.roll(block.number + 1);
+
     uint256 unclaimedFees = idleCDO.unclaimedFees();
     // now let's simulate a loss by decreasing strategy price
     // curr price - 5%, this will trigger a default because the loss is >= junior tvl
@@ -615,6 +619,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     // funds in lending
     _cdoHarvest(true);
 
+    vm.roll(block.number + 1);
+
     // NOTE: forcely decrease the vault price
     // curr price - 2.5%
     uint256 loss = 2500; // in % with 100_000 = 100%
@@ -644,5 +650,24 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
   }
   function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
     // Overridden as loss is never socialized
+  }
+
+  function _testRedeemRewardsInternal() internal override {
+    uint256 amount = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    // epoch not started
+    vm.expectRevert(bytes("9"));
+    _cdoHarvest(false);
+
+    vm.prank(owner);
+    IdleCDOUsualVariant(address(idleCDO)).startEpoch();
+
+    // sell some rewards
+    uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));
+    _cdoHarvestRewards(100 * ONE_SCALE);
+
+    uint256 pricePost = idleCDO.virtualPrice(address(AAtranche));
+    assertGt(pricePost, pricePre, "virtual price increased");
   }
 }

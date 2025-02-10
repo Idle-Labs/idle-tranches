@@ -171,6 +171,18 @@ contract IdleCDOUsualVariant is IdleCDO {
     _virtualPrice = uint256(int256(_lastTrancheNAV) + _totalTrancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
+  /// @dev Check IdleCDO.sol for more details. We ensure that harvest is not called if epoch is not running not ended
+  function harvest(
+    bool[] calldata _skipFlags,
+    bool[] calldata _skipReward,
+    uint256[] calldata _minAmount,
+    uint256[] calldata _sellAmounts,
+    bytes[] calldata _extraData
+  ) public override returns (uint256[][] memory) {
+    require(isEpochRunning || epochEnded, "9");
+    return super.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
+  }
+
   /// NOTE: strategy price is alway equal to 1 underlying
   function _checkDefault() override internal {}
   function setSkipDefaultCheck(bool) external override {}
