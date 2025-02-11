@@ -162,7 +162,11 @@ contract IdleUsualStrategy is
 
   /// @notice get the chainlink price of usd0++ and scale it to 18 decimals
   function getChainlinkPrice() public view returns (uint256) {
-    (,int256 answer,,,) = IOracle(USD0ppOracle).latestRoundData();
+    // Oracle it is not updated frequently but only if there is a deviation of 50 bips from 
+    // the last reported value.There is also a 24 hours hearbeat. So we check that the last round 
+    // is not older than 24 hours
+    (,int256 answer,,uint256 updatedAt,) = IOracle(USD0ppOracle).latestRoundData();
+    require(updatedAt > block.timestamp - 24 hours, "Stale price");
     // scale the answer to 18 decimals
     return uint256(answer) * 1e10;
   }
@@ -174,7 +178,7 @@ contract IdleUsualStrategy is
     idleCDO = _cdo;
   }
 
-  /// @notice Modifier to make sure that caller os only the idleCDO contract
+  /// @notice Modifier to make sure that caller is only the idleCDO contract
   modifier onlyIdleCDO() {
     require(idleCDO == msg.sender, "Only IdleCDO can call");
     _;
