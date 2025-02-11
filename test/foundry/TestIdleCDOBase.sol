@@ -98,9 +98,9 @@ abstract contract TestIdleCDOBase is Test {
 
   function testInitialize() public virtual {
     assertEq(idleCDO.token(), address(underlying));
-    assertGe(strategy.price(), ONE_SCALE);
-    assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE);
-    assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE);
+    assertGe(strategy.price(), ONE_SCALE, 'strategy price is wrong');
+    assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE, 'AA price is wrong');
+    assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, 'BB price is wrong');
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
     assertEq(idleCDO.maxDecreaseDefault(), 5000);

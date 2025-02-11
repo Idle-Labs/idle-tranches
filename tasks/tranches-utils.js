@@ -464,6 +464,63 @@ task("collect-morpho-rewards")
     // await helpers.proposeBatchTxsMainnet(networkContracts.devLeagueMultisig, txs);
   });
 
+task("collect-usual-rewards")
+  .addParam('cdoname')
+  .setAction(async function (args) {
+    if (!args.cdoname) {
+      console.log("🛑 cdoname and it's params must be defined");
+      return;
+    }
+    // Get config params
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const cdoAddr = deployToken.cdo.cdoAddr;
+    const cdoContract = await ethers.getContractAt("IdleCDOUsualVariant", cdoAddr);
+    const strategyAddr = await cdoContract.strategy();
+    const strategyContract = await ethers.getContractAt("IdleUsualStrategy", strategyAddr);
+    const currentRewards = await strategyContract.getRewardTokens();
+    console.log('strategy:', strategyAddr);
+    console.log('cdoAddr :', cdoAddr);
+    console.log('current rewards: ');
+    for (let r = 0; r < currentRewards.length; r++) {
+      const reward = currentRewards[r];
+      const rewardContract = await ethers.getContractAt("IERC20Detailed", reward);
+      const rewardSymbol = await rewardContract.symbol();
+      console.log(`reward ${reward} (${rewardSymbol})`);
+    }
+    console.log('-----------------');
+
+    let targetContract = strategyAddr;
+
+    // fetch last distributions
+    const response = await fetch(`https://app.usual.money/api/rewards/${targetContract}`);
+    const rewards = await response.json();
+
+    const usualDistributor = await ethers.getContractAt("IUsualDistributor", '0x75cc0c0ddd2ccafe6ec415be686267588011e36a');
+    console.log('rewards', rewards)
+    const txs = [];
+    for (let i = 0; i < rewards.length; i++) {
+      const reward = rewards[i];
+      console.log('amount', reward.value);
+      console.log('receiver', targetContract);
+      // console.log('proof', reward.merkleProof);
+      const data = usualDistributor.interface.encodeFunctionData(
+        'claimOffChainDistribution',
+        [targetContract, reward.value, reward.merkleProof]
+      );
+      console.log('data', data);
+      txs.push({to: usualDistributor.address, value: '0', data});
+      console.log('---');
+    }
+
+    if (txs.length == 0) {
+      console.log('No transactions to process.');
+      return;
+    }
+    const signer = await run('get-signer-or-fake');
+    await helpers.batchTxsEOA(txs.map(tx => ({ target: tx.to, callData: tx.data })), signer);
+  });
+
 task("fetch-morpho-rewards")
   .addParam('cdoname')
   .setAction(async function (args) {
