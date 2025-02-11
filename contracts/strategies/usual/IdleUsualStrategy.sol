@@ -192,8 +192,13 @@ contract IdleUsualStrategy is
     IERC20Detailed(_token).safeTransfer(_to, value);
   }
 
-  /// @notice Not used
-  function redeemRewards(bytes calldata) external onlyIdleCDO override returns (uint256[] memory) {}
+  /// @notice redeem the rewards.
+  /// @return rewards amount of reward that is transferred to the CDO contract
+  function redeemRewards(bytes calldata) external onlyIdleCDO override returns (uint256[] memory rewards) {
+    rewards = new uint256[](1);
+    rewards[0] = IERC20Detailed(USUAL).balanceOf(address(this));
+    IERC20Detailed(USUAL).safeTransfer(msg.sender, rewards[0]);
+  }
 
   /// @notice Not used
   function pullStkAAVE() external pure override returns (uint256) {}
