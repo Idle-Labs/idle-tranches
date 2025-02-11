@@ -167,7 +167,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
 
     vm.prank(owner);
-    IdleCDOUsualVariant(address(idleCDO)).startEpoch();
+    IdleCDOUsualVariant(address(idleCDO)).startEpoch(0);
 
     // deposits are not allowed when epoch is running
     vm.expectRevert(bytes("Pausable: paused"));
@@ -189,16 +189,16 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
 
     vm.prank(makeAddr('nonOwner'));
     vm.expectRevert(bytes("6"));
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     // funds in lending
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     // epoch is already running so cannot call startEpoch again
     vm.prank(owner);
     vm.expectRevert(bytes("9"));
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     assertEq(tvlPre, _idleCDO.getContractValue(), "tvl is the same");
     assertEq(_idleCDO.isEpochRunning(), true, "epoch is not running");
@@ -213,7 +213,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
 
     // epoch ended, cannot start a new epoch
     vm.expectRevert(bytes("9"));
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
     vm.stopPrank();
   }
 
@@ -239,7 +239,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     _idleCDO.stopEpoch();
 
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(100);
 
     // harvest 10000 USUAL
     _cdoHarvestRewards(10000 * ONE_SCALE);
@@ -260,6 +260,13 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     vm.prank(makeAddr('nonOwner'));
     vm.expectRevert(bytes("6"));
     _idleCDO.stopEpoch();
+
+    // epoch duration not passed
+    vm.prank(owner);
+    vm.expectRevert(bytes("9"));
+    _idleCDO.stopEpoch();
+
+    vm.warp(block.timestamp + 100);
 
     vm.prank(owner);
     _idleCDO.stopEpoch();
@@ -309,7 +316,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(_idleCDO.lastNAVBB(), amount, 'lastNAVBB is wrong');
 
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     // harvest 10000 USUAL
     _cdoHarvestRewards(10000 * ONE_SCALE);
@@ -364,7 +371,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     uint256 navAA = _idleCDO.lastNAVAA();
 
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     // harvest 10 USUAL, not enough to cover seniors
     _cdoHarvestRewards(10 * ONE_SCALE);
@@ -408,7 +415,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     vm.roll(block.number + 1);
 
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     // cannot redeem during epoch
     vm.expectRevert(bytes("3"));
@@ -456,7 +463,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     vm.roll(block.number + 1);
 
     vm.prank(owner);
-    _idleCDO.startEpoch();
+    _idleCDO.startEpoch(0);
 
     _cdoHarvestRewards(10000 * ONE_SCALE);
     uint256 usd0ppReceived = 3216792005684096666858;
@@ -661,7 +668,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     _cdoHarvest(false);
 
     vm.prank(owner);
-    IdleCDOUsualVariant(address(idleCDO)).startEpoch();
+    IdleCDOUsualVariant(address(idleCDO)).startEpoch(0);
 
     // sell some rewards
     uint256 pricePre = idleCDO.virtualPrice(address(AAtranche));

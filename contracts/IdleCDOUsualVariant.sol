@@ -28,7 +28,8 @@ contract IdleCDOUsualVariant is IdleCDO {
   uint256 public priceAtStartEpoch;
   /// @notice flag to check if the epoch is running
   bool public isEpochRunning;
-  bool public epochEnded;
+  /// @notice epoch end date
+  uint256 public epochEndDate;
 
   function _additionalInit() internal override {
     // no unlent perc
@@ -42,18 +43,20 @@ contract IdleCDOUsualVariant is IdleCDO {
   }
 
   /// @notice start the epoch, disable new deposits / redeems
-  function startEpoch() external {
+  function startEpoch(uint256 _epochDuration) external {
     _checkOnlyOwner();
-    // if the epoch is already ended or running we revert
-    require(!epochEnded && !isEpochRunning, "9");
+    // if the epoch is already ended we revert
+    require(epochEndDate == 0, "9");
 
     // we pause deposits
     _pause();
     // prevent withdrawals
     allowAAWithdraw = false;
     allowBBWithdraw = false;
-    // set epoch as not running
+    // set epoch as running
     isEpochRunning = true;
+    // set epoch end date
+    epochEndDate = block.timestamp + _epochDuration;
 
     // save initial price for reference
     address _strategy = strategy;
@@ -67,7 +70,7 @@ contract IdleCDOUsualVariant is IdleCDO {
   function stopEpoch() external {
     _checkOnlyOwner();
     // if the epoch is not running we revert
-    require(isEpochRunning, "9");
+    require(isEpochRunning && block.timestamp >= epochEndDate, "9");
 
     IdleUsualStrategy _strategy = IdleUsualStrategy(strategy);
     // we fetch and set oracle price for reference
@@ -79,8 +82,6 @@ contract IdleCDOUsualVariant is IdleCDO {
     allowBBWithdraw = true;
     // set epoch as not running
     isEpochRunning = false;
-    // set epoch as ended
-    epochEnded = true;
 
     // if usd0++ price is 1$ or more then junior doesn't owe anything to senior
     if (_oraclePrice >= oneToken) {
@@ -179,11 +180,11 @@ contract IdleCDOUsualVariant is IdleCDO {
     uint256[] calldata _sellAmounts,
     bytes[] calldata _extraData
   ) public override returns (uint256[][] memory) {
-    require(isEpochRunning || epochEnded, "9");
+    require(isEpochRunning || block.timestamp >= epochEndDate, "9");
     return super.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
   }
 
-  /// NOTE: strategy price is alway equal to 1 underlying
+  /// NOTE: strategy price is always equal to 1 underlying
   function _checkDefault() override internal {}
   function setSkipDefaultCheck(bool) external override {}
   function setMaxDecreaseDefault(uint256) external override {}
