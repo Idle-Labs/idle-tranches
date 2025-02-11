@@ -69,6 +69,8 @@ const mainnetContracts = {
   // truefi
   tfUSDC: '0xA991356d261fbaF194463aF6DF8f0464F8f1c742',
   tfUSDCMultifarm: '0xec6c3FD795D6e6f202825Ddb56E01b3c128b0b10',
+  // usual 
+  USD0pp: '0x35D8949372D46B7a3D5A56006AE77B215fc69bC0',
   USDT: '0xdac17f958d2ee523a2206206994597c13d831ec7',
   cWETH: '0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5',
   aWETH: '0x030bA81f1c18d280636F32af80b9AAd02Cf0854e',
@@ -923,7 +925,20 @@ const CDOs = {
     eulerVaultTranche: '0xd820C8129a853a04dC7e42C64aE62509f531eE5A',
     // USDC token vault
     eulerVaultUSDC: '0x166d8b62e1748d04edf39d0078f1fe4aa01d475e',
-  }
+  },
+  usualusd0pptest: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
+    underlying: mainnetContracts.USD0pp,
+    cdoAddr: '0x7c31fDCa14368E0DA2DA7E518687012287bB90B1',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x3A34157DF5F07fF757B599716F41E8DC7829b090',
+    BBTranche: '0x228d530C7b3570E5eb7c7D049bFEC45D28e611Fa'
+  },
 };
 
 const trancheErc4626Wrappers = {
@@ -2424,7 +2439,39 @@ exports.deployTokens = {
     keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: ''
-  }
+  },
+  usualusd0pptest: {
+    decimals: 18,
+    underlying: mainnetContracts.USD0pp,
+    strategyName: 'IdleUsualStrategy',
+    strategyParams: [
+      mainnetContracts.USD0pp,
+      'owner', // owner address
+    ],
+    cdo: CDOs.usualusd0pptest,
+    cdoVariant: 'IdleCDOUsualVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: false,
+    proxyCdoAddress: ''
+  },
+  usualusd0pp: {
+    decimals: 18,
+    underlying: mainnetContracts.USD0pp,
+    strategyName: 'IdleUsualStrategy',
+    strategyParams: [
+      mainnetContracts.USD0pp,
+      'owner', // owner address
+    ],
+    cdo: CDOs.usualusd0pp,
+    cdoVariant: 'IdleCDOUsualVariant',
+    ...baseCDOArgs,
+    AARatio: '20000',
+    limit: '0',
+    isAYSActive: false,
+    proxyCdoAddress: CDOs.usualusd0pptest.cdoAddr
+  },
 };
 
 exports.deployTokensPolygon = {
