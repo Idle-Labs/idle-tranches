@@ -490,27 +490,49 @@ task("collect-usual-rewards")
     }
     console.log('-----------------');
 
-    let targetContract = strategyAddr;
+    const usualDistributor = await ethers.getContractAt("IUsualDistributor", '0x75cc0c0ddd2ccafe6ec415be686267588011e36a');
+    const offChainDistrData = await usualDistributor.getOffChainDistributionData();
+    const latestRoot = offChainDistrData.merkleRoot;
+    console.log('latestRoot ', latestRoot);
 
     // fetch last distributions
-    const response = await fetch(`https://app.usual.money/api/rewards/${targetContract}`);
+    const response = await fetch(`https://app.usual.money/api/rewards/${strategyAddr}`);
     const rewards = await response.json();
+    const responseCDO = await fetch(`https://app.usual.money/api/rewards/${cdoAddr}`);
+    const rewardsCDO = await responseCDO.json();
 
-    const usualDistributor = await ethers.getContractAt("IUsualDistributor", '0x75cc0c0ddd2ccafe6ec415be686267588011e36a');
-    console.log('rewards', rewards)
     const txs = [];
-    for (let i = 0; i < rewards.length; i++) {
-      const reward = rewards[i];
-      console.log('amount', reward.value);
-      console.log('receiver', targetContract);
+    // If first element root is equal to the latestRoot then we can claim
+    // process strategy rewards
+    if (rewards.length > 0 && rewards[0].merkleRoot == latestRoot) {
+      const reward = rewards[0];
+      console.log('amount Strategy', reward.value);
+      console.log('receiver Strategy', strategyAddr);
       // console.log('proof', reward.merkleProof);
       const data = usualDistributor.interface.encodeFunctionData(
         'claimOffChainDistribution',
-        [targetContract, reward.value, reward.merkleProof]
+        [strategyAddr, reward.value, reward.merkleProof]
       );
-      console.log('data', data);
+      // console.log('data', data);
       txs.push({to: usualDistributor.address, value: '0', data});
-      console.log('---');
+    } else {
+      console.log('Nothing to claim for strategy');
+    }
+
+    // process cdo rewards
+    if (rewardsCDO.length > 0 && rewardsCDO[0].merkleRoot == latestRoot) {
+      const reward = rewardsCDO[0];
+      console.log('amount CDO', reward.value);
+      console.log('receiver CDO', cdoAddr);
+      // console.log('proof', reward.merkleProof);
+      const data = usualDistributor.interface.encodeFunctionData(
+        'claimOffChainDistribution',
+        [cdoAddr, reward.value, reward.merkleProof]
+      );
+      // console.log('data', data);
+      txs.push({to: usualDistributor.address, value: '0', data});
+    } else {
+      console.log('Nothing to claim for CDO');
     }
 
     if (txs.length == 0) {
