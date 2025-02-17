@@ -11,6 +11,7 @@ struct QueuedOffChainDistribution {
 interface IUsualDistributor {
   function claimOffChainDistribution(address account, uint256 amount, bytes32[] calldata proof) external;
   function getOffChainDistributionData() external view returns (uint256 timestamp, bytes32 merkleRoot);
+  function getOffChainTokensClaimed(address account) external view returns (uint256 amount);
   function getOffChainDistributionQueue()
     external
     view

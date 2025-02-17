@@ -498,8 +498,10 @@ task("collect-usual-rewards")
     // fetch last distributions
     const response = await fetch(`https://app.usual.money/api/rewards/${strategyAddr}`);
     const rewards = await response.json();
+    const claimed = await usualDistributor.getOffChainTokensClaimed(strategyAddr);
     const responseCDO = await fetch(`https://app.usual.money/api/rewards/${cdoAddr}`);
     const rewardsCDO = await responseCDO.json();
+    const claimedCDO = await usualDistributor.getOffChainTokensClaimed(cdoAddr);
 
     const txs = [];
     // If first element root is equal to the latestRoot then we can claim
@@ -508,13 +510,17 @@ task("collect-usual-rewards")
       const reward = rewards[0];
       console.log('amount Strategy', reward.value);
       console.log('receiver Strategy', strategyAddr);
-      // console.log('proof', reward.merkleProof);
-      const data = usualDistributor.interface.encodeFunctionData(
-        'claimOffChainDistribution',
-        [strategyAddr, reward.value, reward.merkleProof]
-      );
-      // console.log('data', data);
-      txs.push({to: usualDistributor.address, value: '0', data});
+      if (BN(claimed).eq(BN(reward.value))) {
+        console.log('Already claimed strategy');
+      } else {
+        // console.log('proof', reward.merkleProof);
+        const data = usualDistributor.interface.encodeFunctionData(
+          'claimOffChainDistribution',
+          [strategyAddr, reward.value, reward.merkleProof]
+        );
+        // console.log('data', data);
+        txs.push({to: usualDistributor.address, value: '0', data});
+      }
     } else {
       console.log('Nothing to claim for strategy');
     }
@@ -525,12 +531,16 @@ task("collect-usual-rewards")
       console.log('amount CDO', reward.value);
       console.log('receiver CDO', cdoAddr);
       // console.log('proof', reward.merkleProof);
-      const data = usualDistributor.interface.encodeFunctionData(
-        'claimOffChainDistribution',
-        [cdoAddr, reward.value, reward.merkleProof]
-      );
-      // console.log('data', data);
-      txs.push({to: usualDistributor.address, value: '0', data});
+      if (BN(claimedCDO).eq(BN(reward.value))) {
+        console.log('Already claimed CDO');
+      } else {
+        const data = usualDistributor.interface.encodeFunctionData(
+          'claimOffChainDistribution',
+          [cdoAddr, reward.value, reward.merkleProof]
+        );
+        // console.log('data', data);
+        txs.push({to: usualDistributor.address, value: '0', data});
+      }
     } else {
       console.log('Nothing to claim for CDO');
     }
