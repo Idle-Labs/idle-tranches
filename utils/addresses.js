@@ -939,6 +939,19 @@ const CDOs = {
     AATranche: '0x3A34157DF5F07fF757B599716F41E8DC7829b090',
     BBTranche: '0x228d530C7b3570E5eb7c7D049bFEC45D28e611Fa'
   },
+  usualusd0pp: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
+    underlying: mainnetContracts.USD0pp,
+    cdoAddr: '0x67e04c90877FC63334d420e75f54d7ce1C8bCe01',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x891BDf6580D58337E9557B44dd01D8eaBE07Df15',
+    BBTranche: '0xE4EF3FD4eE87fF6EdF20Fd8F92301341a5a52D5b'
+  },
 };
 
 const trancheErc4626Wrappers = {

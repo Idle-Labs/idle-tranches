@@ -444,6 +444,11 @@
       "address": "0x7c31fDCa14368E0DA2DA7E518687012287bB90B1",
       "txHash": "0xfd1010a53897ebd9f47729951f6bfc41f6e08fc6ab851ac764d562fe8aab78ae",
       "kind": "transparent"
+    },
+    {
+      "address": "0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8",
+      "txHash": "0xdb4f73c2c6ca990451311bc0720bae8040de5c236af06ce130402554f69df1ca",
+      "kind": "transparent"
     }
   ],
   "impls": {
