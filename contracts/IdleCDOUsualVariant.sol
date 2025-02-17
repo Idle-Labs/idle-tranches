@@ -180,7 +180,7 @@ contract IdleCDOUsualVariant is IdleCDO {
     uint256[] calldata _sellAmounts,
     bytes[] calldata _extraData
   ) public override returns (uint256[][] memory) {
-    require(isEpochRunning || block.timestamp >= epochEndDate, "9");
+    require(isEpochRunning || (block.timestamp >= epochEndDate && epochEndDate != 0), "9");
     return super.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
   }
 
