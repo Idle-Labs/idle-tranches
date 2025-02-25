@@ -88,6 +88,7 @@ module.exports = {
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
       "contracts/IdleCDOUsualVariant.sol": medRunConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
+      "contracts/optimism/IdleCDOEpochVariantPolygon.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOEpochVariantArbitrum.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOTruefiCreditVariant.sol": overrideConfig,
       "contracts/arbitrum/IdleCDOArbitrum.sol": overrideConfig,

@@ -146,9 +146,7 @@ task("deploy-hypernative-pauser", "Deploy HypernativeBatchPauser")
     console.log("network: ", hre.network.name);
     
     const pauser = networkContracts.hypernativePauserEOA;
-    // arbitrum contracts
     const protectedContracts = [
-      '0x6b8A1e78Ac707F9b0b5eB4f34B02D9af84D2b689'
     ];
     console.log("Params :");
     console.log("pauser: ", pauser);
@@ -156,9 +154,16 @@ task("deploy-hypernative-pauser", "Deploy HypernativeBatchPauser")
 
     await helpers.prompt("continue? [y/n]", true);
 
-    const contractAddr = await helpers.deployContract(contractName, [pauser, protectedContracts], signer);
-    console.log(`${contractName} deployed at ${contractAddr}`);
-    return contractAddr;
+    const contract = await helpers.deployContract(contractName, [pauser, protectedContracts], signer);
+    console.log(`${contractName} deployed at ${contract.address}`);
+  
+    await run("verify:verify", {
+      constructorArguments: [pauser, protectedContracts],
+      address: contract.address,
+      contract: "contracts/HypernativeBatchPauser.sol:HypernativeBatchPauser"
+    });
+
+    return contract.address;
   });
 
 /**
@@ -713,5 +718,12 @@ task("deploy-timelock", "Deploy Timelock")
     console.log('Owner: ', owner);
 
     const params = [delay, proposers, executors, owner];
-    await helpers.deployContract('Timelock', params, signer);
+    const contract = await helpers.deployContract('Timelock', params, signer);
+
+    await run("verify:verify", {
+      constructorArguments: params,
+      address: contract.address,
+      contract: "contracts/Timelock.sol:Timelock"
+    });
+
 });

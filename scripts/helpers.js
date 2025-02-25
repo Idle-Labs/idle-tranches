@@ -32,6 +32,7 @@ const impersonateSigner = async (acc) => {
 const getMultisigSigner = async (skipLog) => {
   const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
   const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
+  const isPolygon = hre.network.name == 'matic' || hre.network.config.chainId == 137;
   const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
   let safeServiceUrl;
   let networkKey;
@@ -44,6 +45,9 @@ const getMultisigSigner = async (skipLog) => {
   } else if (isArbitrum) {
     safeServiceUrl = 'https://safe-transaction-arbitrum.safe.global/';
     networkKey = 'arbitrum';
+  } else if (isPolygon) {
+    safeServiceUrl = 'https://safe-transaction-polygon.safe.global/';
+    networkKey = 'polygon';
   } else {
     safeServiceUrl = 'https://safe-transaction-mainnet.safe.global/';
     networkKey = 'mainnet';

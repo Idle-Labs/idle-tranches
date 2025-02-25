@@ -166,12 +166,6 @@ const mainnetContracts = {
   keyringWhitelist: '0x6351370a1c982780da2d8c85dfedd421f7193fa5'
 }
 
-// format is tokenName_XXYY
-// eg cpWIN_USDC_0923 for Sept 2023 distribution
-const merkleDistributors = {
-  // cpPOR_DAI_0923: '',
-}
-
 // Polygon
 const polygonContracts = {
   // rewards
@@ -188,11 +182,22 @@ const polygonContracts = {
   // misc
   cdoFactory: '0xf12aCB52E784B9482bbe4ef1C5741352584bE4Ca',
   quickRouter: '0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff',
-  feeReceiver: '0x1d60E17723f8Ca1F76F09126242AcD37a278b514',
+  feeReceiver: '0x61A944Ca131Ab78B23c8449e0A2eF935981D5cF6',
   rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
   treasuryMultisig: '0x61A944Ca131Ab78B23c8449e0A2eF935981D5cF6',
   devLeagueMultisig: '0x61A944Ca131Ab78B23c8449e0A2eF935981D5cF6',
   proxyAdmin: '0x44b6CDda5D030B29eEc58009F6f474082313C470',
+  // Same as proxyAdmin
+  proxyAdminWithTimelock: '0x44b6CDda5D030B29eEc58009F6f474082313C470',
+  timelock: '0x45f4fb4D0CCC439bB7B85Ba63064958ab7e31EE4',
+  keyring: '0x88e097c960ad0239b4eec6e8c5b4f74f898efda3',
+  keyringWhitelist: '0x168dc532aa8071003daa1a8094d938511f412e2b',
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: '0x1B0f494EF778907336bD7E631607db2C8019BF76',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  USDT: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
 }
 
 const polygonZKContracts = {
@@ -1040,19 +1045,20 @@ const polygonCDOs = {
     AATranche: '0x967b2fdEc06c0178709F1BFf56E0aA9367c3225c',
     BBTranche: '0x1aFf460F388E3822756F5697f05A7E2AEB8Db7ef'
   },
-  // quickcxbtcwbtc: {
-  //   decimals: 18,
-  //   // strategyToken it's the strategy itself here
-  //   strategyToken: '',
-  //   underlying: polygonContracts.CXBTC_WBTC_LP,
-  //   cdoAddr: '',
-  //   proxyAdmin: polygonContracts.proxyAdmin,
-  //   strategy: '',
-  //   AArewards: '',
-  //   BBrewards: '',
-  //   AATranche: '',
-  //   BBTranche: ''
-  // },
+  creditbastionusdt: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x4Ddb301403Ee3C4B4099ED128b34c36d86f6df35',
+    underlying: polygonContracts.USDT,
+    cdoAddr: '0xF9E2AE779a7d25cDe46FccC41a27B8A4381d4e52',
+    proxyAdmin: polygonContracts.proxyAdminWithTimelock,
+    strategy: '0x4Ddb301403Ee3C4B4099ED128b34c36d86f6df35',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xaE65d6C295E4a28519182a632FB25b7C1966AED7',
+    BBTranche: '0x9429b7B3d830475F59374ece266Df9366a90dE9F',
+    queue: '0xeAB324e9450d1EfFa087ccE8eff6C1FB476d60Ff'
+  },
 };
 
 const optimismCDOs = {
@@ -2509,6 +2515,44 @@ exports.deployTokensPolygon = {
     AARatio: '10000', // 100000 is 100% to AA
     cdo: polygonCDOs.quickcxethweth,
   },
+  creditbastionusdt: {
+    decimals: 6,
+    underlying: polygonContracts.USDT,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      polygonContracts.USDT,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xF381ee632bF26d57f6d5F8717bA573aED835820a', // borrower
+      'Bastion', // borrower name
+      13e18.toString(), // intialApr 13%
+    ],
+    cdo: polygonCDOs.creditbastionusdt,
+    cdoVariant: 'IdleCDOEpochVariantPolygon',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '2678400', // 31 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params default values
+    // instantWithdrawDelay: '259200', // 3 days
+    // instantWithdrawAprDelta: 1e18.toString(),
+    // disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: polygonContracts.keyringWhitelist,
+    keyringPolicy: 20,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    proxyCdoAddress: ''
+  }
 };
 
 exports.deployTokensPolygonZK = {
