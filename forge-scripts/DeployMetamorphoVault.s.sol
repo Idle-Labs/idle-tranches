@@ -29,6 +29,8 @@ contract DeployMetamorphoVault is Script {
   uint256 internal constant MORPHO_LLTV = 98; // 98%
   uint256 internal constant MORPHO_VAULT_FEE = 50000000000000000; // 5%
   uint256 internal constant MORPHO_TRANCHE_CAP = 10_000_000 * 1e6; // 10M
+  string internal constant MORPHO_VAULT_NAME_SUFFIX = "Pareto Fasanara ";
+  string internal constant MORPHO_VAULT_SYMBOL_SUFFIX = "parFas";
 
   function run() external {
     // forge script ./forge-scripts/DeployMetamorphoVaultWETH.s.sol \
@@ -118,8 +120,8 @@ contract DeployMetamorphoVault is Script {
       DEPLOYER,
       0, // timelock is set to 0 initially
       loanToken,
-      string(abi.encodePacked("Pareto Credit ", symbol)),
-      string(abi.encodePacked("par", symbol)),
+      string(abi.encodePacked(MORPHO_VAULT_NAME_SUFFIX, symbol)),
+      string(abi.encodePacked(MORPHO_VAULT_SYMBOL_SUFFIX, symbol)),
       "1"
     );
     mmVault = address(vault);
