@@ -931,6 +931,19 @@ const CDOs = {
     // USDC token vault
     eulerVaultUSDC: '0x166d8b62e1748d04edf39d0078f1fe4aa01d475e',
   },
+  creditbastionusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x06975bB418EFFB0029fe278A6fA15B92bb97496F',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x4462eD748B8F7985A4aC6b538Dfc105Fce2dD165',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x06975bB418EFFB0029fe278A6fA15B92bb97496F',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xC49b4ECc14aa31Ef0AD077EdcF53faB4201b724c',
+    BBTranche: '0x5B20BddA9457464e156917De7194d17f7f823735',
+  },
   usualusd0pptest: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -2457,6 +2470,44 @@ exports.deployTokens = {
     keyringPolicy: 4,
     keyringAllowWithdraw: false,
     // #########
+    proxyCdoAddress: ''
+  },
+  creditbastionusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xF381ee632bF26d57f6d5F8717bA573aED835820a', // borrower
+      'Bastion', // borrower name
+      10e18.toString(), // intialApr 10%
+    ],
+    cdo: CDOs.creditbastionusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '1209600', // 14 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
     proxyCdoAddress: ''
   },
   usualusd0pptest: {
