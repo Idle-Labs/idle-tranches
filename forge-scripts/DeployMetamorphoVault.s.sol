@@ -33,7 +33,7 @@ contract DeployMetamorphoVault is Script {
   string internal constant MORPHO_VAULT_SYMBOL_SUFFIX = "parFas";
 
   function run() external {
-    // forge script ./forge-scripts/DeployMetamorphoVaultWETH.s.sol \
+    // forge script ./forge-scripts/DeployMetamorphoVault.s.sol \
     // --fork-url $ETH_RPC_URL \
     // --ledger \
     // --broadcast \
@@ -58,17 +58,17 @@ contract DeployMetamorphoVault is Script {
     uint256 decimals = IERC20Detailed(LOAN_TOKEN).decimals();
     IERC20Detailed(LOAN_TOKEN).approve(address(MORPHO), type(uint256).max);
     IERC20Detailed(AA_tranche_1).approve(address(MORPHO), type(uint256).max);
-    // supply 0.01 tranche tokens as collateral, 
-    MORPHO.supplyCollateral(tranche1Params, 1e16, DEPLOYER, '');
-    // supply 0.01 to the market and borrow 0.009 to achieve 90% UR
-    uint256 supplyAmount = 10 ** (decimals) / 100;
+    // supply 1 tranche tokens as collateral, 
+    MORPHO.supplyCollateral(tranche1Params, 1e18, DEPLOYER, '');
+    // supply 1 to the market and borrow 0.9 to achieve 90% UR
+    uint256 supplyAmount = 10 ** (decimals);
     MORPHO.supply(tranche1Params, supplyAmount, 0, DEPLOYER, '');
     MORPHO.borrow(tranche1Params, supplyAmount * 90 / 100, 0, DEPLOYER, DEPLOYER);
     
-    IMorpho.MarketParams[] memory params = new IMorpho.MarketParams[](1);
-    params[0] = tranche1Params;
-    address mmVault = _createMetaMorphoVault(LOAN_TOKEN, params);
-    console.log('mmVault.address ', address(mmVault));
+    // IMorpho.MarketParams[] memory params = new IMorpho.MarketParams[](1);
+    // params[0] = tranche1Params;
+    // address mmVault = _createMetaMorphoVault(LOAN_TOKEN, params);
+    // console.log('mmVault.address ', address(mmVault));
     console.log('market.id       ');
     console.logBytes32(marketId);
   }

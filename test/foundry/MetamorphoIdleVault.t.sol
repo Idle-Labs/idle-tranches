@@ -16,7 +16,7 @@ interface IKeyringWhitelist {
 
 contract MetamorphoIdleVault is Test, DeployMetamorphoVault {
   // @notice test tranche prices pre and post redeem
-  uint256 BLOCK = 22304039;
+  uint256 BLOCK = 22525130;
   string constant network = 'mainnet';
   address internal constant CDO = 0xf6223C567F21E33e859ED7A045773526E9E3c2D5;
   address internal constant KEYRING = 0x6351370a1c982780Da2D8c85DfedD421F7193Fa5;

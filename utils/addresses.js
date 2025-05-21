@@ -920,6 +920,7 @@ const CDOs = {
     AATranche: '0x45054c6753b4Bce40C5d54418DabC20b070F85bE',
     BBTranche: '0xed9cD82076160Bbc5F734D596a039Baf616D44c4',
     queue: '0x0b4F695B05902efc14344d19ED1d0B0E061C8A3E',
+
     // Euler info:
     eulerGovernor: '0xF02Faf7CFEe786111eaE6747a0c344b48C1eD5E5',
     eulerOracleRouter: '0xBD52853DB7205B57ca99745E91CB77A7BA43708d',
@@ -930,6 +931,10 @@ const CDOs = {
     eulerVaultTranche: '0xd820C8129a853a04dC7e42C64aE62509f531eE5A',
     // USDC token vault
     eulerVaultUSDC: '0x166d8b62e1748d04edf39d0078f1fe4aa01d475e',
+
+    // Morpho info:
+    morphoOracle: '0xd0c30f4e6b3fcf1a9c59ae286e1cd9ecd98eddb9',
+    morphoMarketId: '0x060f95069f9cee9d77263f1f9e5295481584cefd97aa7b2fc9e55444d617fd1a'
   },
   creditbastionusdc: {
     decimals: 6,
