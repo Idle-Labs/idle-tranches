@@ -61,19 +61,17 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
     console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
 
     const tx = await pauseModule.replaceProtectedContracts([
-      // best yield
-      // idleDAI
-      { contractAddress: '0x3fE7940616e5Bc47b0775a0dccf6237893353bB4', contractType: 0 },
-      // idleUSDC
-      { contractAddress: '0x5274891bEC421B39D23760c04A6755eCB444797C', contractType: 0 },
-      // idleUSDT
-      { contractAddress: '0xF34842d05A1c888Ca02769A633DF37177415C2f8', contractType: 0 },
+      // best yield / USP contracts
+      // USP
+      { contractAddress: '0x97cCC1C046d067ab945d3CF3CC6920D3b1E54c88', contractType: 0 },
+      // USP queue
+      { contractAddress: '0xA7780086ab732C110E9E71950B9Fb3cb2ea50D89', contractType: 0 },
+      // sUSP
+      { contractAddress: '0x271C616157e69A43B4977412A64183Cf110Edf16', contractType: 0 },
 
       // tranches
       // lido
       { contractAddress: '0x34dCd573C5dE4672C8248cd12A99f875Ca112Ad8', contractType: 1 },
-      // stMATIC
-      { contractAddress: '0xF87ec7e1Ee467d7d78862089B92dd40497cBa5B8', contractType: 1 },
       // instasteth
       { contractAddress: '0x8E0A8A5c1e5B3ac0670Ea5a613bB15724D51Fc37', contractType: 1 },
       // mmusdcsteakusdc
@@ -88,6 +86,8 @@ task("hypernative-setup", "Deploy IdleCDOFactory")
       // credit vaults
       // fasanara usdc 
       { contractAddress: '0xf6223C567F21E33e859ED7A045773526E9E3c2D5', contractType: 1 },
+      // bastion usdc 
+      { contractAddress: '0x4462eD748B8F7985A4aC6b538Dfc105Fce2dD165', contractType: 1 },
 
       // DEPRECATED BY
       // { contractAddress: '0xC8E6CA6E96a326dC448307A5fDE90a0b21fd7f80', contractType: 0 },
