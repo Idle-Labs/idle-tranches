@@ -949,6 +949,20 @@ const CDOs = {
     AATranche: '0xC49b4ECc14aa31Ef0AD077EdcF53faB4201b724c',
     BBTranche: '0x5B20BddA9457464e156917De7194d17f7f823735',
   },
+  creditadaptivefrontierusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xa30bE796FB2BAbF9228359E86A041c14e29f86Fc',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x14B8E918848349D1e71e806a52c13D4e0d3246E0',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xa30bE796FB2BAbF9228359E86A041c14e29f86Fc',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xae7913c672c7F1f76C2a1a0Ac4de97d082681234',
+    BBTranche: '0xff80E0DE1CC54B110632Da8A3296E52590cb2374',
+    queue: '0x5eCF8bF9eae51c2FF47FAc8808252FaCd8e36797'
+  },
   usualusd0pptest: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -2514,6 +2528,44 @@ exports.deployTokens = {
     // #########
     queue: false,
     proxyCdoAddress: ''
+  },
+  creditadaptivefrontierusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xaAeD5a7D6c04025f0Dda7e6b47275db1F1b2b7d5', // borrower
+      'Adaptive Frontier', // borrower name
+      13e18.toString(), // intialApr 13%
+    ],
+    cdo: CDOs.creditadaptivefrontierusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 7304190,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    proxyCdoAddress: CDOs.creditbastionusdc.cdoAddr,
   },
   usualusd0pptest: {
     decimals: 18,

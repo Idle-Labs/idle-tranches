@@ -487,11 +487,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       }
     }
 
-    console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
-    await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
-
     console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
     await idleCDO.connect(signer).setGuardian(networkContracts.pauserMultisig);
+    
+    console.log(`Transfer ownership of strategy to DL multisig ${networkContracts.devLeagueMultisig}`);
+    await strategy.connect(signer).transferOwnership(networkContracts.devLeagueMultisig);
 
     console.log(`Transfer ownership of CDO to TL multisig ${networkContracts.treasuryMultisig}`);
     await idleCDO.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
