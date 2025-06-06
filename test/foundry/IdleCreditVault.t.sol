@@ -319,7 +319,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_strategy.manager(), manager, 'manager is wrong');
     assertEq(_strategy.borrower(), borrower, 'borrower is wrong');
     assertEq(_strategy.lastApr(), _scaleAprWithBuffer(initialProvidedApr), 'lastApr is wrong');
-    assertEq(IERC20Detailed(address(_strategy)).name(), "Idle Credit Vault testBorrower USDC", 'token name is wrong');
+    assertEq(IERC20Detailed(address(_strategy)).name(), "Pareto Credit Vault testBorrower USDC", 'token name is wrong');
     assertEq(IERC20Detailed(address(_strategy)).symbol(), "testBorrowerUSDC", 'symbol is wrong');
     assertEq(IERC20Detailed(address(_strategy)).decimals(), IERC20Detailed(defaultUnderlying).decimals(), 'decimals is wrong');
     assertEq(_strategy.owner(), owner, 'owner is wrong');

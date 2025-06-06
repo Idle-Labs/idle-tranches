@@ -93,11 +93,11 @@ contract IdleCreditVault is
     lastApr = _apr;
     unscaledApr = _apr;
 
-    // name will be like: Idle Credit Vault Borrower USDC
+    // name will be like: Pareto Credit Vault Borrower USDC
     // symbol will be like: BorrowerUSDC
     string memory _symbol = IERC20Detailed(token).symbol();
     ERC20Upgradeable.__ERC20_init(
-      _concat(_concat(_concat(string("Idle Credit Vault "), borrowerName), " "), _symbol),
+      _concat(_concat(_concat(string("Pareto Credit Vault "), borrowerName), " "), _symbol),
       _concat(borrowerName, _symbol)
     );
     //------//-------//
