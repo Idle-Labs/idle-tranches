@@ -963,6 +963,38 @@ const CDOs = {
     BBTranche: '0xff80E0DE1CC54B110632Da8A3296E52590cb2374',
     queue: '0x5eCF8bF9eae51c2FF47FAc8808252FaCd8e36797'
   },
+  creditfalconxusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x17E9Ab2992dfecBe779a06A92a6cDB9fE6aEeEf3',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x433D5B175148dA32Ffe1e1A37a939E1b7e79be4d',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x17E9Ab2992dfecBe779a06A92a6cDB9fE6aEeEf3',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xC26A6Fa2C37b38E549a4a1807543801Db684f99C',
+    BBTranche: '0xacbb25b7DD30B6B2F7131865Dc1023622de3b3D6',
+    queue: '0x5cC24f44cCAa80DD2c079156753fc1e908F495DC',
+
+    // Morpho info:
+    morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
+    morphoMarketId: '0xfc12e6c22618e8dedee4935f13d553271576505bb779667b86f983a90f064e99'
+  },
+  creditflowdeskusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '',
+    BBTranche: '',
+    queue: ''
+  },
   usualusd0pptest: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -2567,6 +2599,83 @@ exports.deployTokens = {
     queue: true,
     proxyCdoAddress: CDOs.creditbastionusdc.cdoAddr,
   },
+  creditfalconxusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x1fb0f3602F52e2420aCff5CF04DBfDE96378Df58', // manager
+      '0x653F71339144e8641A645758F4df4e317Fe998A3', // borrower
+      'FalconX', // borrower name
+      0e18.toString(), // intialApr - redacted
+    ],
+    cdo: CDOs.creditfalconxusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '864000', // 10 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 18,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    proxyCdoAddress: '',
+  },
+  // creditflowdeskusdc: {
+  //   decimals: 6,
+  //   underlying: mainnetContracts.USDC,
+  //   strategyName: 'IdleCreditVault',
+  //   strategyParams: [
+  //     mainnetContracts.USDC,
+  //     'owner', // owner address
+  //     'owner', // manager
+  //     // '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+  //     '', // borrower
+  //     'Flowdesk', // borrower name
+  //     9e18.toString(), // intialApr 9%
+  //   ],
+  //   cdo: CDOs.creditflowdeskusdc,
+  //   cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+  //   ...baseCDOArgs,
+  //   AARatio: '100000',
+  //   isAYSActive: false,
+  //   limit: '0',
+  //   // #########
+  //   isCreditVault: true,
+  //   // ## epoch params
+  //   epochDuration: '2629800', // 30 days
+  //   bufferPeriod: '21600', // 6 hours
+  //   // ## instant params values
+  //   instantWithdrawDelay: '259200', // 3 days
+  //   instantWithdrawAprDelta: 1e18.toString(),
+  //   disableInstantWithdraw: false,
+  //   // ## keyring params
+  //   // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+  //   keyring: mainnetContracts.keyringWhitelist,
+  //   keyringPolicy: 1280224,
+  //   keyringAllowWithdraw: false,
+  //   // ## fees (if different from 15%)
+  //   fees: '10000', // 10%
+  //   // #########
+  //   queue: true,
+  //   proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  // },
   usualusd0pptest: {
     decimals: 18,
     underlying: mainnetContracts.USD0pp,
