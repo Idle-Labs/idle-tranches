@@ -163,7 +163,7 @@ const mainnetContracts = {
   idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
   cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
   timelock: '0xDa86e15d0Cda3A05Db930b248d7a2f775e575A44',
-  keyringWhitelist: '0x6351370a1c982780da2d8c85dfedd421f7193fa5'
+  keyringWhitelist: '0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3'
 }
 
 // Polygon

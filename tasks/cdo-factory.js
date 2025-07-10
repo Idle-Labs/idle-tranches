@@ -682,6 +682,32 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
 });
 
 /**
+ * @name deploy-keyring-whitelist
+ * task to deploy KeyringIdleWhitelist
+ */
+task("deploy-keyring-whitelist", "Deploy KeyringIdleWhitelist")
+  .addOptionalParam('owner')
+  .setAction(async (args) => {
+    // Run compile task
+    await run("compile");
+
+    // Get signer
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+
+    console.log(`Deploying KeyringIdleWhitelist with ${addr}`);
+    console.log()
+
+    const keyringAddress = "0xb0B5E2176E10B12d70e60E3a68738298A7DFe666";
+    console.log(`Ownership: ${args.owner}`);
+    console.log(`Keyring address: ${keyringAddress}`);
+    await helpers.deployContract('KeyringIdleWhitelist', 
+      [keyringAddress, args.owner], 
+      signer
+    );
+});
+
+/**
  * @name deploy-timelock
  * task to deploy Timelock
  */
@@ -725,5 +751,4 @@ task("deploy-timelock", "Deploy Timelock")
       address: contract.address,
       contract: "contracts/Timelock.sol:Timelock"
     });
-
 });
