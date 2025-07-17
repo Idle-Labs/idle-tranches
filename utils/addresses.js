@@ -147,6 +147,7 @@ const mainnetContracts = {
   idleTokenSingleRedeemImpl: '0xbdbc6d788d8090d3b72c6d5a1f763d5b56eeb907',
   latestConvexStrategy3eurImpl: '0x8f889dc453750c91c921bd6fb9a33a8a579b1baa',
   cdoFactory: '0x3C9916BB9498f637e2Fa86C2028e26275Dc9A631',
+  creditVaultFactory: '0x59AaBdAD8FdABd227cc71543B128765F93906626',
   snxStakingRewards: '0x4A07723BB06BF9307E4E1998834832728e6cDb49',
   snxStakingRewardsLido: '0xd7c1b48877a7dfa7d51cf1144c89c0a3f134f935',
   minimalInitializableProxyFactory: '0x91baced76e3e327ba7850ef82a7a8251f6e43fb8',
@@ -981,6 +982,21 @@ const CDOs = {
     morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
     morphoMarketId: '0xfc12e6c22618e8dedee4935f13d553271576505bb779667b86f983a90f064e99'
   },
+  creditgauntlettestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x6b3d00FCc1c0fc1e5c45faCe6227F0B7EeBaa285',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x77fc193Fe76EBd897c6e5e29375F4258Bcd61888',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x6b3d00FCc1c0fc1e5c45faCe6227F0B7EeBaa285',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x99e05CDBeAC5D91150935C59FF8e9ba9945d6884',
+    BBTranche: '0xA45304708D76fF93aC5168Eb4bBd5d8a534370a4',
+    queue: '0x2F0E03cba0Aa6b5490a80FF904328154Af33CB00'
+  },
+
   creditflowdeskusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -2598,6 +2614,45 @@ exports.deployTokens = {
     // #########
     queue: true,
     proxyCdoAddress: CDOs.creditbastionusdc.cdoAddr,
+  },
+  creditgauntlettestusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x920c04BeA067288C8Fd2ebc5dDcF5Cc0ef9542E2', // manager
+      '0x920c04BeA067288C8Fd2ebc5dDcF5Cc0ef9542E2', // borrower
+      'GauntletTest', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditfalconxusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '600', // 10 minutes
+    bufferPeriod: '600', // 10 minutes
+    // ## instant params values
+    instantWithdrawDelay: '300', // 5 minutes
+    instantWithdrawAprDelta: 0.9e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: addr0,
+    keyringPolicy: 4,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    hypernative: false,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
   creditfalconxusdc: {
     decimals: 6,

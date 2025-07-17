@@ -87,6 +87,7 @@ module.exports = {
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
       "contracts/IdleCDOUsualVariant.sol": medRunConfig,
+      "contracts/IdleCreditVaultFactory.sol": highRunConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
       "contracts/optimism/IdleCDOEpochVariantPolygon.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOEpochVariantArbitrum.sol": ultraminimalSizeConfig,
@@ -115,12 +116,13 @@ module.exports = {
     hardhat: {
       allowUnlimitedContractSize: true,
       // forking: {
+      //   url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
       //   // url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url:`https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       //   // url: `https://polygonzkevm-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_POLYGON_ZK_KEY}`,
       //   // url: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-      //   url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`,
+      //   // url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`,
       //   // blockNumber: 12554260, // DAI all in compound for `integration` task
       //   // blockNumber: 13055073 // both tranches have deposits and both staking contracts have staked tranches
       //   // blockNumber: 13086034 // no stkAAVE in the contract (for test-harvest task)
@@ -156,13 +158,13 @@ module.exports = {
       //   // blockNumber: 16419858, // Morpho maUSDC
       //   // blockNumber: 16976228, // Euler staking DAI
       //   // optimism
-      //   blockNumber: 110447750, // cpporusdc
+      //   blockNumber: 22932973, // cpporusdc
       //   // polygonzk
       //   // blockNumber: 2724050, // cpfasusdt
       // },
-      // chainId: 1101 // polygonzk
-      // chainId: 137 // polygon
-      // chainId: 10 // optimism
+      // // chainId: 1101 // polygonzk
+      // // chainId: 137 // polygon
+      // // chainId: 10 // optimism
     },
     coverage: {
       url: "http://127.0.0.1:8545/",
