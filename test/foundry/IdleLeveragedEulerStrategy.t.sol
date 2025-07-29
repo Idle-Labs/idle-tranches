@@ -482,11 +482,11 @@ contract TestIdleEulerLeveragedStrategy is TestIdleCDOBase {
         vm.roll(block.number + _strategyReleaseBlocksPeriod() + 1);
         // try to exit the position but it will fail with status reason "4" (defaulted)
         uint256 balAA = IERC20Detailed(address(AAtranche)).balanceOf(address(this));
-        vm.expectRevert(bytes('4'));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.withdrawAA(balAA);
 
         uint256 balBB = IERC20Detailed(address(BBtranche)).balanceOf(address(this));
-        vm.expectRevert(bytes('4'));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.withdrawBB(balBB);
     }
 
