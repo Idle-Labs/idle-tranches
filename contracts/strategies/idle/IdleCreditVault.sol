@@ -259,6 +259,13 @@ contract IdleCreditVault is
     IERC20Detailed(token).safeTransfer(idleCDO, _amount);
   }
 
+  /// @notice Burn strategy tokens from the CDO
+  /// @param _amount number of strategy tokens (1:1 with underlyings) to burn
+  function burnStrategyTokens(uint256 _amount) external {
+    _onlyIdleCDO();
+    _burn(msg.sender, _amount);
+  }
+
   /// @notice Get funds from IdleCDO and mint strategy tokens. Funds are not sent to the borrower here
   /// @param _amount number of underlyings to transfer
   function deposit(uint256 _amount)

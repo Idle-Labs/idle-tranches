@@ -166,7 +166,7 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
         _transferBurnedTrancheTokens(address(this), false);
 
         // call with non owner
-        vm.expectRevert(bytes("6"));
+        vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
         vm.prank(address(0xbabe));
         idleCDO.restoreOperations();
 
@@ -190,6 +190,4 @@ contract TestIdlePoLidoStrategy is TestIdleCDOBase, IERC721Receiver {
     ) external pure returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
     }
-
-  function testMinStkIDLEBalance() external override {}
 }

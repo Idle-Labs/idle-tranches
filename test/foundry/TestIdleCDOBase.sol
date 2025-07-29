@@ -269,7 +269,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.depositBB(amount);
 
     // call with non owner
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     vm.prank(address(0xbabe));
     idleCDO.emergencyShutdown();
 
@@ -281,9 +281,9 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.depositAA(amount);
     vm.expectRevert(bytes("Pausable: paused")); // default
     idleCDO.depositBB(amount);
-    vm.expectRevert(bytes("3")); // default
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector); // default
     idleCDO.withdrawAA(amount);
-    vm.expectRevert(bytes("3")); // default
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector); // default
     idleCDO.withdrawBB(amount);
   }
 
@@ -293,7 +293,7 @@ abstract contract TestIdleCDOBase is Test {
     idleCDO.depositBB(amount);
 
     // call with non owner
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     vm.prank(address(0xbabe));
     idleCDO.restoreOperations();
 
@@ -326,100 +326,9 @@ abstract contract TestIdleCDOBase is Test {
     assertGe(apr / 1e16, 0, "apr is > 0.01% and with 18 decimals");
   }
 
-  function testMinStkIDLEBalance() external virtual {
-    _testMinStkIDLEBalanceInternal();
-  }
-
-  function _testMinStkIDLEBalanceInternal() internal virtual {
-    uint256 tolerance = 1;
-    _internalTestMinStkIDLEBalance(tolerance);
-  }
-
-  function _internalTestMinStkIDLEBalance(uint256 tolerance) internal virtual {
-    vm.prank(address(1));
-    vm.expectRevert(bytes("6")); // not authorized
-    idleCDO.setStkIDLEPerUnderlying(9e17);
-    vm.prank(owner);
-    idleCDO.setStkIDLEPerUnderlying(9e17); // 0.9 stkIDLE for each underlying deposited
-
-    uint256 _val = 100 * ONE_SCALE;
-    uint256 scaledVal = _val * 10**(18 - decimals);
-
-    // try to enable gating for non existing tranche
-    vm.expectRevert(bytes("9")); // stkIDLE bal too low
-    vm.prank(owner);
-    idleCDO.toggleStkIDLEForTranche(address(2222));
-
-    // enable stkIDLE gating for AA
-    vm.prank(owner);
-    idleCDO.toggleStkIDLEForTranche(address(AAtranche));
-    vm.expectRevert(bytes("7")); // stkIDLE bal too low
-    idleCDO.depositAA(_val);
-    // enable stkIDLE gating for BB
-    vm.prank(owner);
-    idleCDO.toggleStkIDLEForTranche(address(BBtranche));
-    vm.expectRevert(bytes("7"));
-    idleCDO.depositBB(_val);
-
-    _getStkIDLE(scaledVal, false);
-
-    // try to deposit too much
-    vm.expectRevert(bytes("7"));
-    idleCDO.depositAA(_val * 2);
-    
-    // try to deposit the correct bal
-    idleCDO.depositAA(_val);
-    _transferBurnedTrancheTokens(address(this), true);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'AA Deposit is not successful');
-    idleCDO.depositBB(_val);
-    _transferBurnedTrancheTokens(address(this), false);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal, tolerance * 10**(18 - decimals), 'BB Deposit is not successful');
-
-    // try to deposit too much, considering what we already deposited previously in AA
-    vm.expectRevert(bytes("7"));
-    idleCDO.depositAA(_val);
-    vm.expectRevert(bytes("7"));
-    idleCDO.depositBB(_val);
-
-    // lock more IDLE
-    _getStkIDLE(scaledVal, true);
-
-    // now deposits works again
-    idleCDO.depositAA(_val);
-    assertApproxEqAbs(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), scaledVal * 2, tolerance * 2 * 10**(18 - decimals), 'AA Deposit 2 is not successful');
-    idleCDO.depositBB(_val);
-    assertApproxEqAbs(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), scaledVal * 2, tolerance * 2 * 10**(18 - decimals), 'BB Deposit 2 is not successful');
-    
-    // disable gating
-    vm.startPrank(owner);
-    idleCDO.toggleStkIDLEForTranche(address(AAtranche));
-    idleCDO.toggleStkIDLEForTranche(address(BBtranche));
-    vm.stopPrank();
-
-    // try to deposit when stkIDLE gating is not active for the tranche
-    idleCDO.depositAA(_val);
-    idleCDO.depositBB(_val);
-  }
-
-  function _getStkIDLE(uint256 _val, bool _increase) internal {
-    IStkIDLE stk = IStkIDLE(STK_IDLE);
-    address smartWalletChecker = stk.smart_wallet_checker();
-    deal(IDLE, address(this), _val);
-    // Allow deposit from contracts
-    vm.prank(TL_MULTISIG);
-    SmartWalletChecker(smartWalletChecker).toggleIsOpen(true);
-    // create lock for IDLE for 4 years so ~_val stkIDLE
-    IERC20Detailed(IDLE).approve(STK_IDLE, _val);
-    if (_increase) {
-      stk.increase_amount(_val);
-    } else {
-      stk.create_lock(_val, block.timestamp + 4 * 365 days); // 4 years
-    }
-  }
-
   function testSetIsAYSActive() external {
     vm.prank(address(1));
-    vm.expectRevert(bytes("6")); // not authorized
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector); // not authorized
     idleCDO.setIsAYSActive(false);
     vm.prank(owner);
     idleCDO.setIsAYSActive(true);
@@ -427,10 +336,10 @@ abstract contract TestIdleCDOBase is Test {
 
   function testSetMinAprSplitAYS() external {
     vm.prank(address(1));
-    vm.expectRevert(bytes("6")); // not authorized
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector); // not authorized
     idleCDO.setMinAprSplitAYS(5000);
     vm.prank(owner);
-    vm.expectRevert(bytes("7")); // too high
+    vm.expectRevert(IdleCDO.AmountTooHigh.selector); // too high
     idleCDO.setMinAprSplitAYS(100001);
     vm.prank(owner);
     idleCDO.setMinAprSplitAYS(80000);

@@ -150,10 +150,6 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
   }
 
-  /// @notice not used in arbitrum
-  function testMinStkIDLEBalance() external override {
-  }
-
   function _testCheckMaxDecreaseDefault(uint256) internal override {
     // we need to increase the amount of underlying to make the test pass
     super._testCheckMaxDecreaseDefault(100000 * ONE_SCALE);
@@ -183,13 +179,13 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     vm.startPrank(newUser);
     // both deposits will revert as loss will accrue and leave 0 to juniors
     underlying.approve(address(idleCDO), amount * 2);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositBB(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.withdrawAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.withdrawBB(amount);
     vm.stopPrank();
 
@@ -219,7 +215,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     idleCDO.depositAA(1);
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositBB(1);
-    vm.expectRevert(bytes("3"));
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector);
     idleCDO.withdrawBB(0);
 
     // 0 means redeem all

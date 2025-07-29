@@ -21,16 +21,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   using SafeERC20Upgradeable for IERC20Detailed;
 
   // ERROR MESSAGES:
-  // 0 = is 0
-  // 1 = already initialized
-  // 2 = Contract limit reached
-  // 3 = Tranche withdraw not allowed (Paused or in shutdown)
-  // 4 = Default, wait shutdown
-  // 5 = Amount too low
-  // 6 = Not authorized
-  // 7 = Amount too high
-  // 8 = Same block
-  // 9 = Invalid
+  error AlreadyInitialized();
+  error WithdrawNotAllowed(); // (Paused or in shutdown)
+  error Default();
+  error AmountTooLow();
+  error AmountTooHigh();
+  error SameBlock();
 
   // Used to prevent initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -58,13 +54,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address _owner, // GuardedLaunch args
     address _rebalancer,
     address _strategy,
-    uint256 _trancheAPRSplitRatio // for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
+    uint256 _trancheAPRSplitRatio// for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
   ) external initializer {
-    require(token == address(0), '1');
-    require(_rebalancer != address(0), '0');
-    require(_strategy != address(0), '0');
-    require(_guardedToken != address(0), '0');
-    require( _trancheAPRSplitRatio <= FULL_ALLOC, '7');
+    if (token != address(0)) revert AlreadyInitialized();
+    if (_strategy == address(0) || _guardedToken == address(0)) revert Is0();
+    if (_trancheAPRSplitRatio > FULL_ALLOC) revert AmountTooHigh();
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
@@ -74,8 +68,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get strategy token symbol (eg. idleDAI)
     string memory _symbol = IERC20Detailed(_strategyToken).symbol();
     // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
-    AATranche = address(new IdleCDOTranche(_concat(string("Pareto AA Tranche - "), _symbol), _concat(string("AA_"), _symbol)));
-    BBTranche = address(new IdleCDOTranche(_concat(string("Pareto BB Tranche - "), _symbol), _concat(string("BB_"), _symbol)));
+    AATranche = address(new IdleCDOTranche(_concat(string("Pareto AA - "), _symbol), _concat(string("AA_"), _symbol)));
+    BBTranche = address(new IdleCDOTranche(_concat(string("Pareto BB - "), _symbol), _concat(string("BB_"), _symbol)));
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
@@ -159,7 +153,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of AA tranche tokens to burn
   /// @return underlying tokens redeemed
   function withdrawAA(uint256 _amount) external virtual returns (uint256) {
-    require(!paused() || allowAAWithdraw, '3');
+    if (paused() && !allowAAWithdraw) revert WithdrawNotAllowed();
     return _withdraw(_amount, AATranche);
   }
 
@@ -167,7 +161,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of BB tranche tokens to burn
   /// @return underlying tokens redeemed
   function withdrawBB(uint256 _amount) external virtual returns (uint256) {
-    require(!paused() || allowBBWithdraw, '3');
+    if (paused() && !allowBBWithdraw) revert WithdrawNotAllowed();
     return _withdraw(_amount, BBTranche);
   }
 
@@ -187,11 +181,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// Harvested rewards are counted only if enough blocks have passed (`_lockedRewards`)
   function getContractValue() public override view returns (uint256) {
     address _strategyToken = strategyToken;
-    uint256 strategyTokenDecimals = IERC20Detailed(_strategyToken).decimals();
     // TVL is the sum of unlent balance in the contract + the balance in lending - harvested but locked rewards - unclaimedFees
     // Balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
     // TVL = (strategyTokens * strategy token price) + unlent balance - lockedRewards - unclaimedFees
-    return (_contractTokenBalance(_strategyToken) * _strategyPrice() / (10**(strategyTokenDecimals))) +
+    return (_contractTokenBalance(_strategyToken) * _strategyPrice() / (10**(IERC20Detailed(_strategyToken).decimals()))) +
             _contractTokenBalance(token) -
             _lockedRewards() -
             unclaimedFees;
@@ -234,31 +227,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   // Internal
   // ###############
 
-  /// @notice method used to check if depositor has enough stkIDLE per unit of underlying to access the vault.
-  /// This can be used to give priority access to new vaults to stkIDLE holders. 
-  /// @dev This check is only intended for "regular" users as it does not strictly enforce the _stkIDLEPerUnderlying 
-  /// ratio (eg: deposit+transfer). This will be mitigated by the fee rebate mechanism (airdrop) as otherwise those
-  /// rebates will be lost.
-  /// @param _amount amount of underlying to deposit
-  function _checkStkIDLEBal(address _tranche, uint256 _amount) internal view virtual {
-    uint256 _stkIDLEPerUnderlying = stkIDLEPerUnderlying;
-    // check if stkIDLE requirement is active for _tranche
-    if (_stkIDLEPerUnderlying == 0 || 
-      (_tranche == BBTranche && BBStaking == address(0)) || 
-      (_tranche == AATranche && AAStaking == address(0))) {
-      return;
-    }
-
-    uint256 trancheBal = IERC20Detailed(_tranche).balanceOf(msg.sender);
-    // We check if sender deposited in the same tranche previously and add the bal to _amount
-    uint256 bal = _amount + (trancheBal > 0 ? (trancheBal * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN) : 0);
-    require(
-      IERC20(STK_IDLE).balanceOf(msg.sender) >= 
-      bal * _stkIDLEPerUnderlying / oneToken, 
-      '7'
-    );
-  }
-
   /// @notice method used to deposit `token` and mint tranche tokens
   /// Ideally users should deposit right after an `harvest` call to maximize profit
   /// @dev this contract must be approved to spend at least _amount of `token` before calling this method
@@ -281,8 +249,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // according to trancheAPRSplitRatio. NAVs of AA and BB are updated and tranche
     // prices adjusted accordingly
     _updateAccounting();
-    // check if depositor has enough stkIDLE for the amount to be deposited
-    _checkStkIDLEBal(_tranche, _amount);
     // get underlyings from sender
     address _token = token;
     uint256 _preBal = _contractTokenBalance(_token);
@@ -326,7 +292,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_totalBBGain < 0 && -_totalBBGain >= int256(_lastNAVBB)) {
       // revert with 'default' error (4) if skipDefaultCheck is false, as seniors will have a loss too not covered. 
       // `updateAccounting` should be manually called to distribute loss
-      require(skipDefaultCheck, "4");
+      if (!skipDefaultCheck) revert Default();
       // This path will be called when a default happens and guardian calls
       // `updateAccounting` after setting skipDefaultCheck or when skipDefaultCheck is already set to true
       lastNAVBB = 0;
@@ -494,7 +460,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return toRedeem number of underlyings redeemed
   function _withdraw(uint256 _amount, address _tranche) virtual internal nonReentrant returns (uint256 toRedeem) {
     // check if a deposit is made in the same block from the same user
-    _checkSameTx();
+    _checkSameBlock();
     // check if _strategyPrice decreased
     _checkDefault();
     // accrue interest to tranches and updates tranche prices
@@ -503,7 +469,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     if (_amount == 0) {
       _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
     }
-    require(_amount != 0, '0');
+    if (_amount == 0) revert Is0();
     address _token = token;
     // get current available unlent balance
     uint256 balanceUnderlying = _contractTokenBalance(_token);
@@ -576,7 +542,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 currPrice = _strategyPrice();
     if (!skipDefaultCheck) {
       // calculate if % of decrease of strategyPrice is within maxDecreaseDefault
-      require(lastStrategyPrice * (FULL_ALLOC - maxDecreaseDefault) / FULL_ALLOC <= currPrice, "4");
+      if (lastStrategyPrice * (FULL_ALLOC - maxDecreaseDefault) / FULL_ALLOC > currPrice) revert Default();
     }
     lastStrategyPrice = currPrice;
   }
@@ -598,7 +564,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
         _tolerance = 100;
       }
       // keep `_tolerance` wei as margin for rounding errors
-      require(_redeemedTokens + _tolerance >= _amount, '5');
+      if (_redeemedTokens + _tolerance < _amount) revert AmountTooLow();
     }
 
     if (_redeemedTokens > _amount) {
@@ -837,11 +803,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
   function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external virtual {
     _checkOnlyOwner();
-    require((maxDecreaseDefault = _maxDecreaseDefault) < FULL_ALLOC, '7');
+    if ((maxDecreaseDefault = _maxDecreaseDefault) >= FULL_ALLOC) revert AmountTooHigh();
   }
 
   /// @param _active flag to allow Adaptive Yield Split
-  function setIsAYSActive(bool _active) external {
+  function setIsAYSActive(bool _active) external virtual {
     _checkOnlyOwner();
     isAYSActive = _active;
   }
@@ -873,19 +839,19 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _rebalancer new rebalancer address
   function setRebalancer(address _rebalancer) external virtual {
     _checkOnlyOwner();
-    require((rebalancer = _rebalancer) != address(0), '0');
+    if ((rebalancer = _rebalancer) == address(0)) revert Is0();
   }
 
   /// @param _feeReceiver new fee receiver address
   function setFeeReceiver(address _feeReceiver) external {
     _checkOnlyOwner();
-    require((feeReceiver = _feeReceiver) != address(0), '0');
+    if ((feeReceiver = _feeReceiver) == address(0)) revert Is0();
   }
 
   /// @param _guardian new guardian (pauser) address
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
-    require((guardian = _guardian) != address(0), '0');
+    if ((guardian = _guardian) == address(0)) revert Is0();
   }
 
   /// @param _diff max liquidation diff tolerance in underlyings
@@ -894,28 +860,22 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     liquidationTolerance = _diff;
   }
 
-  /// @param _val stkIDLE per underlying required for deposits
-  function setStkIDLEPerUnderlying(uint256 _val) external virtual {
-    _checkOnlyOwner();
-    stkIDLEPerUnderlying = _val;
-  }
-
   /// @param _aprSplit min apr split for AA, considering FULL_ALLOC = 100%
-  function setMinAprSplitAYS(uint256 _aprSplit) external {
+  function setMinAprSplitAYS(uint256 _aprSplit) external virtual {
     _checkOnlyOwner();
-    require((minAprSplitAYS = _aprSplit) <= FULL_ALLOC, '7');
+    if ((minAprSplitAYS = _aprSplit) > FULL_ALLOC) revert AmountTooHigh();
   }
 
   /// @param _fee new fee
   function setFee(uint256 _fee) external {
     _checkOnlyOwner();
-    require((fee = _fee) <= MAX_FEE, '7');
+    if ((fee = _fee) > MAX_FEE) revert AmountTooHigh();
   }
 
   /// @param _unlentPerc new unlent percentage
   function setUnlentPerc(uint256 _unlentPerc) external virtual {
     _checkOnlyOwner();
-    require((unlentPerc = _unlentPerc) <= FULL_ALLOC, '7');
+    if ((unlentPerc = _unlentPerc) > FULL_ALLOC) revert AmountTooHigh();
   }
 
   /// @notice set new release block period. WARN: this should be called only when there 
@@ -930,27 +890,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _trancheAPRSplitRatio new apr split ratio
   function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external virtual {
     _checkOnlyOwner();
-    require((trancheAPRSplitRatio = _trancheAPRSplitRatio) <= FULL_ALLOC, '7');
+    if ((trancheAPRSplitRatio = _trancheAPRSplitRatio) > FULL_ALLOC) revert AmountTooHigh();
   }
 
   /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
   function setLossToleranceBps(uint256 _diffBps) external {
     _checkOnlyOwner();
     lossToleranceBps = _diffBps;
-  }
-
-  /// @dev toggle stkIDLE requirement for tranche
-  /// @param _tranche address
-  function toggleStkIDLEForTranche(address _tranche) external virtual {
-    _checkOnlyOwner();
-    address aa = AATranche;
-    require(_tranche == BBTranche || _tranche == aa, '9');
-    if (_tranche == aa) {
-      AAStaking = AAStaking == address(0) ? address(1) : address(0);
-      return;
-    }
-
-    BBStaking = BBStaking == address(0) ? address(1) : address(0);
   }
 
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the
@@ -1023,12 +969,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @dev Check that the msg.sender is the either the owner or the guardian
   function _checkOnlyOwnerOrGuardian() internal view {
-    require(msg.sender == guardian || msg.sender == owner(), "6");
+    if (msg.sender != guardian && msg.sender != owner()) revert NotAuthorized();
   }
 
   /// @dev Check that the msg.sender is the either the owner or the rebalancer
   function _checkOnlyOwnerOrRebalancer() internal view {
-    require(msg.sender == rebalancer || msg.sender == owner(), "6");
+    if (msg.sender != rebalancer && msg.sender != owner()) revert NotAuthorized();
   }
 
   /// @notice returns the current balance of this contract for a specific token
@@ -1050,9 +996,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _lastCallerBlock = keccak256(abi.encodePacked(tx.origin, block.number));
   }
 
-  /// @dev Check that the second function is not called in the same tx from the same tx.origin
-  function _checkSameTx() internal view {
-    require(keccak256(abi.encodePacked(tx.origin, block.number)) != _lastCallerBlock, "8");
+  /// @dev Check that the second function is not called in the same block from the same tx.origin
+  function _checkSameBlock() internal view {
+    if (keccak256(abi.encodePacked(tx.origin, block.number)) == _lastCallerBlock) revert SameBlock();
   }
 
   /// @dev transfer underlyings to a specific address

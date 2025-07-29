@@ -27,22 +27,23 @@ describe("IdleCDOTranche", function () {
   it("should allow minter and only minter to mint", async () => {
     await expect(
       tranche.connect(random).mint(random.address, BN('100'))
-    ).to.be.revertedWith("TRANCHE:!AUTH");
+    ).to.be.revertedWith("6");
 
-    await tranche.mint(random.address, BN('100'));
-
-    expect(await tranche.balanceOf(random.address)).to.be.equal(100);
+    await tranche.mint(random.address, BN('10000'));
+    // minus 1000 is because on first mint 1000 wei are burned
+    expect(await tranche.balanceOf(random.address)).to.be.equal(10000 - 1000);
   });
 
   it("should allow minter and only minter to burn", async () => {
-    await tranche.mint(random.address, BN('100'));
+    await tranche.mint(random.address, BN('10000'));
 
     await expect(
       tranche.connect(random).burn(random.address, BN('50'))
-    ).to.be.revertedWith("TRANCHE:!AUTH");
+    ).to.be.revertedWith("6");
 
     await tranche.burn(random.address, BN('50'));
 
-    expect(await tranche.balanceOf(random.address)).to.be.equal(50);
+    // minus 1000 is because on first mint 1000 wei are burned
+    expect(await tranche.balanceOf(random.address)).to.be.equal(10000 - 50 - 1000);
   });
 });

@@ -350,19 +350,17 @@ contract IdleCDOEpochVariant is IdleCDO {
     _setScaledApr(_newApr);
   }
 
-  /// @notice The apr should be increased by an amount proportional to the buffer period in this 
-  /// way during a buffer period lenders will still get interest. Eg if epoch is 30 days and buffer 
-  /// is 5 days and the apr lenders should receive is 10% then _newApr should be 10% * 35/30 = 11.67%.
-  /// @param _apr Apr to scale
-  function _scaleAprWithBuffer(uint256 _apr) internal view returns (uint256) {
-    uint256 _duration = epochDuration;
-    return _duration == 0 ? _apr : _apr * (_duration + bufferPeriod) / _duration;
-  }
-
   /// @notice Set the scaled apr for the next epoch
   /// @param _newApr New apr to set for the next epoch
   function _setScaledApr(uint256 _newApr) internal {
-    IdleCreditVault(strategy).setAprs(_newApr, _scaleAprWithBuffer(_newApr));
+    uint256 _duration = epochDuration;
+    IdleCreditVault(strategy).setAprs(
+      _newApr,
+      // The apr should be increased by an amount proportional to the buffer period in this
+      // way during a buffer period lenders will still get interest. Eg if epoch is 30 days and buffer
+      // is 5 days and the apr lenders should receive is 10% then _newApr should be 10% * 35/30 = 11.67%.
+      _duration == 0 ? _newApr : _newApr * (_duration + bufferPeriod) / _duration
+    );
   }
 
   /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
@@ -501,7 +499,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     _updateAccounting();
 
     IdleCreditVault creditVault = IdleCreditVault(strategy);
-    uint256 _underlyings = _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
     uint256 _userTrancheTokens = IERC20Detailed(_tranche).balanceOf(msg.sender);
 
     if (!disableInstantWithdraw) {
@@ -525,7 +523,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // recalculate underlyings considering also interest accrued in the epoch as normal withdraws
     // will still accrue interest for the next epoch
     if (_amount == 0) {
-      _underlyings = _userTrancheTokens * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+      _underlyings = _trancheToUnderlyings(_userTrancheTokens, _tranche);
       _amount = _userTrancheTokens;
     }
 
@@ -563,6 +561,14 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _amount Amount of underlyings
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
     return _amount * (_getStrategyApr() / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
+  }
+
+  /// @notice Get current tranches value
+  /// @param _amount Amount of tranche tokens
+  /// @param _tranche Tranche to get the value for
+  /// @return Value of the tranche tokens in underlyings
+  function _trancheToUnderlyings(uint256 _amount, address _tranche) internal view returns (uint256) {
+    return _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice Calculate the interest of an epoch for a withdraw request
@@ -610,7 +616,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
-    uint256 currentUnderlyings = IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    uint256 currentUnderlyings = _trancheToUnderlyings(IERC20Detailed(_tranche).balanceOf(_user), _tranche);
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // sum and remove fees
@@ -621,7 +627,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawableInstant(address _user, address _tranche) public view returns (uint256) {
-    return IERC20Detailed(_tranche).balanceOf(_user) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    return _trancheToUnderlyings(IERC20Detailed(_tranche).balanceOf(_user), _tranche);
   }
 
   /// @notice Burn tranche tokens and update NAV and trancheAPRSplitRatio
@@ -641,6 +647,40 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
+  }
+
+  /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement
+  /// so here we burn tranche tokens, the equivalent amount of strategy tokens. Only the borrower can call this
+  /// @param _amount Amount of tranche tokens to write off
+  function writeOffDeposit(uint256 _amount, address _tranche) external {
+    // only borrower can call this method and only during an epoch, otherwise one should follow the traditional flow
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    if (_strategy.borrower() != msg.sender && !isEpochRunning) {
+      revert NotAllowed();
+    }
+    // we don't check the _tranche address to be AATranche or BBTranche as this method can be called only by the borrower
+    // and borrower is trusted
+
+    // Calculate tranche tokens value with current tranche price
+    uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
+    // We now calculate how much interest + fee the tranche would have generated in the current epoch
+    (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
+    // given that _calcInterestWithdrawRequest returns an interest and diff value meant to be used in requestWithdraw
+    // it does not include the buffer period but given that the epoch is running expectedEpochInterest was
+    // calculated with the buffer period included, so we need to scale the interest
+    uint256 _epochDuration = epochDuration;
+
+    // (interest + diff) gives the interest based on tvl as write off debt won't follow senior/junior interest split ratio
+    // diff is positive for AA and negative for BB (in this case it won't be > of interest)
+    interest = uint256(int256(interest) + diff) * (_epochDuration + bufferPeriod) / _epochDuration;
+
+    // Burn tranche tokens and decrease lastNAV
+    _withdrawOps(_amount, _underlyings, _tranche);
+    // Burn strategy tokens and decrease NAV (1:1 with underlyings)
+    _strategy.burnStrategyTokens(_underlyings);
+
+    // remove the interest + fee from expectedEpochInterest
+    expectedEpochInterest -= interest;
   }
 
   /// @notice Claim a withdraw request from the vault. Can be done when at least 1 epoch passed
@@ -706,14 +746,10 @@ contract IdleCDOEpochVariant is IdleCDO {
   function setReleaseBlocksPeriod(uint256) external override {}
   function _lockedRewards() internal view override returns (uint256) {}
 
-  /// NOTE: stkIDLE gating is not used
-  function toggleStkIDLEForTranche(address) external override {}
-  function _checkStkIDLEBal(address, uint256) internal view override {}
-  function setStkIDLEPerUnderlying(uint256) external override {}
-
   /// NOTE: fees are not deposited in this contract
   function _depositFees() internal override {}
   function depositBBRef(uint256, address) external override returns (uint256) {}
+  function depositAARef(uint256, address) external override returns (uint256) {}
 
   /// NOTE: unlent perc should always be 0 and set in additionalInit
   function setUnlentPerc(uint256) external override {}

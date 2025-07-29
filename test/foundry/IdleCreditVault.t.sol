@@ -227,10 +227,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(mintedBB, IERC20(BBtranche).balanceOf(address(this)), "BBtranche balance changed");
   }
 
-  function testMinStkIDLEBalance() external override {
-    // Overridden and not used
-  }
-
   function _expectedFundsEndEpoch() internal view returns (uint256 expected) {
     expected = cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws();
   }
@@ -1548,7 +1544,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(amount);
 
     // call with non owner
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     vm.prank(address(0xbabe));
     idleCDO.restoreOperations();
 
@@ -1572,7 +1568,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(amount);
 
     // call with non owner
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     vm.prank(address(0xbabe));
     idleCDO.emergencyShutdown();
 
@@ -1622,18 +1618,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
 
     // deposits/redeems are disabled
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositBB(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     cdoEpoch.requestWithdraw(amount, address(AAtranche));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     cdoEpoch.requestWithdraw(amount, address(BBtranche));
 
     // distribute loss, as non owner
     vm.startPrank(makeAddr('nonOwner'));
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     IdleCDO(address(idleCDO)).updateAccounting();
     vm.stopPrank();
 
@@ -1669,13 +1665,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(newUser);
     // both deposits will revert as loss will accrue and leave 0 to juniors
     underlying.approve(address(idleCDO), amount * 2);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositBB(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     cdoEpoch.requestWithdraw(amount, address(AAtranche));
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     cdoEpoch.requestWithdraw(amount, address(BBtranche));
     vm.stopPrank();
 
@@ -2196,6 +2192,180 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // Bob is unaffected by the donation
     assertGt(afterBalance, initialBob, 'Bob balance decreased');
+  }
+
+  function testWriteOffDeposit() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    cdoEpoch.setIsAYSActive(false); // we do the test only with AA so 100% of the interest shoudl go to AA
+    cdoEpoch.setEpochParams(365 days, 365 days); // set this to have an epoch during 1 year and buffer of 1 year
+    vm.stopPrank();
+
+    // 10% apr (scaled to 20% when considering buffer)
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    // deposit with this contract
+    uint256 depositedAA = idleCDO.depositAA(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    // deposit with user1
+    _depositWithUser(makeAddr('user1'), amountWei, true);
+
+    // tot tvl = 20000
+    // 1 epoch interest is 10% of 20000 = 2000 + 2000 for the buffer period (this is what borrower should pay)
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 4000 * ONE_SCALE, 'Expected interest is wrong');
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 contractValPre = cdoEpoch.getContractValue();
+
+    cdoEpoch.writeOffDeposit(depositedAA, address(AAtranche));
+
+    uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
+    assertEq(cdoEpoch.getContractValue(), contractValPre - amountWei, 'amount should be written off');
+    assertEq(priceAA, priceAAPre, 'AA price should not change after writeOffDeposit');
+    assertEq(cdoEpoch.expectedEpochInterest(), 2000 * ONE_SCALE, 'Expected interest is wrong after writeOffDeposit');
+
+    uint256 feeReceiverBalPre = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+    uint256 feeReceiverBalPos = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+
+    assertGt(cdoEpoch.virtualPrice(address(AAtranche)), priceAA, "Price should increase");
+    assertEq(feeReceiverBalPos - feeReceiverBalPre, 200 * ONE_SCALE, 'Fee receiver should receive the 10% fee of the assets remaining');
+  }
+
+  function testWriteOffDepositMultipleTranchesSeniorRedeem() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0);
+    // set isAYSActive to true
+    stdstore
+      .target(address(cdoEpoch))
+      .sig(cdoEpoch.isAYSActive.selector)
+      .checked_write(true);
+    // set this to have an epoch during 1 year and buffer of 1 year
+    cdoEpoch.setEpochParams(365 days, 365 days); 
+    vm.stopPrank();
+
+    // 10% apr (scaled to 20% when considering buffer)
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // deposit with this contract
+    uint256 depositedAA = idleCDO.depositAA(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    // deposit with user1 to Junior tranche
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amountWei, false);
+    _transferBurnedTrancheTokens(user1, false);
+
+    // tot tvl = 20000
+    // 1 epoch interest is 10% of 20000 = 2000 + 2000 for the buffer period (this is what borrower should pay)
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // Given that
+    // 25% of the interest should go to AA so 1000 to AA = interestForOverUnderPerformance is +1000
+    // 75% of the interest should go to BB so 3000 to BB = interestForOverUnderPerformance is -1000
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 4000 * ONE_SCALE, 'Expected interest is wrong');
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBBPre = cdoEpoch.virtualPrice(address(BBtranche));
+    uint256 contractValPre = cdoEpoch.getContractValue();
+
+    // we write off half of the AA deposit so 500 interest
+    cdoEpoch.writeOffDeposit(depositedAA / 2, address(AAtranche));
+
+    uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBB = cdoEpoch.virtualPrice(address(BBtranche));
+
+    assertEq(priceAA, priceAAPre, 'AA price should not change after writeOffDeposit');
+    assertEq(priceBB, priceBBPre, 'BB price should not change after writeOffDeposit');
+    assertEq(cdoEpoch.getContractValue(), contractValPre - amountWei / 2, 'amount should be written off');
+    assertEq(cdoEpoch.expectedEpochInterest(), 3000 * ONE_SCALE, 'Expected interest is wrong after writeOffDeposit');
+    uint256 aprSplitRatio = cdoEpoch.trancheAPRSplitRatio();
+    assertEq(aprSplitRatio, 16666, 'apr split ratio is wrong');
+    // so ~500 will go to AA and ~2500 will go to BB
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), 1100000, 5, "Price AA should is not ~1.1");
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(BBtranche)), 1250000, 5, "Price BB should is not ~1.25");
+  }
+
+  function testWriteOffDepositMultipleTranchesJuniorRedeem() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.startPrank(owner);
+    cdoEpoch.setFee(0);
+    // set isAYSActive to true
+    stdstore
+      .target(address(cdoEpoch))
+      .sig(cdoEpoch.isAYSActive.selector)
+      .checked_write(true);
+    // set this to have an epoch during 1 year and buffer of 1 year
+    cdoEpoch.setEpochParams(365 days, 365 days); 
+    vm.stopPrank();
+
+    // 10% apr (scaled to 20% when considering buffer)
+    vm.startPrank(manager);
+    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    // deposit with this contract
+    idleCDO.depositAA(amountWei);
+    _transferBurnedTrancheTokens(address(this), true);
+    // deposit with user1 to Junior tranche
+    address user1 = makeAddr('user1');
+    _depositWithUser(user1, amountWei, false);
+    _transferBurnedTrancheTokens(user1, false);
+    uint256 depositedBB = BBtranche.balanceOf(user1);
+
+    // tot tvl = 20000
+    // 1 epoch interest is 10% of 20000 = 2000 + 2000 for the buffer period (this is what borrower should pay)
+    // start epoch
+    _startEpochAndCheckPrices(0);
+    // Given that
+    // 25% of the interest should go to AA so 1000 to AA = interestForOverUnderPerformance is +1000
+    // 75% of the interest should go to BB so 3000 to BB = interestForOverUnderPerformance is -1000
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 4000 * ONE_SCALE, 'Expected interest is wrong');
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBBPre = cdoEpoch.virtualPrice(address(BBtranche));
+    uint256 contractValPre = cdoEpoch.getContractValue();
+
+    // we write off half of the BB deposit so 5000 + interest
+    vm.prank(user1);
+    cdoEpoch.writeOffDeposit(depositedBB / 2, address(BBtranche));
+
+    uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 priceBB = cdoEpoch.virtualPrice(address(BBtranche));
+
+    assertEq(priceAA, priceAAPre, 'AA price should not change after writeOffDeposit');
+    assertEq(priceBB, priceBBPre, 'BB price should not change after writeOffDeposit');
+    assertEq(cdoEpoch.getContractValue(), contractValPre - amountWei / 2, 'amount should be written off');
+    assertEq(cdoEpoch.expectedEpochInterest(), 3000 * ONE_SCALE, 'Expected interest is wrong after writeOffDeposit');
+    uint256 aprSplitRatio = cdoEpoch.trancheAPRSplitRatio();
+    // so we have 10000 AA and 5000 BB -> AA TVL ratio 10000 / (10000 + 5000) = 66666
+    // so apr split ratio is 66666 * 66666 / 100000 = 44443
+    assertEq(aprSplitRatio, 44443, 'apr split ratio is wrong');
+    // so 3000 * 44443 / 100000 = 1333.29 will go to AA and 3000 - 1333.29 = 1666.71 will go to BB
+    
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), 1133330, 1, "Price AA is not correct");
+    // tot BB tvl will be 5000 + 1666.71 = 6666.71 with 5000 shares so price is ~1.333342
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(BBtranche)), 1333342, 1, "Price BB is not correct");
   }
 
   function testRequestWithdrawNormalOnlyAA() external {
