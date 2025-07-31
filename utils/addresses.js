@@ -996,7 +996,20 @@ const CDOs = {
     BBTranche: '0xA45304708D76fF93aC5168Eb4bBd5d8a534370a4',
     queue: '0x2F0E03cba0Aa6b5490a80FF904328154Af33CB00'
   },
-
+  creditroxusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x3Fc0265E92EeafED0cCd9F8621764Ce0981882cE',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x9cF358aff79DeA96070A85F00c0AC79569970Ec3',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x3Fc0265E92EeafED0cCd9F8621764Ce0981882cE',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xEC6a70F62a83418c7fb238182eD2865F80491a8B',
+    BBTranche: '0x53026B3aDb9956Dd4D4C381E1544C998c38D140D',
+    queue: '0xBC6cffAFC8F98d7DF780cE05fA55e14781C1C14D'
+  },
   creditflowdeskusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -2627,7 +2640,7 @@ exports.deployTokens = {
       'GauntletTest', // borrower name
       10e18.toString(), // intialApr
     ],
-    cdo: CDOs.creditfalconxusdc,
+    cdo: CDOs.creditgauntlettestusdc,
     cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -2653,6 +2666,45 @@ exports.deployTokens = {
     queue: true,
     hypernative: false,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditroxusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0x2b8D601091a1d43Cf634222024961599eE3878A7', // borrower
+      'RockawayX', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditroxusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '2592000', // 30 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16310000,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditgauntlettestusdc.cdoAddr,
   },
   creditfalconxusdc: {
     decimals: 6,
