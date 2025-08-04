@@ -996,7 +996,20 @@ const CDOs = {
     BBTranche: '0xA45304708D76fF93aC5168Eb4bBd5d8a534370a4',
     queue: '0x2F0E03cba0Aa6b5490a80FF904328154Af33CB00'
   },
-
+  creditroxusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x3Fc0265E92EeafED0cCd9F8621764Ce0981882cE',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x9cF358aff79DeA96070A85F00c0AC79569970Ec3',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x3Fc0265E92EeafED0cCd9F8621764Ce0981882cE',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0xEC6a70F62a83418c7fb238182eD2865F80491a8B',
+    BBTranche: '0x53026B3aDb9956Dd4D4C381E1544C998c38D140D',
+    queue: '0xBC6cffAFC8F98d7DF780cE05fA55e14781C1C14D'
+  },
   creditflowdeskusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1010,6 +1023,20 @@ const CDOs = {
     AATranche: '',
     BBTranche: '',
     queue: ''
+  },
+  creditabraxasusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x93e8Dd7fD35C7C5FbA3Ab2f7a25a6B162fd06E66',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xc222D62345400C0a673222c4F8CF42aA7a83BFAF',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x93e8Dd7fD35C7C5FbA3Ab2f7a25a6B162fd06E66',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6A9daCd6185Acae4Db87cB794D5c8c551fEDe184',
+    BBTranche: '0x625fa7f7127181a55ca62e9A247374e6a8845151',
+    queue: '0x75a878869F6920C5bB815205cD08F85480791A19'
   },
   usualusd0pptest: {
     decimals: 18,
@@ -2627,7 +2654,7 @@ exports.deployTokens = {
       'GauntletTest', // borrower name
       10e18.toString(), // intialApr
     ],
-    cdo: CDOs.creditfalconxusdc,
+    cdo: CDOs.creditgauntlettestusdc,
     cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -2653,6 +2680,45 @@ exports.deployTokens = {
     queue: true,
     hypernative: false,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditroxusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0x2b8D601091a1d43Cf634222024961599eE3878A7', // borrower
+      'RockawayX', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditroxusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '2592000', // 30 days
+    bufferPeriod: '21600', // 6 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16310000,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditgauntlettestusdc.cdoAddr,
   },
   creditfalconxusdc: {
     decimals: 6,
@@ -2691,6 +2757,45 @@ exports.deployTokens = {
     // #########
     queue: true,
     proxyCdoAddress: '',
+  },
+  creditabraxasusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xb99a2c4C1C4F1fc27150681B740396F6CE1cBcF5', // borrower
+      'Abraxas Capital Management', // borrower name
+      9e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditabraxasusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '86400', // 1 day
+    // ## instant params values
+    instantWithdrawDelay: '86400', // 1 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 13083170,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditroxusdc.cdoAddr,
   },
   // creditflowdeskusdc: {
   //   decimals: 6,
