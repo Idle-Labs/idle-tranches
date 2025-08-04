@@ -76,11 +76,6 @@ contract TestEthenaSusdeStrategy is TestIdleCDOLossMgmt {
     EthenaSusdeStrategy(address(strategy)).initialize(address(1), address(2), owner);
   }
 
-  function testMinStkIDLEBalance() external override {
-    uint256 tolerance = 100;
-    _internalTestMinStkIDLEBalance(tolerance);
-  }
-
   function testCooldownRequestContract() external {
     uint256 initAmount = underlying.balanceOf(address(this));
     uint256 amount = 10000 * ONE_SCALE;

@@ -170,7 +170,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.depositBB(amount);
 
         // call with non owner
-        vm.expectRevert(bytes("6"));
+        vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
         vm.prank(address(0xbabe));
         idleCDO.emergencyShutdown();
 
@@ -182,9 +182,9 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.depositAA(amount);
         vm.expectRevert(bytes("Pausable: paused")); // default
         idleCDO.depositBB(amount);
-        vm.expectRevert(bytes("3")); // default
+        vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector); // default
         idleCDO.withdrawAA(amount);
-        vm.expectRevert(bytes("3")); // default
+        vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector); // default
         idleCDO.withdrawBB(amount);
     }
 
@@ -193,7 +193,7 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         idleCDO.depositBB(amount);
 
         // call with non owner
-        vm.expectRevert(bytes("6"));
+        vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
         vm.prank(address(0xbabe));
         idleCDO.restoreOperations();
 
@@ -232,6 +232,4 @@ contract TestIdleCDOBestYieldVariant is TestIdleCDOBase {
         uint16 _redeemRatioAA,
         uint16 _redeemRatioBB
     ) external override {}
-
-    function testMinStkIDLEBalance() external override {}
 }

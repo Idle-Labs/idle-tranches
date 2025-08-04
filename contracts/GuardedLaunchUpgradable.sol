@@ -15,9 +15,9 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   using SafeERC20Upgradeable for IERC20Upgradeable;
 
   // ERROR MESSAGES:
-  // 0 = is 0
-  // 1 = already initialized
-  // 2 = Contract limit reached
+  error Is0();
+  error ContractLimitReached();
+  error NotAuthorized();
 
   // TVL limit in underlying value
   uint256 public limit;
@@ -28,8 +28,8 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @param _governanceRecoveryFund recovery address
   /// @param _owner owner address
   function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal {
-    require(_governanceRecoveryFund != address(0), '0');
-    require(_owner != address(0), '0');
+    if (_governanceRecoveryFund == address(0)) revert Is0();
+    if (_owner == address(0)) revert Is0();
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -45,15 +45,14 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @param _amount new amount to deposit
   function _guarded(uint256 _amount) internal view {
     uint256 _limit = limit;
-    if (_limit == 0) {
-      return;
+    if (_limit > 0) {
+      if (getContractValue() + _amount > _limit) revert ContractLimitReached();
     }
-    require(getContractValue() + _amount <= _limit, '2');
   }
 
   /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkOnlyOwner() internal view {
-    require(owner() == msg.sender, '6');
+    if (owner() != msg.sender) revert NotAuthorized();
   }
 
   /// @notice abstract method, should return the TVL in underlyings

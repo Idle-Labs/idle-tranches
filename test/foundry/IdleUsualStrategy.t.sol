@@ -188,7 +188,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     uint256 oraclePrice = IdleUsualStrategy(address(strategy)).oraclePrice();
 
     vm.prank(makeAddr('nonOwner'));
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     _idleCDO.startEpoch(0);
 
     // funds in lending
@@ -258,7 +258,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     uint256 oraclePrice = IdleUsualStrategy(address(strategy)).oraclePrice();
 
     vm.prank(makeAddr('nonOwner'));
-    vm.expectRevert(bytes("6"));
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     _idleCDO.stopEpoch();
 
     // epoch duration not passed
@@ -418,9 +418,9 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     _idleCDO.startEpoch(0);
 
     // cannot redeem during epoch
-    vm.expectRevert(bytes("3"));
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector);
     _idleCDO.withdrawAA(0);
-    vm.expectRevert(bytes("3"));
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector);
     _idleCDO.withdrawBB(0);
     
     uint256 oraclePrice = IdleUsualStrategy(address(strategy)).oraclePrice();
@@ -543,13 +543,13 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     vm.startPrank(newUser);
     // both deposits will revert as loss will accrue and leave 0 to juniors
     underlying.approve(address(idleCDO), amount * 2);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositBB(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.withdrawAA(amount);
-    vm.expectRevert(bytes("4"));
+    vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.withdrawBB(amount);
     vm.stopPrank();
 
@@ -579,7 +579,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     idleCDO.depositAA(1);
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositBB(1);
-    vm.expectRevert(bytes("3"));
+    vm.expectRevert(IdleCDO.WithdrawNotAllowed.selector);
     idleCDO.withdrawBB(0);
 
     // AA withdraw is allowed
@@ -647,9 +647,6 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
   }
 
   function testCheckMaxDecreaseDefault() external override {
-    // Overridden and not used
-  }
-  function testMinStkIDLEBalance() external override {
     // Overridden and not used
   }
   function testDepositWithLossSocialized(uint256 depositAmountAARatio) external override {

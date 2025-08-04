@@ -179,16 +179,6 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     assertGt(IERC20Detailed(MORPHO).balanceOf(address(idleCDO)), 0, "morpho bal > 0");
   }
 
-  // Not applicable in goearli
-  function testMinStkIDLEBalance() external override {
-    // if we are in goerli, we skip this test
-    if (_isGoerli()) {
-      return;
-    }
-
-    super._testMinStkIDLEBalanceInternal();
-  }
-
   function testRewardsApr(uint256 firstDeposit, uint256 secondDeposit) external virtual {
     // accrueInterest on all markets before
     _blueAccrueInterest();

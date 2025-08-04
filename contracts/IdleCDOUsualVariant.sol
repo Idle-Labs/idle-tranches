@@ -193,9 +193,4 @@ contract IdleCDOUsualVariant is IdleCDO {
   function setUnlentPerc(uint256) external override {}
   /// NOTE: the vault is not using the traditional split ratio
   function setTrancheAPRSplitRatio(uint256) external override {}
-
-  /// NOTE: stkIDLE gating is not used
-  function toggleStkIDLEForTranche(address) external override {}
-  function _checkStkIDLEBal(address, uint256) internal view override {}
-  function setStkIDLEPerUnderlying(uint256) external override {}
 }

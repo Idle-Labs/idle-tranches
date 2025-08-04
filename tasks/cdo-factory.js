@@ -798,7 +798,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       if (networkContracts.keyringWhitelist) {
         console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
         const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
-        await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
+        await whitelist.connect(multisig).setWhitelistStatus(queue, true);
       }
     }
 
