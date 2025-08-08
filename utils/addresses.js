@@ -1038,6 +1038,20 @@ const CDOs = {
     BBTranche: '0x625fa7f7127181a55ca62e9A247374e6a8845151',
     queue: '0x75a878869F6920C5bB815205cD08F85480791A19'
   },
+  creditabraxasv2usdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x0Ad21c3Ac4ffE7C1Ed2b1B717cd051DeD365fa32',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x6dbDEeF7a188bEaFFC2c57006e5D8edAf0C0e9e6',
+    BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
+    queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
+  },
   usualusd0pptest: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -2796,6 +2810,45 @@ exports.deployTokens = {
     queue: true,
     hypernative: true,
     proxyCdoAddress: CDOs.creditroxusdc.cdoAddr,
+  },
+  creditabraxasv2usdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0x04B760fEccCbc41f7bB8f785dbdc0dc769FDc27a', // borrower
+      'Abraxas Capital Management', // borrower name
+      9e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditabraxasv2usdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '86400', // 1 day
+    // ## instant params values
+    instantWithdrawDelay: '86400', // 1 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 13083170,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditabraxasusdc.cdoAddr,
   },
   // creditflowdeskusdc: {
   //   decimals: 6,
