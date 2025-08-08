@@ -792,6 +792,11 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log('Strategy deployed at      ', strategy);
     console.log('Queue deployed at         ', queue);
 
+    if (hypernative) {
+      console.log('Adding Credit Vault to hypernative pauser module');
+      await hre.run("protect-cdo", { cdo: cv });
+    }
+
     if (deployToken.queue && deployToken.keyring != addr0) {
       console.log(`Whitelisting queue in KeyringWhitelist if exists`);
       const multisig = await run('get-multisig-or-fake');
@@ -800,10 +805,6 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
         const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
         await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
       }
-    }
-
-    if (hypernative) {
-      console.log('🛑 IMPORTANT: run protect-cdo task to add CDO to hypernative pauser module');
     }
 });
 
