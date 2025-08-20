@@ -2212,8 +2212,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // deposit with this contract
     uint256 depositedAA = idleCDO.depositAA(amountWei);
     _transferBurnedTrancheTokens(address(this), true);
+    // transfer tranche tokens to the borrower for the writeOff
+    AAtranche.transfer(borrower, depositedAA);
     // deposit with user1
     _depositWithUser(makeAddr('user1'), amountWei, true);
+
+    // cannot writeoff if the epoch is not running
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.startPrank(borrower);
+    cdoEpoch.writeOffDeposit(depositedAA, address(AAtranche));
+    vm.stopPrank();
 
     // tot tvl = 20000
     // 1 epoch interest is 10% of 20000 = 2000 + 2000 for the buffer period (this is what borrower should pay)
@@ -2224,6 +2232,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 contractValPre = cdoEpoch.getContractValue();
 
+    // caller is not the borrower
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.writeOffDeposit(depositedAA, address(AAtranche));
+
+    vm.prank(borrower);
     cdoEpoch.writeOffDeposit(depositedAA, address(AAtranche));
 
     uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
@@ -2263,6 +2276,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // deposit with this contract
     uint256 depositedAA = idleCDO.depositAA(amountWei);
     _transferBurnedTrancheTokens(address(this), true);
+    // transfer tranche tokens to the borrower for the writeOff
+    AAtranche.transfer(borrower, depositedAA);
     // deposit with user1 to Junior tranche
     address user1 = makeAddr('user1');
     _depositWithUser(user1, amountWei, false);
@@ -2282,6 +2297,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 contractValPre = cdoEpoch.getContractValue();
 
     // we write off half of the AA deposit so 500 interest
+    vm.prank(borrower);
     cdoEpoch.writeOffDeposit(depositedAA / 2, address(AAtranche));
 
     uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));
@@ -2330,6 +2346,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _depositWithUser(user1, amountWei, false);
     _transferBurnedTrancheTokens(user1, false);
     uint256 depositedBB = BBtranche.balanceOf(user1);
+    // transfer tranche tokens to the borrower for the writeOff
+    vm.prank(user1);
+    BBtranche.transfer(borrower, depositedBB);
 
     // tot tvl = 20000
     // 1 epoch interest is 10% of 20000 = 2000 + 2000 for the buffer period (this is what borrower should pay)
@@ -2345,7 +2364,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 contractValPre = cdoEpoch.getContractValue();
 
     // we write off half of the BB deposit so 5000 + interest
-    vm.prank(user1);
+    vm.prank(borrower);
     cdoEpoch.writeOffDeposit(depositedBB / 2, address(BBtranche));
 
     uint256 priceAA = cdoEpoch.virtualPrice(address(AAtranche));

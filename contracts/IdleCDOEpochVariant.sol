@@ -655,7 +655,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   function writeOffDeposit(uint256 _amount, address _tranche) external {
     // only borrower can call this method and only during an epoch, otherwise one should follow the traditional flow
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-    if (_strategy.borrower() != msg.sender && !isEpochRunning) {
+    if (_strategy.borrower() != msg.sender || !isEpochRunning) {
       revert NotAllowed();
     }
     // we don't check the _tranche address to be AATranche or BBTranche as this method can be called only by the borrower
