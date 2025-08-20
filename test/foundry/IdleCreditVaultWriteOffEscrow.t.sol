@@ -8,6 +8,7 @@ import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 
 error NotAllowed();
+error WrongRequest();
 error EpochNotRunning();
 error Is0();
 
@@ -156,17 +157,25 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
   function testFullfillWriteOffRequest() external {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.fullfillWriteOffRequest(LP);
+    escrow.fullfillWriteOffRequest(LP, 1, 1);
 
     deal(address(underlying), borrower, 10000e6);
 
     vm.startPrank(borrower);
     vm.expectRevert(abi.encodeWithSelector(Is0.selector));
-    escrow.fullfillWriteOffRequest(LP);
+    escrow.fullfillWriteOffRequest(LP, 1, 1);
     vm.stopPrank();
 
     vm.prank(LP);
     escrow.createWriteOffRequest(10000e18, 10000e6);
+
+    // fullfill will revert if the params passed do not match the expected values
+    vm.startPrank(borrower);
+    vm.expectRevert(abi.encodeWithSelector(WrongRequest.selector));
+    escrow.fullfillWriteOffRequest(LP, 10000e18 - 1, 10000e6);
+    vm.expectRevert(abi.encodeWithSelector(WrongRequest.selector));
+    escrow.fullfillWriteOffRequest(LP, 10000e18, 10000e6 - 1);
+    vm.stopPrank();
 
     uint256 balPreBorrower = underlying.balanceOf(borrower);
     uint256 balPreBorrowerTranche = tranche.balanceOf(borrower);
@@ -175,7 +184,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
     vm.startPrank(borrower);
     underlying.approve(address(escrow), 10000e6);
-    escrow.fullfillWriteOffRequest(LP);
+    escrow.fullfillWriteOffRequest(LP, 10000e18, 10000e6);
     vm.stopPrank();
 
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);

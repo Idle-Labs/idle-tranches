@@ -11,6 +11,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 
 error EpochNotRunning();
 error NotAllowed();
+error WrongRequest();
 error Is0();
 
 /// @title IdleCreditVaultWriteOffEscrow
@@ -119,8 +120,10 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
 
   /// @notice fulfill the write-off request by the borrower
   /// @param _user address of the user that made the write-off request
+  /// @param _tranches amount of tranche tokens to transfer
+  /// @param _underlyings amount of underlyings to transfer
   /// @dev this function can only be called by the borrower
-  function fullfillWriteOffRequest(address _user) external nonReentrant {
+  function fullfillWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) external nonReentrant {
     address _borrower = borrower;
     // Only borrower can call this function
     if (msg.sender != _borrower) revert NotAllowed();
@@ -129,25 +132,29 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     WriteOffRequest memory currentRequest = userRequests[_user];
     // check if the user has a write-off request
     if (currentRequest.tranches == 0) revert Is0();
+    // check if the request matches the expected values
+    if (currentRequest.tranches != _tranches || currentRequest.underlyings != _underlyings) {
+      revert WrongRequest();
+    }
 
     // delete user request
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);
     // transfer underlyings requested from the borrower to this contract
-    underlyingToken.safeTransferFrom(_borrower, address(this), currentRequest.underlyings);
+    underlyingToken.safeTransferFrom(_borrower, address(this), _underlyings);
     // check if the exit fee is set and if so, apply it
     uint256 _exitFee = exitFee;
     uint256 _totFee;
     if (_exitFee > 0) {
-      _totFee = (currentRequest.underlyings * _exitFee) / FULL_VALUE;
+      _totFee = (_underlyings * _exitFee) / FULL_VALUE;
       // transfer exit fee to the feeReceiver
       underlyingToken.safeTransfer(feeReceiver, _totFee);
     }
     // transfer the remaining underlyings to the user
-    underlyingToken.safeTransfer(_user, currentRequest.underlyings - _totFee);
+    underlyingToken.safeTransfer(_user, _underlyings - _totFee);
     // transfer tranche tokens to borrower
-    IERC20Detailed(tranche).safeTransfer(_borrower, currentRequest.tranches);
+    IERC20Detailed(tranche).safeTransfer(_borrower, _tranches);
 
     // borrower can then choose to either keep the tranche tokens or write it off via 
     // IdleCDOEpochVariant.writeOffDebt method
