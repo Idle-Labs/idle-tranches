@@ -490,18 +490,18 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
         );
 
         // deposits/redeems are disabled
-        vm.expectRevert(bytes("4"));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.depositAA(amount);
-        vm.expectRevert(bytes("4"));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.depositBB(amount);
-        vm.expectRevert(bytes("4"));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.withdrawAA(amount);
-        vm.expectRevert(bytes("4"));
+        vm.expectRevert(IdleCDO.Default.selector);
         idleCDO.withdrawBB(amount);
 
         // distribute loss, as non owner
         vm.startPrank(makeAddr('nonOwner'));
-        vm.expectRevert(bytes("6"));
+        vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
         IdleCDO(address(idleCDO)).updateAccounting();
         vm.stopPrank();
 

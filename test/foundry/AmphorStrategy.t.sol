@@ -127,11 +127,6 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
     idleCDO.withdrawAA(0);
   }
 
-  function testMinStkIDLEBalance() external override {
-    uint256 tolerance = 100;
-    _internalTestMinStkIDLEBalance(tolerance);
-  }
-
   function testDeposits() external override {
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;

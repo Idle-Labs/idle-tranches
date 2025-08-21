@@ -44,7 +44,7 @@ contract IdleCDOTruefiVariant is IdleCDO {
   /// @return toRedeem number of underlyings redeemed
   function _withdraw(uint256 _amount, address _tranche) override internal nonReentrant returns (uint256 toRedeem) {
     // check if a deposit is made in the same block from the same user
-    _checkSameTx();
+    _checkSameBlock();
     // check if _strategyPrice decreased
     _checkDefault();
     // accrue interest to tranches and updates tranche prices
