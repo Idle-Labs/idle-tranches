@@ -786,11 +786,15 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     // get tx return values
     const [cv] = receipt.events.find(e => e.event === "CreditVaultDeployed").args;
     const [strategy] = receipt.events.find(e => e.event === "StrategyDeployed").args;
-    const [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
 
     console.log('Credit Vault deployed at  ', cv);
     console.log('Strategy deployed at      ', strategy);
-    console.log('Queue deployed at         ', queue);
+
+    let queue;
+    if (deployToken.queue) {
+      [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
+      console.log('Queue deployed at         ', queue);
+    }
 
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');

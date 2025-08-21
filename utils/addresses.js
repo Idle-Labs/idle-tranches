@@ -164,7 +164,8 @@ const mainnetContracts = {
   idleTokenErc4626WrapperUSDT: '0x544897a3b944fdeb1f94a0ed973ea31a80ae18e1',
   cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
   timelock: '0xDa86e15d0Cda3A05Db930b248d7a2f775e575A44',
-  keyringWhitelist: '0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3'
+  keyringWhitelist: '0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3',
+  sealSafeHarbor: '0xeca050F53ee4eCBc039DD07CB4FB785641521707'
 }
 
 // Polygon
@@ -1051,6 +1052,19 @@ const CDOs = {
     AATranche: '0x6dbDEeF7a188bEaFFC2c57006e5D8edAf0C0e9e6',
     BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
     queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
+  },
+  creditpsalionusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x5613A49D10Fed6B7Fa3a6f9b0C3524D8537Da2cF',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
+    AArewards: '0x0000000000000000000000000000000000000000',
+    BBrewards: '0x0000000000000000000000000000000000000000',
+    AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
+    BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
   },
   usualusd0pptest: {
     decimals: 18,
@@ -2849,6 +2863,44 @@ exports.deployTokens = {
     queue: true,
     hypernative: true,
     proxyCdoAddress: CDOs.creditabraxasusdc.cdoAddr,
+  },
+  creditpsalionusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x0CA17Dd6a7A18fa47e350948B97Ae02B9F3CD67b', // manager
+      '0x2D03Ed8e16D53bB33310f5dAcB4269d25Ed06354', // borrower
+      'Psalion', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditpsalionusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '172800', // 2 day
+    // ## instant params values
+    instantWithdrawDelay: '172800', // 2 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditabraxasv2usdc.cdoAddr,
   },
   // creditflowdeskusdc: {
   //   decimals: 6,
