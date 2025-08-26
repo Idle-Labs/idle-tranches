@@ -810,6 +810,11 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
         await whitelist.connect(multisig).setWhitelistStatus(queue, true);
       }
     }
+
+    if (deployToken.writeoff) {
+      console.log('Deploying write off escrow');
+      await hre.run("deploy-writeoff-escrow", { cdo: cv });
+    }
 });
 
 /**
@@ -860,6 +865,46 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
     }
 });
+
+/**
+ * @name deploy-writeoff-escrow
+ * task to deploy IdleCDOEpochQueue for a credit vault
+ */
+task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
+  .addParam('cdo')
+  .addOptionalParam('owner')
+  .addOptionalParam('isaa')
+  .setAction(async (args) => {
+    // Run compile task
+    await run("compile");
+    // Check that cdo is passed
+    if (!args.cdo) {
+      console.log("🛑 cdo address must be defined");
+      return;
+    }
+
+    // Get signer
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+
+    console.log(`Deploying with ${addr}`);
+    console.log()
+
+    const params = [
+      args.cdo,
+      args.owner || '0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814',
+      args.isaa || true
+    ];
+
+    console.log('Params for IdleCreditVaultWriteOffEscrow', params);
+
+    // Deploy write off escrow contract
+    const queue = await helpers.deployUpgradableContract(
+      'IdleCreditVaultWriteOffEscrow',
+      params,
+      signer
+    );
+  });
 
 /**
  * @name deploy-proxy-admin

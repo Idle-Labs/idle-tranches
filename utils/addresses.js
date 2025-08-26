@@ -165,7 +165,9 @@ const mainnetContracts = {
   cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
   timelock: '0xDa86e15d0Cda3A05Db930b248d7a2f775e575A44',
   keyringWhitelist: '0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3',
-  sealSafeHarbor: '0xeca050F53ee4eCBc039DD07CB4FB785641521707'
+  sealSafeHarbor: '0xeca050F53ee4eCBc039DD07CB4FB785641521707',
+  cdoImplWriteOff: '0x9F3A307B61b152128f416806e737E990fF8B62de',
+  strategyImplWriteOff: '0xc499925d7991FF8204967Ac58455293f2Db3855A',
 }
 
 // Polygon
@@ -978,6 +980,7 @@ const CDOs = {
     AATranche: '0xC26A6Fa2C37b38E549a4a1807543801Db684f99C',
     BBTranche: '0xacbb25b7DD30B6B2F7131865Dc1023622de3b3D6',
     queue: '0x5cC24f44cCAa80DD2c079156753fc1e908F495DC',
+    writeoff: '0xf3d8671e662c000AD03d860398932F0644611BDc',
 
     // Morpho info:
     morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
@@ -2899,8 +2902,9 @@ exports.deployTokens = {
     fees: '10000', // 10%
     // #########
     queue: false,
+    writeoff: false,
     hypernative: true,
-    proxyCdoAddress: CDOs.creditabraxasv2usdc.cdoAddr,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
   // creditflowdeskusdc: {
   //   decimals: 6,
