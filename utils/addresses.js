@@ -1012,7 +1012,9 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xEC6a70F62a83418c7fb238182eD2865F80491a8B',
     BBTranche: '0x53026B3aDb9956Dd4D4C381E1544C998c38D140D',
-    queue: '0xBC6cffAFC8F98d7DF780cE05fA55e14781C1C14D'
+    queue: '0xBC6cffAFC8F98d7DF780cE05fA55e14781C1C14D',
+
+    morphoOracle: '0x4bAff53CEEb99640447864A1605966D02fDFB661'
   },
   creditflowdeskusdc: {
     decimals: 6,
@@ -2926,7 +2928,7 @@ exports.deployTokens = {
     strategyParams: [
       mainnetContracts.USDC,
       'owner', // owner address
-      '0x0CA17Dd6a7A18fa47e350948B97Ae02B9F3CD67b', // manager
+      '0x8c90CEC0e380D1037b46Afc35c9461672495B8F3', // manager
       '0x77479a74abdFe9ACb6626b15950b4cC5E3Fe6414', // borrower
       'L1Test', // borrower name
       10e18.toString(), // intialApr
