@@ -1071,6 +1071,18 @@ const CDOs = {
     AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
     BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
   },
+  creditcarpathianweth: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0xdb6cAe7c1365219cf3d8D3728e96309CDDDe27F9',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
+    AATranche: '0x1388c0d942B7565637b8F9A06E8063c9e505c7c4',
+    BBTranche: '0x7F97740d7253ed0AA765b195b247C3d0Af0Bd502',
+    queue: '0x070b87c221aF6Cd77D0052b27a62Ac9D71f021d2'
+  },
   creditl1testusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -2917,6 +2929,45 @@ exports.deployTokens = {
     fees: '10000', // 10%
     // #########
     queue: false,
+    writeoff: false,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditcarpathianweth: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.WETH,
+      'owner', // owner address
+      '0x77479a74abdFe9ACb6626b15950b4cC5E3Fe6414', // manager
+      '0x10a1960615d61AFbDD00A7AbE0B1975A650C617f', // borrower
+      'Carpathian', // borrower name
+      14e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditcarpathianweth,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '86400', // 1 day
+    // ## instant params values
+    instantWithdrawDelay: '86400', // 1 day
+    instantWithdrawAprDelta: 1e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
     writeoff: false,
     hypernative: true,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
