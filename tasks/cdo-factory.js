@@ -577,6 +577,75 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     }
   });
 
+task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
+  .addParam('cdo')
+  .addParam('name')
+  .addParam('id', 'id of the watchlist to add the cdo to')
+  .setAction(async (args) => {
+    console.log(`Adding CDO ${args.cdo} (${args.name}) to hypernative watchlists with id ${args.id}`);
+    const clientId = process.env.HYPERNATIVE_CLIENT_ID;
+    const clientSecret = process.env.HYPERNATIVE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      console.log('🛑 HYPERNATIVE_CLIENT_ID and HYPERNATIVE_CLIENT_SECRET env vars must be set');
+      return;
+    }
+    if (!args.cdo || !args.id || !args.name) {
+      console.log('🛑 cdo id name params must be set');
+      return;
+    }
+
+    try {
+      const res = await fetch(`https://api.hypernative.xyz/watchlists/${args.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+          'x-client-id': clientId,
+          'x-client-secret': clientSecret,
+        },
+        body: JSON.stringify({
+          assets: [{
+            "chain": "ethereum",
+            "type": "Contract",
+            "address": args.cdo
+          }],
+          mode: 'add'
+        })
+      });
+      if (!res.ok) {
+        const responseBody = await res.text();
+        throw new Error(`Error adding CDO to watchlist: ${res.status} ${res.statusText} ${responseBody}`);
+      }
+      console.log(`Added CDO to watchlist ${args.id}`);
+
+      // Update hypernative tag for the cdo
+      const res2 = await fetch(`https://api.hypernative.xyz/lists/4ad4b133-2c72-42d4-9f79-a74c9f3ba20a`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+          'x-client-id': clientId,
+          'x-client-secret': clientSecret,
+        },
+        body: JSON.stringify({
+          assets: [{
+            "chain": "ethereum",
+            "note": `[ETH] credit ${args.name}`,
+            "address": args.cdo
+          }],
+          mode: 'add'
+        })
+      });
+      if (!res2.ok) {
+        const responseBody = await res2.text();
+        throw new Error(`Error adding tag to CDO: ${res2.status} ${res2.statusText} ${responseBody}`);
+      }
+      console.log(`Added CDO tag ${args.name}`);
+    } catch (error) {
+      console.log('Error adding CDO to watchlist', error.message);
+    }
+  });
+
 /**
  * @name deploy-with-factory-params
  * task to deploy CDO with strategy, staking rewards via factory with all params from utils/addresses.js
@@ -786,34 +855,192 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     // get tx return values
     const [cv] = receipt.events.find(e => e.event === "CreditVaultDeployed").args;
     const [strategy] = receipt.events.find(e => e.event === "StrategyDeployed").args;
-
     console.log('Credit Vault deployed at  ', cv);
     console.log('Strategy deployed at      ', strategy);
+
+    await hre.run("verify-contract", { address: cv });
+    await hre.run("verify-contract", { address: strategy });
 
     let queue;
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
+      await hre.run("verify-contract", { address: queue });
     }
 
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');
+      const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const name = await strategyContract.symbol();
       await hre.run("protect-cdo", { cdo: cv });
+      await hre.run("watch-cdo", { cdo: cv, id: '658', name }); // eth watch
+      await hre.run("watch-cdo", { cdo: cv, id: '899', name }); // eth auto pause
+      await hre.run("watch-cdo", { cdo: cv, id: '12849', name }); // cross chain auto pause
     }
 
     if (deployToken.queue && deployToken.keyring != addr0) {
       console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      const multisig = await run('get-multisig-or-fake');
       if (networkContracts.keyringWhitelist) {
         console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
-        const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
-        await whitelist.connect(multisig).setWhitelistStatus(queue, true);
+        const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, signer);
+        await whitelist.connect(signer).setWhitelistStatus(queue, true);
       }
     }
 
     if (deployToken.writeoff) {
       console.log('Deploying write off escrow');
       await hre.run("deploy-writeoff-escrow", { cdo: cv });
+    }
+
+    await hre.run("print-contracts-info", { cdo: cv, strategy, queue });
+});
+
+task("print-contracts-info", "Prints deployed contracts info")
+  .addOptionalParam('cdo', 'Cdo address')
+  .addOptionalParam('strategy', 'Strategy address')
+  .addOptionalParam('queue', 'Queue address')
+  .setAction(async (args) => {
+    console.log('Printing contracts info');
+    const cdo = args.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", args.cdo) : null;
+    const strategy = args.strategy ? await ethers.getContractAt("IdleCreditVault", args.strategy) : null;
+    const queue = args.queue ? await ethers.getContractAt("IdleCDOEpochQueue", args.queue) : null;
+    if (cdo) {
+      const [
+        owner,
+        guardian,
+        aaTrancheData,
+        bbTrancheData,
+        underlyingData,
+        strategyAddress,
+        feeReceiver,
+        isAYSActive,
+        epochDuration,
+        bufferPeriod,
+        feeValue,
+        instantDisabled,
+        aprDelta,
+        instantDelay,
+        keyringPolicy,
+      ] = await Promise.all([
+        cdo.owner(),
+        cdo.guardian(),
+        (async () => {
+          const address = await cdo.AATranche();
+          const tranche = await ethers.getContractAt("IERC20Detailed", address);
+          const [name, symbol] = await Promise.all([tranche.name(), tranche.symbol()]);
+          return { address, name, symbol };
+        })(),
+        (async () => {
+          const address = await cdo.BBTranche();
+          const tranche = await ethers.getContractAt("IERC20Detailed", address);
+          const [name, symbol] = await Promise.all([tranche.name(), tranche.symbol()]);
+          return { address, name, symbol };
+        })(),
+        (async () => {
+          const address = await cdo.token();
+          const tokenContract = await ethers.getContractAt("IERC20Detailed", address);
+          const [name, decimals] = await Promise.all([tokenContract.name(), tokenContract.decimals()]);
+          return { address, name, decimals };
+        })(),
+        cdo.strategy(),
+        cdo.feeReceiver(),
+        cdo.isAYSActive(),
+        cdo.epochDuration(),
+        cdo.bufferPeriod(),
+        cdo.fee(),
+        cdo.disableInstantWithdraw(),
+        cdo.instantWithdrawAprDelta(),
+        cdo.instantWithdrawDelay(),
+        cdo.keyringPolicyId(),
+      ]);
+      console.log(`CDO at ${cdo.address}`);
+      console.log(`  Owner:          ${owner}`);
+      console.log(`  Guardian:       ${guardian}`);
+      console.log(`  Underlying:     ${underlyingData.address} (${underlyingData.name} ${underlyingData.decimals} decimals)`);
+      console.log(`  AATranche:      ${aaTrancheData.address}`);
+      console.log(`       Name:      ${aaTrancheData.name}`);
+      console.log(`       Symbol:    ${aaTrancheData.symbol}`);
+      console.log(`  BBTranche:      ${bbTrancheData.address}`);
+      console.log(`       Name:      ${bbTrancheData.name}`);
+      console.log(`       Symbol:    ${bbTrancheData.symbol}`);
+      console.log(`  Strategy:       ${strategyAddress}`);
+      console.log(`  FeeReceiver:    ${feeReceiver}`);
+      console.log(`  isAYSActive:    ${isAYSActive}`);
+      console.log(`  EpochDuration:  ${epochDuration}`);
+      console.log(`  BufferPeriod:   ${bufferPeriod}`);
+      console.log(`  Fees:           ${feeValue}`);
+      console.log(`  Instant disable:${instantDisabled}`);
+      console.log(`  APR Delta:      ${aprDelta}`);
+      console.log(`  Instant Delay:  ${instantDelay}`);
+      console.log(`  Keyring Policy: ${keyringPolicy}`);
+
+      console.log(``);
+    }
+    if (strategy) {
+      const [
+        owner,
+        underlyingData,
+        tokenDecimals,
+        borrower,
+        manager,
+        whitelistedCdo,
+        apr,
+        unscaledApr,
+      ] = await Promise.all([
+        strategy.owner(),
+        (async () => {
+          const address = await strategy.token();
+          const tokenContract = await ethers.getContractAt("IERC20Detailed", address);
+          const [name, decimals] = await Promise.all([tokenContract.name(), tokenContract.decimals()]);
+          return { address, name, decimals };
+        })(),
+        strategy.tokenDecimals(),
+        strategy.borrower(),
+        strategy.manager(),
+        strategy.idleCDO(),
+        strategy.getApr(),
+        strategy.unscaledApr(),
+      ]);
+      console.log(`Strategy at ${strategy.address}`);
+      console.log(`  Owner:          ${owner}`);
+      console.log(`  Underlying:     ${underlyingData.address} (${underlyingData.name} ${underlyingData.decimals} decimals)`);
+      console.log(`  Decimals:       ${tokenDecimals}`);
+      console.log(`  Borrower:       ${borrower}`);
+      console.log(`  Manager:        ${manager}`);
+      console.log(`  Whitelisted CDO:${whitelistedCdo}`);
+      console.log(`  APR:            ${apr}`);
+      console.log(`  Unscaled APR:   ${unscaledApr}`);
+      console.log(``);
+    }
+    if (queue) {
+      const [owner, epochCdo, underlying, tranche, queueAllowed] = await Promise.all([
+        queue.owner(),
+        queue.idleCDOEpoch(),
+        queue.underlying(),
+        queue.tranche(),
+        cdo.isWalletAllowed(args.queue),
+      ]);
+      console.log(`Queue at ${queue.address}`);
+      console.log(`  Owner:          ${owner}`);
+      console.log(`  CDO:            ${epochCdo}`);
+      console.log(`  Underlying:     ${underlying}`);
+      console.log(`  Tranche:        ${tranche}`);
+      console.log(`  Queue allowed:  ${queueAllowed}`);
+      console.log(``);
+    }
+  });
+
+task("verify-contract", "Verify contract on Etherscan")
+  .addParam('address', 'Contract address to verify')
+  .setAction(async (args) => {
+    console.log(`Verifying contract at ${args.address}`);
+    try {
+      await run("verify:verify", {
+        address: args.address,
+        constructorArguments: []
+      });
+    } catch (error) {
+      console.error(error);
     }
 });
 
