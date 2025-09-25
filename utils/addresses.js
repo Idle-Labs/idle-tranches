@@ -1058,6 +1058,30 @@ const CDOs = {
     BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
     queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
   },
+  creditpsalionweth: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0x8B2640178D35730634Adc961877FFfBad8C9e686',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
+    AATranche: '0xc04AfB30A4169edA1f08D5828cEe146D20DC4b91',
+    BBTranche: '0x73080845253A2c5C0ecC8ED4E8135C898b2143f9',
+    queue: '0x5a19D4154aEE4FC4a9756581297758400e70bEb0'
+  },
+  creditpsalionwbtc: {
+    decimals: 8,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
+    underlying: mainnetContracts.WBTC,
+    cdoAddr: '0xc8CE005415325Bc5dBF526BCd0775388cb36db7F',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
+    AATranche: '0xa6aE2ce3537349B3e2518B053130C5A0E45AA23e',
+    BBTranche: '0xfF592ABfF0b4b31b8317B960565Da1fB697f11C1',
+    queue: '0x894B22c8E6AdB3e9Ecca6b004BB0f14839D706a2'
+  },
   creditpsalionusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -2929,6 +2953,84 @@ exports.deployTokens = {
     fees: '10000', // 10%
     // #########
     queue: false,
+    writeoff: false,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditpsalionweth: {
+    decimals: 18,
+    underlying: mainnetContracts.WETH,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.WETH,
+      'owner', // owner address
+      '0x0CA17Dd6a7A18fa47e350948B97Ae02B9F3CD67b', // manager
+      '0xFb4bD4E6DBa7Ac5244bbe69dC09818c1dEFBc0BB', // borrower
+      'Psalion', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditpsalionweth,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '172800', // 2 day
+    // ## instant params values
+    instantWithdrawDelay: '172800', // 2 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    writeoff: false,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditpsalionwbtc: {
+    decimals: 8,
+    underlying: mainnetContracts.WBTC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.WBTC,
+      'owner', // owner address
+      '0x0CA17Dd6a7A18fa47e350948B97Ae02B9F3CD67b', // manager
+      '0x39DFaea5590CB2786FA7A32D440981660a36ac7B', // borrower
+      'Psalion', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditpsalionwbtc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '172800', // 2 day
+    // ## instant params values
+    instantWithdrawDelay: '172800', // 2 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
     writeoff: false,
     hypernative: true,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
