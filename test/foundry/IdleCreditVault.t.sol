@@ -2108,6 +2108,38 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(bufferPeriodPre, _vault.bufferPeriod(), 'buffer period changed');
   }
 
+  function testStopEpochDonatedAssets() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFee(10000); // 10%
+    vm.stopPrank();
+
+    IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
+    address _manager = IdleCreditVault(_vault.strategy()).manager();
+
+    // deposit 1 with this contract
+    idleCDO.depositAA(1 * ONE_SCALE);
+
+    // start epoch
+    _startEpochAndCheckPrices(0);
+
+    // donate assets to the pool whose fee is greater than the expected interest
+    _donateToken(address(this), 100 * ONE_SCALE);
+    underlying.transfer(address(idleCDO), 100 * ONE_SCALE);
+
+    // give funds to borrower for repaying
+    uint256 totFunds = _expectedFundsEndEpoch();
+    deal(defaultUnderlying, borrower, totFunds);
+
+    // stop epoch with new duration
+    vm.startPrank(_manager);
+    vm.warp(_vault.epochEndDate() + 1);
+    _vault.stopEpoch(initialProvidedApr, 0);
+    vm.stopPrank();
+
+    // assert epoch is stopped
+    assertEq(_vault.isEpochRunning(), false, 'Epoch was stopped');
+  }
+
   function testSetAprs() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 

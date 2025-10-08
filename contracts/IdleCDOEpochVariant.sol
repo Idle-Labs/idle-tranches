@@ -254,6 +254,9 @@ contract IdleCDOEpochVariant is IdleCDO {
       revert NotAllowed();
     }
 
+    // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
+    _skimDonatedAssets();
+
     uint256 _expectedInterest = _interest > 1 ? _interest : expectedEpochInterest;
     uint256 _totBorrowed;
     bool _isRequestingAllFunds = _interest == 1;
