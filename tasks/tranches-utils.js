@@ -657,6 +657,99 @@ subtask("upgrade-with-multisig", "Upgrade contract with multisig")
   });
 
 /**
+* @name upgrade-all-cv-multisig-timelock
+*/
+task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisig timelock module")
+  .setAction(async (args) => {
+    await run("compile");
+    const networkTokens = getDeployTokens(hre);
+    const networkContracts = getNetworkContracts(hre);
+    let cvNames = Object.keys(addresses.CDOs).filter(name => name.startsWith('credit') && !name.includes('test'));
+    // or use a fixed list like this:
+    // const cvNames = [
+    //   'creditpsalionweth',
+    //   'creditpsalionwbtc',
+    //   'creditpsalionusdc',
+    //   'creditcarpathianweth'
+    // ];
+    console.log('cvNames', cvNames);
+    await helpers.prompt("continue? [y/n]", true);
+
+    if (!networkContracts.timelock || !networkContracts.proxyAdminWithTimelock) {
+      console.log('timelock or proxyAdminWithTimelock not defined');
+      return;
+    }
+
+    // get current signer
+    let signer;
+    // get timelock
+    let timelock = await ethers.getContractAt("Timelock", networkContracts.timelock);
+    console.log('Timelock: ', timelock.address);
+    // get proxyAdminWithTimelock
+    let proxyAdminWithTimelock = await ethers.getContractAt("IProxyAdmin", networkContracts.proxyAdminWithTimelock);
+    console.log('ProxyAdmin with timelock: ', proxyAdminWithTimelock.address);
+
+    let newImpl;
+    let batchTargets = [];
+    let batchValues = [];
+    let batchPayloads = [];
+
+    for (let i = 0; i < cvNames.length; i++) {
+      const cdoname = cvNames[i];
+      const deployToken = networkTokens[cdoname];
+      const contractName = deployToken.cdoVariant;
+      const contractAddress = deployToken.cdo.cdoAddr;
+
+      if (!contractAddress || !contractName) {
+        console.log(`contractAddress and contractName must be defined`);
+        return;
+      }
+
+      // deploy new implementation
+      // if already deployed newImpl then reuse it
+      if (!newImpl) {
+        console.log('Deploying new implementation for', contractName);
+        // signer = await run('get-signer-or-fake');
+        // newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
+        // // to checksum address
+        // newImpl = ethers.utils.getAddress(newImpl);
+        newImpl = '0x6De6ea8659C8cEa1f2aaf29758E40Ff4C8a1A53F';
+      }
+
+      console.log(`Upgrading ${cdoname} : ${contractAddress} with new impl ${newImpl}`);
+
+      batchTargets.push(proxyAdminWithTimelock.address);
+      batchValues.push(0);
+      batchPayloads.push(
+        proxyAdminWithTimelock.interface.encodeFunctionData(
+          'upgrade', [contractAddress, newImpl]
+        )
+      );
+
+      console.log('payload', batchPayloads[i]);
+      console.log('---');
+    }
+
+    if (!newImpl) {
+      console.log(`New impl address is null`);
+      return;
+    }
+
+    signer = await run('get-multisig-or-fake');
+    timelock = timelock.connect(signer);
+    await timelock.scheduleBatch(
+      batchTargets,
+      batchValues,
+      batchPayloads,
+      ethers.constants.HashZero,
+      ethers.constants.HashZero,
+      await timelock.getMinDelay()
+    );
+
+    console.log(`Upgrade queued, new impl ${newImpl}`);
+  });
+
+/**
  * @name upgrade-with-multisig-timelock
  */
 subtask("upgrade-with-multisig-timelock", "Upgrade contract with multisig timelock module")
