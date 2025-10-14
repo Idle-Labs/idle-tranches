@@ -66,12 +66,16 @@
     "bignumber.js": "^9.0.1",
     "clones-with-immutable-args": "^1.1.2",
     "dotenv": "^9.0.2",
-    "hardhat-gas-reporter": "^1.0.4"
+    "hardhat-gas-reporter": "^1.0.4",
+    "node-hid": "^2.2.0"
   },
   "resolutions": {
-    "@ledgerhq/hw-app-eth": "5.47.1",
-    "@ledgerhq/hw-transport": "5.46.0",
-    "@ledgerhq/hw-transport-u2f": "5.36.0-deprecated",
-    "hardhat/**/@ethereumjs/tx": "3.5.0"
+    "@ledgerhq/devices": "5.51.1",
+    "@ledgerhq/errors": "5.50.0",
+    "@ledgerhq/logs": "5.50.0",
+    "@ledgerhq/hw-app-eth": "5.51.1",
+    "@ledgerhq/hw-transport": "5.51.1",
+    "@ledgerhq/hw-transport-node-hid": "5.51.1",
+    "@ledgerhq/hw-transport-node-hid-noevents": "5.51.1"
   }
 }
