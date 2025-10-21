@@ -660,19 +660,29 @@ subtask("upgrade-with-multisig", "Upgrade contract with multisig")
 * @name upgrade-all-cv-multisig-timelock
 */
 task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisig timelock module")
+  .addOptionalParam('strategy')
   .setAction(async (args) => {
     await run("compile");
+    const isStrategy = args.strategy;
     const networkTokens = getDeployTokens(hre);
     const networkContracts = getNetworkContracts(hre);
     let cvNames = Object.keys(addresses.CDOs).filter(name => name.startsWith('credit') && !name.includes('test'));
     // or use a fixed list like this:
-    // const cvNames = [
+    // let cvNames = [
+    //   'creditfasanarausdc',
+    //   'creditbastionusdc',
+    //   'creditadaptivefrontierusdc',
+    //   'creditfalconxusdc',
+    //   'creditroxusdc',
+    //   'creditabraxasv2usdc',
     //   'creditpsalionweth',
     //   'creditpsalionwbtc',
     //   'creditpsalionusdc',
     //   'creditcarpathianweth'
     // ];
+
     console.log('cvNames', cvNames);
+    console.log('isStrategy', isStrategy);
     await helpers.prompt("continue? [y/n]", true);
 
     if (!networkContracts.timelock || !networkContracts.proxyAdminWithTimelock) {
@@ -697,8 +707,8 @@ task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisi
     for (let i = 0; i < cvNames.length; i++) {
       const cdoname = cvNames[i];
       const deployToken = networkTokens[cdoname];
-      const contractName = deployToken.cdoVariant;
-      const contractAddress = deployToken.cdo.cdoAddr;
+      const contractName = deployToken[isStrategy ? "strategyName" : "cdoVariant"];
+      const contractAddress = deployToken.cdo[isStrategy ? "strategy" : "cdoAddr"];
 
       if (!contractAddress || !contractName) {
         console.log(`contractAddress and contractName must be defined`);
@@ -713,7 +723,14 @@ task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisi
         // newImpl = await helpers.prepareContractUpgrade(contractAddress, contractName, signer);
         // // to checksum address
         // newImpl = ethers.utils.getAddress(newImpl);
-        newImpl = '0x6De6ea8659C8cEa1f2aaf29758E40Ff4C8a1A53F';
+
+        if (!isStrategy) {
+          // CDO impl
+          newImpl = '0x6De6ea8659C8cEa1f2aaf29758E40Ff4C8a1A53F';
+        } else {
+          // Strategy impl
+          newImpl = '0xc499925d7991ff8204967ac58455293f2db3855a';
+        }
       }
 
       console.log(`Upgrading ${cdoname} : ${contractAddress} with new impl ${newImpl}`);
