@@ -952,6 +952,8 @@ const CDOs = {
     BBrewards: '0x0000000000000000000000000000000000000000',
     AATranche: '0xC49b4ECc14aa31Ef0AD077EdcF53faB4201b724c',
     BBTranche: '0x5B20BddA9457464e156917De7194d17f7f823735',
+
+    writeOff: '0xcFaa789aF38Ff91EB0124Cd27B3D53094177CC48'
   },
   creditadaptivefrontierusdc: {
     decimals: 6,
@@ -980,7 +982,7 @@ const CDOs = {
     AATranche: '0xC26A6Fa2C37b38E549a4a1807543801Db684f99C',
     BBTranche: '0xacbb25b7DD30B6B2F7131865Dc1023622de3b3D6',
     queue: '0x5cC24f44cCAa80DD2c079156753fc1e908F495DC',
-    writeoff: '0xf3d8671e662c000AD03d860398932F0644611BDc',
+    writeOff: '0xf3d8671e662c000AD03d860398932F0644611BDc',
 
     // Morpho info:
     morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
