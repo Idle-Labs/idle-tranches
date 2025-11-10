@@ -1097,6 +1097,17 @@ const CDOs = {
     AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
     BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
   },
+  creditpsaliontestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xe17018c162f8AB82dcFb3cc3Da65A8b99Ac36D99',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
+    AATranche: '0xf1DD13D0E471e365c8177d07327445284912b26c',
+    BBTranche: '0xF01a9964b209Eed143483Fbe4C2eCB0BBfD0eA39',
+  },
   creditcarpathianweth: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -2957,6 +2968,45 @@ exports.deployTokens = {
     queue: false,
     writeoff: false,
     hypernative: true,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
+  },
+  creditpsaliontestusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x77479a74abdFe9ACb6626b15950b4cC5E3Fe6414', // manager
+      '0x14a8c632b77F1ee8c67760A7e0F89E4682Afc790', // borrower
+      'Psalion Test Pilot', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditpsaliontestusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 7 days
+    bufferPeriod: '10800', // 3 hours
+    // ## instant params values
+    instantWithdrawDelay: '172800', // 2 day
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: false,
+    hypernative: false,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
   creditpsalionweth: {
