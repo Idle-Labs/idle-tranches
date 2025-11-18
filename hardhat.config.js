@@ -93,6 +93,8 @@ module.exports = {
       "contracts/arbitrum/IdleCDOEpochVariantArbitrum.sol": ultraminimalSizeConfig,
       "contracts/arbitrum/IdleCDOTruefiCreditVariant.sol": overrideConfig,
       "contracts/arbitrum/IdleCDOArbitrum.sol": overrideConfig,
+      "contracts/base/IdleCDOEpochVariantBase.sol": ultraminimalSizeConfig,
+      "contracts/base/IdleCDOBase.sol": overrideConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,
@@ -185,6 +187,13 @@ module.exports = {
       gasMultiplier: 1.1,
       timeout: 1200000
     },
+    base: {
+      url: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      timeout: 1200000
+    },
     matic: {
       url: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
@@ -222,6 +231,7 @@ module.exports = {
   etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
+      base: process.env.ETHERSCAN_API_KEY,
       arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
       polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
@@ -235,7 +245,16 @@ module.exports = {
           apiURL: "https://api-zkevm.polygonscan.com/api",
           browserURL: "https://zkevm.polygonscan.com"
         }
-      }
+      },
+      {
+        network: "base",
+        chainId: 8453,
+        urls: {
+          // apiURL: "https://api.basescan.org/api",
+          apiURL: "https://api.etherscan.io/v2/api?chainid=8453",
+          browserURL: "https://basescan.org/"
+        }
+      },
     ]
   },
   abiExporter: {

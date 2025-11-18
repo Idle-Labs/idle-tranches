@@ -282,12 +282,35 @@ const arbitrumContracts = {
   USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
 }
 
+const baseContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  treasuryMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  devLeagueMultisig: '0xFDbB4d606C199F091143BD604C85c191a526fbd0',
+  proxyAdmin: '0x6b8a1e78ac707f9b0b5eb4f34b02d9af84d2b689',
+  // Same as proxyAdmin
+  proxyAdminWithTimelock: '0x6b8a1e78ac707f9b0b5eb4f34b02d9af84d2b689',
+  timelock: '0x9D7586D72e192072b27dbbA591926F2A5DE0696d',
+  keyring: '0xf26b0f10691ed160734a3a5caf8ca1fcb57efc9d',
+  keyringWhitelist: '0xe5441efBdA7a3613597eB8e2c42AE4C837eA2149',
+
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  WETH: '0x4200000000000000000000000000000000000006',
+  USDC: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonzk: polygonZKContracts,
   mainnet: mainnetContracts,
   optimism: optimismContracts,
   arbitrum: arbitrumContracts,
+  base: baseContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -1483,6 +1506,21 @@ const arbitrumCDOs = {
     AATranche: '0x97F476F664A95106931f78113489e0361Cf1c9Fa',
     BBTranche: '0x42A2f36EC49dD9AF7928cF2Ec46E06866292495B',
     queue: '0x133F1C751f25C2AAf0E83f0609A67074915144A4'
+  },
+};
+
+const baseCDOs = {
+  creditbasetestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
+    underlying: baseContracts.USDC,
+    cdoAddr: '0x2540971D944921B51e3434503922ea92F2ee0862',
+    proxyAdmin: baseContracts.proxyAdminWithTimelock,
+    strategy: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
+    AATranche: '0x2c3B7Bf835C768cd0f86AA91786171A60439482C',
+    BBTranche: '0x9edD306EcE32C853EAD57315F25C060Cf0E1cE40',
+    queue: '0xA75a46B10428AE3E67156aBD5618b8f8BD3AF3d4'
   },
 };
 
@@ -3237,6 +3275,49 @@ exports.deployTokens = {
     proxyCdoAddress: CDOs.usualusd0pptest.cdoAddr
   },
 };
+
+exports.deployTokensBase = {
+  creditbasetestusdc: {
+    decimals: 6,
+    underlying: baseContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      baseContracts.USDC,
+      'owner', // owner address
+      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // manager
+      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // borrower
+      'Base Test Vault', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: baseCDOs.creditbasetestusdc,
+    cdoVariant: 'IdleCDOEpochVariantBase',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '600', // 10 minutes
+    bufferPeriod: '300', // 5 minutes
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: false,
+    // ## keyring params
+    keyring: baseContracts.keyringWhitelist,
+    keyringPolicy: 16003355,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    writeoff: true,
+    hypernative: false,
+    proxyCdoAddress: '',
+    // proxyCdoAddress: baseCDOs.creditfalconxusdc.cdoAddr,
+  }  
+}
 
 exports.deployTokensPolygon = {
   quickcxethweth: {

@@ -19,6 +19,7 @@ error Default();
 /// If the apr for the new epoch is lower than the last one, lenders can request 'instant' 
 /// withdrawals that will be fullfilled when the epoch starts and after instantWithdrawDelay (3 days).
 /// Funds for instant and normal withdrawals are sent to the strategy contract (IdleCreditVault)
+/// @custom:oz-upgrades-unsafe-allow missing-initializer
 contract IdleCDOEpochVariant is IdleCDO {
   using SafeERC20Upgradeable for IERC20Detailed;
 

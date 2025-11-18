@@ -10,6 +10,7 @@ const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
 const optimismContracts = addresses.IdleTokens.optimism;
 const arbitrumContracts = addresses.IdleTokens.arbitrum;
+const baseContracts = addresses.IdleTokens.base;
 const ICurveRegistryAbi = require("../abi/ICurveRegistry.json")
 
 const getNetworkContracts = (_hre) => {
@@ -17,6 +18,7 @@ const getNetworkContracts = (_hre) => {
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+  const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
 
   if (isMatic) {
     return polygonContracts;
@@ -26,6 +28,8 @@ const getNetworkContracts = (_hre) => {
     return optimismContracts;
   } else if (isArbitrum) {
     return arbitrumContracts;
+  } else if (isBase) {
+    return baseContracts;
   }
   return mainnetContracts;
 }
@@ -35,6 +39,7 @@ const getDeployTokens = (_hre) => {
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+  const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
 
   if (isMatic) {
     return addresses.deployTokensPolygon;
@@ -44,6 +49,8 @@ const getDeployTokens = (_hre) => {
     return addresses.deployTokensOptimism;
   } else if (isArbitrum) {
     return addresses.deployTokensArbitrum;
+  } else if (isBase) {
+    return addresses.deployTokensBase;
   }
   return addresses.deployTokens;
 }
@@ -109,12 +116,15 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+    const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
 
     let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (isOptimism) {
       contractName = 'IdleCDOOptimism';
     } else if (isArbitrum) {
       contractName = 'IdleCDOArbitrum';
+    } else if (isBase) {
+      contractName = 'IdleCDOBase';
     }
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
@@ -139,12 +149,15 @@ task("upgrade-cdo-multisig-timelock", "Upgrade IdleCDO instance with multisig ti
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
+    const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
 
     let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (isOptimism) {
       contractName = 'IdleCDOOptimism';
     } else if (isArbitrum) {
       contractName = 'IdleCDOArbitrum';
+    } else if (isBase) {
+      contractName = 'IdleCDOBase';
     }
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
