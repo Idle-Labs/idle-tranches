@@ -192,7 +192,8 @@ module.exports = {
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,
-      timeout: 1200000
+      timeout: 1200000,
+      chainId: 8453
     },
     matic: {
       url: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,

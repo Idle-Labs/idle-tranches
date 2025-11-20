@@ -21,6 +21,74 @@ const optimismCDOs = addresses.optimismCDOs;
 const arbitrumCDOs = addresses.arbitrumCDOs;
 const baseCDOs = addresses.baseCDOs;
 
+const DEFAULT_HYPERNATIVE_TAG_LIST_ID = '4ad4b133-2c72-42d4-9f79-a74c9f3ba20a';
+const HYPERNATIVE_GLOBAL_WATCHLISTS = [
+  { id: '12849', description: 'cross chain auto pause' },
+];
+const hypernativeChainConfigs = {
+  1: {
+    label: 'Ethereum',
+    chain: 'ethereum',
+    notePrefix: '[ETH] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '658', description: 'eth watch' },
+      { id: '899', description: 'eth auto pause' },
+    ],
+  },
+  10: {
+    label: 'Optimism',
+    chain: 'optimism',
+    notePrefix: '[OPTIMISM] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '1170', description: 'optimism watch' },
+      { id: '12811', description: 'optimism auto pause' },
+    ],
+  },
+  137: {
+    label: 'Polygon',
+    chain: 'polygon',
+    notePrefix: '[POLYGON] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '14871', description: 'polygon watch' },
+      { id: '14872', description: 'polygon auto pause' },
+    ],
+  },
+  1101: {
+    label: 'Polygon ZK',
+    chain: 'polygon_zkevm',
+    notePrefix: '[POLYGON ZK] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '11511', description: 'zkevm watch' },
+    ],
+  },
+  42161: {
+    label: 'Arbitrum',
+    chain: 'arbitrum',
+    notePrefix: '[ARBITRUM] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '12786', description: 'arb watch' },
+      { id: '12822', description: 'arb auto pause' },
+    ],
+  },
+  8453: {
+    label: 'Base',
+    chain: 'base',
+    notePrefix: '[BASE] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '224749', description: 'base watch' },
+      { id: '224748', description: 'base auto pause' },
+    ],
+  },
+};
+
+const getHypernativeChainConfig = (chainId) => hypernativeChainConfigs[chainId];
+
 const getNetworkCDOs = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
@@ -598,46 +666,90 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
 task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
   .addParam('cdo')
   .addParam('name')
-  .addParam('id', 'id of the watchlist to add the cdo to')
+  .addOptionalParam('chainid', 'Chain id used to pick Hypernative watchlists and params')
   .setAction(async (args) => {
-    console.log(`Adding CDO ${args.cdo} (${args.name}) to hypernative watchlists with id ${args.id}`);
     const clientId = process.env.HYPERNATIVE_CLIENT_ID;
     const clientSecret = process.env.HYPERNATIVE_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
       console.log('🛑 HYPERNATIVE_CLIENT_ID and HYPERNATIVE_CLIENT_SECRET env vars must be set');
       return;
     }
-    if (!args.cdo || !args.id || !args.name) {
-      console.log('🛑 cdo id name params must be set');
+    if (!args.cdo || !args.name) {
+      console.log('🛑 cdo and name params must be set');
       return;
     }
 
+    console.log('args.chainid ', args.chainid);
+    console.log('hre.network.config.chainId ', hre.network.config);
+    const resolvedChainId = args.chainid ? Number(args.chainid) : hre.network.config.chainId;
+    if (args.chainid && Number.isNaN(resolvedChainId)) {
+      console.log(`🛑 Invalid chainid ${args.chainid}`);
+      return;
+    }
+    const chainId = resolvedChainId || 1;
+    const chainConfig = getHypernativeChainConfig(chainId);
+    if (!chainConfig) {
+      console.log(`⚠️ No preset Hypernative config found for chain ${chainId}, falling back to default params`);
+    }
+    const chainLabel = chainConfig?.label || `chain ${chainId}`;
+    const chainSlug = chainConfig?.chain || 'ethereum';
+    const notePrefix = chainConfig?.notePrefix || `[${chainLabel.toUpperCase()}] credit `;
+    const tagListId = chainConfig?.tagListId || DEFAULT_HYPERNATIVE_TAG_LIST_ID;
+    const watchlistsFromConfig = chainConfig
+      ? [...(chainConfig.watchlists || []), ...HYPERNATIVE_GLOBAL_WATCHLISTS]
+      : [];
+    
+      console.log({
+        chainId,
+        chainLabel,
+        chainSlug,
+        notePrefix,
+        tagListId,
+        watchlistsFromConfig,
+      })
+    const normalizeWatchlists = (lists) => {
+      const seen = new Set();
+      return lists.reduce((acc, entry) => {
+        if (!entry || !entry.id || seen.has(entry.id)) {
+          return acc;
+        }
+        seen.add(entry.id);
+        acc.push(entry);
+        return acc;
+      }, []);
+    };
+
+    const watchlists = normalizeWatchlists(watchlistsFromConfig);
+    if (!watchlists.length) {
+      console.log(`🛑 No Hypernative watchlists configured for ${chainLabel}. Update hypernativeChainConfigs.`);
+      return;
+    }
+    console.log(`Adding CDO ${args.cdo} (${args.name}) to Hypernative watchlists for ${chainLabel} (chainId ${chainId})`);
+
     try {
-      const res = await fetch(`https://api.hypernative.xyz/watchlists/${args.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'accept': 'application/json',
-          'x-client-id': clientId,
-          'x-client-secret': clientSecret,
-        },
-        body: JSON.stringify({
-          assets: [{
-            "chain": "ethereum",
-            "type": "Contract",
-            "address": args.cdo
-          }],
-          mode: 'add'
-        })
-      });
-      if (!res.ok) {
-        const responseBody = await res.text();
-        throw new Error(`Error adding CDO to watchlist: ${res.status} ${res.statusText} ${responseBody}`);
+      for (const { id, description } of watchlists) {
+        const res = await fetch(`https://api.hypernative.xyz/watchlists/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'accept': 'application/json',
+            'x-client-id': clientId,
+            'x-client-secret': clientSecret,
+          },
+          body: JSON.stringify({
+            assets: [{ chain: chainSlug, type: "Contract", address: args.cdo }],
+            mode: 'add'
+          })
+        });
+        if (!res.ok) {
+          const responseBody = await res.text();
+          throw new Error(`Error adding CDO to watchlist ${id}: ${res.status} ${res.statusText} ${responseBody}`);
+        }
+        console.log(`Added CDO to watchlist ${id}${description ? ` (${description})` : ''}`);
       }
-      console.log(`Added CDO to watchlist ${args.id}`);
 
       // Update hypernative tag for the cdo
-      const res2 = await fetch(`https://api.hypernative.xyz/lists/4ad4b133-2c72-42d4-9f79-a74c9f3ba20a`, {
+      const res2 = await fetch(`https://api.hypernative.xyz/lists/${tagListId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -647,9 +759,9 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
         },
         body: JSON.stringify({
           assets: [{
-            "chain": "ethereum",
-            "note": `[ETH] credit ${args.name}`,
-            "address": args.cdo
+            chain: chainSlug,
+            note: `${notePrefix}${args.name}`,
+            address: args.cdo,
           }],
           mode: 'add'
         })
@@ -658,7 +770,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
         const responseBody = await res2.text();
         throw new Error(`Error adding tag to CDO: ${res2.status} ${res2.statusText} ${responseBody}`);
       }
-      console.log(`Added CDO tag ${args.name}`);
+      console.log(`Updated Hypernative tag ${notePrefix}${args.name}`);
     } catch (error) {
       console.log('Error adding CDO to watchlist', error.message);
     }
@@ -891,9 +1003,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
       const name = await strategyContract.symbol();
       await hre.run("protect-cdo", { cdo: cv });
-      await hre.run("watch-cdo", { cdo: cv, id: '658', name }); // eth watch
-      await hre.run("watch-cdo", { cdo: cv, id: '899', name }); // eth auto pause
-      await hre.run("watch-cdo", { cdo: cv, id: '12849', name }); // cross chain auto pause
+      await hre.run("watch-cdo", { cdo: cv, name });
     }
 
     if (deployToken.queue && deployToken.keyring != addr0) {
@@ -1135,9 +1245,10 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
     console.log(`Deploying with ${addr}`);
     console.log()
 
+    const networkContracts = getNetworkContracts(hre);
     const params = [
       args.cdo,
-      args.owner || '0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814',
+      args.owner || networkContracts.treasuryMultisig,
       args.isaa || true
     ];
 
@@ -1219,7 +1330,9 @@ task("deploy-keyring-whitelist", "Deploy KeyringIdleWhitelist")
     console.log(`Deploying KeyringIdleWhitelist with ${addr}`);
     console.log()
 
-    const keyringAddress = "0xb0B5E2176E10B12d70e60E3a68738298A7DFe666"; // mainnet
+    const networkContracts = getNetworkContracts(hre);
+    keyringAddress = networkContracts.keyring;
+
     console.log(`Ownership: ${args.owner}`);
     console.log(`Keyring address: ${keyringAddress}`);
     const contract = await helpers.deployContract('KeyringIdleWhitelist', 
