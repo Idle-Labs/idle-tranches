@@ -1039,7 +1039,8 @@ const CDOs = {
     BBTranche: '0x53026B3aDb9956Dd4D4C381E1544C998c38D140D',
     queue: '0xBC6cffAFC8F98d7DF780cE05fA55e14781C1C14D',
 
-    morphoOracle: '0x4bAff53CEEb99640447864A1605966D02fDFB661'
+    morphoOracle: '0x4bAff53CEEb99640447864A1605966D02fDFB661',
+    writeOff: '0xB08aFCF83ed084DD7E4df0D83F4f4a2be9109944'
   },
   // creditflowdeskusdc: {
   //   decimals: 6,
