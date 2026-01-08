@@ -13,6 +13,11 @@ error EpochRunning();
 error NotAllowed();
 error Default();
 
+interface IProgrammableBorrower {
+  function onStartEpoch(uint256 pendingWithdraws) external;
+  function onStopEpoch(uint256 amountRequired) external;
+}
+
 /// @title IdleCDO variant that supports epochs. 
 /// @dev When epoch is running no deposits or withdrawals are allowed. When epoch ends 
 /// lenders can request withdrawals, that will be fullfilled by the end of the next epoch.
@@ -222,12 +227,19 @@ contract IdleCDOEpochVariant is IdleCDO {
     // if there is any surplus then we send those to the borrower
     uint256 pendingInstant = _pendingInstant();
     uint256 totUnderlyings = _contractTokenBalance(token);
+    address _borrower = _strategy.borrower();
+    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    bool _isProgrammable = _isProgrammableBorrower(_borrower);
 
     // if there are more requests than the current underlyings we simply send all underlyings
     // to the IdleCreditVault contract
     if (pendingInstant > totUnderlyings) {
       // transfer funds to strategy
       _strategy.collectInstantWithdrawFunds(totUnderlyings);
+      // if borrower is programmable, notify epoch start even if no funds were sent
+      if (_isProgrammable) {
+        IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
+      }
       return;
     }
     // otherwise we send the amount needed to satisfy the requests to the strategy 
@@ -239,6 +251,10 @@ contract IdleCDOEpochVariant is IdleCDO {
       // funds transferred correctly
     } catch {
       _handleBorrowerDefault(totUnderlyings - pendingInstant);
+    }
+
+    if (_isProgrammable) {
+      IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
     }
   }
 
@@ -296,6 +312,11 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
     uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
     bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
+
+    address _borrower = _strategy.borrower();
+    if (_isProgrammableBorrower(_borrower)) {
+      IProgrammableBorrower(_borrower).onStopEpoch(_expectedInterest + _pendingWithdraws);
+    }
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
@@ -804,6 +825,13 @@ contract IdleCDOEpochVariant is IdleCDO {
   function isWalletAllowed(address _user) public view returns (bool) {
     address _keyring = keyring;
     return _keyring == address(0) || IKeyring(_keyring).checkCredential(keyringPolicyId, _user);
+  }
+
+  /// @notice Check if borrower is a smart contract
+  /// @param _borrower borrower address
+  /// @return true if borrower is programmable
+  function _isProgrammableBorrower(address _borrower) internal view returns (bool) {
+    return _borrower.code.length > 0;
   }
 
   /// 
