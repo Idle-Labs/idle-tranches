@@ -63,6 +63,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   bool public keyringAllowWithdraw;
   /// @notice amount of over/under performance that withdrawal requests will cause
   int256 public interestForOverUnderPerformance;
+  /// @notice flag to disable deposits during an epoch
+  bool public isDepositDuringEpochDisabled;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -93,15 +95,22 @@ contract IdleCDOEpochVariant is IdleCDO {
     // default no instant withdraw allowed
     disableInstantWithdraw = true;
 
+    // by default deposits during an epoch are disabled
+    isDepositDuringEpochDisabled = true;
+
     // scale the apr to include the buffer period
     _setScaledApr(_getStrategyApr());
   }
 
   /// @notice Check if msg sender is owner or manager
   function _checkOnlyOwnerOrManager() internal view {
-    if (msg.sender != owner() && msg.sender != IdleCreditVault(strategy).manager()) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(msg.sender != owner() && msg.sender != IdleCreditVault(strategy).manager());
+  }
+
+  /// @notice Revert if condition is true
+  /// @param _revertCondition condition to check
+  function _checkNotAllowed(bool _revertCondition) internal pure {
+    if (_revertCondition) revert NotAllowed();
   }
 
   ///
@@ -117,9 +126,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // cannot set epoch params if epoch is running
     // cannot set epochDuration to 0 as it's reserved for closing the pool
     // and cannot set epochDuration if previously was set to 0 as borrower repaid all funds
-    if (isEpochRunning || _epochDuration == 0 || epochDuration == 0) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(isEpochRunning || _epochDuration == 0 || epochDuration == 0);
     epochDuration = _epochDuration;
     bufferPeriod = _bufferPeriod;
   }
@@ -149,6 +156,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     keyringAllowWithdraw = _keyringAllowWithdraw;
   }
 
+  /// @notice set flag to disable deposits during an epoch
+  /// @param _isDisabled true to disable deposits during an epoch
+  function setIsDepositDuringEpochDisabled(bool _isDisabled) external {
+    _checkOnlyOwnerOrManager();
+    isDepositDuringEpochDisabled = _isDisabled;
+  }
+
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
   /// @dev We calculate the total funds that the borrower should return at the end of the epoch
   /// ie interests + fees from normal withdraw requests. We send to the borrower underlyings amounts ie interests + 
@@ -161,9 +175,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Check that buffer period passed (and epoch is not running as epochEndDate is set)
     // and that the pool is not closed (ie epochDuration == 0)
     uint256 _epochDuration = epochDuration; 
-    if (block.timestamp < (epochEndDate + bufferPeriod) || _epochDuration == 0) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(block.timestamp < (epochEndDate + bufferPeriod) || _epochDuration == 0);
 
     isEpochRunning = true;
     // prevent deposits
@@ -219,10 +231,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @notice workaround to have safeTransfer to borrower as external and use it in a try/catch block
   /// @param _amount Amount of underlyings to transfer
   function sendFundsToBorrower(uint256 _amount) external {
-     if (msg.sender != address(this)) {
-      revert NotAllowed();
-    }
-    _transferUnderlyings(IdleCreditVault(strategy).borrower(), _amount);
+    _checkNotAllowed(msg.sender != address(this));
+    _transferUnderlyings(_borrower(), _amount);
   }
 
   /// @notice Stop epoch, accrue interest to the vault and get funds to fullfill normal
@@ -240,7 +250,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
     uint256 _pendingWithdrawFees = pendingWithdrawFees;
 
-    if (
+    _checkNotAllowed(
       // Check that epoch is running
       !isEpochRunning || 
       // Check that end date is passed
@@ -251,9 +261,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
       // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
       (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
-    ) {
-      revert NotAllowed();
-    }
+    );
 
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
     _skimDonatedAssets();
@@ -278,9 +286,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       // Transfer pending withdraw fees to feeReceiver before update accounting
       // NOTE: Fees are sent with 2 different transfer calls, here and after updateAccounting, to avoid complicated calculations
-      if (_pendingWithdrawFees > 0) {
-        _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
-      }
+      _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
 
       if (_isRequestingAllFunds) {
         // we already have strategyTokens equal to _totBorrowed in this contract
@@ -373,15 +379,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _withdrawRequests Total withdraw requests
   /// @param _instantWithdrawRequests Total instant withdraw requests
   function getFundsFromBorrower(uint256 _amount, uint256 _withdrawRequests, uint256 _instantWithdrawRequests) external {
-    if (msg.sender != address(this)) {
-      revert NotAllowed();
-    }
-
-    uint256 _tot = _amount + _withdrawRequests + _instantWithdrawRequests;
-    if (_tot == 0) {
-      return;
-    }
-    IERC20Detailed(token).safeTransferFrom(IdleCreditVault(strategy).borrower(), address(this), _tot);
+    _checkNotAllowed(msg.sender != address(this));
+    _transferUnderlyingsFrom(_borrower(), address(this), _amount + _withdrawRequests + _instantWithdrawRequests);
   }
 
   /// @notice Get funds from borrower to fullfill instant withdraw requests
@@ -390,9 +389,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     _checkOnlyOwnerOrManager();
 
     // Check that epoch is running and that current time is after the deadline
-    if (!isEpochRunning || block.timestamp < instantWithdrawDeadline) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(!isEpochRunning || block.timestamp < instantWithdrawDeadline);
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
     uint256 _instantWithdraws = _strategy.pendingInstantWithdraws();
@@ -450,9 +447,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   function restoreOperations() external override {
     _checkOnlyOwner();
     // Check if the pool was defaulted
-    if (defaulted) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(defaulted);
     // restore deposits
     if (paused()) {
       _unpause();
@@ -470,14 +465,73 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice Deposit funds in the vault. Overrides the parent method and adds a check for wallet 
   function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256) {
-    if (!isWalletAllowed(msg.sender)) {
-      revert NotAllowed();
-    }
-
+    _checkNotAllowed(!isWalletAllowed(msg.sender));
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
     _skimDonatedAssets();
     // do the inherited deposit flow
     return super._deposit(_amount, _tranche, _referral);
+  }
+
+  /// @notice Deposit during an active epoch with prorated interest
+  /// @param _amount Amount of underlyings
+  /// @param _tranche Tranche to deposit into
+  /// @return _minted Amount of tranche tokens minted
+  function depositDuringEpoch(uint256 _amount, address _tranche) external returns (uint256 _minted) {
+    uint256 _epochEnd = epochEndDate;
+    address aa = AATranche;
+    address bb = BBTranche;
+    _checkNotAllowed(
+      isDepositDuringEpochDisabled ||
+      // check if epoch is still running even if not manually stopped yet
+      !isEpochRunning || block.timestamp >= _epochEnd ||
+      // check if _tranche is valid and if user is allowed
+      !(_tranche == aa || _tranche == bb) || !isWalletAllowed(msg.sender)
+    );
+
+    if (_amount == 0) {
+      return _minted;
+    }
+
+    uint256 _trancheTotSupply = _trancheSupply(_tranche);
+    // Avoid pricing discontinuities for the first mid-epoch deposit in a tranche
+    _checkNotAllowed(_trancheTotSupply == 0);
+
+    // Check that limit is not exceeded
+    _guarded(_amount);
+    _skimDonatedAssets();
+
+    // Get underlyings from user
+    _transferUnderlyingsFrom(msg.sender, address(this), _amount);
+
+    // interest for full epoch, then prorated to the remaining time
+    uint256 interest = _calcInterest(_amount) * (_epochEnd - block.timestamp) / epochDuration;
+
+    // existing holders' share of expected interest for the epoch (pre-deposit)
+    // (exclude pendingWithdrawFees since they go to feeReceiver, not tranche holders)
+    uint256 trancheExpected = _calcTrancheInterestShare(expectedEpochInterest - pendingWithdrawFees, _tranche);
+    // interest this deposit will earn for the tranche over the remaining time
+    uint256 trancheInterest = _calcTrancheInterestShare(interest, _tranche);
+    // pre-deposit expected final NAV for existing holders.
+    // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
+    uint256 expectedFinal = (_tranche == aa ? lastNAVAA : lastNAVBB) + trancheExpected;
+
+    // mint at a discounted price so depositor gets principal + its prorated interest at epoch end
+    // A mid‑epoch depositor should get _amount + trancheInterest at epoch end.
+    // So they need minted = (amount + trancheInterest) / priceEnd.
+    // priceEnd = expectedFinal / _trancheTotSupply
+    // so minted = (amount + trancheInterest) * _trancheTotSupply / expectedFinal
+    _minted = (_amount + trancheInterest) * _trancheTotSupply / expectedFinal;
+    _mintShares(_tranche, msg.sender, _minted, _amount);
+
+    // update expected epoch interest
+    expectedEpochInterest += interest;
+    // mint strategy tokens to this contract
+    IdleCreditVault(strategy).mintStrategyTokens(_amount);
+    // transfer underlyings to the borrower
+    _transferUnderlyings(_borrower(), _amount);
+
+    // Update APR split ratio if AYS is active
+    _updateSplitRatio(_getAARatio(true));
   }
 
   /// @notice Request a withdraw from the vault
@@ -488,13 +542,11 @@ contract IdleCDOEpochVariant is IdleCDO {
     address aa = AATranche;
     address bb = BBTranche;
     // check if _tranche is valid and if withdraws for that tranche are allowed and if user is allowed
-    if (!(_tranche == aa || _tranche == bb) || 
+    _checkNotAllowed(!(_tranche == aa || _tranche == bb) || 
       (!allowAAWithdrawRequest && _tranche == aa) || 
       (!allowBBWithdrawRequest && _tranche == bb) ||
       (!keyringAllowWithdraw && !isWalletAllowed(msg.sender))
-    ) {
-      revert NotAllowed();
-    }
+    );
   
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
     _skimDonatedAssets();
@@ -504,14 +556,14 @@ contract IdleCDOEpochVariant is IdleCDO {
 
     IdleCreditVault creditVault = IdleCreditVault(strategy);
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
-    uint256 _userTrancheTokens = IERC20Detailed(_tranche).balanceOf(msg.sender);
+    uint256 _userTrancheTokens = _userTrancheBal(msg.sender, _tranche);
 
     if (!disableInstantWithdraw) {
       // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
       // we compare unscaled aprs
       if (lastEpochApr > (creditVault.unscaledApr() + instantWithdrawAprDelta)) {
         // Calc max withdrawable if amount passed is 0
-        _underlyings = _amount == 0 ? maxWithdrawableInstant(msg.sender, _tranche) : _underlyings;
+        _underlyings = _amount == 0 ? _trancheToUnderlyings(_userTrancheBal(msg.sender, _tranche), _tranche) : _underlyings;
         // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
 
@@ -554,11 +606,7 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice Transfer donated assets to the feeReceiver
   function _skimDonatedAssets() internal {
-    address _token = token;
-    uint256 _underlyings = _contractTokenBalance(_token);
-    if (_underlyings > 0) {
-      IERC20Detailed(_token).safeTransfer(feeReceiver, _underlyings);
-    }
+    _transferUnderlyings(feeReceiver, _contractTokenBalance(token));
   }
 
   /// @notice Calculate the interest of an epoch for the given amount
@@ -573,6 +621,12 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @return Value of the tranche tokens in underlyings
   function _trancheToUnderlyings(uint256 _amount, address _tranche) internal view returns (uint256) {
     return _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+  }
+
+  /// @notice Get borrower address from strategy
+  /// @return borrower address
+  function _borrower() internal view returns (address) {
+    return IdleCreditVault(strategy).borrower();
   }
 
   /// @notice Calculate the interest of an epoch for a withdraw request
@@ -595,17 +649,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     }
 
     uint256 _buffer = bufferPeriod;
-    bool isAA = _tranche == AATranche;
-    uint256 tvl = getContractValue();
-    // get the tranche apr split ratio
-    uint256 aprRatio = isAA ? trancheAPRSplitRatio : FULL_ALLOC - trancheAPRSplitRatio;
     // calculate total vault interest (they don't get the interest for the buffer period for withdraw requests so 
     // we scale it back since _calcInterest is scaling the interest with tht buffer period),
-    uint256 totInterest = _calcInterest(tvl) * _duration / (_duration + _buffer);
+    uint256 totInterest = _calcInterest(getContractValue()) * _duration / (_duration + _buffer);
     // calculate total tranche interest for the whole tranche supply
-    uint256 totTrancheInterest = totInterest * aprRatio / FULL_ALLOC;
+    uint256 totTrancheInterest = _calcTrancheInterestShare(totInterest, _tranche);
     // calculate interest for the given tranche and given amount
-    uint256 _trancheBal = isAA ? lastNAVAA : lastNAVBB;
+    uint256 _trancheBal = _tranche == AATranche ? lastNAVAA : lastNAVBB;
     _interest = _trancheBal == 0 ? 0 : _amount * totTrancheInterest / _trancheBal;
     // calculate the interest that the _amount would have received if there was no split ratio (ie interest split based only on tvl).
     // This is used to calculate the interest that should be added to the expectedEpochInterest when 
@@ -616,52 +666,40 @@ contract IdleCDOEpochVariant is IdleCDO {
     _diff = int256(interestWithoutSplitRatio) - int256(_interest);
   }
 
+  /// @notice Calculate the tranche share of the total interest for the epoch
+  /// @param _totalInterest Total interest for the epoch (net of fees not meant for tranches)
+  /// @param _tranche Tranche to get the interest for
+  function _calcTrancheInterestShare(uint256 _totalInterest, address _tranche) internal view returns (uint256) {
+    uint256 ratio = trancheAPRSplitRatio;
+    return _totalInterest * (_tranche == AATranche ? ratio : FULL_ALLOC - ratio) / FULL_ALLOC;
+  }
+
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
-    uint256 currentUnderlyings = _trancheToUnderlyings(IERC20Detailed(_tranche).balanceOf(_user), _tranche);
+    uint256 currentUnderlyings = _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // sum and remove fees
     return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
   }
 
-  /// @notice Get the max amount of underlyings that can be withdrawn instantly by user
-  /// @param _user User address
-  /// @param _tranche Tranche to withdraw from
-  function maxWithdrawableInstant(address _user, address _tranche) public view returns (uint256) {
-    return _trancheToUnderlyings(IERC20Detailed(_tranche).balanceOf(_user), _tranche);
-  }
-
-  /// @notice Burn tranche tokens and update NAV and trancheAPRSplitRatio
-  /// @param _amount Amount of tranche tokens
-  /// @param _underlyings Amount of underlyings
-  /// @param _tranche Tranche to withdraw from
-  function _withdrawOps(uint256 _amount, uint256 _underlyings, address _tranche) internal {
-    // burn tranche token
-    IdleCDOTranche(_tranche).burn(msg.sender, _amount);
-
-    // update NAV with the _amount of underlyings removed
-    if (_tranche == AATranche) {
-      lastNAVAA -= _underlyings;
-    } else {
-      lastNAVBB -= _underlyings;
-    }
-
-    // update trancheAPRSplitRatio
-    _updateSplitRatio(_getAARatio(true));
-  }
+  // DEPRECATED
+  // /// @notice Get the max amount of underlyings that can be withdrawn instantly by user
+  // /// @param _user User address
+  // /// @param _tranche Tranche to withdraw from
+  // function maxWithdrawableInstant(address _user, address _tranche) public view returns (uint256) {
+  //   return _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
+  // }
 
   /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement
   /// so here we burn tranche tokens, the equivalent amount of strategy tokens. Only the borrower can call this
   /// @param _amount Amount of tranche tokens to write off
   function writeOffDeposit(uint256 _amount, address _tranche) external {
     // only borrower can call this method and only during an epoch, otherwise one should follow the traditional flow
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
-    if (_strategy.borrower() != msg.sender || !isEpochRunning) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(_borrower() != msg.sender || !isEpochRunning);
+
     // we don't check the _tranche address to be AATranche or BBTranche as this method can be called only by the borrower
     // and borrower is trusted
 
@@ -681,7 +719,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
-    _strategy.burnStrategyTokens(_underlyings);
+    IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
 
     // remove the interest + fee from expectedEpochInterest
     expectedEpochInterest -= interest;
@@ -699,9 +737,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// as funds will get transferred from borrower when epoch starts
   function claimInstantWithdrawRequest() external {
     // Check that instant withdraws are available
-    if (!allowInstantWithdraw) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(!allowInstantWithdraw);
     IdleCreditVault(strategy).claimInstantWithdrawRequest(msg.sender);
   }
 

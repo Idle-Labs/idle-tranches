@@ -55,10 +55,10 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     address _rebalancer,
     address _strategy,
     uint256 _trancheAPRSplitRatio// for AA tranches, so eg 10000 means 10% interest to AA and 90% BB
-  ) external initializer {
+  ) external virtual initializer {
     if (token != address(0)) revert AlreadyInitialized();
-    if (_strategy == address(0) || _guardedToken == address(0)) revert Is0();
-    if (_trancheAPRSplitRatio > FULL_ALLOC) revert AmountTooHigh();
+    _checkIs0(_strategy == address(0) || _guardedToken == address(0));
+    _checkAmountTooHigh(_trancheAPRSplitRatio > FULL_ALLOC);
     // Initialize contracts
     PausableUpgradeable.__Pausable_init();
     // check for _governanceFund and _owner != address(0) are inside GuardedLaunchUpgradable
@@ -68,8 +68,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get strategy token symbol (eg. idleDAI)
     string memory _symbol = IERC20Detailed(_strategyToken).symbol();
     // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
-    AATranche = address(new IdleCDOTranche(_concat(string("Pareto AA - "), _symbol), _concat(string("AA_"), _symbol)));
-    BBTranche = address(new IdleCDOTranche(_concat(string("Pareto BB - "), _symbol), _concat(string("BB_"), _symbol)));
+    AATranche = _deployTranche(string("Pareto AA - "), string("AA_"), _symbol);
+    BBTranche = _deployTranche(string("Pareto BB - "), string("BB_"), _symbol);
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
@@ -153,7 +153,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of AA tranche tokens to burn
   /// @return underlying tokens redeemed
   function withdrawAA(uint256 _amount) external virtual returns (uint256) {
-    if (paused() && !allowAAWithdraw) revert WithdrawNotAllowed();
+    _checkWithdrawNotAllowed(paused() && !allowAAWithdraw);
     return _withdraw(_amount, AATranche);
   }
 
@@ -161,7 +161,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _amount amount of BB tranche tokens to burn
   /// @return underlying tokens redeemed
   function withdrawBB(uint256 _amount) external virtual returns (uint256) {
-    if (paused() && !allowBBWithdraw) revert WithdrawNotAllowed();
+    _checkWithdrawNotAllowed(paused() && !allowBBWithdraw);
     return _withdraw(_amount, BBTranche);
   }
 
@@ -252,9 +252,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get underlyings from sender
     address _token = token;
     uint256 _preBal = _contractTokenBalance(_token);
-    IERC20Detailed(_token).safeTransferFrom(msg.sender, address(this), _amount);
+    _transferUnderlyingsFrom(msg.sender, address(this), _amount);
     // mint tranche tokens according to the current tranche price
-    _minted = _mintShares(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
+    _minted = _mintSharesAtCurrPrice(_contractTokenBalance(_token) - _preBal, msg.sender, _tranche);
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
 
@@ -319,14 +319,18 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return net asset value, in underlying tokens, for _tranche considering all nav
   function _virtualBalance(address _tranche) internal view returns (uint256) {
     // balance is: tranche supply * virtual tranche price
-    return IdleCDOTranche(_tranche).totalSupply() * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
+    return _trancheSupply(_tranche) * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice calculates the NAV for a tranche without considering the interest that is yet to be splitted
   /// @param _tranche address of the requested tranche
   /// @return net asset value, in underlying tokens, for _tranche
   function _instantBalance(address _tranche) internal view returns (uint256) {
-    return IdleCDOTranche(_tranche).totalSupply() * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    return _trancheSupply(_tranche) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+  }
+
+  function _trancheSupply(address _tranche) internal view returns (uint256) {
+    return IdleCDOTranche(_tranche).totalSupply();
   }
 
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted and the
@@ -356,7 +360,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _trancheAPRSplitRatio
   ) internal virtual view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
     // Check if there are tranche holders
-    uint256 trancheSupply = IdleCDOTranche(_tranche).totalSupply();
+    uint256 trancheSupply = _trancheSupply(_tranche);
     if (_lastNAV == 0 || trancheSupply == 0) {
       return (oneToken, 0);
     }
@@ -383,7 +387,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     bool _isAATranche = _tranche == _AATranche;
     // Get the supply of the other tranche and
     // if it's 0 then give all gain to the current `_tranche` holders
-    if (IdleCDOTranche(_isAATranche ? _BBTranche : _AATranche).totalSupply() == 0) {
+    if (_trancheSupply(_isAATranche ? _BBTranche : _AATranche) == 0) {
       _totalTrancheGain = totalGain;
     } else {
       // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
@@ -421,21 +425,29 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _virtualPrice = uint256(int256(_lastTrancheNAV) + _totalTrancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
-  /// @notice mint tranche tokens and updates tranche last NAV
+  /// @notice mint tranche tokens at current price and updates tranche last NAV
   /// @param _amount, in underlyings, to convert in tranche tokens
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
-  function _mintShares(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
-    IdleCDOTranche tr = IdleCDOTranche(_tranche);
+  function _mintSharesAtCurrPrice(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
-    tr.mint(_to, _minted);
+    _mintShares(_tranche, _to, _minted, _amount);
+  }
+
+  /// @notice mint tranche tokens and updates tranche last NAV
+  /// @param _tranche tranche address
+  /// @param _to receiver address of the newly minted tranche tokens
+  /// @param _shares number of tranche tokens to mint
+  /// @param _underlyings amount of underlyings added to the tranche
+  function _mintShares(address _tranche, address _to, uint256 _shares, uint256 _underlyings) internal {
+    IdleCDOTranche(_tranche).mint(_to, _shares);
     // update NAV with the _amount of underlyings added
     if (_tranche == AATranche) {
-      lastNAVAA += _amount;
+      lastNAVAA += _underlyings;
     } else {
-      lastNAVBB += _amount;
+      lastNAVBB += _underlyings;
     }
   }
 
@@ -445,7 +457,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     uint256 _amount = unclaimedFees;
     if (_amount != 0) {
       // mint tranches tokens (always AA) to this contract
-      _mintShares(_amount, feeReceiver, AATranche);
+      _mintSharesAtCurrPrice(_amount, feeReceiver, AATranche);
       // reset unclaimedFees counter
       unclaimedFees = 0;
       // update trancheAPRSplitRatio using instant balance
@@ -467,9 +479,9 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _updateAccounting();
     // redeem all user balance if 0 is passed as _amount
     if (_amount == 0) {
-      _amount = IERC20Detailed(_tranche).balanceOf(msg.sender);
+      _amount = _userTrancheBal(msg.sender, _tranche);
     }
-    if (_amount == 0) revert Is0();
+    _checkIs0(_amount == 0);
     address _token = token;
     // get current available unlent balance
     uint256 balanceUnderlying = _contractTokenBalance(_token);
@@ -482,22 +494,31 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       // NOTE: A difference of up to 100 wei due to rounding is tolerated
       toRedeem = _liquidate(toRedeem - balanceUnderlying, revertIfTooLow) + balanceUnderlying;
     }
+
+    _withdrawOps(_amount, _want, _tranche);
+
+    // send underlying to msg.sender. Keep this at the end of the function to avoid 
+    // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
+    _transferUnderlyings(msg.sender, toRedeem);
+  }
+
+  /// @notice Burn tranche tokens and update NAV and trancheAPRSplitRatio
+  /// @param _amount Amount of tranche tokens
+  /// @param _underlyings Amount of underlyings
+  /// @param _tranche Tranche to withdraw from
+  function _withdrawOps(uint256 _amount, uint256 _underlyings, address _tranche) internal {
     // burn tranche token
     IdleCDOTranche(_tranche).burn(msg.sender, _amount);
 
     // update NAV with the _amount of underlyings removed
     if (_tranche == AATranche) {
-      lastNAVAA -= _want;
+      lastNAVAA -= _underlyings;
     } else {
-      lastNAVBB -= _want;
+      lastNAVBB -= _underlyings;
     }
 
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
-  
-    // send underlying to msg.sender. Keep this at the end of the function to avoid 
-    // potential read only reentrancy on cdo variants that have hooks (eg with nfts)
-    _transferUnderlyings(msg.sender, toRedeem);
   }
 
   /// @notice updates trancheAPRSplitRatio based on the current tranches TVL ratio between AA and BB
@@ -667,7 +688,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _tranche tranche address
   /// @return last saved tranche price, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
-    if (IdleCDOTranche(_tranche).totalSupply() == 0) {
+    if (_trancheSupply(_tranche) == 0) {
       return oneToken;
     }
     return _tranche == AATranche ? priceAA : priceBB;
@@ -706,6 +727,15 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       // progressively release harvested rewards
       _locked = _harvestedRewards * (_releaseBlocksPeriod - _blocksSinceLastHarvest) / _releaseBlocksPeriod;
     }
+  }
+
+  /// @notice internal method used to deploy a new tranche token
+  /// @param _namePrefix prefix for the name of the tranche token
+  /// @param _symbolPrefix prefix for the symbol of the tranche token
+  /// @param _symbol suffix for the symbol of the tranche token
+  /// @return address of the newly deployed tranche token
+  function _deployTranche(string memory _namePrefix, string memory _symbolPrefix, string memory _symbol) internal returns (address) {
+    return address(new IdleCDOTranche(_concat(_namePrefix, _symbol), _concat(_symbolPrefix, _symbol)));
   }
 
   // ###################
@@ -803,7 +833,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _maxDecreaseDefault max value, in % where `100000` = 100%, of accettable price decrease for the strategy
   function setMaxDecreaseDefault(uint256 _maxDecreaseDefault) external virtual {
     _checkOnlyOwner();
-    if ((maxDecreaseDefault = _maxDecreaseDefault) >= FULL_ALLOC) revert AmountTooHigh();
+    _checkAmountTooHigh((maxDecreaseDefault = _maxDecreaseDefault) >= FULL_ALLOC);
   }
 
   /// @param _active flag to allow Adaptive Yield Split
@@ -839,19 +869,19 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _rebalancer new rebalancer address
   function setRebalancer(address _rebalancer) external virtual {
     _checkOnlyOwner();
-    if ((rebalancer = _rebalancer) == address(0)) revert Is0();
+    _checkIs0((rebalancer = _rebalancer) == address(0));
   }
 
   /// @param _feeReceiver new fee receiver address
   function setFeeReceiver(address _feeReceiver) external {
     _checkOnlyOwner();
-    if ((feeReceiver = _feeReceiver) == address(0)) revert Is0();
+    _checkIs0((feeReceiver = _feeReceiver) == address(0));
   }
 
   /// @param _guardian new guardian (pauser) address
   function setGuardian(address _guardian) external {
     _checkOnlyOwner();
-    if ((guardian = _guardian) == address(0)) revert Is0();
+    _checkIs0((guardian = _guardian) == address(0));
   }
 
   /// @param _diff max liquidation diff tolerance in underlyings
@@ -863,19 +893,19 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _aprSplit min apr split for AA, considering FULL_ALLOC = 100%
   function setMinAprSplitAYS(uint256 _aprSplit) external virtual {
     _checkOnlyOwner();
-    if ((minAprSplitAYS = _aprSplit) > FULL_ALLOC) revert AmountTooHigh();
+    _checkAmountTooHigh((minAprSplitAYS = _aprSplit) > FULL_ALLOC);
   }
 
   /// @param _fee new fee
   function setFee(uint256 _fee) external {
     _checkOnlyOwner();
-    if ((fee = _fee) > MAX_FEE) revert AmountTooHigh();
+    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
   }
 
   /// @param _unlentPerc new unlent percentage
   function setUnlentPerc(uint256 _unlentPerc) external virtual {
     _checkOnlyOwner();
-    if ((unlentPerc = _unlentPerc) > FULL_ALLOC) revert AmountTooHigh();
+    _checkAmountTooHigh((unlentPerc = _unlentPerc) > FULL_ALLOC);
   }
 
   /// @notice set new release block period. WARN: this should be called only when there 
@@ -890,7 +920,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _trancheAPRSplitRatio new apr split ratio
   function setTrancheAPRSplitRatio(uint256 _trancheAPRSplitRatio) external virtual {
     _checkOnlyOwner();
-    if ((trancheAPRSplitRatio = _trancheAPRSplitRatio) > FULL_ALLOC) revert AmountTooHigh();
+    _checkAmountTooHigh((trancheAPRSplitRatio = _trancheAPRSplitRatio) > FULL_ALLOC);
   }
 
   /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
@@ -969,12 +999,12 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
 
   /// @dev Check that the msg.sender is the either the owner or the guardian
   function _checkOnlyOwnerOrGuardian() internal view {
-    if (msg.sender != guardian && msg.sender != owner()) revert NotAuthorized();
+    _checkNotAuthorized(msg.sender != guardian && msg.sender != owner());
   }
 
   /// @dev Check that the msg.sender is the either the owner or the rebalancer
   function _checkOnlyOwnerOrRebalancer() internal view {
-    if (msg.sender != rebalancer && msg.sender != owner()) revert NotAuthorized();
+    _checkNotAuthorized(msg.sender != rebalancer && msg.sender != owner());
   }
 
   /// @notice returns the current balance of this contract for a specific token
@@ -982,6 +1012,13 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
+  }
+
+  /// @notice returns the user tranche balance for a specific tranche
+  /// @param _user user address
+  /// @param _tranche tranche address
+  function _userTrancheBal(address _user, address _tranche) internal view returns (uint256) {
+    return IERC20Detailed(_tranche).balanceOf(_user);
   }
 
   /// @dev Set allowance for _token to unlimited for _spender
@@ -1005,7 +1042,17 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @param _to receiver address
   /// @param _amount amount to transfer
   function _transferUnderlyings(address _to, uint256 _amount) internal {
+    if (_amount == 0) return;
     IERC20Detailed(token).safeTransfer(_to, _amount);
+  }
+
+  /// @dev transfer underlyings from a specific address to another address
+  /// @param _from sender address
+  /// @param _to receiver address
+  /// @param _amount amount to transfer
+  function _transferUnderlyingsFrom(address _from, address _to, uint256 _amount) internal {
+    if (_amount == 0) return;
+    IERC20Detailed(token).safeTransferFrom(_from, _to, _amount);
   }
 
   /// @dev Get the current strategy apr
@@ -1019,5 +1066,17 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// @return new string with a and b concatenated
   function _concat(string memory a, string memory b) internal pure returns (string memory) {
     return string(abi.encodePacked(a, b));
+  }
+
+  /// @notice check revert condition and revert with AmountTooHigh error
+  /// @param _revertCondition condition to check
+  function _checkAmountTooHigh(bool _revertCondition) internal pure {
+    if (_revertCondition) revert AmountTooHigh();
+  }
+
+  /// @notice check revert condition and revert with WithdrawNotAllowed error
+  /// @param _revertCondition condition to check
+  function _checkWithdrawNotAllowed(bool _revertCondition) internal pure {
+    if (_revertCondition) revert WithdrawNotAllowed();
   }
 }

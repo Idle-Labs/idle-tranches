@@ -29,7 +29,7 @@ contract IdleCDOLeveregedEulerVariant is IdleCDO {
   /// @param _to receiver address of the newly minted tranche tokens
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
-  function _mintShares(uint256 _amount, address _to, address _tranche) internal override returns (uint256 _minted) {
+  function _mintSharesAtCurrPrice(uint256 _amount, address _to, address _tranche) internal override returns (uint256 _minted) {
     // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
     uint256 _currPrice = _tranchePrice(_tranche);
     uint256 _lastAAPrice = lastAAPrice;
