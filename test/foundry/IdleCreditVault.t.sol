@@ -518,6 +518,129 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBal, depositAmount, 'strategy token balance is wrong');
   }
 
+  function testDepositDuringEpochNumericalAA() external {
+    // 10% apr, 365-day epoch, no buffer
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+
+    uint256 initialDeposit = 1000 * ONE_SCALE;
+    idleCDO.depositAA(initialDeposit);
+
+    _startEpochAndCheckPrices(0);
+    uint256 expectedEpochInterest = 100 * ONE_SCALE;
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest, 'expectedEpochInterest pre deposit is wrong');
+
+    // Halfway through the epoch
+    vm.warp(cdoEpoch.epochEndDate() - (cdoEpoch.epochDuration() / 2));
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    address user = makeAddr('midEpochNumeric');
+    uint256 depositAmount = 1000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+
+    // 1000 USDC deposit halfway through a 10% APR epoch earns 50 USDC
+    uint256 expectedDepositInterest = 50 * ONE_SCALE;
+    // minted = (1050 / 1100) * 1000e18 = 954.545454545454545454e18 (rounded down)
+    uint256 expectedMinted = 954545454545454545454;
+
+    uint256 borrowerBal = IERC20Detailed(defaultUnderlying).balanceOf(borrower);
+    uint256 strategyTokenBal = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    uint256 minted = cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+    
+    assertEq(minted, expectedMinted, 'minted is wrong');
+    assertEq(IERC20(address(AAtranche)).balanceOf(user), expectedMinted, 'user tranche balance is wrong');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest + expectedDepositInterest, 'expectedEpochInterest is wrong');
+    assertEq(cdoEpoch.lastNAVAA(), initialDeposit + depositAmount, 'lastNAVAA is wrong');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower) - borrowerBal, depositAmount, 'borrower funds are wrong');
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBal, depositAmount, 'strategy token balance is wrong');
+
+    // stopEpoch
+    _toggleEpoch(false, 10e18, _expectedFundsEndEpoch());
+    uint256 price = cdoEpoch.virtualPrice(address(AAtranche));
+    // value for new user should be 1050
+    uint256 userValue = expectedMinted * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(userValue, 1050 * ONE_SCALE, 1, 'user tranche value is wrong');
+    // old depositor value should be 1100
+    uint256 oldDepositorBal = IERC20(address(AAtranche)).balanceOf(address(this));
+    uint256 oldDepositorValue = oldDepositorBal * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(oldDepositorValue, 1100 * ONE_SCALE, 1, 'old depositor tranche value is wrong');
+    assertApproxEqAbs(cdoEpoch.getContractValue(), 2150 * ONE_SCALE, 2, 'contract value is wrong');
+  }
+
+  function testDepositDuringEpochNumericalAAWithFees() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(10000); // 10%
+
+    // 10% apr, 365-day epoch, no buffer
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+
+    uint256 initialDeposit = 1000 * ONE_SCALE;
+    idleCDO.depositAA(initialDeposit);
+
+    _startEpochAndCheckPrices(0);
+    uint256 expectedEpochInterest = 100 * ONE_SCALE;
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest, 'expectedEpochInterest pre deposit is wrong');
+
+    // Halfway through the epoch
+    vm.warp(cdoEpoch.epochEndDate() - (cdoEpoch.epochDuration() / 2));
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    address user = makeAddr('midEpochFee');
+    uint256 depositAmount = 1000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+
+    // 1000 USDC deposit halfway through a 10% APR epoch earns 50 USDC (gross)
+    uint256 expectedDepositInterest = 50 * ONE_SCALE;
+    // minted = (1045 / 1090) * 1000e18 = 958.715596330275229357e18 (rounded down)
+    uint256 expectedMinted = 958715596330275229357;
+    // total gross interest = 150, fee = 10% => net interest = 135
+    // price = 2135 / 1958.715596330275229357 (rounded down)
+    uint256 expectedPriceAfter = 1090000;
+    uint256 expectedFee = 15 * ONE_SCALE;
+
+    uint256 feeReceiverBal = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    uint256 minted = cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+
+    assertEq(minted, expectedMinted, 'minted is wrong');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest + expectedDepositInterest, 'expectedEpochInterest is wrong');
+
+    _toggleEpoch(false, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 price = cdoEpoch.virtualPrice(address(AAtranche));
+    assertEq(price, expectedPriceAfter, 'AA price after stop epoch is wrong');
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal,
+      expectedFee,
+      'feeReceiver fee is wrong'
+    );
+
+    // value for new user should be 1050 - 5 of fees = 1045
+    uint256 userValue = expectedMinted * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(userValue, 1045 * ONE_SCALE, 1, 'user tranche value is wrong');
+    // old depositor value should be 1100 - 10 of fees = 1090
+    uint256 oldDepositorBal = IERC20(address(AAtranche)).balanceOf(address(this));
+    uint256 oldDepositorValue = oldDepositorBal * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(oldDepositorValue, 1090 * ONE_SCALE, 1, 'old depositor tranche value is wrong');
+    assertApproxEqAbs(cdoEpoch.getContractValue(), 2135 * ONE_SCALE, 2, 'contract value is wrong');
+  }
+
   function _calcMidEpochDepositExpectations(address _tranche, uint256 _amount)
     internal
     view
@@ -526,8 +649,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
     uint256 expectedWithoutFees = expectedInterest - cdoEpoch.pendingWithdrawFees();
     uint256 interest = _calcInterest(_amount) * (cdoEpoch.epochEndDate() - block.timestamp) / cdoEpoch.epochDuration();
-    uint256 trancheExpected = _calcTrancheInterestShare(expectedWithoutFees, _tranche);
-    uint256 trancheInterest = _calcTrancheInterestShare(interest, _tranche);
+    uint256 feeComplement = FULL_ALLOC - cdoEpoch.fee();
+    uint256 expectedNet = expectedWithoutFees * feeComplement / FULL_ALLOC;
+    uint256 interestNet = interest * feeComplement / FULL_ALLOC;
+    uint256 trancheExpected = _calcTrancheInterestShare(expectedNet, _tranche);
+    uint256 trancheInterest = _calcTrancheInterestShare(interestNet, _tranche);
     uint256 trancheSupply = IERC20(_tranche).totalSupply();
     uint256 lastNAVTranche = _tranche == address(AAtranche) ? cdoEpoch.lastNAVAA() : cdoEpoch.lastNAVBB();
     uint256 expectedFinal = lastNAVTranche + trancheExpected;

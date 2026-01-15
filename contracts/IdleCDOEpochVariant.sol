@@ -506,11 +506,12 @@ contract IdleCDOEpochVariant is IdleCDO {
     // interest for full epoch, then prorated to the remaining time
     uint256 interest = _calcInterest(_amount) * (_epochEnd - block.timestamp) / epochDuration;
 
-    // existing holders' share of expected interest for the epoch (pre-deposit)
+    uint256 feeComplement = FULL_ALLOC - fee;
+    // existing holders' share of net expected interest for the epoch (pre-deposit)
     // (exclude pendingWithdrawFees since they go to feeReceiver, not tranche holders)
-    uint256 trancheExpected = _calcTrancheInterestShare(expectedEpochInterest - pendingWithdrawFees, _tranche);
-    // interest this deposit will earn for the tranche over the remaining time
-    uint256 trancheInterest = _calcTrancheInterestShare(interest, _tranche);
+    uint256 trancheExpected = _calcTrancheInterestShare((expectedEpochInterest - pendingWithdrawFees) * feeComplement / FULL_ALLOC, _tranche);
+    // interest this deposit will earn for the tranche over the remaining time (net of fees)
+    uint256 trancheInterest = _calcTrancheInterestShare(interest * feeComplement / FULL_ALLOC, _tranche);
     // pre-deposit expected final NAV for existing holders.
     // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
     uint256 expectedFinal = (_tranche == aa ? lastNAVAA : lastNAVBB) + trancheExpected;
