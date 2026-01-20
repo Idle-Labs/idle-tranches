@@ -477,15 +477,14 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _tranche Tranche to deposit into
   /// @return _minted Amount of tranche tokens minted
   function depositDuringEpoch(uint256 _amount, address _tranche) external returns (uint256 _minted) {
-    uint256 _epochEnd = epochEndDate;
-    address aa = AATranche;
-    address bb = BBTranche;
+    uint256 _epochEndDate = epochEndDate;
+    bool isAA = _tranche == AATranche;
     _checkNotAllowed(
       isDepositDuringEpochDisabled ||
       // check if epoch is still running even if not manually stopped yet
-      !isEpochRunning || block.timestamp >= _epochEnd ||
+      !isEpochRunning || block.timestamp >= _epochEndDate ||
       // check if _tranche is valid and if user is allowed
-      !(_tranche == aa || _tranche == bb) || !isWalletAllowed(msg.sender)
+      !(isAA || _tranche == BBTranche) || !isWalletAllowed(msg.sender)
     );
 
     if (_amount == 0) {
@@ -503,8 +502,16 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Get underlyings from user
     _transferUnderlyingsFrom(msg.sender, address(this), _amount);
 
-    // interest for full epoch, then prorated to the remaining time
-    uint256 interest = _calcInterest(_amount) * (_epochEnd - block.timestamp) / epochDuration;
+    // interest for the remaining epoch plus the full buffer period
+    // NOTE: _calcInterest already gives full‑epoch + full‑buffer interest for the whole epoch
+    //   So when a user joins mid‑epoch, we take the fraction of that full‑period interest 
+    //   that matches the time they actually remain plus the entire buffer
+    uint256 buffer = bufferPeriod;
+    uint256 interest = _calcInterest(_amount) *
+      //  the time the depositor actually participates (remaining epoch + full buffer)
+      (_epochEndDate - block.timestamp + buffer) /
+      // the total time baked into the scaled APR (epoch + buffer).
+      (epochDuration + buffer);
 
     uint256 feeComplement = FULL_ALLOC - fee;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
@@ -514,7 +521,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     uint256 trancheInterest = _calcTrancheInterestShare(interest * feeComplement / FULL_ALLOC, _tranche);
     // pre-deposit expected final NAV for existing holders.
     // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
-    uint256 expectedFinal = (_tranche == aa ? lastNAVAA : lastNAVBB) + trancheExpected;
+    uint256 expectedFinal = (isAA ? lastNAVAA : lastNAVBB) + trancheExpected;
 
     // mint at a discounted price so depositor gets principal + its prorated interest at epoch end
     // A mid‑epoch depositor should get _amount + trancheInterest at epoch end.

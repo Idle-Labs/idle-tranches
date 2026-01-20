@@ -641,27 +641,79 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(cdoEpoch.getContractValue(), 2135 * ONE_SCALE, 2, 'contract value is wrong');
   }
 
+  function testDepositDuringEpochNumericalFullBuffer() external {
+    // 10% apr, 1-year epoch, 1-year buffer (scaled apr = 20%)
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 365 days);
+    IdleCreditVault(address(strategy)).setAprs(10e18, _scaleAprWithBuffer(10e18));
+    vm.stopPrank();
+
+    uint256 initialDeposit = 1000 * ONE_SCALE;
+    idleCDO.depositAA(initialDeposit);
+
+    _startEpochAndCheckPrices(0);
+    uint256 expectedEpochInterest = 200 * ONE_SCALE;
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest, 'expectedEpochInterest pre deposit is wrong');
+
+    // Halfway through the epoch
+    vm.warp(cdoEpoch.epochEndDate() - (cdoEpoch.epochDuration() / 2));
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    address user = makeAddr('midEpochFullBuffer');
+    uint256 depositAmount = 1000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+
+    // 1000 USDC deposit halfway through a 1y epoch with 1y buffer earns 150 USDC
+    // minted = (1150 / 1200) * 1000e18 = 958.333333333333333333e18 (rounded down)
+    uint256 expectedDepositInterest = 150 * ONE_SCALE;
+    uint256 expectedMinted = 958333333333333333333;
+    uint256 expectedPriceAfter = 1200000;
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    uint256 minted = cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+
+    assertEq(minted, expectedMinted, 'minted is wrong');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterest + expectedDepositInterest, 'expectedEpochInterest is wrong');
+
+    _toggleEpoch(false, initialProvidedApr, _expectedFundsEndEpoch());
+
+    uint256 price = cdoEpoch.virtualPrice(address(AAtranche));
+    assertEq(price, expectedPriceAfter, 'AA price after stop epoch is wrong');
+
+    uint256 userValue = expectedMinted * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(userValue, 1150 * ONE_SCALE, 1, 'user tranche value is wrong');
+    uint256 oldDepositorBal = IERC20(address(AAtranche)).balanceOf(address(this));
+    uint256 oldDepositorValue = oldDepositorBal * price / ONE_TRANCHE_TOKEN;
+    assertApproxEqAbs(oldDepositorValue, 1200 * ONE_SCALE, 1, 'old depositor tranche value is wrong');
+    assertApproxEqAbs(cdoEpoch.getContractValue(), 2350 * ONE_SCALE, 2, 'contract value is wrong');
+  }
+
   function _calcMidEpochDepositExpectations(address _tranche, uint256 _amount)
     internal
     view
     returns (MidEpochDepositExpectations memory exp)
   {
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
-    uint256 expectedWithoutFees = expectedInterest - cdoEpoch.pendingWithdrawFees();
-    uint256 interest = _calcInterest(_amount) * (cdoEpoch.epochEndDate() - block.timestamp) / cdoEpoch.epochDuration();
+    uint256 buffer = cdoEpoch.bufferPeriod();
+    uint256 interest = _calcInterest(_amount) *
+      (cdoEpoch.epochEndDate() - block.timestamp + buffer) /
+      (cdoEpoch.epochDuration() + buffer);
     uint256 feeComplement = FULL_ALLOC - cdoEpoch.fee();
-    uint256 expectedNet = expectedWithoutFees * feeComplement / FULL_ALLOC;
-    uint256 interestNet = interest * feeComplement / FULL_ALLOC;
-    uint256 trancheExpected = _calcTrancheInterestShare(expectedNet, _tranche);
-    uint256 trancheInterest = _calcTrancheInterestShare(interestNet, _tranche);
-    uint256 trancheSupply = IERC20(_tranche).totalSupply();
-    uint256 lastNAVTranche = _tranche == address(AAtranche) ? cdoEpoch.lastNAVAA() : cdoEpoch.lastNAVBB();
-    uint256 expectedFinal = lastNAVTranche + trancheExpected;
+    uint256 trancheExpected = _calcTrancheInterestShare(
+      (expectedInterest - cdoEpoch.pendingWithdrawFees()) * feeComplement / FULL_ALLOC,
+      _tranche
+    );
+    uint256 trancheInterest = _calcTrancheInterestShare(interest * feeComplement / FULL_ALLOC, _tranche);
+    uint256 expectedFinal = (_tranche == address(AAtranche) ? cdoEpoch.lastNAVAA() : cdoEpoch.lastNAVBB()) + trancheExpected;
 
-    exp.expectedMinted = (_amount + trancheInterest) * trancheSupply / expectedFinal;
+    exp.expectedMinted = (_amount + trancheInterest) * IERC20(_tranche).totalSupply() / expectedFinal;
     exp.interest = interest;
     exp.expectedInterest = expectedInterest;
-    exp.lastNAVTranche = lastNAVTranche;
+    exp.lastNAVTranche = _tranche == address(AAtranche) ? cdoEpoch.lastNAVAA() : cdoEpoch.lastNAVBB();
   }
 
   function _calcTrancheInterestShare(uint256 _interest, address _tranche) internal view returns (uint256) {
