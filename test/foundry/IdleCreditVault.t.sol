@@ -489,6 +489,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amountBB);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
 
@@ -527,6 +529,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 initialDeposit = 1000 * ONE_SCALE;
     idleCDO.depositAA(initialDeposit);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
     uint256 expectedEpochInterest = 100 * ONE_SCALE;
@@ -587,6 +591,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 initialDeposit = 1000 * ONE_SCALE;
     idleCDO.depositAA(initialDeposit);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
     uint256 expectedEpochInterest = 100 * ONE_SCALE;
@@ -650,6 +656,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 initialDeposit = 1000 * ONE_SCALE;
     idleCDO.depositAA(initialDeposit);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
     uint256 expectedEpochInterest = 200 * ONE_SCALE;
@@ -727,6 +735,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     idleCDO.depositAA(amountAA);
     idleCDO.depositBB(amountBB);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
 
@@ -762,6 +772,29 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+  }
+
+  function testDepositDuringEpochRevertsWhenAYSActive() external {
+    uint256 amountAA = 10000 * ONE_SCALE;
+    uint256 amountBB = 10000 * ONE_SCALE;
+
+    idleCDO.depositAA(amountAA);
+    idleCDO.depositBB(amountBB);
+
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    address user = makeAddr('midEpochAYS');
+    uint256 depositAmount = 1000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
   }
 
   function testSetIsDepositDuringEpochDisabled() external {

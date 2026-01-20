@@ -481,6 +481,8 @@ contract IdleCDOEpochVariant is IdleCDO {
     bool isAA = _tranche == AATranche;
     _checkNotAllowed(
       isDepositDuringEpochDisabled ||
+      // check if AYS is active as we don't support deposits during epoch in that case
+      isAYSActive ||
       // check if epoch is still running even if not manually stopped yet
       !isEpochRunning || block.timestamp >= _epochEndDate ||
       // check if _tranche is valid and if user is allowed
