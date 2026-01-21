@@ -978,6 +978,17 @@ const CDOs = {
 
     writeOff: '0xcFaa789aF38Ff91EB0124Cd27B3D53094177CC48'
   },
+  creditbastion2usdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xDC853fEb18D9316cc7C307aAc134DfCAEc1c4340',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xCE1249cE2c22624eB75ef1dE60906edb034813F3',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xDC853fEb18D9316cc7C307aAc134DfCAEc1c4340',
+    AATranche: '0x1A8b486aECF29608Cc1c036C581C61809967E347',
+    BBTranche: '0x6F52D2694ab0131b81F4c3476C7bc4f67aB36418 ',
+  },
   creditadaptivefrontierusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -2737,6 +2748,46 @@ exports.deployTokens = {
     // #########
     queue: false,
     proxyCdoAddress: ''
+  },
+  creditbastion2usdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0xF381ee632bF26d57f6d5F8717bA573aED835820a', // borrower
+      'Bastion II', // borrower name
+      105e17.toString(), // intialApr 10.5%
+    ],
+    cdo: CDOs.creditbastion2usdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '7776000', // 3 months
+    bufferPeriod: '86400', // 24 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 20,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '2380', // 2.38%
+    // #########
+    queue: false,
+    writeoff: false,
+    hypernative: true,
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr
   },
   creditadaptivefrontierusdc: {
     decimals: 6,
