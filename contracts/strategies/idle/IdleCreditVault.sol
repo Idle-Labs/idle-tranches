@@ -288,6 +288,13 @@ contract IdleCreditVault is
 
     return _amount;
   }
+
+  /// @notice Mint strategy tokens to the CDO without moving underlyings
+  /// @dev Used for mid-epoch deposits that send funds directly to the borrower
+  function mintStrategyTokens(uint256 _amount) external {
+    _onlyIdleCDO();
+    _mint(msg.sender, _amount);
+  }
   
   /// @inheritdoc ERC20Upgradeable
   /// @dev we don't allow transfers of strategy tokens normally, transfers are allowed only after a default

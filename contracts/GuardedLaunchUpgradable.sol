@@ -28,8 +28,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   /// @param _governanceRecoveryFund recovery address
   /// @param _owner owner address
   function __GuardedLaunch_init(uint256 _limit, address _governanceRecoveryFund, address _owner) internal {
-    if (_governanceRecoveryFund == address(0)) revert Is0();
-    if (_owner == address(0)) revert Is0();
+    _checkIs0(_governanceRecoveryFund == address(0) || _owner == address(0));
     // Initialize inherited contracts
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
@@ -52,7 +51,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
 
   /// @dev Check that the second function is not called in the same tx from the same tx.origin
   function _checkOnlyOwner() internal view {
-    if (owner() != msg.sender) revert NotAuthorized();
+    _checkNotAuthorized(owner() != msg.sender);
   }
 
   /// @notice abstract method, should return the TVL in underlyings
@@ -71,5 +70,17 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   function transferToken(address _token, uint256 _value) external {
     _checkOnlyOwner();
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
+  }
+
+  /// @notice check revert condition and revert with Is0 error
+  /// @param _revertCondition condition to check
+  function _checkIs0(bool _revertCondition) internal pure {
+    if (_revertCondition) revert Is0();
+  }
+
+  /// @notice check revert condition and revert with NotAuthorized error
+  /// @param _revertCondition condition to check
+  function _checkNotAuthorized(bool _revertCondition) internal pure {
+    if (_revertCondition) revert NotAuthorized();
   }
 }
