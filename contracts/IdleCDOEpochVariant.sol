@@ -249,12 +249,11 @@ contract IdleCDOEpochVariant is IdleCDO {
     // and transfer the surplus to the borrower
     try this.sendFundsToBorrower(totUnderlyings - pendingInstant) {
       // funds transferred correctly
+      if (_isProgrammable) {
+        IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
+      }
     } catch {
       _handleBorrowerDefault(totUnderlyings - pendingInstant);
-    }
-
-    if (_isProgrammable) {
-      IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
     }
   }
 
@@ -313,9 +312,11 @@ contract IdleCDOEpochVariant is IdleCDO {
     uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
     bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
 
-    address _borrower = _strategy.borrower();
-    if (_isProgrammableBorrower(_borrower)) {
-      IProgrammableBorrower(_borrower).onStopEpoch(_expectedInterest + _pendingWithdraws);
+    // This is called before the getFundsFromBorrower to eventually 
+    // withdraw funds from the landing protocol in case of a programmable borrower
+    address borrower = _borrower();
+    if (_isProgrammableBorrower(borrower)) {
+      IProgrammableBorrower(borrower).onStopEpoch(_expectedInterest + _pendingWithdraws);
     }
 
     // accrue interest to idleCDO, this will increase tranche prices.
