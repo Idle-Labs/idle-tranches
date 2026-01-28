@@ -55,7 +55,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   event DepositedIntoMorpho(uint256 assets, uint256 shares);
   event WithdrawnFromMorpho(uint256 assets, uint256 shares, address indexed receiver);
   event RedeemedFromMorpho(uint256 shares, uint256 assets, address indexed receiver);
-  event IdleCDOSet(address indexed newIdleCDO);
   event MorphoVaultSet(address indexed newMorphoVault);
   event BorrowerSet(address indexed newBorrower);
   event BorrowerAprSet(uint256 newApr);
@@ -80,11 +79,14 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     address _idleCDO,
     address _owner
   ) external initializer {
-    if (address(underlyingToken) != address(0)) {
-      revert AlreadyInitialized();
-    }
-
-    if (_underlyingToken == address(0) || _morphoVault == address(0) || _owner == address(0) || _idleCDO == address(0)) {
+    if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
+    if (
+      _underlyingToken == address(0) ||
+      _morphoVault == address(0) ||
+      _owner == address(0) ||
+      _idleCDO == address(0) ||
+      IERC4626(_morphoVault).asset() != _underlyingToken
+    ) {
       revert InvalidAddress();
     }
 
@@ -93,11 +95,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     transferOwnership(_owner);
 
     IERC4626 _vault = IERC4626(_morphoVault);
-    // Ensure vault uses the expected asset
-    if (_vault.asset() != _underlyingToken) {
-      revert InvalidAddress();
-    }
-
     underlyingToken = IERC20Detailed(_underlyingToken);
     morphoVault = _vault;
     idleCDO = _idleCDO;
@@ -107,28 +104,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     _allowUnlimitedSpend(_underlyingToken, _idleCDO);
   }
 
-  modifier onlyOwnerOrIdleCDO() {
-    if (msg.sender != owner() && msg.sender != idleCDO) {
-      revert NotAllowed();
-    }
-    _;
-  }
-
-  modifier onlyIdleCDO() {
-    if (msg.sender != idleCDO) {
-      revert NotAllowed();
-    }
-    _;
-  }
-
   /// @notice set the vault used to deploy funds
   /// @notice ensure that funds have been withdrawn from the previous vault before changing
   /// @param _morphoVault new ERC4626 vault address
   function setMorphoVault(address _morphoVault) external onlyOwner {
-    if (_morphoVault == address(0)) {
-      revert InvalidAddress();
-    }
-    if (IERC4626(_morphoVault).asset() != address(underlyingToken)) {
+    if (_morphoVault == address(0) || IERC4626(_morphoVault).asset() != address(underlyingToken)) {
       revert InvalidAddress();
     }
     underlyingToken.safeApprove(address(morphoVault), 0);
@@ -155,7 +135,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Hook called by IdleCDOEpochVariant when a new epoch starts.
   /// It deposits all on-hand assets into Morpho and starts accounting.
   /// @param _pendingWithdraws pending withdraw requests amount to reserve for epoch end.
-  function onStartEpoch(uint256 _pendingWithdraws) external nonReentrant onlyIdleCDO {
+  function onStartEpoch(uint256 _pendingWithdraws) external nonReentrant {
+    _checkOnlyIdleCDO();
     epochPendingWithdraws = _pendingWithdraws;
     _depositAllToMorphoInternal(false);
     _startEpochAccountingInternal();
@@ -164,7 +145,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Hook called by IdleCDOEpochVariant before stopping an epoch.
   /// Withdraws enough liquidity from Morpho so IdleCDO can pull funds.
   /// @param _amountRequired total amount IdleCDO will pull via transferFrom.
-  function onStopEpoch(uint256 _amountRequired) external nonReentrant onlyIdleCDO {
+  function onStopEpoch(uint256 _amountRequired) external nonReentrant {
+    _checkOnlyIdleCDO();
     _accrueBorrowerInterest();
 
     uint256 onHand = underlyingToken.balanceOf(address(this));
@@ -183,12 +165,14 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @notice start epoch accounting for Morpho yield and borrower interest.
   /// Call after deploying epoch funds into Morpho.
-  function startEpochAccounting() external onlyOwnerOrIdleCDO {
+  function startEpochAccounting() external {
+    _checkOnlyOwnerOrIdleCDO();
     _startEpochAccountingInternal();
   }
 
   /// @notice stop epoch accounting
-  function stopEpochAccounting() external onlyOwnerOrIdleCDO {
+  function stopEpochAccounting() external {
+    _checkOnlyOwnerOrIdleCDO();
     _stopEpochAccountingInternal();
   }
 
@@ -209,16 +193,10 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @notice interest accrued in Morpho since the last `startEpochAccounting`
   function morphoInterestAccrued() public view returns (uint256) {
-    if (!epochAccountingActive) {
-      return 0;
-    }
-    uint256 currentAssets = _currentMorphoAssets();
-    uint256 earnedAssets = currentAssets + epochWithdrawnFromMorpho;
+    if (!epochAccountingActive) return 0;
+    uint256 earnedAssets = _currentMorphoAssets() + epochWithdrawnFromMorpho;
     uint256 principalAssets = epochStartMorphoAssets + epochDepositedToMorpho;
-    if (earnedAssets <= principalAssets) {
-      return 0;
-    }
-    return earnedAssets - principalAssets;
+    return earnedAssets > principalAssets ? earnedAssets - principalAssets : 0;
   }
 
   /// @notice borrower interest accrued since epoch start up to now (includes uncheckpointed interest)
@@ -226,14 +204,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     uint256 principal = borrowerPrincipal;
     uint256 accrued = borrowerInterestAccrued;
     uint256 last = lastBorrowerAccrual;
-    if (principal == 0 || last == 0 || borrowerApr == 0) {
-      return accrued;
-    }
+    if (principal == 0 || last == 0 || borrowerApr == 0) return accrued;
     uint256 elapsed = block.timestamp - last;
-    if (elapsed == 0) {
-      return accrued;
-    }
-    uint256 additional = principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
+    uint256 additional = elapsed == 0
+      ? 0
+      : principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
     return accrued + additional;
   }
 
@@ -251,10 +226,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   function availableToBorrow() public view returns (uint256) {
     uint256 totalAssets = underlyingToken.balanceOf(address(this)) + _currentMorphoAssets();
     uint256 reservedAssets = reservedUnderlyingNow();
-    if (totalAssets <= reservedAssets) {
-      return 0;
-    }
-    return totalAssets - reservedAssets;
+    return totalAssets <= reservedAssets ? 0 : totalAssets - reservedAssets;
   }
 
   /// @notice deposit a specific amount of underlyings into the vault
@@ -298,9 +270,9 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   function withdrawFromMorpho(uint256 assets, address receiver)
     external
     nonReentrant
-    onlyOwnerOrIdleCDO
     returns (uint256 shares)
   {
+    _checkOnlyOwnerOrIdleCDO();
     if (assets == 0 || receiver == address(0)) {
       revert InvalidAmount();
     }
@@ -318,9 +290,9 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   function redeemFromMorpho(uint256 shares, address receiver)
     external
     nonReentrant
-    onlyOwnerOrIdleCDO
     returns (uint256 assets)
   {
+    _checkOnlyOwnerOrIdleCDO();
     if (shares == 0 || receiver == address(0)) {
       revert InvalidAmount();
     }
@@ -338,9 +310,9 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   function withdrawAllFromMorpho(address receiver)
     external
     nonReentrant
-    onlyOwnerOrIdleCDO
     returns (uint256 assets)
   {
+    _checkOnlyOwnerOrIdleCDO();
     if (receiver == address(0)) {
       revert InvalidAddress();
     }
@@ -361,14 +333,9 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice borrower draws funds from the facility.
   /// If not enough on-hand liquidity, withdraw the shortfall from Morpho.
   function borrow(uint256 assets) external nonReentrant returns (uint256 withdrawnShares) {
-    if (msg.sender != borrower) {
-      revert NotAllowed();
-    }
+    if (msg.sender != borrower || !epochAccountingActive) revert NotAllowed();
     if (assets == 0) {
       revert InvalidAmount();
-    }
-    if (!epochAccountingActive) {
-      revert NotAllowed();
     }
     if (assets > availableToBorrow()) {
       revert InsufficientBorrowable();
@@ -394,9 +361,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice borrower repays funds to the facility.
   /// Repayments are applied to accrued interest first, then principal.
   function repay(uint256 assets) external nonReentrant returns (uint256 interestPaid, uint256 principalPaid) {
-    if (msg.sender != borrower) {
-      revert NotAllowed();
-    }
+    if (msg.sender != borrower) revert NotAllowed();
     if (assets == 0) {
       revert InvalidAmount();
     }
@@ -424,9 +389,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @notice view the total exposure in underlying terms (on-hand + deployed)
   function totalUnderlying() external view returns (uint256) {
-    uint256 onHand = underlyingToken.balanceOf(address(this));
-    uint256 shares = morphoVault.balanceOf(address(this));
-    return onHand + morphoVault.convertToAssets(shares);
+    return underlyingToken.balanceOf(address(this)) + _currentMorphoAssets();
   }
 
   /// @notice view the current vault share balance
@@ -436,10 +399,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   function _currentMorphoAssets() internal view returns (uint256) {
     uint256 shares = morphoVault.balanceOf(address(this));
-    if (shares == 0) {
-      return 0;
-    }
-    return morphoVault.convertToAssets(shares);
+    return shares == 0 ? 0 : morphoVault.convertToAssets(shares);
   }
 
   function _accrueBorrowerInterest() internal {
@@ -460,6 +420,14 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     uint256 interest = principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
     borrowerInterestAccrued += interest;
     lastBorrowerAccrual = block.timestamp;
+  }
+
+  function _checkOnlyIdleCDO() internal view {
+    if (msg.sender != idleCDO) revert NotAllowed();
+  }
+
+  function _checkOnlyOwnerOrIdleCDO() internal view {
+    if (msg.sender != owner() && msg.sender != idleCDO) revert NotAllowed();
   }
 
   /// @notice emergency token rescue
