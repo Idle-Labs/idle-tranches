@@ -1302,6 +1302,70 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testStopEpochMintInterestWithAprNoOverride() external {
+    vm.prank(owner);
+    cdoEpoch.setFee(0);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amountWei);
+
+    _startEpochAndCheckPrices(0);
+
+    uint256 newApr = 10e18;
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(newApr, 0);
+
+    assertEq(
+      IdleCreditVault(address(strategy)).getApr(),
+      _scaleAprWithBuffer(newApr),
+      'apr not scaled for next epoch'
+    );
+
+    _startEpochAndCheckPrices(1);
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    assertGt(expectedInterest, 0, 'expected interest should be > 0');
+    assertEq(
+      expectedInterest,
+      _calcInterest(cdoEpoch.getContractValue()),
+      'expected interest not based on apr'
+    );
+
+    uint256 strategyTokenBalPre = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 strategyUnderlyingPre = underlying.balanceOf(address(strategy));
+    uint256 borrowerBalPre = underlying.balanceOf(borrower);
+
+    uint256 newAprSecond = 8e18;
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(newAprSecond, 0);
+
+    assertEq(
+      IdleCreditVault(address(strategy)).getApr(),
+      _scaleAprWithBuffer(newAprSecond),
+      'apr not scaled for next epoch (second)'
+    );
+
+    assertEq(
+      strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
+      expectedInterest,
+      'strategy tokens not minted from apr'
+    );
+    assertEq(
+      underlying.balanceOf(address(strategy)),
+      strategyUnderlyingPre,
+      'strategy underlying changed'
+    );
+    assertEq(
+      underlying.balanceOf(borrower),
+      borrowerBalPre,
+      'borrower paid interest'
+    );
+    assertEq(cdoEpoch.lastEpochInterest(), expectedInterest, 'lastEpochInterest wrong');
+  }
+
   function testDepositDuringEpochHandlesPendingFeesGtExpected() external {
     uint256 amountAA = 10000 * ONE_SCALE;
     uint256 amountBB = 10000 * ONE_SCALE;
