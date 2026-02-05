@@ -274,8 +274,10 @@ contract IdleCreditVault is
     override
     returns (uint256) {
     _onlyIdleCDO();
-    underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
-    _mint(msg.sender, _amount);
+    if (_amount > 0) {
+      underlyingToken.safeTransferFrom(msg.sender, address(this), _amount);
+      _mint(msg.sender, _amount);
+    }
 
     if (IIdleCDOEpochVariant(idleCDO).isEpochRunning()) {
       // deposit done on stopEpoch (before setting the var to false) so we reset the counter
