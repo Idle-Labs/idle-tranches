@@ -65,6 +65,8 @@ contract IdleCDOEpochVariant is IdleCDO {
   int256 public interestForOverUnderPerformance;
   /// @notice flag to disable deposits during an epoch
   bool public isDepositDuringEpochDisabled;
+  /// @notice flag to mint interest as strategy tokens without moving underlyings
+  bool public isInterestMinted;
 
   event AccrueInterest(uint256 interest, uint256 fees);
   event BorrowerDefault(uint256 funds);
@@ -163,6 +165,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     isDepositDuringEpochDisabled = _isDisabled;
   }
 
+  /// @notice set flag to mint interest as strategy tokens without moving underlyings
+  /// @param _isMinted true to mint interest instead of transferring underlyings
+  function setIsInterestMinted(bool _isMinted) external {
+    _checkOnlyOwnerOrManager();
+    isInterestMinted = _isMinted;
+  }
+
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
   /// @dev We calculate the total funds that the borrower should return at the end of the epoch
   /// ie interests + fees from normal withdraw requests. We send to the borrower underlyings amounts ie interests + 
@@ -200,8 +209,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     // set instant withdraw deadline
     instantWithdrawDeadline = block.timestamp + instantWithdrawDelay;
 
-    // transfer in this contract funds from interest payment, that were sent to the strategy in stopEpoch
-    _strategy.sendInterestAndDeposits(lastEpochInterest + _strategy.totEpochDeposits());
+    // transfer in this contract funds from interest payment (if any) and buffer deposits sent to the strategy
+    uint256 _totEpochDeposits = _strategy.totEpochDeposits();
+    // If interest is minted we do not transfer interest to the strategy
+    uint256 _toSend = isInterestMinted ? _totEpochDeposits : lastEpochInterest + _totEpochDeposits;
+    if (_toSend > 0) {
+      _strategy.sendInterestAndDeposits(_toSend);
+    }
 
     // we should first check if there are *instant* redeem requests pending 
     // and if yes we should send as much underlyings as possible to the IdleCreditVault contract
@@ -275,10 +289,12 @@ contract IdleCDOEpochVariant is IdleCDO {
       _totBorrowed = getContractValue() - _contractTokenBalance(token);
       _expectedInterest += _totBorrowed;
     }
+    uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
+    bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
-    try this.getFundsFromBorrower(_expectedInterest, _pendingWithdraws, 0) {
+    try this.getFundsFromBorrower(_mintInterest ? 0 : _expectedInterest, _pendingWithdraws, 0) {
       // transfer in strategy and decrease pendingWithdraws
       if (_pendingWithdraws > 0) {
         _strategy.collectWithdrawFunds(_pendingWithdraws);
@@ -286,7 +302,9 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       // Transfer pending withdraw fees to feeReceiver before update accounting
       // NOTE: Fees are sent with 2 different transfer calls, here and after updateAccounting, to avoid complicated calculations
-      _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
+      if (!_mintInterest) {
+        _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
+      }
 
       if (_isRequestingAllFunds) {
         // we already have strategyTokens equal to _totBorrowed in this contract
@@ -295,19 +313,35 @@ contract IdleCDOEpochVariant is IdleCDO {
         _transferUnderlyings(address(_strategy), _totBorrowed);
       }
 
+      if (_mintInterest) {
+        // if interest is not transferred we mint strategy tokens equal to the interest
+        if (_grossInterest != 0) _strategy.mintStrategyTokens(_grossInterest);
+        // and increase unclaimedFees by pending withdraw fees
+        if (_pendingWithdrawFees != 0) unclaimedFees += _pendingWithdrawFees;
+      }
+
       // update tranche prices and unclaimed fees
       _updateAccounting();
 
       // transfer fees
       uint256 _fees = unclaimedFees;
-      _transferUnderlyings(feeReceiver, _fees);
+      if (_mintInterest) {
+        // If interest is minted then we mint new shares for the feeReceiver instead of transferring underlyings
+        if (_fees != 0) {
+          _mintSharesAtCurrPrice(_fees, feeReceiver, AATranche);
+          _updateSplitRatio(_getAARatio(true));
+        }
+      } else {
+        _transferUnderlyings(feeReceiver, _fees);
+      }
       unclaimedFees = 0;
 
+      uint256 _totalFees = _fees + (_mintInterest ? 0 : _pendingWithdrawFees);
       // save net gain (this does not include interest gained for pending withdrawals)
-      uint256 netInterest = (_isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest) - _fees - _pendingWithdrawFees;
+      uint256 netInterest = _grossInterest - _totalFees;
       lastEpochInterest = netInterest;
       // mint strategyTokens equal to interest and send underlying to strategy to avoid double counting for NAV
-      _strategy.deposit(netInterest);
+      _strategy.deposit(_mintInterest ? 0 : netInterest);
 
       // save last apr, unscaled
       lastEpochApr = _strategy.unscaledApr();
@@ -335,7 +369,7 @@ contract IdleCDOEpochVariant is IdleCDO {
         epochEndDate = 0;
       }
 
-      emit AccrueInterest(_expectedInterest - _totBorrowed, _fees + _pendingWithdrawFees);
+      emit AccrueInterest(_expectedInterest - _totBorrowed, _totalFees);
     } catch {
       isEpochRunning = false;
       // if borrower defaults, prev instant withdraw requests can still be withdrawn
@@ -477,16 +511,14 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _tranche Tranche to deposit into
   /// @return _minted Amount of tranche tokens minted
   function depositDuringEpoch(uint256 _amount, address _tranche) external returns (uint256 _minted) {
-    uint256 _epochEndDate = epochEndDate;
-    bool isAA = _tranche == AATranche;
     _checkNotAllowed(
       isDepositDuringEpochDisabled ||
       // check if AYS is active as we don't support deposits during epoch in that case
       isAYSActive ||
       // check if epoch is still running even if not manually stopped yet
-      !isEpochRunning || block.timestamp >= _epochEndDate ||
+      !isEpochRunning || block.timestamp >= epochEndDate ||
       // check if _tranche is valid and if user is allowed
-      !(isAA || _tranche == BBTranche) || !isWalletAllowed(msg.sender)
+      !(_tranche == AATranche || _tranche == BBTranche) || !isWalletAllowed(msg.sender)
     );
 
     if (_amount == 0) {
@@ -510,20 +542,25 @@ contract IdleCDOEpochVariant is IdleCDO {
     //   that matches the time they actually remain plus the entire buffer
     uint256 buffer = bufferPeriod;
     uint256 interest = _calcInterest(_amount) *
-      //  the time the depositor actually participates (remaining epoch + full buffer)
-      (_epochEndDate - block.timestamp + buffer) /
+      // the time the depositor actually participates (remaining epoch + full buffer)
+      (epochEndDate - block.timestamp + buffer) /
       // the total time baked into the scaled APR (epoch + buffer).
       (epochDuration + buffer);
 
     uint256 feeComplement = FULL_ALLOC - fee;
+    uint256 expectedInt = expectedEpochInterest;
+    uint256 pendingFees = pendingWithdrawFees;
+    uint256 trancheExpected;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
     // (exclude pendingWithdrawFees since they go to feeReceiver, not tranche holders)
-    uint256 trancheExpected = _calcTrancheInterestShare((expectedEpochInterest - pendingWithdrawFees) * feeComplement / FULL_ALLOC, _tranche);
+    if (expectedInt > pendingFees) {
+      trancheExpected = _calcTrancheInterestShare((expectedInt - pendingFees) * feeComplement / FULL_ALLOC, _tranche);
+    }
     // interest this deposit will earn for the tranche over the remaining time (net of fees)
     uint256 trancheInterest = _calcTrancheInterestShare(interest * feeComplement / FULL_ALLOC, _tranche);
     // pre-deposit expected final NAV for existing holders.
     // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
-    uint256 expectedFinal = (isAA ? lastNAVAA : lastNAVBB) + trancheExpected;
+    uint256 expectedFinal = _lastSavedNAV(_tranche) + trancheExpected;
 
     // mint at a discounted price so depositor gets principal + its prorated interest at epoch end
     // A mid‑epoch depositor should get _amount + trancheInterest at epoch end.
@@ -665,7 +702,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // calculate total tranche interest for the whole tranche supply
     uint256 totTrancheInterest = _calcTrancheInterestShare(totInterest, _tranche);
     // calculate interest for the given tranche and given amount
-    uint256 _trancheBal = _tranche == AATranche ? lastNAVAA : lastNAVBB;
+    uint256 _trancheBal = _lastSavedNAV(_tranche);
     _interest = _trancheBal == 0 ? 0 : _amount * totTrancheInterest / _trancheBal;
     // calculate the interest that the _amount would have received if there was no split ratio (ie interest split based only on tvl).
     // This is used to calculate the interest that should be added to the expectedEpochInterest when 

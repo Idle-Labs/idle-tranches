@@ -218,7 +218,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _tranche,
       getContractValue(), // nav
       _lastNAVAA + _lastNAVBB, // lastNAV
-      _tranche == AATranche ? _lastNAVAA : _lastNAVBB, // lastTrancheNAV
+      _lastSavedNAV(_tranche), // lastTrancheNAV
       trancheAPRSplitRatio
     );
   }
@@ -329,8 +329,16 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     return _trancheSupply(_tranche) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
+  /// @notice gets total supply for a specific tranche
+  /// @param _tranche address of the requested tranche
   function _trancheSupply(address _tranche) internal view returns (uint256) {
     return IdleCDOTranche(_tranche).totalSupply();
+  }
+
+  /// @notice gets last saved NAV for a specific tranche
+  /// @param _tranche address of the requested tranche
+  function _lastSavedNAV(address _tranche) internal view returns (uint256) {
+    return _tranche == AATranche ? lastNAVAA : lastNAVBB;
   }
 
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted and the
