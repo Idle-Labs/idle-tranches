@@ -13,6 +13,10 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 interface IIdleCDOEpochVariant {
   function isEpochRunning() external view returns (bool);
   function epochEndDate() external view returns (uint256);
+  function expectedEpochInterest() external view returns (uint256);
+  function pendingWithdrawFees() external view returns (uint256);
+  function fee() external view returns (uint256);
+  function getContractValue() external view returns (uint256);
 }
 
 error NotAllowed();
@@ -62,6 +66,20 @@ contract IdleCreditVault is
   uint256 public epochNumber;
   /// @notice unscaled apr
   uint256 public unscaledApr;
+  /// @notice constant representing a 100% fee used for accounting
+  uint256 private constant FULL_ALLOC = 100_000;
+  /// @notice total principal for APR=0 requests in the current epoch
+  uint256 public apr0TotalPrincipal;
+  struct Apr0UserData {
+    uint256 principal;
+    uint256 principalEpoch;
+    uint256 settledPrincipal;
+    uint256 settledInterest;
+  }
+  /// @notice APR=0 withdraw data per user
+  mapping (address => Apr0UserData) public apr0Users;
+  /// @notice net APR=0 interest rate per epoch, scaled by 1e18
+  mapping (uint256 => uint256) public apr0RateByEpoch;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -166,17 +184,23 @@ contract IdleCreditVault is
   /// @param _netInterest net interest gained in the next epoch
   function requestWithdraw(uint256 _amount, address _user, uint256 _netInterest) external {
     _onlyIdleCDO();
+    if (_amount == 0) return;
     // burn strategy tokens from cdo (we don't burn interest here, only the principal)
     _burn(msg.sender, _amount - _netInterest);
     // mint equal amount of strategy tokens to the user as receipt (interest included), useful in case of default
     _mint(_user, _amount);
-
-    // increase the withdraw requests for the user
-    withdrawsRequests[_user] += _amount;
-    // increase the total withdraw requests
+    // Global amount that stopEpoch must source from borrower/strategy for all pending receipts.
     pendingWithdraws += _amount;
     // save the epoch of the last withdraw request (buffer + epochDuration is 1 epoch)
     lastWithdrawRequest[_user] = epochNumber;
+    // apr=0 requests keep separate accounting and settle interest at stopEpoch
+    if (_netInterest == 0 && unscaledApr == 0) {
+      _requestWithdrawApr0(_amount, _user);
+      return;
+    }
+
+    // increase the withdraw requests for the user
+    withdrawsRequests[_user] += _amount;
   }
 
   /// @notice claim the withdraw request
@@ -194,12 +218,26 @@ contract IdleCreditVault is
     if (IIdleCDOEpochVariant(idleCDO).epochEndDate() != 0 && (epochNumber <= lastWithdrawRequest[_user])) {
       revert NotAllowed();
     }
-    // get amount of underlyings
-    amount = withdrawsRequests[_user];
-    // burn strategy tokens 1:1 with the amount of underlyings
-    _burn(_user, amount);
+    // settle APR=0 requests once the related epoch has ended
+    _settleApr0(_user);
+    Apr0UserData storage _apr0User = apr0Users[_user];
+    // Claim includes:
+    // - settled APR0 principal from finalized epochs
+    // - still-open APR0 principal: if pool-close mode was used (_interest == 1), IdleCDO sets
+    //   epochEndDate = 0 and claims can be immediate, while _settleApr0 can still skip settlement
+    //   for the current request epoch (reqEpoch >= epochNumber).
+    // - settled APR0 interest
+    uint256 normalAmount = withdrawsRequests[_user];
+    uint256 apr0PrincipalAmount = _apr0User.settledPrincipal + _apr0User.principal;
+    uint256 apr0InterestAmount = _apr0User.settledInterest;
+    amount = normalAmount + apr0PrincipalAmount + apr0InterestAmount;
+    // burn strategy tokens 1:1 with the principal only (normal amount already includes interest)
+    _burn(_user, normalAmount + apr0PrincipalAmount);
     withdrawsRequests[_user] = 0;
     lastWithdrawRequest[_user] = 0;
+    if (apr0PrincipalAmount != 0 || apr0InterestAmount != 0) {
+      delete apr0Users[_user];
+    }
     underlyingToken.safeTransfer(_user, amount);
   }
 
@@ -250,6 +288,98 @@ contract IdleCreditVault is
     _onlyIdleCDO();
     pendingWithdraws -= _amount;
     underlyingToken.safeTransferFrom(idleCDO, address(this), _amount);
+  }
+
+  /// @notice compute and apply APR=0 epoch deltas for stopEpoch
+  /// @param _interest stopEpoch override interest (0 = expected epoch interest, 1 = repay all)
+  /// @return _expInterest stopEpoch interest after APR0 adjustments
+  /// @return _adjPendingWithdrawFees pending withdraw fees after APR0 adjustments
+  function prepareStopEpochWithApr0(uint256 _interest) external returns (uint256 _expInterest, uint256 _adjPendingWithdrawFees) {
+    _onlyIdleCDO();
+    IIdleCDOEpochVariant _cdo = IIdleCDOEpochVariant(idleCDO);
+    uint256 _pendingFees = _cdo.pendingWithdrawFees();
+    uint256 _tvl = _cdo.getContractValue();
+    _expInterest = _interest > 1 ? _interest : _cdo.expectedEpochInterest();
+    _adjPendingWithdrawFees = _pendingFees;
+    // Principal currently waiting for withdraw that was requested while APR was 0.
+    uint256 _principal = apr0TotalPrincipal;
+
+    // Fast path: no APR0 accounting needed.
+    if (_principal == 0) {
+      return (_expInterest, _adjPendingWithdrawFees);
+    }
+    // APR0 principal is only valid while APR is 0 for that request lifecycle.
+    if (unscaledApr != 0) {
+      revert NotAllowed();
+    }
+
+    uint256 _apr0NetInterest;
+    // APR0 allocation is computed only when stopEpoch receives a real override interest.
+    // _expectedInterest == 1 is the "request all funds back" sentinel and is handled in IdleCDO.
+    if (_expInterest > 1 && _expInterest > _pendingFees) {
+      // Remove already booked withdraw fees from the interest base before splitting.
+      uint256 _interestNetOfFees = _expInterest - _pendingFees;
+      // Total principal used for the pro-rata split:
+      // IdleCDO TVL (which excludes APR0 requested principal) + APR0 principal bucket.
+      uint256 _totalPrincipalForSplit = _tvl + _principal;
+      if (_totalPrincipalForSplit != 0) {
+        // APR0 users get a pro-rata share of realized interest.
+        uint256 _apr0InterestGross = _interestNetOfFees * _principal / _totalPrincipalForSplit;
+        if (_apr0InterestGross != 0) {
+          // Same fee model as normal withdraw interest.
+          uint256 _apr0Fee = _apr0InterestGross * _cdo.fee() / FULL_ALLOC;
+          _apr0NetInterest = _apr0InterestGross - _apr0Fee;
+          _adjPendingWithdrawFees += _apr0Fee;
+          _expInterest -= _apr0NetInterest;
+        }
+      }
+    }
+
+    // Finalize one-epoch APR0 interest for current epoch only.
+    if (_apr0NetInterest != 0) {
+      // Funds owed to withdraw requesters increase by APR0 net interest.
+      pendingWithdraws += _apr0NetInterest;
+      // Save per-epoch net rate; each APR0 request accrues exactly once on its request epoch.
+      apr0RateByEpoch[epochNumber] = (_apr0NetInterest * 1e18) / _principal;
+    }
+    // Close current APR0 bucket so it cannot accrue again on later stopEpoch calls.
+    apr0TotalPrincipal = 0;
+  }
+
+  /// @notice settle APR=0 requests for a user once their epoch is finalized
+  /// @param _user address of the user
+  function _settleApr0(address _user) internal {
+    Apr0UserData storage _apr0User = apr0Users[_user];
+    uint256 _principal = _apr0User.principal;
+    if (_principal == 0) {
+      return;
+    }
+    uint256 _reqEpoch = _apr0User.principalEpoch;
+    // Settle only after stopEpoch bumped epochNumber (ie after one full wait epoch).
+    if (_reqEpoch >= epochNumber) {
+      return;
+    }
+    // Move principal from "open APR0 bucket" to "settled bucket" (same principal, not duplicated).
+    _apr0User.settledPrincipal += _principal;
+    uint256 _rate = apr0RateByEpoch[_reqEpoch];
+    if (_rate != 0) {
+      // Convert per-epoch rate to claimable underlying interest.
+      _apr0User.settledInterest += (_principal * _rate) / 1e18;
+    }
+    _apr0User.principal = 0;
+    _apr0User.principalEpoch = 0;
+  }
+
+  function _requestWithdrawApr0(uint256 _amount, address _user) internal {
+    // Settle any previous APR0 request first, then start/update current epoch bucket.
+    _settleApr0(_user);
+    Apr0UserData storage _apr0User = apr0Users[_user];
+    if (_apr0User.principal == 0) {
+      _apr0User.principalEpoch = epochNumber;
+    }
+    _apr0User.principal += _amount;
+    // Epoch-level APR0 principal used only to compute stopEpoch APR0 pro-rata interest.
+    apr0TotalPrincipal += _amount;
   }
 
   /// @notice Send funds to the IdleCDO
