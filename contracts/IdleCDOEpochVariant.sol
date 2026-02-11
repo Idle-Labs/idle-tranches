@@ -261,7 +261,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     _checkOnlyOwnerOrManager();
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
     uint256 _pendingWithdrawFees = pendingWithdrawFees;
 
     _checkNotAllowed(
@@ -280,7 +279,13 @@ contract IdleCDOEpochVariant is IdleCDO {
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
     _skimDonatedAssets();
 
-    uint256 _expectedInterest = _interest > 1 ? _interest : expectedEpochInterest;
+    // Base interest for stopEpoch: explicit override (>1) or precomputed expected epoch interest.
+    uint256 _expectedInterest;
+    // Strategy finalizes APR0 bucket state and returns adjusted stopEpoch values.
+    (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest);
+    // Pending withdraws may be increased during APR0 settlement, so read after prepareStopEpochWithApr0.
+    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+
     uint256 _totBorrowed;
     bool _isRequestingAllFunds = _interest == 1;
     // special case where we get everything back from the borrower
@@ -308,15 +313,14 @@ contract IdleCDOEpochVariant is IdleCDO {
 
       if (_isRequestingAllFunds) {
         // we already have strategyTokens equal to _totBorrowed in this contract
-        // so we simply transfer _totBorrowed to the strategy to avoid double counting
-        // for getContractValue
+        // so we transfer _totBorrowed to the strategy to avoid double counting for getContractValue
         _transferUnderlyings(address(_strategy), _totBorrowed);
       }
 
       if (_mintInterest) {
-        // if interest is not transferred we mint strategy tokens equal to the interest
+        // if interest is not transferred we mint strategy tokens equal to the full epoch interest
         if (_grossInterest != 0) _strategy.mintStrategyTokens(_grossInterest);
-        // and increase unclaimedFees by pending withdraw fees
+        // and increase unclaimedFees by pending withdraw fees before _updateAccounting
         if (_pendingWithdrawFees != 0) unclaimedFees += _pendingWithdrawFees;
       }
 
