@@ -220,7 +220,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // we should first check if there are *instant* redeem requests pending 
     // and if yes we should send as much underlyings as possible to the IdleCreditVault contract
     // if there is any surplus then we send those to the borrower
-    uint256 pendingInstant = _strategy.pendingInstantWithdraws();
+    uint256 pendingInstant = _pendingInstant();
     uint256 totUnderlyings = _contractTokenBalance(token);
 
     // if there are more requests than the current underlyings we simply send all underlyings
@@ -270,7 +270,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       block.timestamp < epochEndDate || 
       // Check that there are no pending instant withdraws, ie `getInstantWithdrawFunds` was called
       // before closing the epoch
-      _strategy.pendingInstantWithdraws() > 0 ||
+      _pendingInstant() > 0 ||
       // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
       // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
       (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
@@ -430,7 +430,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     _checkNotAllowed(!isEpochRunning || block.timestamp < instantWithdrawDeadline);
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
-    uint256 _instantWithdraws = _strategy.pendingInstantWithdraws();
+    uint256 _instantWithdraws = _pendingInstant();
     // transfer funds for instant withdraw to this contract
     try this.getFundsFromBorrower(0, 0, _instantWithdraws) {
       // transfer funds to IdleCreditVault and decrease pendingInstantWithdraws
@@ -678,6 +678,12 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @return borrower address
   function _borrower() internal view returns (address) {
     return IdleCreditVault(strategy).borrower();
+  }
+
+  /// @notice Get pending instant withdraws from strategy
+  /// @return pending instant withdraws
+  function _pendingInstant() internal view returns (uint256) {
+    return IdleCreditVault(strategy).pendingInstantWithdraws();
   }
 
   /// @notice Calculate the interest of an epoch for a withdraw request
