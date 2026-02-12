@@ -2,7 +2,6 @@
 pragma solidity 0.8.10;
 
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
@@ -78,9 +77,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     trancheAPRSplitRatio = _trancheAPRSplitRatio;
     uint256 _oneToken = 10**(IERC20Detailed(_guardedToken).decimals());
     oneToken = _oneToken;
-    uniswapRouterV2 = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-    weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    // incentiveTokens = _incentiveTokens; [DEPRECATED]
     priceAA = _oneToken;
     priceBB = _oneToken;
     unlentPerc = 2000; // 2%
@@ -218,7 +214,7 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       _tranche,
       getContractValue(), // nav
       _lastNAVAA + _lastNAVBB, // lastNAV
-      _tranche == AATranche ? _lastNAVAA : _lastNAVBB, // lastTrancheNAV
+      _lastSavedNAV(_tranche), // lastTrancheNAV
       trancheAPRSplitRatio
     );
   }
@@ -329,8 +325,16 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     return _trancheSupply(_tranche) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
   }
 
+  /// @notice gets total supply for a specific tranche
+  /// @param _tranche address of the requested tranche
   function _trancheSupply(address _tranche) internal view returns (uint256) {
     return IdleCDOTranche(_tranche).totalSupply();
+  }
+
+  /// @notice gets last saved NAV for a specific tranche
+  /// @param _tranche address of the requested tranche
+  function _lastSavedNAV(address _tranche) internal view returns (uint256) {
+    return _tranche == AATranche ? lastNAVAA : lastNAVBB;
   }
 
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted and the
@@ -611,40 +615,19 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
       return (0, 0);
     }
   
-    if (_path.length != 0) {
-      // Uni v3 swap
-      ISwapRouter _swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-      IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_swapRouter), _amount);
-      // multi hop swap params
-      ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
-        path: _path,
-        recipient: address(this),
-        deadline: block.timestamp + 100,
-        amountIn: _amount,
-        amountOutMinimum: _minAmount
-      });
-      // do the swap and return the amount swapped and the amount received
-      return (_amount, _swapRouter.exactInput(params));
-    } else {
-      // Uni v2 swap
-      IUniswapV2Router02 _uniRouter = uniswapRouterV2;
-      // approve the uniswap router to spend our reward
-      IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_uniRouter), _amount);
-      // do the trade with all `_rewardToken` in this contract
-      address[] memory _pathUniv2 = new address[](3);
-      _pathUniv2[0] = _rewardToken;
-      _pathUniv2[1] = weth;
-      _pathUniv2[2] = token;
-      uint256[] memory _amounts = _uniRouter.swapExactTokensForTokens(
-        _amount,
-        _minAmount,
-        _pathUniv2,
-        address(this),
-        block.timestamp + 100
-      );
-      // return the amount swapped and the amount received
-      return (_amounts[0], _amounts[_amounts.length - 1]);
-    }
+    // Uni v3 swap
+    ISwapRouter _swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    IERC20Detailed(_rewardToken).safeIncreaseAllowance(address(_swapRouter), _amount);
+    // multi hop swap params
+    ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+      path: _path,
+      recipient: address(this),
+      deadline: block.timestamp + 100,
+      amountIn: _amount,
+      amountOutMinimum: _minAmount
+    });
+    // do the swap and return the amount swapped and the amount received
+    return (_amount, _swapRouter.exactInput(params));
   }
 
   /// @notice method used to sell all sellable rewards for `_token` on uniswap
