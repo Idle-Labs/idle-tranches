@@ -6,6 +6,14 @@ import "../../contracts/strategies/clearpool/IdleClearpoolStrategy.sol";
 contract TestIdleClearpoolStrategy is TestIdleCDOBase {
   using stdStorage for StdStorage;
 
+  function setUp() public override {
+    super.setUp();
+    // IdleCDO reward selling is UniV3-only: provide CPOOL -> USDC path for redeemRewards tests.
+    bytes[] memory _extraPath = new bytes[](1);
+    _extraPath[0] = abi.encodePacked(rewards[0], uint24(10000), address(underlying));
+    extraDataSell = abi.encode(_extraPath);
+  }
+
   function _deployStrategy(address _owner) internal override returns (
     address _strategy,
     address _underlying
