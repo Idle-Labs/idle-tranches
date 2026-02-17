@@ -227,9 +227,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // if there is any surplus then we send those to the borrower
     uint256 pendingInstant = _pendingInstant();
     uint256 totUnderlyings = _contractTokenBalance(token);
-    address _borrower = _strategy.borrower();
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
-    bool _isProgrammable = _isProgrammableBorrower(_borrower);
 
     // if there are more requests than the current underlyings we simply send all underlyings
     // to the IdleCreditVault contract
@@ -237,9 +235,7 @@ contract IdleCDOEpochVariant is IdleCDO {
       // transfer funds to strategy
       _strategy.collectInstantWithdrawFunds(totUnderlyings);
       // if borrower is programmable, notify epoch start even if no funds were sent
-      if (_isProgrammable) {
-        IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
-      }
+      _startEpochProgrammableBorrower(_pendingWithdraws);
       return;
     }
     // otherwise we send the amount needed to satisfy the requests to the strategy 
@@ -249,9 +245,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // and transfer the surplus to the borrower
     try this.sendFundsToBorrower(totUnderlyings - pendingInstant) {
       // funds transferred correctly
-      if (_isProgrammable) {
-        IProgrammableBorrower(_borrower).onStartEpoch(_pendingWithdraws);
-      }
+      _startEpochProgrammableBorrower(_pendingWithdraws);
     } catch {
       _handleBorrowerDefault(totUnderlyings - pendingInstant);
     }
@@ -315,7 +309,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // This is called before the getFundsFromBorrower to eventually 
     // withdraw funds from the landing protocol in case of a programmable borrower
     address borrower = _borrower();
-    if (_isProgrammableBorrower(borrower)) {
+    if (_isProgrammableBorrower()) {
       IProgrammableBorrower(borrower).onStopEpoch(_expectedInterest + _pendingWithdraws);
     }
 
@@ -764,14 +758,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
   }
 
-  // DEPRECATED
-  // /// @notice Get the max amount of underlyings that can be withdrawn instantly by user
-  // /// @param _user User address
-  // /// @param _tranche Tranche to withdraw from
-  // function maxWithdrawableInstant(address _user, address _tranche) public view returns (uint256) {
-  //   return _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
-  // }
-
   /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement
   /// so here we burn tranche tokens, the equivalent amount of strategy tokens. Only the borrower can call this
   /// @param _amount Amount of tranche tokens to write off
@@ -829,10 +815,17 @@ contract IdleCDOEpochVariant is IdleCDO {
   }
 
   /// @notice Check if borrower is a smart contract
-  /// @param _borrower borrower address
   /// @return true if borrower is programmable
-  function _isProgrammableBorrower(address _borrower) internal view returns (bool) {
-    return _borrower.code.length > 0;
+  function _isProgrammableBorrower() internal view returns (bool) {
+    return _borrower().code.length > 0;
+  }
+
+  /// @notice Notify epoch start to the borrower if it is programmable and pass the pending withdraws amount
+  /// @param _pendingWithdraws amount of pending withdraws that borrower should consider for the epoch
+  function _startEpochProgrammableBorrower(uint256 _pendingWithdraws) internal {
+    if (_isProgrammableBorrower()) {
+      IProgrammableBorrower(_borrower()).onStartEpoch(_pendingWithdraws);
+    }
   }
 
   /// 
