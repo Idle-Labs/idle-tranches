@@ -64,7 +64,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   /// @param _idleCDOEpoch address of the IdleCDOEpochVariant contract
   /// @param _owner address of the owner of the contract
   /// @param _isAATranche true if the tranche is the AA one
-  function initialize(address _idleCDOEpoch, address _owner, bool _isAATranche) external initializer {
+  function initialize(address _idleCDOEpoch, address _owner, bool _isAATranche) public virtual initializer {
     if (idleCDOEpoch != address(0)) revert NotAllowed();
     // initialize the parent contracts
     OwnableUpgradeable.__Ownable_init();

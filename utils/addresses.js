@@ -305,6 +305,28 @@ const baseContracts = {
   USDC: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
 }
 
+const avaxContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0x2361130282a24421D9fdf2d1072C8edE2a79F108',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550',
+  treasuryMultisig: '0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550',
+  devLeagueMultisig: '0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550',
+  proxyAdmin: '0x463d457E5D608830a7882708Af765603a33C1119',
+  // Same as proxyAdmin
+  proxyAdminWithTimelock: '0x463d457E5D608830a7882708Af765603a33C1119',
+  timelock: '0x8aA1379e46A8C1e9B7BB2160254813316b5F35B8',
+  keyring: '0x3A5Dd1FDf3bEdC3a601D0e9BB37bB6CC3B635Bc6',
+  keyringWhitelist: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
+
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  WETH: '0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB',
+  USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonzk: polygonZKContracts,
@@ -312,6 +334,7 @@ exports.IdleTokens = {
   optimism: optimismContracts,
   arbitrum: arbitrumContracts,
   base: baseContracts,
+  avax: avaxContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -1549,6 +1572,33 @@ const baseCDOs = {
     queue: '0xA75a46B10428AE3E67156aBD5618b8f8BD3AF3d4'
   },
 };
+
+const avaxCDOs = {
+  creditavaxtestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x4c9579C471B1945f40B706C75d6623039d608680',
+    underlying: avaxContracts.USDC,
+    cdoAddr: '0x2805B03c491a86b7f04c898a24C7A1F3d3805D35',
+    proxyAdmin: avaxContracts.proxyAdminWithTimelock,
+    strategy: '0x4c9579C471B1945f40B706C75d6623039d608680',
+    AATranche: '0xD28CB87193E0f61DcCd3B693Ebe59603D0937237',
+    BBTranche: '0x3422d88eAAd9c21cf627c9a3c8F85e1c54fA7Fba',
+    writeoff: ''
+  },
+  creditlaserdigitalusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '',
+    underlying: avaxContracts.USDC,
+    cdoAddr: '',
+    proxyAdmin: avaxContracts.proxyAdminWithTimelock,
+    strategy: '',
+    AATranche: '',
+    BBTranche: '',
+    writeoff: ''
+  },
+}
 
 const polygonZKCDOs = {
   cpfasusdc: {
@@ -3382,6 +3432,89 @@ exports.deployTokens = {
   },
 };
 
+exports.deployTokensAvax = {
+  creditavaxtestusdc: {
+    decimals: 6,
+    underlying: avaxContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      avaxContracts.USDC,
+      'owner', // owner address
+      '0xE5Dab8208c1F4cce15883348B72086dBace3e64B', // manager
+      '0xE5Dab8208c1F4cce15883348B72086dBace3e64B', // borrower
+      'AvaxTest', // borrower name
+      10e18.toString(), // intialApr
+    ],
+    cdo: avaxCDOs.creditavaxtestusdc,
+    cdoVariant: 'IdleCDOEpochVariantAvax',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '600', // 10 minutes
+    bufferPeriod: '300', // 5 minutes
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '', // a new whitelist will be deployed
+    keyring: avaxContracts.keyringWhitelist,
+    keyringPolicy: 4725443,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: true,
+    hypernative: true,
+    proxyCdoAddress: '',
+  },
+  creditlaserdigitalusdc: {
+    decimals: 6,
+    underlying: avaxContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      avaxContracts.USDC,
+      'owner', // owner address
+      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // manager
+      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // borrower
+      'LCF', // borrower name
+      '0', // intialApr
+    ],
+    cdo: avaxCDOs.creditlaserdigitalusdc,
+    cdoVariant: 'IdleCDOEpochVariantAvax',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '600', // 10 minutes
+    bufferPeriod: '300', // 5 minutes
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '', // a new whitelist will be deployed
+    keyring: avaxContracts.keyringWhitelist,
+    keyringPolicy: 4725443,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: true,
+    hypernative: true,
+    proxyCdoAddress: '',
+  }
+}
+
 exports.deployTokensBase = {
   creditbasetestusdc: {
     decimals: 6,
@@ -4053,4 +4186,5 @@ exports.polygonCDOs = polygonCDOs;
 exports.polygonZKCDOs = polygonZKCDOs;
 exports.optimismCDOs = optimismCDOs;
 exports.arbitrumCDOs = arbitrumCDOs;
+exports.avaxCDOs = avaxCDOs;
 exports.mainnetContracts = mainnetContracts;
