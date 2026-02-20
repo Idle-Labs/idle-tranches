@@ -1059,6 +1059,19 @@ const CDOs = {
     writeOff: '0x9567341f6C94deFc1538A05daAAEb159cf0e9739',
     keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0'
   },
+  creditapollotestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x77764E789B0436E41bD4f7070DABee901A23bc79',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x439579d1987B413Ec11aDA36E466BFEAbFc24702',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x77764E789B0436E41bD4f7070DABee901A23bc79',
+    AATranche: '0xA15CD3034Abd5d56b1422a2a7d27e030b3BCd77A',
+    BBTranche: '0x5e198F4d908CB24a7dAB3F4f56449E5CFEd768DF',
+    writeOff: '0xCBeD5bc7Da17510557Cf12F44eB02ad0DC438810',
+    keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0'
+  },
   creditgauntlettestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -3397,6 +3410,46 @@ exports.deployTokens = {
     writeoff: true,
     hypernative: false,
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr
+  },
+  creditapollotestusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x69cC425B1E5f302e7Db4E5d125ab984EC5186364', // manager
+      '0xB1fb045dB78FBAdE5ba7d7578133238Fd9E68801', // borrower
+      'ACRDX-test-0', // borrower name
+      '0', // intialApr 0
+    ],
+    cdo: CDOs.creditapollotestusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '10800', // 3 hours
+    bufferPeriod: '0', // 24 hours
+    // ## instant params values
+    instantWithdrawDelay: '259200', // 3 days
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
+    keyring: '0xb84957322Bb6381f21f3414584483458050D77A0', // a new whitelist will be deployed
+    keyringPolicy: 4725443,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: true,
+    hypernative: false,
+    proxyCdoAddress: CDOs.creditblackrockcashxtestusdc.cdoAddr
   },
   usualusd0pptest: {
     decimals: 18,
