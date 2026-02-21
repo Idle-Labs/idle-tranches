@@ -488,6 +488,7 @@ contract TestIdleCDOEpochQueue is Test {
     vm.prank(manager);
     queue.processWithdrawRequests();
     uint256 expectedUnderlyings = queue.epochPendingClaims(epoch);
+    uint256 withdrawPricePre = queue.epochWithdrawPrice(epoch);
 
     // start epoch #2
     vm.prank(manager);
@@ -506,10 +507,19 @@ contract TestIdleCDOEpochQueue is Test {
     queue.processWithdrawalClaims(epoch);
 
     // strategy tokens are burned for underlyings
+    uint256 receivedUnderlyings = underlying.balanceOf(address(queue)) - balPre;
     assertEq(strategy.balanceOf(address(queue)), 0, 'strategy token balance of queue contract is wrong');
     assertEq(queue.pendingClaims(), false, 'pendingClaims is wrong');
     assertEq(queue.epochPendingClaims(epoch), 0, 'epochPendingClaims is wrong');
-    assertEq(underlying.balanceOf(address(queue)) - balPre, expectedUnderlyings, 'underlying balance of queue contract is wrong');
+    // APR=0 pending claims can increase at stopEpoch; queue should pass this delta via an updated withdraw price.
+    assertGe(receivedUnderlyings, expectedUnderlyings, 'underlying balance of queue contract is wrong');
+    assertGe(queue.epochWithdrawPrice(epoch), withdrawPricePre, 'withdraw price should not decrease');
+    assertApproxEqAbs(
+      receivedUnderlyings,
+      (tranches1 + tranches2) * queue.epochWithdrawPrice(epoch) / ONE_TRANCHE,
+      500,
+      'final withdraw price is wrong'
+    );
   }
 
   function testProcessWithdrawalClaimsInstantEpoch() external {

@@ -7,7 +7,7 @@ libs = ["node_modules", "lib"]
 test = 'test/foundry'
 script = 'forge-scripts'
 evm_version = 'cancun'
-optimizer_runs = 15000
+optimizer_runs = 1
 
 [fuzz]
 runs = 1000
