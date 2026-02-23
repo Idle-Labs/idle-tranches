@@ -20,6 +20,7 @@ const polygonZKCDOs = addresses.polygonZKCDOs;
 const optimismCDOs = addresses.optimismCDOs;
 const arbitrumCDOs = addresses.arbitrumCDOs;
 const baseCDOs = addresses.baseCDOs;
+const addr0 = '0x0000000000000000000000000000000000000000';
 
 const DEFAULT_HYPERNATIVE_TAG_LIST_ID = '4ad4b133-2c72-42d4-9f79-a74c9f3ba20a';
 const HYPERNATIVE_GLOBAL_WATCHLISTS = [
@@ -584,13 +585,24 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       if (deployToken.keyring) {
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
+      } else if (deployToken.keyring != addr0) {
+        console.log(`Deploying new keyring with default params and setting it`);
+        const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
+        deployToken.keyring = newKeyring;
+        console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
       if (deployToken.fees) {
         console.log(`Setting fees ${deployToken.fees}`);
         await cdoEpoch.connect(signer).setFee(deployToken.fees);
       }
       if (deployToken.queue) {
-        await hre.run("deploy-queue", { cdo: idleCDOAddress, owner: networkContracts.treasuryMultisig, isaa: 'true' });
+        await hre.run("deploy-queue", {
+          cdo: idleCDOAddress,
+          owner: networkContracts.treasuryMultisig,
+          isaa: 'true',
+          keyring: deployToken.keyring != addr0 ? deployToken.keyring : undefined
+        });
       }
     }
 
@@ -941,6 +953,11 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18); // default 0
     const disableInstantWithdraw = deployToken.disableInstantWithdraw || false; // default false
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
+    if (!deployToken.keyring && deployToken.keyring != addr0) {
+      console.log(`Deploying new keyring with default params and setting it`);
+      const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
+      deployToken.keyring = newKeyring;
+    }
     const keyring = deployToken.keyring;
     const keyringPolicy = deployToken.keyringPolicy;
     const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
@@ -1008,11 +1025,9 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
 
     if (deployToken.queue && deployToken.keyring != addr0) {
       console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      if (networkContracts.keyringWhitelist) {
-        console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
-        const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, signer);
-        await whitelist.connect(signer).setWhitelistStatus(queue, true);
-      }
+      console.log(`Adding queue to keyring whitelist (${deployToken.keyring})`);
+      const whitelist = await ethers.getContractAt("KeyringWhitelist", deployToken.keyring, signer);
+      await whitelist.connect(signer).setWhitelistStatus(queue, true);
     }
 
     if (deployToken.writeoff) {
@@ -1180,6 +1195,7 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
   .addParam('cdo')
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
+  .addOptionalParam('keyring')
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
@@ -1211,13 +1227,10 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       signer
     );
 
-    const networkContracts = getNetworkContracts(hre);
-    const multisig = await run('get-multisig-or-fake');
-
-    if (networkContracts.keyringWhitelist) {
-      console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
-      const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
-      await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
+    if (args.keyring) {
+      console.log(`Adding queue to keyring whitelist (${args.keyring})`);
+      const whitelist = await ethers.getContractAt("KeyringWhitelist", args.keyring, signer);
+      await whitelist.connect(signer).setWhitelistStatus(queue.address, true);
     }
 });
 
@@ -1340,11 +1353,13 @@ task("deploy-keyring-whitelist", "Deploy KeyringIdleWhitelist")
       signer
     );
 
-    await run("verify:verify", {
-      constructorArguments: [keyringAddress, args.owner],
-      address: contract.address,
-      contract: "contracts/KeyringIdleWhitelist.sol:KeyringIdleWhitelist"
-    });
+    // await run("verify:verify", {
+    //   constructorArguments: [keyringAddress, args.owner],
+    //   address: contract.address,
+    //   contract: "contracts/KeyringIdleWhitelist.sol:KeyringIdleWhitelist"
+    // });
+
+    return contract.address;
 });
 
 /**
