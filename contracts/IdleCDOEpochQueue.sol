@@ -238,6 +238,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     if (_pending == 0) {
       return;
     }
+    uint256 _balPre = IERC20Detailed(underlying).balanceOf(address(this));
 
     // check if the epoch is an instant withdraw epoch.
     // These calls will transfer underlyings to this contract and burn strategyTokens
@@ -245,6 +246,16 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       _cdo.claimInstantWithdrawRequest();
     } else {
       _cdo.claimWithdrawRequest();
+    }
+    uint256 _received = IERC20Detailed(underlying).balanceOf(address(this)) - _balPre;
+    // In APR=0 flow the final claimed amount can differ from request-time pending claims.
+    // Rebase the withdraw price to the realized amount so users claim the correct final value.
+    if (_received != _pending) {
+      uint256 _updatedPrice = epochWithdrawPrice[_epoch] * _received / _pending;
+      if (_updatedPrice == 0) {
+        revert Is0();
+      }
+      epochWithdrawPrice[_epoch] = _updatedPrice;
     }
 
     // reset epoch pending claims
