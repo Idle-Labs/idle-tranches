@@ -132,8 +132,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     WriteOffRequest memory currentRequest = userRequests[_user];
     // check if the user has a write-off request
     if (currentRequest.tranches == 0) revert Is0();
-    // check if the request matches the expected values
-    if (currentRequest.tranches != _tranches || currentRequest.underlyings != _underlyings) {
+    // check if the request matches at least the expected values (borrower can choose to overpay if needed, but not underpay)
+    if (currentRequest.tranches != _tranches || _underlyings < currentRequest.underlyings) {
       revert WrongRequest();
     }
 
