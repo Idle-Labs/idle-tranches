@@ -514,6 +514,11 @@
       "address": "0xCBeD5bc7Da17510557Cf12F44eB02ad0DC438810",
       "txHash": "0xe2b0845d5be0cc21a45dc932f21f006209dc602e0f68f91e36d09c5419cdac36",
       "kind": "transparent"
+    },
+    {
+      "address": "0xf0DB13c967570E0DB9b13a44D9782308b72c4411",
+      "txHash": "0x2f6cf75c6a8145e54c3d2d9a64088eaabb497477e65e2f4ba355124084d679f1",
+      "kind": "transparent"
     }
   ],
   "impls": {

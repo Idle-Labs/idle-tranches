@@ -1047,7 +1047,8 @@ const CDOs = {
     AATranche: '0xA15CD3034Abd5d56b1422a2a7d27e030b3BCd77A',
     BBTranche: '0x5e198F4d908CB24a7dAB3F4f56449E5CFEd768DF',
     writeOff: '0xCBeD5bc7Da17510557Cf12F44eB02ad0DC438810',
-    keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0'
+    keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0',
+    queue: '0xf0DB13c967570E0DB9b13a44D9782308b72c4411'
   },
   creditgauntlettestusdc: {
     decimals: 6,
