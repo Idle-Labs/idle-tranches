@@ -204,6 +204,22 @@ task("upgrade-strategy-timelock", "Upgrade IdleCDO strategy")
   });
 
 /**
+ * @name upgrade-queue-timelock
+ */
+task("upgrade-queue-timelock", "Upgrade IdleCDO queue")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    
+    await run("upgrade-with-multisig-timelock", {
+      cdoname: args.cdoname,
+      contractName: 'IdleCDOEpochQueue',
+      contractKey: 'queue' // check eg CDOs.idleDAI.*
+    });
+  });
+
+/**
  * @name transfer-ownership-cdo
  */
 task("transfer-ownership-cdo", "Transfer IdleCDO ownership")
