@@ -622,6 +622,14 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         console.log(`Setting fees ${deployToken.fees}`);
         await cdoEpoch.connect(signer).setFee(deployToken.fees);
       }
+      if (deployToken.interestMinted) {
+        console.log(`Setting interest minted ${deployToken.interestMinted}`);
+        await cdoEpoch.connect(signer).setIsInterestMinted(deployToken.interestMinted);
+      }
+      if (deployToken.depositDuringEpoch) {
+        console.log(`Setting deposit during epoch ${deployToken.depositDuringEpoch}`);
+        await cdoEpoch.connect(signer).setIsDepositDuringEpochDisabled(!deployToken.depositDuringEpoch);
+      }
       if (deployToken.queue) {
         await hre.run("deploy-queue", {
           cdo: idleCDOAddress,
@@ -999,6 +1007,10 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     }
     console.log()
 
+    console.log('Is interest minted: ', deployToken.interestMinted);
+    console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
+    console.log();
+
     // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
     const owner = networkContracts.treasuryMultisig;
     console.log('Owner of all contracts: ', owner);
@@ -1015,7 +1027,9 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       keyring,
       keyringPolicy,
       keyringAllowWithdraw,
-      fees, 
+      fees,
+      isInterestMinted: deployToken.interestMinted,
+      isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     }
     const tx = await factory.connect(signer).deployCreditVault(
       cvData, 
@@ -1346,7 +1360,7 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
 
 /**
  * @name deploy-cv-factory
- * task to deploy ProxyAdmin
+ * task to deploy IdleCreditVaultFactory
  */
 task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
   .setAction(async (args) => {
@@ -1360,14 +1374,19 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`Deploying IdleCreditVaultFactory with ${addr}`);
     console.log()
 
-    const creditVaultFactory = await helpers.deployContract('IdleCreditVaultFactory', [], signer);
-    console.log(`IdleCreditVaultFactory deployed at ${creditVaultFactory.address}`);
+    const creditVaultFactory = await helpers.deployUpgradableContract('IdleCreditVaultFactory', [], signer);
+    const implementation = await getImplementationAddress(hre.ethers.provider, creditVaultFactory.address);
+
+    console.log(`IdleCreditVaultFactory proxy deployed at ${creditVaultFactory.address}`);
+    console.log(`IdleCreditVaultFactory implementation deployed at ${implementation}`);
 
     await run("verify:verify", {
       constructorArguments: [],
-      address: creditVaultFactory.address,
+      address: implementation,
       contract: "contracts/IdleCreditVaultFactory.sol:IdleCreditVaultFactory"
     });
+
+    return creditVaultFactory;
 });
 
 /**

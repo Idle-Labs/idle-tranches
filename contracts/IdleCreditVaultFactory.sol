@@ -2,14 +2,22 @@
 pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IdleCDOEpochVariant, IdleCDO} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOEpochQueue} from "./IdleCDOEpochQueue.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 
-contract IdleCreditVaultFactory {
+contract IdleCreditVaultFactory is Initializable {
   event CreditVaultDeployed(address proxy);
   event StrategyDeployed(address proxy);
   event QueueDeployed(address proxy);
+
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    _disableInitializers();
+  }
+
+  function initialize() external initializer {}
 
   struct TransparentProxyData {
     address implementation;
@@ -28,6 +36,8 @@ contract IdleCreditVaultFactory {
     uint256 keyringPolicy;
     bool keyringAllowWithdraw;
     uint256 fees;
+    bool isInterestMinted;
+    bool isDepositDuringEpochDisabled;
   }
 
   function deployCreditVault(
@@ -97,6 +107,12 @@ contract IdleCreditVaultFactory {
     cv.setInstantWithdrawParams(par.instantWithdrawDelay, par.instantWithdrawAprDelta, par.disableInstantWithdraw);
     cv.setKeyringParams(par.keyring, par.keyringPolicy, par.keyringAllowWithdraw);
     cv.setFee(par.fees);
+    if (par.isInterestMinted) {
+      cv.setIsInterestMinted(par.isInterestMinted);
+    }
+    if (par.isDepositDuringEpochDisabled) {
+      cv.setIsDepositDuringEpochDisabled(par.isDepositDuringEpochDisabled);
+    }
     // setAprs should be done before setWhitelistedCDO
     strategy.setAprs(par.apr, par.apr * (par.epochDuration + par.bufferPeriod) / par.epochDuration);
     strategy.setWhitelistedCDO(address(cv));
