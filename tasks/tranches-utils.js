@@ -905,7 +905,7 @@ subtask("upgrade-with-multisig-timelock", "Upgrade contract with multisig timelo
 subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum' && hre.network.name !== 'base' && hre.network.name !== 'avax') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
@@ -921,7 +921,7 @@ subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
     const networkContracts = getNetworkContracts(hre);
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum' && hre.network.name !== 'base' && hre.network.name !== 'avax') {
       signer = await helpers.impersonateSigner(args.fakeAddress || networkContracts.treasuryMultisig);
     } else {
       signer = await helpers.getMultisigSigner();
