@@ -172,6 +172,14 @@ contract IdleCDOEpochVariant is IdleCDO {
     isInterestMinted = _isMinted;
   }
 
+  /// @notice Realize a pool loss by burning strategy tokens held by this contract
+  /// @dev If epoch is running, we dont' reduce expectedEpochInterest
+  /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
+  function realizeLoss(uint256 _amount) external {
+    _checkOnlyOwnerOrManager();
+    _burnStrategyTokens(_amount);
+  }
+
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
   /// @dev We calculate the total funds that the borrower should return at the end of the epoch
   /// ie interests + fees from normal withdraw requests. We send to the borrower underlyings amounts ie interests + 
@@ -686,6 +694,12 @@ contract IdleCDOEpochVariant is IdleCDO {
     return IdleCreditVault(strategy).pendingInstantWithdraws();
   }
 
+  /// @notice Burn strategy tokens held by this contract to decrease tranche price
+  /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
+  function _burnStrategyTokens(uint256 _amount) internal {
+    return IdleCreditVault(strategy).burnStrategyTokens(_amount);
+  }
+
   /// @notice Calculate the interest of an epoch for a withdraw request
   /// @dev to avoid having funds not getting interest during buffer period, the apr 
   /// set in the stopEpoch is higher than then intended one so it will cover also the buffer period
@@ -776,7 +790,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
-    IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
+    _burnStrategyTokens(_underlyings);
 
     // remove the interest + fee from expectedEpochInterest
     expectedEpochInterest -= interest;

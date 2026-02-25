@@ -3557,6 +3557,54 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertGt(afterBalance, initialBob, 'Bob balance decreased');
   }
 
+  function testRealizeLossOnlyOwnerOrManager() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(makeAddr("nonOwner"));
+    cdoEpoch.realizeLoss(1);
+
+    uint256 lossAmount = 100 * ONE_SCALE;
+    uint256 contractValuePre = cdoEpoch.getContractValue();
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+
+    vm.prank(manager);
+    cdoEpoch.realizeLoss(lossAmount);
+
+    uint256 contractValuePost = cdoEpoch.getContractValue();
+    uint256 priceAAPost = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 expectedAAPricePost = priceAAPre * contractValuePost / contractValuePre;
+
+    assertEq(contractValuePost, contractValuePre - lossAmount, "contract value is wrong after realizeLoss");
+    assertLt(priceAAPost, priceAAPre, "AA price should decrease after realizeLoss");
+    assertApproxEqAbs(priceAAPost, expectedAAPricePost, 1, "AA price is not proportionally reduced");
+  }
+
+  function testRealizeLossDuringEpochKeepsExpectedInterest() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+
+    uint256 lossAmount = 1_000 * ONE_SCALE;
+    uint256 contractValuePre = cdoEpoch.getContractValue();
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 expectedInterestPre = cdoEpoch.expectedEpochInterest();
+
+    vm.prank(manager);
+    cdoEpoch.realizeLoss(lossAmount);
+
+    uint256 contractValuePost = cdoEpoch.getContractValue();
+    uint256 priceAAPost = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 expectedAAPricePost = priceAAPre * contractValuePost / contractValuePre;
+
+    assertEq(contractValuePost, contractValuePre - lossAmount, "contract value is wrong after realizeLoss");
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterestPre, "expectedEpochInterest should not change");
+    assertLt(priceAAPost, priceAAPre, "AA price should decrease after realizeLoss");
+    assertApproxEqAbs(priceAAPost, expectedAAPricePost, 1, "AA price is not proportionally reduced");
+
+    _toggleEpoch(false, initialProvidedApr, _expectedFundsEndEpoch());
+    assertEq(cdoEpoch.defaulted(), false, "pool should not be defaulted");
+  }
+
   function testWriteOffDeposit() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
