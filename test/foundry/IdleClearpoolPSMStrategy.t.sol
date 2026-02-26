@@ -39,7 +39,7 @@ contract TestIdleClearpoolPSMStrategy is TestIdleCDOBase {
     vm.startPrank(_owner);
     _cdo.setIsAYSActive(true);
     _cdo.setUnlentPerc(0);
-    _cdo.setFee(0);
+    _cdo.setFeeParams(_owner, 0);
     vm.stopPrank();
 
     _postDeploy(address(_cdo), _owner);

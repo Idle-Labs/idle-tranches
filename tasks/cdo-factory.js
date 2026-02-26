@@ -567,9 +567,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
 
     const feeReceiver = await idleCDO.feeReceiver();
-    if ((isMatic || isPolygonZK || isOptimism || isArbitrum) && feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase()) {
-      console.log('Setting fee receiver to Treasury Multisig')
-      await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
+    const cdoFee = await idleCDO.fee();
+    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fee && cdoFee.toString() != deployToken.fee.toString())) {
+      const fee = deployToken.fee ? deployToken.fee : cdoFee;
+      console.log('Setting fee params with ', networkContracts.feeReceiver, fee);
+      await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
     }
 
     if (deployToken.unlent == 0) {
@@ -617,10 +619,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         deployToken.keyring = newKeyring;
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
-      }
-      if (deployToken.fees) {
-        console.log(`Setting fees ${deployToken.fees}`);
-        await cdoEpoch.connect(signer).setFee(deployToken.fees);
       }
       if (deployToken.interestMinted) {
         console.log(`Setting interest minted ${deployToken.interestMinted}`);

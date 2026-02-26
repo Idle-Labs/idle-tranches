@@ -81,7 +81,7 @@ contract IdleCreditVaultFactory is Initializable {
       emit QueueDeployed(address(queue));
     }
 
-    cv.setFeeReceiver(owner);
+    cv.setFeeParams(owner, cvParams.fees);
     cv.setGuardian(guardian);
     // Transfer ownership of strategy and credit vault to owner
     strategy.transferOwnership(owner);
@@ -106,7 +106,6 @@ contract IdleCreditVaultFactory is Initializable {
     cv.setEpochParams(par.epochDuration, par.bufferPeriod);
     cv.setInstantWithdrawParams(par.instantWithdrawDelay, par.instantWithdrawAprDelta, par.disableInstantWithdraw);
     cv.setKeyringParams(par.keyring, par.keyringPolicy, par.keyringAllowWithdraw);
-    cv.setFee(par.fees);
     if (par.isInterestMinted) {
       cv.setIsInterestMinted(par.isInterestMinted);
     }

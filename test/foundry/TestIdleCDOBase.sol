@@ -471,7 +471,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.startPrank(_owner);
     _cdo.setIsAYSActive(true);
     _cdo.setUnlentPerc(0);
-    _cdo.setFee(0);
+    _cdo.setFeeParams(TL_MULTISIG, 0);
     vm.stopPrank();
 
     _postDeploy(address(_cdo), _owner);

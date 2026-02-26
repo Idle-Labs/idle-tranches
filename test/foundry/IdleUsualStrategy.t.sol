@@ -298,7 +298,7 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
 
   function testStopEpochWithFees() external {
     vm.prank(owner);
-    idleCDO.setFee(10000); // 10%
+    idleCDO.setFeeParams(owner, 10000); // 10%
     
     uint256 amount = 10000 * ONE_SCALE;
     uint256 mintedAA = idleCDO.depositAA(amount);

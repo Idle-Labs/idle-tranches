@@ -856,9 +856,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _feeReceiver new fee receiver address
-  function setFeeReceiver(address _feeReceiver) external {
+  /// @param _fee new fee value (in % with 100000 = 100%)
+  function setFeeParams(address _feeReceiver, uint256 _fee) external {
     _checkOnlyOwner();
     _checkIs0((feeReceiver = _feeReceiver) == address(0));
+    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
   }
 
   /// @param _guardian new guardian (pauser) address
@@ -877,12 +879,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setMinAprSplitAYS(uint256 _aprSplit) external virtual {
     _checkOnlyOwner();
     _checkAmountTooHigh((minAprSplitAYS = _aprSplit) > FULL_ALLOC);
-  }
-
-  /// @param _fee new fee
-  function setFee(uint256 _fee) external {
-    _checkOnlyOwner();
-    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
   }
 
   /// @param _unlentPerc new unlent percentage

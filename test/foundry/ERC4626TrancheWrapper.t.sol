@@ -87,7 +87,7 @@ contract TestERC4626TrancheWrapper is ERC4626Test {
         vm.startPrank(owner);
         idleCDO.setIsAYSActive(true);
         idleCDO.setUnlentPerc(0);
-        idleCDO.setFee(0);
+        idleCDO.setFeeParams(owner, 0);
         idleCDO._setLimit(0);
 
         IdleStrategy(address(strategy)).setWhitelistedCDO(address(idleCDO));
