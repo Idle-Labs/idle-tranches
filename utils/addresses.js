@@ -307,7 +307,7 @@ const baseContracts = {
 
 const avaxContracts = {
   deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
-  cdoFactory: '0x91D93DBd823221ea9E54fb3e447BD917CE41f2e8',
+  cdoFactory: '0xB988641E8D493B5BfF65e63819975b6B33477057',
   rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
   feeReceiver: '0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550',
   treasuryMultisig: '0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550',
@@ -3522,7 +3522,7 @@ exports.deployTokensAvax = {
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
-    queue: false,
+    queue: true,
     writeoff: true,
     hypernative: true,
     proxyCdoAddress: '',
