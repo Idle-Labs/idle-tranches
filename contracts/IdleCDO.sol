@@ -67,8 +67,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get strategy token symbol (eg. idleDAI)
     string memory _symbol = IERC20Detailed(_strategyToken).symbol();
     // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
-    AATranche = _deployTranche(string("Pareto AA - "), string("AA_"), _symbol);
-    BBTranche = _deployTranche(string("Pareto BB - "), string("BB_"), _symbol);
+    AATranche = _deployTranche(string("Pareto "), string("p"), _symbol);
+    BBTranche = _deployTranche(string("Pareto BB "), string("pBB_"), _symbol);
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;

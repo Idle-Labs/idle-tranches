@@ -198,6 +198,47 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after fulfill');
   }
 
+  function testFullfillWriteOffRequestUsesLatestBorrower() external {
+    uint256 requestedTranches = 10000e18;
+    uint256 requestedUnderlyings = 10000e6;
+    address newBorrower = makeAddr("newBorrower");
+
+    vm.prank(LP);
+    escrow.createWriteOffRequest(requestedTranches, requestedUnderlyings);
+
+    // rotate borrower in the strategy after escrow initialization
+    vm.prank(strategy.owner());
+    strategy.setBorrower(newBorrower);
+
+    // old borrower is not allowed anymore
+    vm.startPrank(borrower);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+    vm.stopPrank();
+
+    // new borrower can fulfill
+    deal(address(underlying), newBorrower, requestedUnderlyings);
+    uint256 balPreBorrower = underlying.balanceOf(newBorrower);
+    uint256 balPreBorrowerTranche = tranche.balanceOf(newBorrower);
+    uint256 balPreLP = underlying.balanceOf(LP);
+    uint256 balPreFeeReceiver = underlying.balanceOf(TL_MULTISIG);
+
+    vm.startPrank(newBorrower);
+    underlying.approve(address(escrow), requestedUnderlyings);
+    escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+    vm.stopPrank();
+
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 0, 'write-off request tranches is not 0 after borrower update fulfill');
+    assertEq(underlyings, 0, 'write-off request underlyings is not 0 after borrower update fulfill');
+
+    uint256 fee = requestedUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
+    assertEq(balPreBorrower - underlying.balanceOf(newBorrower), requestedUnderlyings, 'new borrower balance is wrong');
+    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after borrower update fulfill');
+    assertEq(tranche.balanceOf(newBorrower) - balPreBorrowerTranche, requestedTranches, 'new borrower tranche balance is wrong');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after borrower update fulfill');
+  }
+
   function testFullfillWriteOffRequestWithUnderlyingOverpay() external {
     uint256 requestedUnderlyings = 10000e6;
     uint256 overpayUnderlyings = 12000e6;

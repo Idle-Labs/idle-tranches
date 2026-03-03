@@ -172,7 +172,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testContractSize() public view {
     bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariant.sol/IdleCDOEpochVariant.json");
     assertLt(runtime.length, 24_576, "IdleCDOEpochVariant deployed bytecode too large");
+    console2.log('size ', runtime.length);
     bytes memory runtime2 = vm.getDeployedCode("out/IdleCDOEpochVariantAvax.sol/IdleCDOEpochVariantAvax.json");
+    console2.log('size2', runtime2.length);
     assertLt(runtime2.length, 24_576, "IdleCDOEpochVariantAvax deployed bytecode too large");
   }
 
@@ -328,10 +330,71 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_strategy.manager(), manager, 'manager is wrong');
     assertEq(_strategy.borrower(), borrower, 'borrower is wrong');
     assertEq(_strategy.lastApr(), _scaleAprWithBuffer(initialProvidedApr), 'lastApr is wrong');
-    assertEq(IERC20Detailed(address(_strategy)).name(), "Pareto Credit Vault testBorrower USDC", 'token name is wrong');
-    assertEq(IERC20Detailed(address(_strategy)).symbol(), "testBorrowerUSDC", 'symbol is wrong');
+    assertEq(IERC20Detailed(address(_strategy)).name(), "Pareto Credit Vault testBorrower", 'token name is wrong');
+    assertEq(IERC20Detailed(address(_strategy)).symbol(), "testBorrower", 'symbol is wrong');
     assertEq(IERC20Detailed(address(_strategy)).decimals(), IERC20Detailed(defaultUnderlying).decimals(), 'decimals is wrong');
     assertEq(_strategy.owner(), owner, 'owner is wrong');
+  }
+
+  function testSetBorrower() external {
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    address newBorrower = makeAddr('newBorrower');
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    _strategy.setBorrower(newBorrower);
+
+    vm.prank(owner);
+    _strategy.setBorrower(newBorrower);
+    assertEq(_strategy.borrower(), newBorrower, 'borrower is wrong');
+
+    vm.startPrank(owner);
+    vm.expectRevert(bytes("IS_0"));
+    _strategy.setBorrower(address(0));
+    vm.stopPrank();
+  }
+
+  function testSetBorrowerAffectsEpochFlows() external {
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    address newBorrower = makeAddr('newBorrower');
+    uint256 amount = 10000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    vm.prank(owner);
+    _strategy.setBorrower(newBorrower);
+
+    vm.prank(newBorrower);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), type(uint256).max);
+
+    uint256 oldBorrowerBal = IERC20Detailed(defaultUnderlying).balanceOf(borrower);
+    uint256 newBorrowerBal = IERC20Detailed(defaultUnderlying).balanceOf(newBorrower);
+
+    _toggleEpoch(true, 0, 0);
+
+    // epoch start sends deposits to the borrower currently configured in the strategy
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(newBorrower) - newBorrowerBal,
+      amount,
+      'new borrower did not receive funds'
+    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower), oldBorrowerBal, 'old borrower received funds');
+
+    uint256 expected = _expectedFundsEndEpoch();
+    deal(defaultUnderlying, newBorrower, expected + 1);
+    uint256 newBorrowerBalPreStop = IERC20Detailed(defaultUnderlying).balanceOf(newBorrower);
+    uint256 oldBorrowerBalPreStop = IERC20Detailed(defaultUnderlying).balanceOf(borrower);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialApr, 0);
+    assertEq(cdoEpoch.defaulted(), false, 'vault defaulted');
+    assertEq(
+      newBorrowerBalPreStop - IERC20Detailed(defaultUnderlying).balanceOf(newBorrower),
+      expected,
+      'funds not taken from new borrower'
+    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower), oldBorrowerBalPreStop, 'old borrower paid funds');
   }
 
   /// @notice test only owner or manager methods

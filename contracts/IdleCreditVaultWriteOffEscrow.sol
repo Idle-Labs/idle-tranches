@@ -124,7 +124,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   /// @param _underlyings amount of underlyings to transfer
   /// @dev this function can only be called by the borrower
   function fullfillWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) external nonReentrant {
-    address _borrower = borrower;
+    address _borrower = IdleCreditVault(strategy).borrower();
     // Only borrower can call this function
     if (msg.sender != _borrower) revert NotAllowed();
 
