@@ -177,7 +177,9 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
   function realizeLoss(uint256 _amount) external {
     _checkOnlyOwnerOrManager();
-    _burnStrategyTokens(_amount);
+    // NOTE: we inline strategy.burnStrategyTokens instead of _burnStrategyTokens
+    // to reduce bytecode size
+    IdleCreditVault(strategy).burnStrategyTokens(_amount);
   }
 
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
@@ -696,8 +698,8 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice Burn strategy tokens held by this contract to decrease tranche price
   /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
-  function _burnStrategyTokens(uint256 _amount) internal {
-    return IdleCreditVault(strategy).burnStrategyTokens(_amount);
+  function _burnStrategyTokens(uint256 _amount) private {
+    IdleCreditVault(strategy).burnStrategyTokens(_amount);
   }
 
   /// @notice Calculate the interest of an epoch for a withdraw request
