@@ -172,16 +172,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     isInterestMinted = _isMinted;
   }
 
-  /// @notice Realize a pool loss by burning strategy tokens held by this contract
-  /// @dev If epoch is running, we dont' reduce expectedEpochInterest
-  /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
-  function realizeLoss(uint256 _amount) external {
-    _checkOnlyOwnerOrManager();
-    // NOTE: we inline strategy.burnStrategyTokens instead of _burnStrategyTokens
-    // to reduce bytecode size
-    IdleCreditVault(strategy).burnStrategyTokens(_amount);
-  }
-
   /// @notice Start the epoch. No deposits or withdrawals are allowed after this.
   /// @dev We calculate the total funds that the borrower should return at the end of the epoch
   /// ie interests + fees from normal withdraw requests. We send to the borrower underlyings amounts ie interests + 
@@ -398,9 +388,15 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _newApr New apr to set for the next epoch
   /// @param _interest Interest gained in the epoch
   /// @param _duration New epoch duration
-  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration) external {
+  /// @param _lossAmount Amount of strategy tokens to burn as realized loss
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) external {
     // stop epoch checks that msg.sender is allowed
     stopEpoch(_newApr, _interest);
+    if (_lossAmount > 0 && !defaulted) {
+      IdleCreditVault(strategy).burnStrategyTokens(_lossAmount);
+      // realize the loss right away and update stored tranche prices/NAV
+      _forceUpdateAccounting();
+    }
     // buffer period is not changed
     setEpochParams(_duration, bufferPeriod);
 
@@ -477,13 +473,13 @@ contract IdleCDOEpochVariant is IdleCDO {
   }
 
   /// @notice Prevent deposits and redeems for all classes of tranches
-  function _emergencyShutdown(bool) internal override {
+  function _emergencyShutdown(bool isAAWithdrawAllowed) internal override {
     // prevent deposits
     if (!paused()) {
       _pause();
     }
-    // prevent withdraws requests
-    allowAAWithdrawRequest = false;
+    // allow only AA withdrawal requests when requested by parent loss handling
+    allowAAWithdrawRequest = isAAWithdrawAllowed;
     allowBBWithdrawRequest = false;
     // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
     // without checking for lending protocol default
@@ -696,12 +692,6 @@ contract IdleCDOEpochVariant is IdleCDO {
     return IdleCreditVault(strategy).pendingInstantWithdraws();
   }
 
-  /// @notice Burn strategy tokens held by this contract to decrease tranche price
-  /// @param _amount Amount of strategy tokens (1:1 with underlyings) to burn
-  function _burnStrategyTokens(uint256 _amount) private {
-    IdleCreditVault(strategy).burnStrategyTokens(_amount);
-  }
-
   /// @notice Calculate the interest of an epoch for a withdraw request
   /// @dev to avoid having funds not getting interest during buffer period, the apr 
   /// set in the stopEpoch is higher than then intended one so it will cover also the buffer period
@@ -792,7 +782,7 @@ contract IdleCDOEpochVariant is IdleCDO {
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
-    _burnStrategyTokens(_underlyings);
+    IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
 
     // remove the interest + fee from expectedEpochInterest
     expectedEpochInterest -= interest;
@@ -827,20 +817,20 @@ contract IdleCDOEpochVariant is IdleCDO {
   ///
 
   /// NOTE: normal withdraw are not allowed
-  function withdrawAA(uint256) external override returns (uint256) {}
-  function withdrawBB(uint256) external override returns (uint256) {}
+  function withdrawAA(uint256) external pure override returns (uint256) {}
+  function withdrawBB(uint256) external pure override returns (uint256) {}
   function _withdraw(uint256, address) override pure internal returns (uint256) {}
-  function setAllowAAWithdraw(bool) external override {}
-  function setAllowBBWithdraw(bool) external override {}
-  function liquidate(uint256, bool) external override returns (uint256) {}
-  function _liquidate(uint256, bool) internal override returns (uint256) {}
-  function setRevertIfTooLow(bool) external override {}
-  function setLiquidationTolerance(uint256) external override {}
+  function setAllowAAWithdraw(bool) external pure override {}
+  function setAllowBBWithdraw(bool) external pure override {}
+  function liquidate(uint256, bool) external pure override returns (uint256) {}
+  function _liquidate(uint256, bool) internal pure override returns (uint256) {}
+  function setRevertIfTooLow(bool) external pure override {}
+  function setLiquidationTolerance(uint256) external pure override {}
 
   /// NOTE: strategy price is alway equal to 1 underlying
-  function _checkDefault() override internal {}
-  function setSkipDefaultCheck(bool) external override {}
-  function setMaxDecreaseDefault(uint256) external override {}
+  function _checkDefault() override internal pure {}
+  function setSkipDefaultCheck(bool) external pure override {}
+  function setMaxDecreaseDefault(uint256) external pure override {}
 
   /// NOTE: harvest is not performed to transfer funds to the strategy (startEpoch is used)
   function harvest(
@@ -849,14 +839,14 @@ contract IdleCDOEpochVariant is IdleCDO {
     uint256[] calldata,
     uint256[] calldata,
     bytes[] calldata
-  ) public override returns (uint256[][] memory) {}
+  ) public pure override returns (uint256[][] memory) {}
 
   /// NOTE: there are no rewards to sell nor incentives
   function _sellAllRewards(IIdleCDOStrategy, uint256[] memory, uint256[] memory, bool[] memory, bytes memory)
-    internal override returns (uint256[] memory, uint256[] memory, uint256) {}
+    internal pure override returns (uint256[] memory, uint256[] memory, uint256) {}
   function _sellReward(address, bytes memory, uint256, uint256)
-    internal override returns (uint256, uint256) {}
-  function setReleaseBlocksPeriod(uint256) external override {}
+    internal pure override returns (uint256, uint256) {}
+  function setReleaseBlocksPeriod(uint256) external pure override {}
   function _lockedRewards() internal view override returns (uint256) {}
 
   /// NOTE: fees are not deposited in this contract

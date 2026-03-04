@@ -914,6 +914,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// the loss for junior holders
   function updateAccounting() external {
     _checkOnlyOwnerOrGuardian();
+    _forceUpdateAccounting();
+  }
+
+  /// @notice force accounting update without reverting on default path
+  function _forceUpdateAccounting() internal {
     skipDefaultCheck = true;
     _updateAccounting();
     // _updateAccounting can set `skipDefaultCheck` to true in case of default
