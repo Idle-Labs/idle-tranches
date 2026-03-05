@@ -385,6 +385,10 @@ contract IdleCDOEpochVariant is IdleCDO {
 
   /// @notice Stop epoch and set new duration
   /// @dev see stopEpoch and setEpochParams for more details, bufferPeriod is not modified
+  /// Loss accounting policy for `_lossAmount`:
+  /// - loss is applied only after `stopEpoch` finishes funding normal withdraw receipts
+  /// - as a consequence, already-minted pending withdraw receipts are not haircut by `_lossAmount`
+  /// - if `stopEpoch` defaults (`defaulted = true`), the post-stop loss burn is skipped
   /// @param _newApr New apr to set for the next epoch
   /// @param _interest Interest gained in the epoch
   /// @param _duration New epoch duration

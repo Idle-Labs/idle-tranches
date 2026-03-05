@@ -3774,6 +3774,124 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpochWithDuration(0, 0, duration, tooLargeLoss);
   }
 
+  function testStopEpochWithDurationLossWithMintedInterest() external {
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 overrideInterest = 1_000 * ONE_SCALE;
+    uint256 lossAmount = 400 * ONE_SCALE;
+    uint256 contractValuePre = cdoEpoch.getContractValue();
+    uint256 strategyBalPre = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, overrideInterest, duration, lossAmount);
+
+    uint256 contractValuePost = cdoEpoch.getContractValue();
+    uint256 strategyBalPost = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
+    uint256 priceAAPost = cdoEpoch.virtualPrice(address(AAtranche));
+
+    assertEq(contractValuePost, contractValuePre + overrideInterest - lossAmount, 'contract value mismatch');
+    assertEq(strategyBalPost - strategyBalPre, overrideInterest - lossAmount, 'strategy token delta mismatch');
+    assertGt(priceAAPost, priceAAPre, 'AA price should still increase with positive net interest');
+    assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted');
+  }
+
+  function testStopEpochWithDurationLossWithApr0PendingWithdraws() external {
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+
+    address user1 = makeAddr('apr0-loss-user1');
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _transferBurnedTrancheTokens(address(this), true);
+    _depositWithUser(user1, 5_000 * ONE_SCALE, true);
+
+    // epoch 0 with apr = 0
+    _startEpochAndCheckPrices(0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    _forceLastEpochAprToZero();
+
+    uint256 principalThis = cdoEpoch.requestWithdraw(IERC20(AAtranche).balanceOf(address(this)) / 2, address(AAtranche));
+    uint256 principalUser1;
+    {
+      uint256 user1Bal = IERC20(AAtranche).balanceOf(user1);
+      vm.prank(user1);
+      principalUser1 = cdoEpoch.requestWithdraw(user1Bal / 2, address(AAtranche));
+    }
+    uint256 poolPrincipal = cdoEpoch.getContractValue();
+
+    // epoch 1: settle apr0 with override interest and realize additional loss
+    _startEpochAndCheckPrices(1);
+    assertEq(cdoEpoch.isEpochRunning(), true, 'epoch should be running before stop');
+    assertEq(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), 0, 'pending instant should be 0');
+    assertEq(IdleCreditVault(address(strategy)).unscaledApr(), 0, 'unscaledApr should be 0 for apr0 flow');
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'pending withdraw fees should be 0 for apr0 flow');
+    assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted before stop');
+    uint256 poolInterest = 1_500 * ONE_SCALE;
+    uint256 lossAmount = 300 * ONE_SCALE;
+    uint256 duration = cdoEpoch.epochDuration();
+    deal(
+      defaultUnderlying,
+      borrower,
+      poolInterest + IdleCreditVault(address(strategy)).pendingWithdraws() + 15_000 * ONE_SCALE
+    );
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, poolInterest, duration, lossAmount);
+
+    uint256 expectedThisInterest = _calcApr0NetForPrincipal(
+      poolInterest,
+      poolPrincipal,
+      principalThis + principalUser1,
+      principalThis,
+      cdoEpoch.fee()
+    );
+    uint256 expectedUser1Interest = _calcApr0NetForPrincipal(
+      poolInterest,
+      poolPrincipal,
+      principalThis + principalUser1,
+      principalUser1,
+      cdoEpoch.fee()
+    );
+
+    uint256 balThisPre = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(
+      underlying.balanceOf(address(this)) - balThisPre,
+      principalThis + expectedThisInterest,
+      5,
+      'apr0 + loss claim wrong for user this'
+    );
+
+    uint256 balUser1Pre = underlying.balanceOf(user1);
+    vm.prank(user1);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(
+      underlying.balanceOf(user1) - balUser1Pre,
+      principalUser1 + expectedUser1Interest,
+      5,
+      'apr0 + loss claim wrong for user1'
+    );
+  }
+
   function testWriteOffDeposit() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
