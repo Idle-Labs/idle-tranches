@@ -893,9 +893,11 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
 task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strategy")
   .addParam('cdoname')
   .addParam('copyname')
+  .addOptionalParam('skipverification', 'Skip Etherscan verification', false, types.boolean)
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
+    const shouldVerify = !args.skipverification;
     // Check that cdoname is passed
     if (!args.cdoname || !args.copyname) {
       console.log("🛑 cdoname and copyname must be defined");
@@ -1044,14 +1046,18 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log('Credit Vault deployed at  ', cv);
     console.log('Strategy deployed at      ', strategy);
 
-    await hre.run("verify-contract", { address: cv });
-    await hre.run("verify-contract", { address: strategy });
+    if (shouldVerify) {
+      await hre.run("verify-contract", { address: cv });
+      await hre.run("verify-contract", { address: strategy });
+    }
 
     let queue;
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
-      await hre.run("verify-contract", { address: queue });
+      if (shouldVerify) {
+        await hre.run("verify-contract", { address: queue });
+      }
     }
 
     if (hypernative) {

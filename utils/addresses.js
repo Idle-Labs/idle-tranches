@@ -1062,16 +1062,16 @@ const CDOs = {
   creditapollotestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x77764E789B0436E41bD4f7070DABee901A23bc79',
+    strategyToken: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0x439579d1987B413Ec11aDA36E466BFEAbFc24702',
+    cdoAddr: '0x95AE17A364eD1dB3e98524439ba7940c2FE8CF5b',
     proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x77764E789B0436E41bD4f7070DABee901A23bc79',
-    AATranche: '0xA15CD3034Abd5d56b1422a2a7d27e030b3BCd77A',
-    BBTranche: '0x5e198F4d908CB24a7dAB3F4f56449E5CFEd768DF',
-    writeOff: '0xCBeD5bc7Da17510557Cf12F44eB02ad0DC438810',
+    strategy: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
+    AATranche: '0x8f834F177633324c175Ee4a7f6801F0e2579838d',
+    BBTranche: '0xFaB811526e5cca4Ef3A2706b1C73C2594b9E89F7',
+    writeOff: '0xC3C9B18eFaF05aD94EC1867a677Cd8B1eaF50086',
     keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0',
-    queue: '0xf0DB13c967570E0DB9b13a44D9782308b72c4411'
+    queue: '0xc11966f3216c75e5e607ec0c23e9cdefec21cbf4'
   },
   creditgauntlettestusdc: {
     decimals: 6,
@@ -3421,7 +3421,7 @@ exports.deployTokens = {
       'owner', // owner address
       '0x69cC425B1E5f302e7Db4E5d125ab984EC5186364', // manager
       '0xB1fb045dB78FBAdE5ba7d7578133238Fd9E68801', // borrower
-      'ACRDX-test-0', // borrower name
+      'ACRDX', // borrower name
       '0', // intialApr 0
     ],
     cdo: CDOs.creditapollotestusdc,
@@ -3447,7 +3447,7 @@ exports.deployTokens = {
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
-    queue: false,
+    queue: true,
     writeoff: true,
     hypernative: false,
     proxyCdoAddress: CDOs.creditblackrockcashxtestusdc.cdoAddr
