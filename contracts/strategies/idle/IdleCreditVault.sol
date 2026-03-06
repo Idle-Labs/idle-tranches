@@ -111,12 +111,11 @@ contract IdleCreditVault is
     lastApr = _apr;
     unscaledApr = _apr;
 
-    // name will be like: Pareto Credit Vault Borrower USDC
-    // symbol will be like: BorrowerUSDC
-    string memory _symbol = IERC20Detailed(token).symbol();
+    // name will be like: Pareto Credit Vault Borrower
+    // symbol will be like: Borrower
     ERC20Upgradeable.__ERC20_init(
-      _concat(_concat(_concat(string("Pareto Credit Vault "), borrowerName), " "), _symbol),
-      _concat(borrowerName, _symbol)
+      _concat(string("Pareto Credit Vault "), borrowerName),
+      borrowerName
     );
     //------//-------//
 
@@ -150,6 +149,13 @@ contract IdleCreditVault is
   /// @param _manager address of the new manager
   function setManager(address _manager) external onlyOwner {
     manager = _manager;
+  }
+
+  /// @notice set borrower address
+  /// @param _borrower address of the new borrower
+  function setBorrower(address _borrower) external onlyOwner {
+    require(_borrower != address(0), "IS_0");
+    borrower = _borrower;
   }
 
   /// @notice set both the scaled and unscaled apr

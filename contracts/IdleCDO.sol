@@ -67,8 +67,8 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     // get strategy token symbol (eg. idleDAI)
     string memory _symbol = IERC20Detailed(_strategyToken).symbol();
     // create tranche tokens (concat strategy token symbol in the name and symbol of the tranche tokens)
-    AATranche = _deployTranche(string("Pareto AA - "), string("AA_"), _symbol);
-    BBTranche = _deployTranche(string("Pareto BB - "), string("BB_"), _symbol);
+    AATranche = _deployTranche(string("Pareto "), string("p"), _symbol);
+    BBTranche = _deployTranche(string("Pareto BB "), string("pBB_"), _symbol);
     // Set CDO params
     token = _guardedToken;
     strategy = _strategy;
@@ -856,9 +856,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   }
 
   /// @param _feeReceiver new fee receiver address
-  function setFeeReceiver(address _feeReceiver) external {
+  /// @param _fee new fee value (in % with 100000 = 100%)
+  function setFeeParams(address _feeReceiver, uint256 _fee) external {
     _checkOnlyOwner();
     _checkIs0((feeReceiver = _feeReceiver) == address(0));
+    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
   }
 
   /// @param _guardian new guardian (pauser) address
@@ -877,12 +879,6 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   function setMinAprSplitAYS(uint256 _aprSplit) external virtual {
     _checkOnlyOwner();
     _checkAmountTooHigh((minAprSplitAYS = _aprSplit) > FULL_ALLOC);
-  }
-
-  /// @param _fee new fee
-  function setFee(uint256 _fee) external {
-    _checkOnlyOwner();
-    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
   }
 
   /// @param _unlentPerc new unlent percentage
@@ -918,6 +914,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
   /// the loss for junior holders
   function updateAccounting() external {
     _checkOnlyOwnerOrGuardian();
+    _forceUpdateAccounting();
+  }
+
+  /// @notice force accounting update without reverting on default path
+  function _forceUpdateAccounting() internal {
     skipDefaultCheck = true;
     _updateAccounting();
     // _updateAccounting can set `skipDefaultCheck` to true in case of default

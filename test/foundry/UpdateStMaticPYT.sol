@@ -71,7 +71,7 @@ contract TestUpdateStMaticPYT is Test {
     // activate AYS and remove fees and unlet perc for easy testing
     vm.startPrank(idleCDO.owner());
     idleCDO.setUnlentPerc(0);
-    idleCDO.setFee(0);
+    idleCDO.setFeeParams(idleCDO.owner(), 0);
     vm.stopPrank();
 
     owner = idleCDO.owner();

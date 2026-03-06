@@ -11,6 +11,8 @@ contract IdleCDOEpochVariantBase is IdleCDOEpochVariant {
     super._additionalInit();
     // no need to set weth address as harvest is disabled
     // weth = 0x4200000000000000000000000000000000000006;
-    feeReceiver = 0xFDbB4d606C199F091143BD604C85c191a526fbd0; // treasury multisig
+    assembly {
+      sstore(feeReceiver.slot, 0xFDbB4d606C199F091143BD604C85c191a526fbd0)
+    }
   }
 }

@@ -14,12 +14,14 @@ const polygonZKContracts = addresses.IdleTokens.polygonZK;
 const optimismContracts = addresses.IdleTokens.optimism;
 const arbitrumContracts = addresses.IdleTokens.arbitrum;
 const baseContracts = addresses.IdleTokens.base;
+const avaxContracts = addresses.IdleTokens.avax;
 const mainnetCDOs = addresses.CDOs;
 const polygonCDOs = addresses.polygonCDOs;
 const polygonZKCDOs = addresses.polygonZKCDOs;
 const optimismCDOs = addresses.optimismCDOs;
 const arbitrumCDOs = addresses.arbitrumCDOs;
 const baseCDOs = addresses.baseCDOs;
+const avaxCDOs = addresses.avaxCDOs;
 const addr0 = '0x0000000000000000000000000000000000000000';
 
 const DEFAULT_HYPERNATIVE_TAG_LIST_ID = '4ad4b133-2c72-42d4-9f79-a74c9f3ba20a';
@@ -86,6 +88,16 @@ const hypernativeChainConfigs = {
       { id: '224748', description: 'base auto pause' },
     ],
   },
+  43114: {
+    label: 'Avalanche',
+    chain: 'avax',
+    notePrefix: '[AVAX] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '226568', description: 'avax watch' },
+      { id: '226569', description: 'avax auto pause' },
+    ],
+  },
 };
 
 const getHypernativeChainConfig = (chainId) => hypernativeChainConfigs[chainId];
@@ -96,6 +108,7 @@ const getNetworkCDOs = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return polygonCDOs;
   } else if (isPolygonZK) {
@@ -106,6 +119,8 @@ const getNetworkCDOs = (_hre) => {
     return arbitrumCDOs;
   } else if (isBase) {
     return baseCDOs;
+  } else if (isAvax) {
+    return avaxCDOs;
   }
   return mainnetCDOs;
 }
@@ -116,6 +131,7 @@ const getNetworkContracts = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return polygonContracts;
   } else if (isPolygonZK) {
@@ -126,6 +142,8 @@ const getNetworkContracts = (_hre) => {
     return arbitrumContracts;
   } else if (isBase) {
     return baseContracts;
+  } else if (isAvax) {
+    return avaxContracts;
   }
   return mainnetContracts;
 }
@@ -136,6 +154,7 @@ const getDeployTokens = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return addresses.deployTokensPolygon;
   } else if (isPolygonZK) {
@@ -146,6 +165,8 @@ const getDeployTokens = (_hre) => {
     return addresses.deployTokensArbitrum;
   } else if (isBase) {
     return addresses.deployTokensBase;
+  } else if (isAvax) {
+    return addresses.deployTokensAvax;
   }
   return addresses.deployTokens;
 }
@@ -453,6 +474,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
 
     const networkTokens = getDeployTokens(hre);
 
@@ -477,6 +499,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       networkCDOName = 'IdleCDOArbitrum';
     } else if (isBase) {
       networkCDOName = 'IdleCDOBase';
+    } else if (isAvax) {
+      networkCDOName = 'IdleCDOAvax';
     }
     let idleCDOAddress;
     const contractName = deployToken.cdoVariant || networkCDOName;
@@ -543,9 +567,11 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
 
     const feeReceiver = await idleCDO.feeReceiver();
-    if ((isMatic || isPolygonZK || isOptimism || isArbitrum) && feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase()) {
-      console.log('Setting fee receiver to Treasury Multisig')
-      await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
+    const cdoFee = await idleCDO.fee();
+    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fee && cdoFee.toString() != deployToken.fee.toString())) {
+      const fee = deployToken.fee ? deployToken.fee : cdoFee;
+      console.log('Setting fee params with ', networkContracts.feeReceiver, fee);
+      await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
     }
 
     if (deployToken.unlent == 0) {
@@ -567,6 +593,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantArbitrum', idleCDOAddress, signer);
       } else if (isBase) {
         cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantBase', idleCDOAddress, signer);
+      } else if (isAvax) {   
+        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantAvax', idleCDOAddress, signer);
       } else {
         cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
       }
@@ -592,9 +620,13 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
-      if (deployToken.fees) {
-        console.log(`Setting fees ${deployToken.fees}`);
-        await cdoEpoch.connect(signer).setFee(deployToken.fees);
+      if (deployToken.interestMinted) {
+        console.log(`Setting interest minted ${deployToken.interestMinted}`);
+        await cdoEpoch.connect(signer).setIsInterestMinted(deployToken.interestMinted);
+      }
+      if (deployToken.depositDuringEpoch) {
+        console.log(`Setting deposit during epoch ${deployToken.depositDuringEpoch}`);
+        await cdoEpoch.connect(signer).setIsDepositDuringEpochDisabled(!deployToken.depositDuringEpoch);
       }
       if (deployToken.queue) {
         await hre.run("deploy-queue", {
@@ -629,6 +661,7 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
     const signer = await helpers.getSigner();
 
     const cdoAddress = args.cdo;
@@ -638,7 +671,7 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     }
 
     // In mainnet
-    if (!(isMatic || isPolygonZK || isOptimism || isArbitrum || isBase)) {
+    if (!(isMatic || isPolygonZK || isOptimism || isArbitrum || isBase || isAvax)) {
       const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
       console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
       const tx = await pauseModule.updateProtectedContracts([{
@@ -972,6 +1005,10 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     }
     console.log()
 
+    console.log('Is interest minted: ', deployToken.interestMinted);
+    console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
+    console.log();
+
     // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
     const owner = networkContracts.treasuryMultisig;
     console.log('Owner of all contracts: ', owner);
@@ -988,7 +1025,9 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       keyring,
       keyringPolicy,
       keyringAllowWithdraw,
-      fees, 
+      fees,
+      isInterestMinted: deployToken.interestMinted,
+      isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     }
     const tx = await factory.connect(signer).deployCreditVault(
       cvData, 
@@ -1243,13 +1282,30 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
   .setAction(async (args) => {
-    // Run compile task
-    await run("compile");
     // Check that cdo is passed
     if (!args.cdo) {
       console.log("🛑 cdo address must be defined");
       return;
     }
+
+    const writeOffEscrowByChainId = {
+      1: 'IdleCreditVaultWriteOffEscrow',
+      10: null,
+      137: null,
+      1101: null,
+      42161: null,
+      8453: null,
+      43114: 'IdleCreditVaultWriteOffEscrowAvax',
+    };
+    const chainId = Number(hre.network.config.chainId);
+    const contractName = writeOffEscrowByChainId[chainId];
+    if (!contractName) {
+      console.log('contract not available for this network');
+      return;
+    }
+
+    // Run compile task
+    await run("compile");
 
     // Get signer
     const signer = await helpers.getSigner();
@@ -1265,11 +1321,11 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
       args.isaa || true
     ];
 
-    console.log('Params for IdleCreditVaultWriteOffEscrow', params);
+    console.log(`Params for ${contractName}`, params);
 
     // Deploy write off escrow contract
     const queue = await helpers.deployUpgradableContract(
-      'IdleCreditVaultWriteOffEscrow',
+      contractName,
       params,
       signer
     );
@@ -1302,7 +1358,7 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
 
 /**
  * @name deploy-cv-factory
- * task to deploy ProxyAdmin
+ * task to deploy IdleCreditVaultFactory
  */
 task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
   .setAction(async (args) => {
@@ -1316,14 +1372,19 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`Deploying IdleCreditVaultFactory with ${addr}`);
     console.log()
 
-    const creditVaultFactory = await helpers.deployContract('IdleCreditVaultFactory', [], signer);
-    console.log(`IdleCreditVaultFactory deployed at ${creditVaultFactory.address}`);
+    const creditVaultFactory = await helpers.deployUpgradableContract('IdleCreditVaultFactory', [], signer);
+    const implementation = await getImplementationAddress(hre.ethers.provider, creditVaultFactory.address);
+
+    console.log(`IdleCreditVaultFactory proxy deployed at ${creditVaultFactory.address}`);
+    console.log(`IdleCreditVaultFactory implementation deployed at ${implementation}`);
 
     await run("verify:verify", {
       constructorArguments: [],
-      address: creditVaultFactory.address,
+      address: implementation,
       contract: "contracts/IdleCreditVaultFactory.sol:IdleCreditVaultFactory"
     });
+
+    return creditVaultFactory;
 });
 
 /**
