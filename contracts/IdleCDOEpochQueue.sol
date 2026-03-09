@@ -2,6 +2,7 @@
 pragma solidity 0.8.10;
 
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
+import {IdleCDOEpochVariantPrefunded} from "./IdleCDOEpochVariantPrefunded.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -33,7 +34,8 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   mapping(address => mapping (uint256 => uint256)) public userDepositsEpochs;
   /// @notice mapping of tranche price per epoch
   mapping(uint256 => uint256) public epochPrice;
-  /// @notice amount of pending deposits (underlyings) per epoch
+  /// @notice amount of queued deposits (underlyings) still held by this queue per epoch
+  /// @dev In prefunded mode this is set to 0 as soon as deposits are forwarded to the borrower.
   mapping(uint256 => uint256) public epochPendingDeposits;
   /// @notice mapping of withdraw requests (tranche tokens) per user per epoch
   mapping(address => mapping (uint256 => uint256)) public userWithdrawalsEpochs;
@@ -47,6 +49,12 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   mapping(uint256 => bool) public isEpochInstant;
   /// @notice flag to check if there are pending claims
   bool public pendingClaims;
+  /// @notice amount of queued deposits already forwarded to the borrower per epoch
+  /// @dev Used only by the prefunded flow. For a given epoch this is mutually exclusive with
+  /// `epochPendingDeposits`: funds are either still held by the queue or already prefunded.
+  mapping(uint256 => uint256) public epochPrefundedDeposits;
+  /// @notice cutoff window before epoch end during which prefunded queues block new deposits
+  uint256 public prefundedDepositWindow;
 
   /// @notice initialize the implementation contract to avoid malicious initialization
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -63,9 +71,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     address _owner,
     bool _isAATranche
   ) external initializer {
-    if (idleCDOEpoch != address(0)) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(idleCDOEpoch != address(0));
     OwnableUpgradeable.__Ownable_init();
     ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
 
@@ -81,15 +87,34 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     transferOwnership(_owner);
   }
 
+  /// @notice set the cutoff window before epoch end for prefunded queue deposits
+  /// @dev Eg 5 days means deposits are accepted only until `epochEndDate - 5 days`
+  function setPrefundedDepositWindow(uint256 _prefundedDepositWindow) external {
+    // only owner or strategy manager can update the prefunded deposit cutoff
+    _checkOnlyOwnerOrManager();
+    prefundedDepositWindow = _prefundedDepositWindow;
+  }
+
   /// @notice deposit tokens to be processed in the buffer period
   /// @param amount of underlyings to deposit
   function requestDeposit(uint256 amount) external nonReentrant {
     // check if the wallet is allowed to deposit (ie epoch is running and keyring KYC completed)
     _checkAllowed(msg.sender);
+
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    uint256 nextEpoch = IdleCreditVault(strategy).epochNumber() + 1;
+    uint256 _prefundedWindow = prefundedDepositWindow;
+    // Only the AA prefunded queue enforces a deposit cutoff for the next epoch.
+    if (tranche == _cdo.AATranche() && _isPrefundedQueueEnabled()) {
+      // Once funds are prefunded, or once the subscription window is reached, the next epoch is closed.
+      _checkNotAllowed(epochPrefundedDeposits[nextEpoch] != 0 || (
+        _prefundedWindow != 0 && block.timestamp + _prefundedWindow >= _cdo.epochEndDate()
+      ));
+    }
+
     // get underlying tokens from user
     IERC20Detailed(underlying).safeTransferFrom(msg.sender, address(this), amount);
     // deposit will be made in the next buffer period (ie next epoch)
-    uint256 nextEpoch = IdleCreditVault(strategy).epochNumber() + 1;
     // updated user queued amount for the next epoch
     userDepositsEpochs[msg.sender][nextEpoch] += amount;
     // update pending deposits
@@ -112,15 +137,42 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     epochPendingWithdrawals[nextEpoch] += amount;
   }
 
+  /// @notice Send all queued deposits for the next epoch to the borrower before epoch stop
+  /// @dev This switches the epoch from "pending in queue" to "prefunded to borrower".
+  /// After this call, no additional deposits can join the same epoch.
+  function processDepositsToBorrower() external {
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    // only owner or strategy manager can move queued funds to the borrower
+    _checkOnlyOwnerOrManager();
+    // prefunded flow is supported only for AA queue
+    // queue must be explicitly enabled on the prefunded CDO variant
+    _checkNotAllowed(tranche != _cdo.AATranche() || !_isPrefundedQueueEnabled());
+
+    // prefunding can be done only while epoch is running
+    if (!_cdo.isEpochRunning()) {
+      revert EpochNotRunning();
+    }
+
+    uint256 _epoch = _strategy.epochNumber() + 1;
+    // prefunding can happen only once for an epoch
+    _checkNotAllowed(epochPrefundedDeposits[_epoch] != 0);
+    uint256 _pending = epochPendingDeposits[_epoch];
+    if (_pending == 0) {
+      return;
+    }
+
+    epochPendingDeposits[_epoch] = 0;
+    epochPrefundedDeposits[_epoch] = _pending;
+    IERC20Detailed(underlying).safeTransfer(_strategy.borrower(), _pending);
+  }
+
   /// @notice delete a deposit request
   /// @param _requestEpoch epoch of the deposit request
   function deleteRequest(uint256 _requestEpoch) external {
     // if the epoch price is already set, deposits were already processed so
     // the deposit request can't be deleted.
-    // if epoch is running revert, delete of deposits requests can be done only during buffer period
-    if (epochPrice[_requestEpoch] != 0 || IdleCDOEpochVariant(idleCDOEpoch).isEpochRunning()) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(epochPrice[_requestEpoch] != 0 || epochPrefundedDeposits[_requestEpoch] != 0);
 
     uint256 amount = userDepositsEpochs[msg.sender][_requestEpoch];
     if (amount == 0) {
@@ -139,9 +191,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   function deleteWithdrawRequest(uint256 _requestEpoch) external {
     // if the epoch withdraw price is already set, withdrawal requests were already processed so
     // the withdraw request can't be deleted. Withdraw requests can be deleted even if the epoch is running
-    if (epochWithdrawPrice[_requestEpoch] != 0) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(epochWithdrawPrice[_requestEpoch] != 0);
 
     uint256 amount = userWithdrawalsEpochs[msg.sender][_requestEpoch];
     if (amount == 0) {
@@ -158,14 +208,13 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @notice process deposits during buffer period. Only owner or strategy manager can call this
   /// @dev will revert in IdleCDOEpochVariant if called when epoch running
   function processDeposits() external {
-    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
-    // only owner or strategy manager can call this
-    if (msg.sender != owner() && msg.sender != _strategy.manager()) {
-      revert NotAllowed();
-    }
+    // only owner or strategy manager can process deposits
+    _checkOnlyOwnerOrManager();
+    // prefunded-enabled queues do not use the old buffer-period processing path
+    _checkNotAllowed(_isPrefundedQueueEnabled());
 
-    uint256 _epoch = _strategy.epochNumber();
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    uint256 _epoch = IdleCreditVault(strategy).epochNumber();
     uint256 _pending = epochPendingDeposits[_epoch];
 
     if (_pending == 0) {
@@ -184,6 +233,29 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     epochPendingDeposits[_epoch] = 0;
   }
 
+  /// @notice Process deposits for prefunded flow (called atomically from stopEpoch on prefunded variant)
+  /// @param _prefundedMinted tranche tokens minted in CDO for prefunded amount
+  function processPrefundedDeposits(uint256 _prefundedMinted) external {
+    IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
+    IdleCreditVault _strategy = IdleCreditVault(strategy);
+    _checkNotAllowed(
+      // final prefunded settlement is driven only by stopEpoch on the prefunded variant
+      msg.sender != idleCDOEpoch ||
+      // prefunded flow is supported only for AA queue
+      tranche != _cdo.AATranche() ||
+      // queue must be explicitly enabled on the prefunded CDO variant
+      !_isPrefundedQueueEnabled()
+    );
+
+    uint256 _epoch = _strategy.epochNumber();
+    // in prefunded mode stopEpoch must not leave queue-held deposits behind
+    // and must pass the minted tranche amount for the prefunded funds
+    _checkNotAllowed(epochPendingDeposits[_epoch] != 0 || _prefundedMinted == 0);
+    // save epoch price for the prefunded deposits based on underlyings deposited and tranche tokens minted
+    epochPrice[_epoch] = epochPrefundedDeposits[_epoch] * ONE_TRANCHE / _prefundedMinted;
+    epochPrefundedDeposits[_epoch] = 0;
+  }
+
   /// @notice process withdraw requests during buffer period. Only owner or strategy manager can call this
   /// @dev will revert in IdleCDOEpochVariant if called when epoch running. Note that withdrawals are a 2-step 
   /// process where first one request the withdrawl and then he claims the withdraw after an epoch is passed.
@@ -194,10 +266,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     IdleCreditVault _strategy = IdleCreditVault(strategy);
     uint256 _epoch = _strategy.epochNumber();
     // only owner or strategy manager can call this
+    _checkOnlyOwnerOrManager();
     // we revert if the are claims that needs to be processed
-    if ((msg.sender != owner() && msg.sender != _strategy.manager()) || pendingClaims) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(pendingClaims);
 
     uint256 _pending = epochPendingWithdrawals[_epoch];
     if (_pending == 0) {
@@ -230,9 +301,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   function processWithdrawalClaims(uint256 _epoch) external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
     // only owner or strategy manager can call this
-    if (msg.sender != owner() && msg.sender != IdleCreditVault(strategy).manager()) {
-      revert NotAllowed();
-    }
+    _checkOnlyOwnerOrManager();
 
     uint256 _pending = epochPendingClaims[_epoch];
     if (_pending == 0) {
@@ -267,10 +336,13 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @notice claim deposit request
   /// @param _epoch epoch of the deposit request
   function claimDepositRequest(uint256 _epoch) external {
-    // check if deposits were processed for the epoch
-    if (epochPendingDeposits[_epoch] != 0) {
-      revert NotAllowed();
-    }
+    // Deposits can be claimed only after the epoch has been finalized and priced.
+    _checkNotAllowed(
+      epochPrice[_epoch] == 0 ||
+      epochPendingDeposits[_epoch] != 0 ||
+      epochPrefundedDeposits[_epoch] != 0
+    );
+
     uint256 amount = userDepositsEpochs[msg.sender][_epoch];
     if (amount == 0) {
       return;
@@ -285,9 +357,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @param _epoch epoch when withdraw request were processed
   function claimWithdrawRequest(uint256 _epoch) external {
     // check if withdraw requests were processed and claimed for the epoch
-    if (epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch] != 0) {
-      revert NotAllowed();
-    }
+    _checkNotAllowed(epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch] != 0);
     // amount is in tranche tokens
     uint256 amount = userWithdrawalsEpochs[msg.sender][_epoch];
     if (amount == 0) {
@@ -306,8 +376,27 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     if (!cdoEpoch.isEpochRunning()) {
       revert EpochNotRunning();
     }
-    if (!cdoEpoch.isWalletAllowed(wallet)) {
+    _checkNotAllowed(!cdoEpoch.isWalletAllowed(wallet));
+  }
+
+  /// @notice check if the caller is owner or strategy manager
+  function _checkOnlyOwnerOrManager() internal view {
+    _checkNotAllowed(msg.sender != owner() && msg.sender != IdleCreditVault(strategy).manager());
+  }
+
+  /// @notice check if a condition is not allowed
+  /// @param condition boolean condition to check
+  function _checkNotAllowed(bool condition) internal pure {
+    if (condition) {
       revert NotAllowed();
     }
+  }
+
+  /// @notice check if this queue is enabled as prefunded queue in cdo variant
+  function _isPrefundedQueueEnabled() internal view returns (bool _isEnabled) {
+    // Non-prefunded variants do not expose `epochQueue()`, so treat that case as disabled.
+    try IdleCDOEpochVariantPrefunded(idleCDOEpoch).epochQueue() returns (address _epochQueue) {
+      _isEnabled = _epochQueue == address(this);
+    } catch {}
   }
 }

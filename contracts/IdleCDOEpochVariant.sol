@@ -393,7 +393,11 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _interest Interest gained in the epoch
   /// @param _duration New epoch duration
   /// @param _lossAmount Amount of strategy tokens to burn as realized loss
-  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) external {
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) external virtual {
+    _stopEpochWithDuration(_newApr, _interest, _duration, _lossAmount);
+  }
+
+  function _stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) internal {
     // stop epoch checks that msg.sender is allowed
     stopEpoch(_newApr, _interest);
     if (_lossAmount > 0 && !defaulted) {
