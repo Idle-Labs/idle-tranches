@@ -234,10 +234,10 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   }
 
   /// @notice Process deposits for prefunded flow (called atomically from stopEpoch on prefunded variant)
+  /// @param _epoch epoch being finalized for the prefunded queue
   /// @param _prefundedMinted tranche tokens minted in CDO for prefunded amount
-  function processPrefundedDeposits(uint256 _prefundedMinted) external {
+  function processPrefundedDeposits(uint256 _epoch, uint256 _prefundedMinted) external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
-    IdleCreditVault _strategy = IdleCreditVault(strategy);
     _checkNotAllowed(
       // final prefunded settlement is driven only by stopEpoch on the prefunded variant
       msg.sender != idleCDOEpoch ||
@@ -247,7 +247,6 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       !_isPrefundedQueueEnabled()
     );
 
-    uint256 _epoch = _strategy.epochNumber();
     // in prefunded mode stopEpoch must not leave queue-held deposits behind
     // and must pass the minted tranche amount for the prefunded funds
     _checkNotAllowed(epochPendingDeposits[_epoch] != 0 || _prefundedMinted == 0);

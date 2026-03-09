@@ -277,7 +277,7 @@ contract TestIdleCDOEpochQueue is Test {
   function testProcessPrefundedDepositsOnlyCdoCanCall() external {
     vm.prank(manager);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    queue.processPrefundedDeposits(1);
+    queue.processPrefundedDeposits(1, 1);
   }
 
   /// @notice prefunded deposits cannot be forwarded once the epoch has already been stopped

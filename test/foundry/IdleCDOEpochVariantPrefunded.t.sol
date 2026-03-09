@@ -118,8 +118,8 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     assertEq(queue.epochPrice(requestEpoch), 0, "epoch price should not be set");
   }
 
-  /// @notice borrower default must skip prefunded queue settlement even when the queue is configured
-  function testStopEpochWithDefaultSkipsPrefundedQueueSettlement() external {
+  /// @notice borrower default still settles prefunded deposits because funds already reached the borrower
+  function testStopEpochWithDefaultStillProcessesPrefundedQueue() external {
     uint256 amount = 1e6;
     uint256 interest = 1000 * 1e6;
     address user1 = makeAddr("user1");
@@ -151,9 +151,24 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
 
     assertEq(cdoEpoch.defaulted(), true, "pool should default");
     assertEq(queue.epochPendingDeposits(requestEpoch), 0, "pending deposits should stay moved out of the queue");
-    assertEq(queue.epochPrefundedDeposits(requestEpoch), amount, "prefunded deposits should remain pending");
-    assertEq(queue.epochPrice(requestEpoch), 0, "epoch price should not be set on default");
-    assertEq(tranche.balanceOf(address(queue)), 0, "queue should not receive tranche tokens on default");
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, "prefunded deposits should be settled");
+
+    uint256 epochPrice = queue.epochPrice(requestEpoch);
+    assertTrue(epochPrice != 0, "epoch price should be set on default");
+    assertEq(
+      tranche.balanceOf(address(queue)),
+      amount * ONE_TRANCHE / epochPrice,
+      "queue should receive tranche tokens on default"
+    );
+
+    uint256 user1BalPre = tranche.balanceOf(user1);
+    vm.prank(user1);
+    queue.claimDepositRequest(requestEpoch);
+    assertEq(
+      tranche.balanceOf(user1) - user1BalPre,
+      amount * ONE_TRANCHE / epochPrice,
+      "user1 claim amount is wrong on default"
+    );
   }
 
   function _requestDepositWithUser(address _user, uint256 _amount) internal {
