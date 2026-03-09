@@ -3,7 +3,7 @@ pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {IdleCDOEpochVariant, IdleCDO} from "./IdleCDOEpochVariant.sol";
+import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOEpochQueue} from "./IdleCDOEpochQueue.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 
@@ -102,7 +102,6 @@ contract IdleCreditVaultFactory is Initializable {
     IdleCreditVault strategy,
     CreditVaultParams memory par
   ) internal {
-    cv.setUnlentPerc(0);
     cv.setEpochParams(par.epochDuration, par.bufferPeriod);
     cv.setInstantWithdrawParams(par.instantWithdrawDelay, par.instantWithdrawAprDelta, par.disableInstantWithdraw);
     cv.setKeyringParams(par.keyring, par.keyringPolicy, par.keyringAllowWithdraw);

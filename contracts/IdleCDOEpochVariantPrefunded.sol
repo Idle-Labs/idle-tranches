@@ -26,8 +26,8 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
   /// @inheritdoc IdleCDOEpochVariant
   /// @dev After the base epoch stop logic runs, this variant also settles AA deposits that were
   /// already prefunded to the borrower through the queue, even if the borrower defaulted at stop.
-  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) external override {
-    _stopEpochWithDuration(_newApr, _interest, _duration, _lossAmount);
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public override {
+    super.stopEpochWithDuration(_newApr, _interest, _duration, _lossAmount);
 
     address _queue = epochQueue;
     if (_queue != address(0)) {

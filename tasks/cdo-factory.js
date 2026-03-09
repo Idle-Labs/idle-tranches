@@ -574,7 +574,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
     }
 
-    if (deployToken.unlent == 0) {
+    if (deployToken.unlent == 0 && !deployToken.isCreditVault) {
       console.log('Setting unlent to 0')
       await idleCDO.connect(signer).setUnlentPerc(0);
     }

@@ -4,6 +4,7 @@ pragma solidity 0.8.10;
 import "./TestIdleCDOLossMgmt.sol";
 
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
+import {IdleCDOCreditVault} from "../../contracts/IdleCDOCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantPrefunded.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
@@ -25,6 +26,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   address internal defaultUnderlying = USDC;
   IdleCDOEpochVariant internal cdoEpoch;
+  IdleCDOCreditVault internal creditVaultBase;
   uint256 internal initialProvidedApr = 10e18;
 
   event AccrueInterest(uint256 interest, uint256 fees);
@@ -37,7 +39,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _deployCDO() internal override returns (IdleCDO _cdo) {
-    _cdo = new IdleCDOEpochVariant();
+    _cdo = IdleCDO(address(new IdleCDOEpochVariant()));
   }
 
   function _deployStrategy(address _owner)
@@ -78,7 +80,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(_owner);
     _cdo.setIsAYSActive(true);
-    _cdo.setUnlentPerc(0);
     _cdo.setFeeParams(TL_MULTISIG, 0);
     vm.stopPrank();
 
@@ -89,6 +90,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(_owner);
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     cv.setWhitelistedCDO(_cdo);
+    creditVaultBase = IdleCDOCreditVault(_cdo);
     /// borrower must approve CDO to withdraw funds
     vm.prank(borrower);
     IERC20Detailed(defaultUnderlying).approve(_cdo, type(uint256).max);
@@ -114,6 +116,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function _scaleAprWithBuffer(uint256 _apr) internal view returns (uint256) {
     uint256 _duration = cdoEpoch.epochDuration();
     return _apr * (_duration + cdoEpoch.bufferPeriod()) / _duration;
+  }
+
+  /// @notice Credit vaults do not use the legacy IdleCDO harvest path.
+  /// @dev Deposits are already invested directly, so inherited harvest-based tests only need a no-op hook.
+  function _cdoHarvest(bool _skipRewards) internal pure override {
+    _skipRewards;
   }
 
   function _donateToken(address to, uint256 amount) internal override {
@@ -171,6 +179,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testContractSize() public view {
+    bytes memory runtime0 = vm.getDeployedCode("out/IdleCDOCreditVault.sol/IdleCDOCreditVault.json");
+    console2.log("base size", runtime0.length);
     bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariant.sol/IdleCDOEpochVariant.json");
     assertLt(runtime.length, 24_576, "IdleCDOEpochVariant deployed bytecode too large");
     console2.log('size ', runtime.length);
@@ -221,7 +231,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.requestWithdraw(0, address(BBtranche));
   }
 
-  // @notice normal redeems are blocked
+  // @notice normal redeem selectors are not part of the credit vault runtime
   function testRedeems() external override {
     uint256 amount = 1 * ONE_SCALE;
     uint256 mintedAA = idleCDO.depositAA(amount);
@@ -236,10 +246,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // stop epoch
     _toggleEpoch(false, 1e18, 1e18);
 
-    // nothing happens if normal withdraw is triggered
-    idleCDO.withdrawAA(0);
+    // Credit vaults use request/claim flows only, so direct redeem selectors should be absent.
+    (bool successAA,) = address(creditVaultBase).call(abi.encodeWithSignature("withdrawAA(uint256)", 0));
+    assertFalse(successAA, "withdrawAA selector should not exist");
     assertEq(mintedAA, IERC20(AAtranche).balanceOf(address(this)), "AAtranche balance changed");
-    idleCDO.withdrawBB(0);
+    (bool successBB,) = address(creditVaultBase).call(abi.encodeWithSignature("withdrawBB(uint256)", 0));
+    assertFalse(successBB, "withdrawBB selector should not exist");
     assertEq(mintedBB, IERC20(BBtranche).balanceOf(address(this)), "BBtranche balance changed");
   }
 

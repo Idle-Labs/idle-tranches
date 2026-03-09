@@ -276,6 +276,9 @@ contract TestIdleCDOEpochQueue is Test {
 
   function testProcessPrefundedDepositsOnlyCdoCanCall() external {
     vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+
+    vm.prank(manager);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     queue.processPrefundedDeposits(1, 1);
   }

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
-import {IdleCDO} from "./IdleCDO.sol";
+import {IdleCDOCreditVault} from "./IdleCDOCreditVault.sol";
 import {IKeyring} from "./interfaces/keyring/IKeyring.sol";
-import {IdleCDOTranche} from "./IdleCDOTranche.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
-import {IIdleCDOStrategy} from "./interfaces/IIdleCDOStrategy.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 error EpochRunning();
@@ -20,7 +18,7 @@ error Default();
 /// withdrawals that will be fullfilled when the epoch starts and after instantWithdrawDelay (3 days).
 /// Funds for instant and normal withdrawals are sent to the strategy contract (IdleCreditVault)
 /// @custom:oz-upgrades-unsafe-allow missing-initializer
-contract IdleCDOEpochVariant is IdleCDO {
+contract IdleCDOEpochVariant is IdleCDOCreditVault {
   using SafeERC20Upgradeable for IERC20Detailed;
 
   /// @notice flag to check if epoch is running
@@ -393,11 +391,7 @@ contract IdleCDOEpochVariant is IdleCDO {
   /// @param _interest Interest gained in the epoch
   /// @param _duration New epoch duration
   /// @param _lossAmount Amount of strategy tokens to burn as realized loss
-  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) external virtual {
-    _stopEpochWithDuration(_newApr, _interest, _duration, _lossAmount);
-  }
-
-  function _stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) internal {
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public virtual {
     // stop epoch checks that msg.sender is allowed
     stopEpoch(_newApr, _interest);
     if (_lossAmount > 0 && !defaulted) {
@@ -516,12 +510,12 @@ contract IdleCDOEpochVariant is IdleCDO {
   ///
 
   /// @notice Deposit funds in the vault. Overrides the parent method and adds a check for wallet 
-  function _deposit(uint256 _amount, address _tranche, address _referral) internal override whenNotPaused returns (uint256) {
+  function _deposit(uint256 _amount, address _tranche) internal override whenNotPaused returns (uint256) {
     _checkNotAllowed(!isWalletAllowed(msg.sender));
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
     _skimDonatedAssets();
     // do the inherited deposit flow
-    return super._deposit(_amount, _tranche, _referral);
+    return super._deposit(_amount, _tranche);
   }
 
   /// @notice Deposit during an active epoch with prorated interest
@@ -819,55 +813,4 @@ contract IdleCDOEpochVariant is IdleCDO {
     address _keyring = keyring;
     return _keyring == address(0) || IKeyring(_keyring).checkCredential(keyringPolicyId, _user);
   }
-
-  /// 
-  /// Overridden method not used in this contract (to reduce bytcode size)
-  ///
-
-  /// NOTE: normal withdraw are not allowed
-  function withdrawAA(uint256) external pure override returns (uint256) {}
-  function withdrawBB(uint256) external pure override returns (uint256) {}
-  function _withdraw(uint256, address) override pure internal returns (uint256) {}
-  function setAllowAAWithdraw(bool) external pure override {}
-  function setAllowBBWithdraw(bool) external pure override {}
-  function liquidate(uint256, bool) external pure override returns (uint256) {}
-  function _liquidate(uint256, bool) internal pure override returns (uint256) {}
-  function setRevertIfTooLow(bool) external pure override {}
-  function setLiquidationTolerance(uint256) external pure override {}
-
-  /// NOTE: strategy price is alway equal to 1 underlying
-  function _checkDefault() override internal pure {}
-  function setSkipDefaultCheck(bool) external pure override {}
-  function setMaxDecreaseDefault(uint256) external pure override {}
-
-  /// NOTE: harvest is not performed to transfer funds to the strategy (startEpoch is used)
-  function harvest(
-    bool[] calldata,
-    bool[] calldata,
-    uint256[] calldata,
-    uint256[] calldata,
-    bytes[] calldata
-  ) public pure override returns (uint256[][] memory) {}
-
-  /// NOTE: there are no rewards to sell nor incentives
-  function _sellAllRewards(IIdleCDOStrategy, uint256[] memory, uint256[] memory, bool[] memory, bytes memory)
-    internal pure override returns (uint256[] memory, uint256[] memory, uint256) {}
-  function _sellReward(address, bytes memory, uint256, uint256)
-    internal pure override returns (uint256, uint256) {}
-  function setReleaseBlocksPeriod(uint256) external pure override {}
-  function _lockedRewards() internal view override returns (uint256) {}
-
-  /// NOTE: fees are not deposited in this contract
-  function _depositFees() internal override {}
-  function depositBBRef(uint256, address) external override returns (uint256) {}
-  function depositAARef(uint256, address) external override returns (uint256) {}
-
-  /// NOTE: unlent perc should always be 0 and set in additionalInit
-  function setUnlentPerc(uint256) external override {}
-
-  /// NOTE: the vault is either a single tranche (ie all interest to senior and set in additionalInit) or AYS is active
-  function setTrancheAPRSplitRatio(uint256) external override {}
-
-  /// NOTE: rebalancer is not used
-  function setRebalancer(address _rebalancer) external override {}
 }
