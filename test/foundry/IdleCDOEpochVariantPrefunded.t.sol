@@ -105,6 +105,16 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     );
   }
 
+  function testStopEpochRevertsWhenQueueConfigured() external {
+    vm.prank(manager);
+    cdoEpoch.setEpochQueue(address(queue));
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.stopEpoch(0, 0);
+  }
+
   function testStopEpochWithoutQueueConfigurationDoesNotProcessDeposits() external {
     uint256 amount = 1e6;
     address user1 = makeAddr("user1");

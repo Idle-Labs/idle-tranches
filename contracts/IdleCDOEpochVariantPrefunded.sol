@@ -24,6 +24,15 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
   }
 
   /// @inheritdoc IdleCDOEpochVariant
+  /// @dev When prefunded processing is configured, managers must use `stopEpochWithDuration`
+  /// so the queue settlement hook always runs after the full stop flow.
+  function stopEpoch(uint256 _newApr, uint256 _interest) public override {
+    // `stopEpochWithDuration` calls `stopEpoch` internally, so only block the direct selector path.
+    _checkNotAllowed(epochQueue != address(0) && msg.sig == this.stopEpoch.selector);
+    super.stopEpoch(_newApr, _interest);
+  }
+
+  /// @inheritdoc IdleCDOEpochVariant
   /// @dev After the base epoch stop logic runs, this variant also settles AA deposits that were
   /// already prefunded to the borrower through the queue, even if the borrower defaulted at stop.
   function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public override {

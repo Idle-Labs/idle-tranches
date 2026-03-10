@@ -255,7 +255,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// be greater than the pending withdraw fees and newApr must be 0. If `_interest` is 1 then
   /// it is interpreted as a special case where we request everything back from the borrower
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
-  function stopEpoch(uint256 _newApr, uint256 _interest) public {
+  function stopEpoch(uint256 _newApr, uint256 _interest) public virtual {
     _checkOnlyOwnerOrManager();
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);

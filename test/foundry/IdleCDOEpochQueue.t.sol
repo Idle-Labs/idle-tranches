@@ -285,13 +285,10 @@ contract TestIdleCDOEpochQueue is Test {
 
   /// @notice prefunded deposits cannot be forwarded once the epoch has already been stopped
   function testProcessDepositsToBorrowerRevertsIfEpochNotRunning() external {
-    uint256 amount = 1e6;
-    address user1 = makeAddr('user1');
+    _stopCurrentEpoch();
 
     vm.prank(manager);
     IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
-    _requestDepositWithUser(user1, amount);
-    _stopCurrentEpoch();
 
     vm.prank(manager);
     vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
@@ -317,13 +314,8 @@ contract TestIdleCDOEpochQueue is Test {
 
   /// @notice prefunded queues cannot use the normal buffer-period deposit processing path
   function testProcessDepositsRevertsWhenPrefundedQueueIsEnabled() external {
-    uint256 amount = 1e6;
-    address user1 = makeAddr('user1');
-
     vm.prank(manager);
     IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
-    _requestDepositWithUser(user1, amount);
-    _stopCurrentEpoch();
 
     vm.prank(manager);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
