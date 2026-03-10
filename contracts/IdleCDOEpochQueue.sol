@@ -162,6 +162,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       return;
     }
 
+    // Switch the epoch from "queue-held" to "already at borrower" before transferring funds.
     epochPendingDeposits[_epoch] = 0;
     epochPrefundedDeposits[_epoch] = _pending;
     IERC20Detailed(underlying).safeTransfer(_strategy.borrower(), _pending);

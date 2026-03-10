@@ -18,6 +18,8 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
 
   /// @notice set queue used for prefunded processing
   /// @param _epochQueue queue address (can be zero to disable auto processing)
+  /// @dev Operational invariant: do not change the queue after deposits were already prefunded
+  /// to the borrower and before `stopEpochWithDuration` settles that epoch.
   function setEpochQueue(address _epochQueue) external {
     _checkOnlyOwnerOrManager();
     epochQueue = _epochQueue;
