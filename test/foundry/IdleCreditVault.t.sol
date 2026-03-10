@@ -2715,6 +2715,78 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertGt(underlying.balanceOf(user1), balUser1, 'User 1 bal did not increase');
   }
 
+  function testDefaultDoesNotAutomaticallyEnableReceiptTransfers() external {
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    address user = makeAddr("user");
+
+    // Seller creates a normal withdraw receipt that becomes claimable after the next successful stop.
+    _depositWithUser(user, amountWei, true);
+    vm.prank(user);
+    uint256 claimAmount = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(user), claimAmount, "user receipt balance is wrong");
+    assertEq(IdleCreditVault(address(strategy)).withdrawsRequests(user), claimAmount, "user claim mapping is wrong");
+
+    // Create a later epoch default.
+    idleCDO.depositAA(amountWei);
+    _startEpochAndCheckPrices(1);
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+    assertTrue(cdoEpoch.defaulted(), "pool should default");
+
+    // Transfers remain disabled unless explicitly toggled after default.
+    vm.prank(user);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    IERC20Detailed(address(strategy)).transfer(makeAddr("buyer"), claimAmount);
+
+    // The original holder can still redeem the matured request because the receipt stayed put.
+    uint256 userUnderlyingPre = underlying.balanceOf(user);
+    vm.prank(user);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(user) - userUnderlyingPre, claimAmount, "user could not redeem the matured receipt");
+  }
+
+  function testManagerCanToggleReceiptTransfersOnlyAfterDefault() external {
+    uint256 amountWei = 10000 * ONE_SCALE;
+    address user = makeAddr("user");
+    address buyer = makeAddr("buyer");
+
+    _depositWithUser(user, amountWei, true);
+    vm.prank(user);
+    uint256 claimAmount = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setCanTransfer(true);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+    idleCDO.depositAA(amountWei);
+    _startEpochAndCheckPrices(1);
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+    assertTrue(cdoEpoch.defaulted(), "pool should default");
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(address(1));
+    IdleCreditVault(address(strategy)).setCanTransfer(true);
+
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setCanTransfer(true);
+    vm.prank(user);
+    IERC20Detailed(address(strategy)).transfer(buyer, claimAmount);
+
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setCanTransfer(false);
+    vm.prank(buyer);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    IERC20Detailed(address(strategy)).transfer(user, claimAmount);
+  }
+
   function testClaimInstantWithdrawRequest() external {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%

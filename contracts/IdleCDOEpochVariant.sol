@@ -468,9 +468,6 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     allowAAWithdrawRequest = false;
     allowBBWithdrawRequest = false;
 
-    // allow strategyTokens transfers 
-    IdleCreditVault(strategy).allowTransfers();
-
     emit BorrowerDefault(funds);
   }
 

@@ -17,6 +17,7 @@ interface IIdleCDOEpochVariant {
   function pendingWithdrawFees() external view returns (uint256);
   function fee() external view returns (uint256);
   function getContractValue() external view returns (uint256);
+  function defaulted() external view returns (bool);
 }
 
 error NotAllowed();
@@ -443,10 +444,14 @@ contract IdleCreditVault is
     super._transfer(sender, recipient, amount);
   }
 
-  /// @notice allow transfers of strategy tokens
-  function allowTransfers() external {
-    _onlyIdleCDO();
-    canTransfer = true;
+  /// @notice set transferability of strategy tokens after a default
+  /// @dev Manager-controlled manual switch. Transfers stay disabled by default because
+  /// claims are address-bound and moving receipts can sever redeemability.
+  function setCanTransfer(bool _canTransfer) external {
+    if (msg.sender != manager || !IIdleCDOEpochVariant(idleCDO).defaulted()) {
+      revert NotAllowed();
+    }
+    canTransfer = _canTransfer;
   }
 
   /// @notice allow to update whitelisted address
