@@ -283,6 +283,31 @@ contract TestIdleCDOEpochQueue is Test {
     queue.processPrefundedDeposits(1, 1);
   }
 
+  function testProcessPrefundedDepositsClearsPrefundedDust() external {
+    uint256 amount = 1; // dust-sized request to force manual 0-mint branch
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    _requestDepositWithUser(user1, amount);
+    uint256 requestEpoch = strategy.epochNumber() + 1;
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+    vm.prank(manager);
+    queue.processDepositsToBorrower();
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), amount, 'prefunded deposits should be set');
+
+    // Simulate zero minted shares on prefunded settlement.
+    vm.prank(address(cdoEpoch));
+    queue.processPrefundedDeposits(requestEpoch, 0);
+
+    assertEq(queue.epochPendingDeposits(requestEpoch), 0, 'pending deposits should be cleared');
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, 'prefunded deposits should be cleared');
+    assertTrue(queue.epochPrice(requestEpoch) != 0, 'epoch price should be set');
+  }
+
   /// @notice prefunded deposits cannot be forwarded once the epoch has already been stopped
   function testProcessDepositsToBorrowerRevertsIfEpochNotRunning() external {
     _stopCurrentEpoch();

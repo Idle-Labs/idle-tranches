@@ -248,11 +248,15 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       !_isPrefundedQueueEnabled()
     );
 
+    uint256 _prefunded = epochPrefundedDeposits[_epoch];
     // in prefunded mode stopEpoch must not leave queue-held deposits behind
     // and must pass the minted tranche amount for the prefunded funds
-    _checkNotAllowed(epochPendingDeposits[_epoch] != 0 || _prefundedMinted == 0);
-    // save epoch price for the prefunded deposits based on underlyings deposited and tranche tokens minted
-    epochPrice[_epoch] = epochPrefundedDeposits[_epoch] * ONE_TRANCHE / _prefundedMinted;
+    _checkNotAllowed(epochPendingDeposits[_epoch] != 0 || _prefunded == 0);
+
+    // Save epoch price for the prefunded deposits based on underlyings deposited and tranche tokens minted
+    // In case of very small prefunded deposits, it's possible that the tranche minting results in 0 shares due to rounding.
+    // This should not block epoch finalization, as the borrower already has the funds and the epoch can be priced at the current virtual price.
+    epochPrice[_epoch] = _prefundedMinted == 0 ? _cdo.virtualPrice(tranche) : _prefunded * ONE_TRANCHE / _prefundedMinted;
     epochPrefundedDeposits[_epoch] = 0;
   }
 
