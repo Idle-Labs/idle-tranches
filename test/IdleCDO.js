@@ -117,10 +117,10 @@ describe("IdleCDO", function () {
 
     expect(await idleCDO.AATranche()).to.equal(AA.address);
     expect(await idleCDO.BBTranche()).to.equal(BB.address);
-    expect(await AAERC20.symbol()).to.equal('AA_IDLEDAI');
-    expect(await AAERC20.name()).to.equal('Pareto AA - IDLEDAI');
-    expect(await BBERC20.symbol()).to.equal('BB_IDLEDAI');
-    expect(await BBERC20.name()).to.equal('Pareto BB - IDLEDAI');
+    expect(await AAERC20.symbol()).to.equal('pIDLEDAI');
+    expect(await AAERC20.name()).to.equal('Pareto IDLEDAI');
+    expect(await BBERC20.symbol()).to.equal('pBB_IDLEDAI');
+    expect(await BBERC20.name()).to.equal('Pareto BB IDLEDAI');
     expect(await idleCDO.token()).to.equal(underlying.address);
     expect(await idleCDO.strategy()).to.equal(strategy.address);
     expect(await idleCDO.strategyToken()).to.equal(idleToken.address);
