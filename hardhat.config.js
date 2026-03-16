@@ -179,6 +179,11 @@ module.exports = {
       url: "http://127.0.0.1:8545/",
       timeout: 120000,
     },
+    mainnetFork: {
+      url: "http://127.0.0.1:8545/",
+      chainId: 1,
+      timeout: 120000,
+    },
     kovan: {
       url: `https://eth-kovan.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
     },
