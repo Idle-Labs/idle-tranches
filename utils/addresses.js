@@ -148,6 +148,7 @@ const mainnetContracts = {
   latestConvexStrategy3eurImpl: '0x8f889dc453750c91c921bd6fb9a33a8a579b1baa',
   cdoFactory: '0x3C9916BB9498f637e2Fa86C2028e26275Dc9A631',
   creditVaultFactory: '0x59AaBdAD8FdABd227cc71543B128765F93906626',
+  creditVaultFactoryV2: '0xA8da4580dC0F1BB5b6761677184B58E611736CD5',
   snxStakingRewards: '0x4A07723BB06BF9307E4E1998834832728e6cDb49',
   snxStakingRewardsLido: '0xd7c1b48877a7dfa7d51cf1144c89c0a3f134f935',
   minimalInitializableProxyFactory: '0x91baced76e3e327ba7850ef82a7a8251f6e43fb8',
@@ -1073,6 +1074,21 @@ const CDOs = {
     keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0',
     queue: '0xc11966f3216c75e5e607ec0c23e9cdefec21cbf4'
   },
+  creditlaserdigitalusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
+    underlying: mainnetContracts.USDC,
+    // NOTE: this is the prefunded variant
+    cdoAddr: '0xdb90AE28a02b6cb1772192f88FdAC5516E094459',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
+    AATranche: '0x39Bb84c79D6515F2038C24c3592546128664aeEE',
+    BBTranche: '0xd00743892b048c4A6A2b3F15A4602282cd34421E',
+    writeOff: '0x6120e46A4dD1bC8E4a94aeE0f71987C62De99931',
+    keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
+    queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
+  },
   creditgauntlettestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1599,19 +1615,7 @@ const avaxCDOs = {
     AATranche: '0xD28CB87193E0f61DcCd3B693Ebe59603D0937237',
     BBTranche: '0x3422d88eAAd9c21cf627c9a3c8F85e1c54fA7Fba',
     writeoff: ''
-  },
-  creditlaserdigitalusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '',
-    underlying: avaxContracts.USDC,
-    cdoAddr: '',
-    proxyAdmin: avaxContracts.proxyAdminWithTimelock,
-    strategy: '',
-    AATranche: '',
-    BBTranche: '',
-    writeoff: ''
-  },
+  }
 }
 
 const polygonZKCDOs = {
@@ -3452,6 +3456,94 @@ exports.deployTokens = {
     hypernative: false,
     proxyCdoAddress: CDOs.creditblackrockcashxtestusdc.cdoAddr
   },
+  creditlaserdigitalusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x69cC425B1E5f302e7Db4E5d125ab984EC5186364', // manager
+      '0xd90075c665eC00EC6D24611602DB876D31bDaE1E', // borrower
+      'LCF', // borrower name
+      '0', // intialApr
+    ],
+    cdo: CDOs.creditlaserdigitalusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '1036800', // 12 days
+    // epochDuration: '2592000', // 30 days
+    bufferPeriod: '0', // 0 seconds
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 4725443,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '15000', // 15%
+    // #########
+    queue: true,
+    writeoff: true,
+    hypernative: true,
+    interestMinted: true,
+    depositDuringEpoch: false,
+    prefundedDeposits: true,
+    prefundedDepositsWindows: '604800', // 7 days
+    // prefundedDepositsWindow: '691200', // 8 days
+    proxyCdoAddress: '',
+  },
+  creditapollousdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0x69cC425B1E5f302e7Db4E5d125ab984EC5186364', // manager
+      '0xB066d50594b1110910c202710ad5D294dae9B1cE', // borrower
+      'ACRDX', // borrower name
+      '0', // intialApr
+    ],
+    cdo: CDOs.creditapollousdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '86400', // 1 day
+    bufferPeriod: '0', // 0 seconds
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 4725443,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    writeoff: true,
+    hypernative: true,
+    interestMinted: true,
+    depositDuringEpoch: false,
+    proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
+  },
   usualusd0pptest: {
     decimals: 18,
     underlying: mainnetContracts.USD0pp,
@@ -3525,48 +3617,6 @@ exports.deployTokensAvax = {
     queue: true,
     writeoff: true,
     hypernative: true,
-    proxyCdoAddress: '',
-  },
-  creditlaserdigitalusdc: {
-    decimals: 6,
-    underlying: avaxContracts.USDC,
-    strategyName: 'IdleCreditVault',
-    strategyParams: [
-      avaxContracts.USDC,
-      'owner', // owner address
-      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // manager
-      '0xf122860965303fdcdB986C53f35BDfC0e331c044', // borrower
-      'LCF', // borrower name
-      '0', // intialApr
-    ],
-    cdo: avaxCDOs.creditlaserdigitalusdc,
-    cdoVariant: 'IdleCDOEpochVariantAvax',
-    ...baseCDOArgs,
-    AARatio: '100000',
-    isAYSActive: false,
-    limit: '0',
-    // #########
-    isCreditVault: true,
-    // ## epoch params
-    epochDuration: '600', // 10 minutes
-    bufferPeriod: '300', // 5 minutes
-    // ## instant params values
-    instantWithdrawDelay: '120', // 2 minutes
-    instantWithdrawAprDelta: 5e18.toString(),
-    disableInstantWithdraw: true,
-    // ## keyring params
-    // keyring: '', // a new whitelist will be deployed
-    keyring: avaxContracts.keyringWhitelist,
-    keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
-    // ## fees (if different from 15%)
-    fees: '10000', // 10%
-    // #########
-    queue: true,
-    writeoff: true,
-    hypernative: true,
-    interestMinted: true,
-    depositDuringEpoch: false,
     proxyCdoAddress: '',
   }
 }

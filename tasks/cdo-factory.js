@@ -101,6 +101,14 @@ const hypernativeChainConfigs = {
 };
 
 const getHypernativeChainConfig = (chainId) => hypernativeChainConfigs[chainId];
+const getRuntimeChainId = async (_hre) => {
+  const configuredChainId = Number(_hre.network.config.chainId);
+  if (!Number.isNaN(configuredChainId)) {
+    return configuredChainId;
+  }
+  const { chainId } = await _hre.ethers.provider.getNetwork();
+  return Number(chainId);
+};
 
 const getNetworkCDOs = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
@@ -568,8 +576,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     const feeReceiver = await idleCDO.feeReceiver();
     const cdoFee = await idleCDO.fee();
-    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fee && cdoFee.toString() != deployToken.fee.toString())) {
-      const fee = deployToken.fee ? deployToken.fee : cdoFee;
+    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fees && cdoFee.toString() != deployToken.fees.toString())) {
+      const fee = deployToken.fees ? deployToken.fees : cdoFee;
       console.log('Setting fee params with ', networkContracts.feeReceiver, fee);
       await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
     }
@@ -624,18 +632,34 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         console.log(`Setting interest minted ${deployToken.interestMinted}`);
         await cdoEpoch.connect(signer).setIsInterestMinted(deployToken.interestMinted);
       }
-      if (deployToken.depositDuringEpoch) {
+      if (!deployToken.depositDuringEpoch) {
         console.log(`Setting deposit during epoch ${deployToken.depositDuringEpoch}`);
         await cdoEpoch.connect(signer).setIsDepositDuringEpochDisabled(!deployToken.depositDuringEpoch);
       }
       if (deployToken.queue) {
-        await hre.run("deploy-queue", {
+        const queue = await hre.run("deploy-queue", {
           cdo: idleCDOAddress,
+          // owner: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
           owner: networkContracts.treasuryMultisig,
           isaa: 'true',
           keyring: deployToken.keyring != addr0 ? deployToken.keyring : undefined
         });
+
+        if (deployToken.prefundedDeposits) {
+          console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
+          const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', idleCDOAddress, signer);
+          await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
+
+          console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
+          const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
+          await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
+        }
       }
+    }
+
+    if (deployToken.writeoff) {
+      console.log('Deploying write off escrow');
+      await hre.run("deploy-writeoff-escrow", { cdo: idleCDOAddress });
     }
 
     console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
@@ -726,7 +750,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
 
     console.log('args.chainid ', args.chainid);
     console.log('hre.network.config.chainId ', hre.network.config);
-    const resolvedChainId = args.chainid ? Number(args.chainid) : hre.network.config.chainId;
+    const resolvedChainId = args.chainid ? Number(args.chainid) : await getRuntimeChainId(hre);
     if (args.chainid && Number.isNaN(resolvedChainId)) {
       console.log(`🛑 Invalid chainid ${args.chainid}`);
       return;
@@ -926,7 +950,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log(`Deploying with ${addr}`);
     console.log()
 
-    const factoryAddr = networkContracts.creditVaultFactory;
+    const factoryAddr = networkContracts.creditVaultFactoryV2;
 
     console.log("ProxyAdmin:              ", proxyAdmin);
     console.log("Copy CDO:                ", copyToken.cdoAddr);
@@ -1055,6 +1079,15 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
+      if (deployToken.prefundedDeposits) {
+        console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
+        const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', cv, signer);
+        await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
+
+        console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
+        const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
+        await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
+      }
       if (shouldVerify) {
         await hre.run("verify-contract", { address: queue });
       }
@@ -1277,6 +1310,8 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       const whitelist = await ethers.getContractAt("KeyringWhitelist", args.keyring, signer);
       await whitelist.connect(signer).setWhitelistStatus(queue.address, true);
     }
+
+    return queue.address;
 });
 
 /**
@@ -1303,7 +1338,8 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
       8453: null,
       43114: 'IdleCreditVaultWriteOffEscrowAvax',
     };
-    const chainId = Number(hre.network.config.chainId);
+    const chainId = await getRuntimeChainId(hre);
+    console.log('chainId', chainId);
     const contractName = writeOffEscrowByChainId[chainId];
     if (!contractName) {
       console.log('contract not available for this network');

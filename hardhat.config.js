@@ -86,6 +86,7 @@ module.exports = {
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
+      "contracts/IdleCDOEpochVariantPrefunded.sol": ultraminimalSizeConfig,
       "contracts/IdleCDOUsualVariant.sol": medRunConfig,
       "contracts/IdleCreditVaultFactory.sol": highRunConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,

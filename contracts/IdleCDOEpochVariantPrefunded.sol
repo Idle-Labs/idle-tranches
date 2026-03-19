@@ -12,6 +12,7 @@ interface IIdleCDOEpochQueuePrefunded {
 
 /// @title IdleCDOEpochVariant with prefunded queue deposit processing
 /// @dev Use this variant when queue deposits are prefunded to borrower before epoch stop.
+/// @custom:oz-upgrades-unsafe-allow missing-initializer
 contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
   /// @notice queue used for prefunded deposit processing
   address public epochQueue;
