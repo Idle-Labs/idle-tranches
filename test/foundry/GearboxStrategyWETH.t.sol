@@ -173,7 +173,7 @@ contract TestGearboxStrategyWETH is TestIdleCDOLossMgmt {
     assertApproxEqAbs(priceAAPost2, priceAAPost, 1, 'AA price is not the same after deposit 2');
   }
 
-  function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
+  function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external virtual override {
     // changes to tolerance and min depositAmount needed to avoid rounding issues
     vm.assume(depositAmountAARatio >= 10);
     vm.assume(depositAmountAARatio <= FULL_ALLOC - 10);

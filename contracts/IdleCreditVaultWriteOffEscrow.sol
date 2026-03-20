@@ -53,6 +53,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   uint256 public exitFee;
   /// @notice address of the fee receiver (where exit fee is sent)
   address public feeReceiver;
+  /// @notice amount of pending underlyings requested across all users
+  uint256 public pendingUnderlyings;
 
   /// @notice disable initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -64,7 +66,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   /// @param _idleCDOEpoch address of the IdleCDOEpochVariant contract
   /// @param _owner address of the owner of the contract
   /// @param _isAATranche true if the tranche is the AA one
-  function initialize(address _idleCDOEpoch, address _owner, bool _isAATranche) external initializer {
+  function initialize(address _idleCDOEpoch, address _owner, bool _isAATranche) public virtual initializer {
     if (idleCDOEpoch != address(0)) revert NotAllowed();
     // initialize the parent contracts
     OwnableUpgradeable.__Ownable_init();
@@ -101,6 +103,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
       tranches: currentRequest.tranches + amount,
       underlyings: currentRequest.underlyings + underlyingsRequested
     });
+    pendingUnderlyings += underlyingsRequested;
   }
 
   /// @notice delete the write-off request and transfer tranche tokens back to the user
@@ -113,6 +116,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     if (currentRequest.tranches == 0) revert Is0();
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[msg.sender];
     // transfer tranche tokens back to the user
     IERC20Detailed(tranche).safeTransfer(msg.sender, currentRequest.tranches);
@@ -124,7 +128,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   /// @param _underlyings amount of underlyings to transfer
   /// @dev this function can only be called by the borrower
   function fullfillWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) external nonReentrant {
-    address _borrower = borrower;
+    address _borrower = IdleCreditVault(strategy).borrower();
     // Only borrower can call this function
     if (msg.sender != _borrower) revert NotAllowed();
 
@@ -132,12 +136,13 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     WriteOffRequest memory currentRequest = userRequests[_user];
     // check if the user has a write-off request
     if (currentRequest.tranches == 0) revert Is0();
-    // check if the request matches the expected values
-    if (currentRequest.tranches != _tranches || currentRequest.underlyings != _underlyings) {
+    // check if the request matches at least the expected values (borrower can choose to overpay if needed, but not underpay)
+    if (currentRequest.tranches != _tranches || _underlyings < currentRequest.underlyings) {
       revert WrongRequest();
     }
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);

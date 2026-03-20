@@ -86,6 +86,7 @@ module.exports = {
       "contracts/IdleCDOAmpohorVariant.sol": overrideConfig,
       "contracts/IdleCDOEthenaVariant.sol": overrideConfig,
       "contracts/IdleCDOEpochVariant.sol": ultraminimalSizeConfig,
+      "contracts/IdleCDOEpochVariantPrefunded.sol": ultraminimalSizeConfig,
       "contracts/IdleCDOUsualVariant.sol": medRunConfig,
       "contracts/IdleCreditVaultFactory.sol": highRunConfig,
       "contracts/optimism/IdleCDOEpochVariantOptimism.sol": ultraminimalSizeConfig,
@@ -95,6 +96,8 @@ module.exports = {
       "contracts/arbitrum/IdleCDOArbitrum.sol": overrideConfig,
       "contracts/base/IdleCDOEpochVariantBase.sol": ultraminimalSizeConfig,
       "contracts/base/IdleCDOBase.sol": overrideConfig,
+      "contracts/avax/IdleCDOEpochVariantAvax.sol": ultraminimalSizeConfig,
+      "contracts/avax/IdleCreditVaultWriteOffEscrowAvax.sol": overrideConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,
@@ -177,11 +180,16 @@ module.exports = {
       url: "http://127.0.0.1:8545/",
       timeout: 120000,
     },
+    mainnetFork: {
+      url: "http://127.0.0.1:8545/",
+      chainId: 1,
+      timeout: 120000,
+    },
     kovan: {
-      url: `https://eth-kovan.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: `https://eth-kovan.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
     },
     mainnet: {
-      url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,
@@ -228,10 +236,19 @@ module.exports = {
       timeout: 1200000,
       chainId: 42161
     },
+    avax: {
+      url: `https://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      timeout: 1200000,
+      chainId: 43114
+    },
   },
   etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
+      avax: process.env.AVASCAN_API_KEY,
       base: process.env.ETHERSCAN_API_KEY,
       arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
@@ -239,6 +256,14 @@ module.exports = {
       optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY
     },
     customChains: [
+      {
+        network: "mainnet",
+        chainId: 1,
+        urls: {
+          apiURL: "https://api.etherscan.io/v2/api?chainid=1",
+          browserURL: "https://etherscan.io"
+        }
+      },
       {
         network: "polygonzk",
         chainId: 1101,
@@ -254,6 +279,14 @@ module.exports = {
           // apiURL: "https://api.basescan.org/api",
           apiURL: "https://api.etherscan.io/v2/api?chainid=8453",
           browserURL: "https://basescan.org/"
+        }
+      },
+      {
+        network: "avax",
+        chainId: 43114,
+        urls: {
+          apiURL: "https://api.avascan.info/v2/network/mainnet/evm/43114/etherscan",
+          browserURL: "https://avascan.info/"
         }
       },
     ]

@@ -1,5 +1,9 @@
 require("hardhat/config")
+const fs = require("fs");
+const path = require("path");
+const { ethers: etherslib } = require("ethers");
 const { BigNumber } = require("@ethersproject/bignumber");
+const { getAdminAddress, getImplementationAddress } = require("@openzeppelin/upgrades-core");
 const helpers = require("../scripts/helpers");
 const addresses = require("../utils/addresses");
 
@@ -11,7 +15,22 @@ const polygonZKContracts = addresses.IdleTokens.polygonZK;
 const optimismContracts = addresses.IdleTokens.optimism;
 const arbitrumContracts = addresses.IdleTokens.arbitrum;
 const baseContracts = addresses.IdleTokens.base;
+const avaxContracts = addresses.IdleTokens.avax;
+const mainnetCDOs = addresses.CDOs;
+const polygonCDOs = addresses.polygonCDOs;
+const polygonZKCDOs = addresses.polygonZKCDOs;
+const optimismCDOs = addresses.optimismCDOs;
+const arbitrumCDOs = addresses.arbitrumCDOs;
+const baseCDOs = addresses.baseCDOs;
+const avaxCDOs = addresses.avaxCDOs;
 const ICurveRegistryAbi = require("../abi/ICurveRegistry.json")
+const CV_UPGRADE_PLAN_KIND = "credit-vault-upgrade-batch";
+const CV_UPGRADE_PLAN_VERSION = 1;
+const CV_UPGRADE_DIR = ".timelock-upgrades";
+const CV_COMPONENT_ORDER = ["cdo", "strategy", "queue", "writeoff"];
+const PROXY_ADMIN_UPGRADE_IFACE = new etherslib.utils.Interface([
+  "function upgrade(address proxy, address implementation)",
+]);
 
 const getNetworkContracts = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
@@ -19,6 +38,7 @@ const getNetworkContracts = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
 
   if (isMatic) {
     return polygonContracts;
@@ -30,6 +50,8 @@ const getNetworkContracts = (_hre) => {
     return arbitrumContracts;
   } else if (isBase) {
     return baseContracts;
+  } else if (isAvax) {
+    return avaxContracts;
   }
   return mainnetContracts;
 }
@@ -40,6 +62,7 @@ const getDeployTokens = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
 
   if (isMatic) {
     return addresses.deployTokensPolygon;
@@ -51,8 +74,331 @@ const getDeployTokens = (_hre) => {
     return addresses.deployTokensArbitrum;
   } else if (isBase) {
     return addresses.deployTokensBase;
+  } else if (isAvax) {
+    return addresses.deployTokensAvax;
   }
   return addresses.deployTokens;
+}
+
+const getNetworkCDOs = (_hre) => {
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+  const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
+
+  if (isMatic) {
+    return polygonCDOs;
+  } else if (isPolygonZK) {
+    return polygonZKCDOs;
+  } else if (isOptimism) {
+    return optimismCDOs;
+  } else if (isArbitrum) {
+    return arbitrumCDOs;
+  } else if (isBase) {
+    return baseCDOs;
+  } else if (isAvax) {
+    return avaxCDOs;
+  }
+  return mainnetCDOs;
+}
+
+const getProviderChainId = async (_hre) => {
+  const { chainId } = await _hre.ethers.provider.getNetwork();
+  return chainId.toString();
+}
+
+const parseCsv = (value) => (value || "")
+  .split(",")
+  .map(v => v.trim())
+  .filter(Boolean);
+
+const normalizeCvUpgradeComponent = (value) => {
+  const component = value.toLowerCase();
+  if (component === "writeoff" || component === "writeoffescrow" || component === "escrow") {
+    return "writeoff";
+  }
+  if (component === "cdo" || component === "strategy" || component === "queue") {
+    return component;
+  }
+  throw new Error(`Unsupported component "${value}". Allowed values: ${CV_COMPONENT_ORDER.join(", ")}`);
+}
+
+const getRequestedCvUpgradeComponents = (rawComponents) => {
+  const components = parseCsv(rawComponents).map(normalizeCvUpgradeComponent);
+  if (components.length === 0) {
+    throw new Error("components must be provided");
+  }
+  return [...new Set(components)].sort((a, b) => CV_COMPONENT_ORDER.indexOf(a) - CV_COMPONENT_ORDER.indexOf(b));
+}
+
+const getRequestedCreditVaultNames = (_hre, networkCDOs, rawNames) => {
+  const cdoNames = parseCsv(rawNames);
+  if (cdoNames.length === 0) {
+    throw new Error("No credit vaults selected. Pass --cdonames name1,name2");
+  }
+
+  for (const cdoName of cdoNames) {
+    if (!networkCDOs[cdoName]) {
+      throw new Error(`Unknown credit vault "${cdoName}" for network ${_hre.network.name}`);
+    }
+  }
+
+  return [...new Set(cdoNames)].sort();
+}
+
+const getCreditVaultCdoContractName = (_hre, deployToken) => {
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+  const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+
+  let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
+  if (isOptimism) {
+    contractName = 'IdleCDOOptimism';
+  } else if (isArbitrum) {
+    contractName = 'IdleCDOArbitrum';
+  } else if (isBase) {
+    contractName = 'IdleCDOBase';
+  }
+  if (deployToken.cdoVariant) {
+    contractName = deployToken.cdoVariant;
+  }
+  return contractName;
+}
+
+const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, component) => {
+  const deployToken = networkTokens[cdoName];
+  const networkCdo = networkCDOs[cdoName];
+  if (!deployToken || !networkCdo) {
+    throw new Error(`Missing config for ${cdoName}`);
+  }
+
+  const targetByComponent = {
+    cdo: {
+      contractName: getCreditVaultCdoContractName(_hre, deployToken),
+      proxyAddress: networkCdo.cdoAddr,
+    },
+    strategy: {
+      contractName: deployToken.strategyName,
+      proxyAddress: networkCdo.strategy,
+    },
+    queue: {
+      contractName: 'IdleCDOEpochQueue',
+      proxyAddress: networkCdo.queue,
+    },
+    writeoff: {
+      contractName: 'IdleCreditVaultWriteOffEscrow',
+      proxyAddress: networkCdo.writeOff,
+    },
+  };
+
+  const target = targetByComponent[component];
+  if (!target || !target.contractName || !target.proxyAddress || target.proxyAddress === ethers.constants.AddressZero) {
+    throw new Error(`${cdoName} does not have a valid ${component} proxy configured`);
+  }
+
+  return {
+    cdoName,
+    component,
+    contractName: target.contractName,
+    proxyAddress: ethers.utils.getAddress(target.proxyAddress),
+  };
+}
+
+const getDefaultCvUpgradePlanPath = (_hre) => {
+  const fileName = `${_hre.network.name}-cv-upgrades-${Date.now()}.json`;
+  return path.join(process.cwd(), CV_UPGRADE_DIR, fileName);
+}
+
+const writeCvUpgradePlan = (filePath, plan) => {
+  const resolvedPath = path.resolve(filePath);
+  if (fs.existsSync(resolvedPath)) {
+    throw new Error(`Refusing to overwrite existing plan file ${resolvedPath}`);
+  }
+  fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  fs.writeFileSync(resolvedPath, `${JSON.stringify(plan, null, 2)}\n`);
+  return resolvedPath;
+}
+
+const readCvUpgradePlan = (filePath) => {
+  const resolvedPath = path.resolve(filePath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Plan file not found: ${resolvedPath}`);
+  }
+  return {
+    path: resolvedPath,
+    plan: JSON.parse(fs.readFileSync(resolvedPath, "utf8")),
+  };
+}
+
+const formatCvUpgradeContractName = (contractName) => {
+  const parts = contractName.split(":");
+  return parts[parts.length - 1];
+}
+
+const decodeCvUpgradePlanCalls = (plan) => {
+  const rows = [];
+
+  for (let i = 0; i < plan.targets.length; i++) {
+    const target = plan.targets[i];
+    const payload = plan.payloads[i];
+
+    try {
+      const [proxyAddress, newImplementation] = PROXY_ADMIN_UPGRADE_IFACE.decodeFunctionData("upgrade", payload);
+      rows.push({
+        index: i + 1,
+        proxyAdmin: etherslib.utils.getAddress(target),
+        proxyAddress: etherslib.utils.getAddress(proxyAddress),
+        newImplementation: etherslib.utils.getAddress(newImplementation),
+      });
+    } catch (err) {
+      rows.push({
+        index: i + 1,
+        proxyAdmin: etherslib.utils.getAddress(target),
+        rawPayload: payload,
+      });
+    }
+  }
+
+  return rows;
+}
+
+const logCvUpgradePlanSummary = (plan, summaryRows = []) => {
+  console.log(`Plan type:      ${plan.kind} v${plan.version}`);
+  console.log(`Chain id:       ${plan.chainId}`);
+  console.log(`Timelock:       ${plan.timelock}`);
+  console.log(`Operation id:   ${plan.operationId}`);
+  console.log(`Timelock calls: ${plan.targets.length}`);
+
+  if (summaryRows.length > 0) {
+    console.log(`Upgrades:       ${summaryRows.length}`);
+    for (const [index, row] of summaryRows.entries()) {
+      console.log(`${index + 1}. ${row.cdoName} / ${row.component}`);
+      console.log(`   proxy:        ${row.proxyAddress}`);
+      console.log(`   contract:     ${formatCvUpgradeContractName(row.contractName)}`);
+      console.log(`   current impl: ${row.currentImplementation}`);
+      console.log(`   new impl:     ${row.newImplementation}`);
+    }
+    return;
+  }
+
+  const decodedCalls = decodeCvUpgradePlanCalls(plan);
+  for (const row of decodedCalls) {
+    console.log(`${row.index}. proxy admin call`);
+    console.log(`   proxy admin:  ${row.proxyAdmin}`);
+    if (row.proxyAddress) {
+      console.log(`   proxy:        ${row.proxyAddress}`);
+      console.log(`   new impl:     ${row.newImplementation}`);
+    } else {
+      console.log(`   payload:      ${row.rawPayload}`);
+    }
+  }
+}
+
+const buildCvUpgradePlan = async (_hre, { cdoNames, components, signer, timelock }) => {
+  const networkTokens = getDeployTokens(_hre);
+  const networkCDOs = getNetworkCDOs(_hre);
+  const chainId = await getProviderChainId(_hre);
+  const timelockAddress = ethers.utils.getAddress(timelock.address);
+  const targets = [];
+
+  for (const cdoName of cdoNames) {
+    for (const component of components) {
+      targets.push(getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component));
+    }
+  }
+
+  targets.sort((a, b) => {
+    if (a.cdoName === b.cdoName) {
+      return CV_COMPONENT_ORDER.indexOf(a.component) - CV_COMPONENT_ORDER.indexOf(b.component);
+    }
+    return a.cdoName.localeCompare(b.cdoName);
+  });
+
+  const proxyAdmins = new Map();
+  for (const target of targets) {
+    target.proxyAdmin = ethers.utils.getAddress(await getAdminAddress(ethers.provider, target.proxyAddress));
+    target.currentImplementation = ethers.utils.getAddress(await getImplementationAddress(ethers.provider, target.proxyAddress));
+
+    if (!proxyAdmins.has(target.proxyAdmin)) {
+      const proxyAdmin = await ethers.getContractAt("IProxyAdmin", target.proxyAdmin);
+      const proxyAdminOwner = ethers.utils.getAddress(await proxyAdmin.owner());
+      if (proxyAdminOwner !== timelockAddress) {
+        throw new Error(`ProxyAdmin ${target.proxyAdmin} for ${target.cdoName}/${target.component} is owned by ${proxyAdminOwner}, not timelock ${timelockAddress}`);
+      }
+      proxyAdmins.set(target.proxyAdmin, proxyAdmin);
+    }
+  }
+
+  const groups = new Map();
+  for (const target of targets) {
+    const key = `${target.contractName}:${target.currentImplementation}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(target);
+  }
+
+  for (const groupTargets of groups.values()) {
+    const sample = groupTargets[0];
+    let newImplementation = await helpers.prepareContractUpgrade(sample.proxyAddress, sample.contractName, signer);
+    newImplementation = ethers.utils.getAddress(newImplementation);
+    if (newImplementation === sample.currentImplementation) {
+      throw new Error(`Prepared implementation for ${sample.contractName} matches current implementation ${sample.currentImplementation}`);
+    }
+    for (const target of groupTargets) {
+      target.newImplementation = newImplementation;
+    }
+  }
+
+  const batchTargets = [];
+  const batchValues = [];
+  const batchPayloads = [];
+  for (const target of targets) {
+    const proxyAdmin = proxyAdmins.get(target.proxyAdmin);
+    batchTargets.push(target.proxyAdmin);
+    batchValues.push(0);
+    batchPayloads.push(
+      proxyAdmin.interface.encodeFunctionData("upgrade", [target.proxyAddress, target.newImplementation])
+    );
+  }
+
+  const predecessor = ethers.constants.HashZero;
+  const salt = ethers.constants.HashZero;
+  const delay = (await timelock.getMinDelay()).toString();
+  const operationId = await timelock.hashOperationBatch(
+    batchTargets,
+    batchValues,
+    batchPayloads,
+    predecessor,
+    salt
+  );
+
+  return {
+    delay,
+    summaryRows: targets.map(target => ({
+      cdoName: target.cdoName,
+      component: target.component,
+      contractName: target.contractName,
+      proxyAddress: target.proxyAddress,
+      currentImplementation: target.currentImplementation,
+      newImplementation: target.newImplementation,
+    })),
+    plan: {
+      version: CV_UPGRADE_PLAN_VERSION,
+      kind: CV_UPGRADE_PLAN_KIND,
+      chainId,
+      timelock: timelockAddress,
+      operationId,
+      predecessor,
+      salt,
+      targets: batchTargets,
+      values: batchValues,
+      payloads: batchPayloads,
+    },
+  };
 }
 
 /**
@@ -117,6 +463,7 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
 
     let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (isOptimism) {
@@ -125,6 +472,8 @@ task("upgrade-cdo-multisig", "Upgrade IdleCDO instance with multisig")
       contractName = 'IdleCDOArbitrum';
     } else if (isBase) {
       contractName = 'IdleCDOBase';
+    } else if (isAvax) {
+      contractName = 'IdleCDOAvax';
     }
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
@@ -150,6 +499,7 @@ task("upgrade-cdo-multisig-timelock", "Upgrade IdleCDO instance with multisig ti
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
 
     let contractName = isPolygonZK ? 'IdleCDOPolygonZK' : 'IdleCDO';
     if (isOptimism) {
@@ -158,6 +508,8 @@ task("upgrade-cdo-multisig-timelock", "Upgrade IdleCDO instance with multisig ti
       contractName = 'IdleCDOArbitrum';
     } else if (isBase) {
       contractName = 'IdleCDOBase';
+    } else if (isAvax) {
+      contractName = 'IdleCDOAvax';
     }
     if (deployToken.cdoVariant) {
       contractName = deployToken.cdoVariant;
@@ -200,6 +552,22 @@ task("upgrade-strategy-timelock", "Upgrade IdleCDO strategy")
       cdoname: args.cdoname,
       contractName: deployToken.strategyName,
       contractKey: 'strategy' // check eg CDOs.idleDAI.*
+    });
+  });
+
+/**
+ * @name upgrade-queue-timelock
+ */
+task("upgrade-queue-timelock", "Upgrade IdleCDO queue")
+  .addParam('cdoname')
+  .setAction(async (args) => {
+    const networkTokens = getDeployTokens(hre);
+    const deployToken = networkTokens[args.cdoname];
+    
+    await run("upgrade-with-multisig-timelock", {
+      cdoname: args.cdoname,
+      contractName: 'IdleCDOEpochQueue',
+      contractKey: 'queue' // check eg CDOs.idleDAI.*
     });
   });
 
@@ -780,6 +1148,156 @@ task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisi
   });
 
 /**
+* @name schedule-cv-upgrades-timelock
+*/
+task("schedule-cv-upgrades-timelock", "Schedule a timelock batch to upgrade selected credit vault components")
+  .addParam("cdonames", "Comma-separated credit vault names")
+  .addParam("components", "Comma-separated components: cdo,strategy,queue,writeoff")
+  .addOptionalParam("out", "Optional output path for the generated plan file")
+  .setAction(async (args) => {
+    await run("compile");
+
+    const networkContracts = getNetworkContracts(hre);
+    if (!networkContracts.timelock) {
+      throw new Error("timelock not defined for this network");
+    }
+
+    const chainId = await getProviderChainId(hre);
+    const cdoNames = getRequestedCreditVaultNames(hre, getNetworkCDOs(hre), args.cdonames);
+    const components = getRequestedCvUpgradeComponents(args.components);
+    const planPath = path.resolve(args.out || getDefaultCvUpgradePlanPath(hre));
+    if (fs.existsSync(planPath)) {
+      throw new Error(`Refusing to overwrite existing plan file ${planPath}`);
+    }
+
+    console.log(`Network:        ${hre.network.name} (${chainId})`);
+    console.log(`Credit vaults:  ${cdoNames.join(", ")}`);
+    console.log(`Components:     ${components.join(", ")}`);
+    console.log(`Plan path:      ${planPath}`);
+    await helpers.prompt("deploy implementations and build the plan? [y/n]", true);
+
+    let timelock = await ethers.getContractAt("Timelock", networkContracts.timelock);
+    const signer = await run("get-signer-or-fake");
+    const { plan, delay, summaryRows } = await buildCvUpgradePlan(hre, {
+      cdoNames,
+      components,
+      signer,
+      timelock,
+    });
+
+    logCvUpgradePlanSummary(plan, summaryRows);
+    await helpers.prompt("schedule this timelock batch? [y/n]", true);
+
+    const multisigSigner = await run("get-multisig-or-fake");
+    timelock = timelock.connect(multisigSigner);
+    await timelock.callStatic.scheduleBatch(
+      plan.targets,
+      plan.values,
+      plan.payloads,
+      plan.predecessor,
+      plan.salt,
+      delay
+    );
+
+    const tx = await timelock.scheduleBatch(
+      plan.targets,
+      plan.values,
+      plan.payloads,
+      plan.predecessor,
+      plan.salt,
+      delay
+    );
+    writeCvUpgradePlan(planPath, plan);
+
+    if (tx.hash) {
+      console.log(`Schedule tx:     ${tx.hash}`);
+    }
+    console.log(`Plan written to: ${planPath}`);
+  });
+
+/**
+* @name execute-cv-upgrades-timelock
+*/
+task("execute-cv-upgrades-timelock", "Execute a previously scheduled credit vault upgrade timelock batch")
+  .addParam("plan", "Path to the plan file created by schedule-cv-upgrades-timelock")
+  .setAction(async (args) => {
+    const { path: planPath, plan } = readCvUpgradePlan(args.plan);
+    if (plan.kind !== CV_UPGRADE_PLAN_KIND || plan.version !== CV_UPGRADE_PLAN_VERSION) {
+      throw new Error(`Unsupported plan format in ${planPath}`);
+    }
+    if (
+      !Array.isArray(plan.targets) ||
+      !Array.isArray(plan.values) ||
+      !Array.isArray(plan.payloads) ||
+      plan.targets.length === 0 ||
+      plan.targets.length !== plan.values.length ||
+      plan.targets.length !== plan.payloads.length
+    ) {
+      throw new Error(`Invalid batch payload shape in ${planPath}`);
+    }
+
+    const currentChainId = await getProviderChainId(hre);
+    if (plan.chainId !== currentChainId) {
+      throw new Error(`Plan chainId ${plan.chainId} does not match current chainId ${currentChainId}`);
+    }
+
+    const networkContracts = getNetworkContracts(hre);
+    if (networkContracts.timelock && ethers.utils.getAddress(plan.timelock) !== ethers.utils.getAddress(networkContracts.timelock)) {
+      throw new Error(`Plan timelock ${plan.timelock} does not match configured timelock ${networkContracts.timelock}`);
+    }
+
+    let timelock = await ethers.getContractAt("Timelock", plan.timelock);
+    const operationId = await timelock.hashOperationBatch(
+      plan.targets,
+      plan.values,
+      plan.payloads,
+      plan.predecessor,
+      plan.salt
+    );
+    if (operationId !== plan.operationId) {
+      throw new Error(`Operation id mismatch for ${planPath}`);
+    }
+    if (await timelock.isOperationDone(operationId)) {
+      throw new Error(`Operation ${operationId} is already executed`);
+    }
+
+    const readyAt = await timelock.getTimestamp(operationId);
+    if (readyAt.eq(0)) {
+      throw new Error(`Operation ${operationId} is not scheduled`);
+    }
+    if (!(await timelock.isOperationReady(operationId))) {
+      throw new Error(`Operation ${operationId} is not ready yet. Ready at ${new Date(Number(readyAt.toString()) * 1000).toISOString()}`);
+    }
+
+    logCvUpgradePlanSummary(plan);
+    await helpers.prompt("execute this timelock batch? [y/n]", true);
+
+    const executorSigner = await run("get-signer-or-fake");
+    timelock = timelock.connect(executorSigner);
+    await timelock.callStatic.executeBatch(
+      plan.targets,
+      plan.values,
+      plan.payloads,
+      plan.predecessor,
+      plan.salt
+    );
+
+    const tx = await timelock.executeBatch(
+      plan.targets,
+      plan.values,
+      plan.payloads,
+      plan.predecessor,
+      plan.salt
+    );
+
+    if (tx.hash) {
+      console.log(`Execute tx:      ${tx.hash}`);
+    }
+
+    console.log(`Executed plan:   ${planPath}`);
+  });
+
+/**
  * @name upgrade-with-multisig-timelock
  */
 subtask("upgrade-with-multisig-timelock", "Upgrade contract with multisig timelock module")
@@ -876,7 +1394,7 @@ subtask("upgrade-with-multisig-timelock", "Upgrade contract with multisig timelo
 subtask("get-signer-or-fake", "Get signer")
   .setAction(async (args) => {
     let signer;
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum' && hre.network.name !== 'base' && hre.network.name !== 'avax') {
       signer = await helpers.impersonateSigner(args.fakeAddress || addresses.idleDeployer);
     } else {
       signer = await helpers.getSigner();
@@ -892,7 +1410,7 @@ subtask("get-multisig-or-fake", "Get multisig signer")
   .setAction(async (args) => {
     let signer;
     const networkContracts = getNetworkContracts(hre);
-    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum') {
+    if (hre.network.name !== 'mainnet' && hre.network.name !== 'matic' && hre.network.name !== 'polygonzk' && hre.network.name !== 'optimism' && hre.network.name !== 'arbitrum' && hre.network.name !== 'base' && hre.network.name !== 'avax') {
       signer = await helpers.impersonateSigner(args.fakeAddress || networkContracts.treasuryMultisig);
     } else {
       signer = await helpers.getMultisigSigner();

@@ -14,12 +14,15 @@ const polygonZKContracts = addresses.IdleTokens.polygonZK;
 const optimismContracts = addresses.IdleTokens.optimism;
 const arbitrumContracts = addresses.IdleTokens.arbitrum;
 const baseContracts = addresses.IdleTokens.base;
+const avaxContracts = addresses.IdleTokens.avax;
 const mainnetCDOs = addresses.CDOs;
 const polygonCDOs = addresses.polygonCDOs;
 const polygonZKCDOs = addresses.polygonZKCDOs;
 const optimismCDOs = addresses.optimismCDOs;
 const arbitrumCDOs = addresses.arbitrumCDOs;
 const baseCDOs = addresses.baseCDOs;
+const avaxCDOs = addresses.avaxCDOs;
+const addr0 = '0x0000000000000000000000000000000000000000';
 
 const DEFAULT_HYPERNATIVE_TAG_LIST_ID = '4ad4b133-2c72-42d4-9f79-a74c9f3ba20a';
 const HYPERNATIVE_GLOBAL_WATCHLISTS = [
@@ -85,9 +88,27 @@ const hypernativeChainConfigs = {
       { id: '224748', description: 'base auto pause' },
     ],
   },
+  43114: {
+    label: 'Avalanche',
+    chain: 'avax',
+    notePrefix: '[AVAX] credit ',
+    tagListId: DEFAULT_HYPERNATIVE_TAG_LIST_ID,
+    watchlists: [
+      { id: '226568', description: 'avax watch' },
+      { id: '226569', description: 'avax auto pause' },
+    ],
+  },
 };
 
 const getHypernativeChainConfig = (chainId) => hypernativeChainConfigs[chainId];
+const getRuntimeChainId = async (_hre) => {
+  const configuredChainId = Number(_hre.network.config.chainId);
+  if (!Number.isNaN(configuredChainId)) {
+    return configuredChainId;
+  }
+  const { chainId } = await _hre.ethers.provider.getNetwork();
+  return Number(chainId);
+};
 
 const getNetworkCDOs = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
@@ -95,6 +116,7 @@ const getNetworkCDOs = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return polygonCDOs;
   } else if (isPolygonZK) {
@@ -105,6 +127,8 @@ const getNetworkCDOs = (_hre) => {
     return arbitrumCDOs;
   } else if (isBase) {
     return baseCDOs;
+  } else if (isAvax) {
+    return avaxCDOs;
   }
   return mainnetCDOs;
 }
@@ -115,6 +139,7 @@ const getNetworkContracts = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return polygonContracts;
   } else if (isPolygonZK) {
@@ -125,6 +150,8 @@ const getNetworkContracts = (_hre) => {
     return arbitrumContracts;
   } else if (isBase) {
     return baseContracts;
+  } else if (isAvax) {
+    return avaxContracts;
   }
   return mainnetContracts;
 }
@@ -135,6 +162,7 @@ const getDeployTokens = (_hre) => {
   const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
   const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
   const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
   if (isMatic) {
     return addresses.deployTokensPolygon;
   } else if (isPolygonZK) {
@@ -145,6 +173,8 @@ const getDeployTokens = (_hre) => {
     return addresses.deployTokensArbitrum;
   } else if (isBase) {
     return addresses.deployTokensBase;
+  } else if (isAvax) {
+    return addresses.deployTokensAvax;
   }
   return addresses.deployTokens;
 }
@@ -452,6 +482,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
 
     const networkTokens = getDeployTokens(hre);
 
@@ -476,6 +507,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       networkCDOName = 'IdleCDOArbitrum';
     } else if (isBase) {
       networkCDOName = 'IdleCDOBase';
+    } else if (isAvax) {
+      networkCDOName = 'IdleCDOAvax';
     }
     let idleCDOAddress;
     const contractName = deployToken.cdoVariant || networkCDOName;
@@ -542,12 +575,14 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
 
     const feeReceiver = await idleCDO.feeReceiver();
-    if ((isMatic || isPolygonZK || isOptimism || isArbitrum) && feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase()) {
-      console.log('Setting fee receiver to Treasury Multisig')
-      await idleCDO.connect(signer).setFeeReceiver(networkContracts.feeReceiver);
+    const cdoFee = await idleCDO.fee();
+    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fees && cdoFee.toString() != deployToken.fees.toString())) {
+      const fee = deployToken.fees ? deployToken.fees : cdoFee;
+      console.log('Setting fee params with ', networkContracts.feeReceiver, fee);
+      await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
     }
 
-    if (deployToken.unlent == 0) {
+    if (deployToken.unlent == 0 && !deployToken.isCreditVault) {
       console.log('Setting unlent to 0')
       await idleCDO.connect(signer).setUnlentPerc(0);
     }
@@ -566,6 +601,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantArbitrum', idleCDOAddress, signer);
       } else if (isBase) {
         cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantBase', idleCDOAddress, signer);
+      } else if (isAvax) {   
+        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantAvax', idleCDOAddress, signer);
       } else {
         cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
       }
@@ -584,14 +621,45 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       if (deployToken.keyring) {
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
         await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
+      } else if (deployToken.keyring != addr0) {
+        console.log(`Deploying new keyring with default params and setting it`);
+        const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
+        deployToken.keyring = newKeyring;
+        console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
       }
-      if (deployToken.fees) {
-        console.log(`Setting fees ${deployToken.fees}`);
-        await cdoEpoch.connect(signer).setFee(deployToken.fees);
+      if (deployToken.interestMinted) {
+        console.log(`Setting interest minted ${deployToken.interestMinted}`);
+        await cdoEpoch.connect(signer).setIsInterestMinted(deployToken.interestMinted);
+      }
+      if (!deployToken.depositDuringEpoch) {
+        console.log(`Setting deposit during epoch ${deployToken.depositDuringEpoch}`);
+        await cdoEpoch.connect(signer).setIsDepositDuringEpochDisabled(!deployToken.depositDuringEpoch);
       }
       if (deployToken.queue) {
-        await hre.run("deploy-queue", { cdo: idleCDOAddress, owner: networkContracts.treasuryMultisig, isaa: 'true' });
+        const queue = await hre.run("deploy-queue", {
+          cdo: idleCDOAddress,
+          // owner: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+          owner: networkContracts.treasuryMultisig,
+          isaa: 'true',
+          keyring: deployToken.keyring != addr0 ? deployToken.keyring : undefined
+        });
+
+        if (deployToken.prefundedDeposits) {
+          console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
+          const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', idleCDOAddress, signer);
+          await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
+
+          console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
+          const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
+          await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
+        }
       }
+    }
+
+    if (deployToken.writeoff) {
+      console.log('Deploying write off escrow');
+      await hre.run("deploy-writeoff-escrow", { cdo: idleCDOAddress });
     }
 
     console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
@@ -617,6 +685,7 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
     const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
     const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
+    const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
     const signer = await helpers.getSigner();
 
     const cdoAddress = args.cdo;
@@ -626,7 +695,7 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     }
 
     // In mainnet
-    if (!(isMatic || isPolygonZK || isOptimism || isArbitrum || isBase)) {
+    if (!(isMatic || isPolygonZK || isOptimism || isArbitrum || isBase || isAvax)) {
       const pauseModule = new ethers.Contract(networkContracts.hypernativeModule, HypernativeModuleAbi, signer);
       console.log(`Setting contract to hypernative pauser module ${networkContracts.hypernativeModule}`);
       const tx = await pauseModule.updateProtectedContracts([{
@@ -681,7 +750,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
 
     console.log('args.chainid ', args.chainid);
     console.log('hre.network.config.chainId ', hre.network.config);
-    const resolvedChainId = args.chainid ? Number(args.chainid) : hre.network.config.chainId;
+    const resolvedChainId = args.chainid ? Number(args.chainid) : await getRuntimeChainId(hre);
     if (args.chainid && Number.isNaN(resolvedChainId)) {
       console.log(`🛑 Invalid chainid ${args.chainid}`);
       return;
@@ -848,9 +917,11 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
 task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strategy")
   .addParam('cdoname')
   .addParam('copyname')
+  .addOptionalParam('skipverification', 'Skip Etherscan verification', false, types.boolean)
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
+    const shouldVerify = !args.skipverification;
     // Check that cdoname is passed
     if (!args.cdoname || !args.copyname) {
       console.log("🛑 cdoname and copyname must be defined");
@@ -879,7 +950,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log(`Deploying with ${addr}`);
     console.log()
 
-    const factoryAddr = networkContracts.creditVaultFactory;
+    const factoryAddr = networkContracts.creditVaultFactoryV2;
 
     console.log("ProxyAdmin:              ", proxyAdmin);
     console.log("Copy CDO:                ", copyToken.cdoAddr);
@@ -941,6 +1012,11 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18); // default 0
     const disableInstantWithdraw = deployToken.disableInstantWithdraw || false; // default false
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
+    if (!deployToken.keyring && deployToken.keyring != addr0) {
+      console.log(`Deploying new keyring with default params and setting it`);
+      const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
+      deployToken.keyring = newKeyring;
+    }
     const keyring = deployToken.keyring;
     const keyringPolicy = deployToken.keyringPolicy;
     const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
@@ -954,6 +1030,10 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       console.log(`Queue implementation: ${queueImplementation}`);
     }
     console.log()
+
+    console.log('Is interest minted: ', deployToken.interestMinted);
+    console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
+    console.log();
 
     // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
     const owner = networkContracts.treasuryMultisig;
@@ -971,7 +1051,9 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       keyring,
       keyringPolicy,
       keyringAllowWithdraw,
-      fees, 
+      fees,
+      isInterestMinted: deployToken.interestMinted,
+      isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     }
     const tx = await factory.connect(signer).deployCreditVault(
       cvData, 
@@ -988,14 +1070,27 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log('Credit Vault deployed at  ', cv);
     console.log('Strategy deployed at      ', strategy);
 
-    await hre.run("verify-contract", { address: cv });
-    await hre.run("verify-contract", { address: strategy });
+    if (shouldVerify) {
+      await hre.run("verify-contract", { address: cv });
+      await hre.run("verify-contract", { address: strategy });
+    }
 
     let queue;
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
-      await hre.run("verify-contract", { address: queue });
+      if (deployToken.prefundedDeposits) {
+        console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
+        const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', cv, signer);
+        await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
+
+        console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
+        const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
+        await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
+      }
+      if (shouldVerify) {
+        await hre.run("verify-contract", { address: queue });
+      }
     }
 
     if (hypernative) {
@@ -1008,11 +1103,9 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
 
     if (deployToken.queue && deployToken.keyring != addr0) {
       console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      if (networkContracts.keyringWhitelist) {
-        console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
-        const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, signer);
-        await whitelist.connect(signer).setWhitelistStatus(queue, true);
-      }
+      console.log(`Adding queue to keyring whitelist (${deployToken.keyring})`);
+      const whitelist = await ethers.getContractAt("KeyringWhitelist", deployToken.keyring, signer);
+      await whitelist.connect(signer).setWhitelistStatus(queue, true);
     }
 
     if (deployToken.writeoff) {
@@ -1180,6 +1273,7 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
   .addParam('cdo')
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
+  .addOptionalParam('keyring')
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
@@ -1211,14 +1305,13 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
       signer
     );
 
-    const networkContracts = getNetworkContracts(hre);
-    const multisig = await run('get-multisig-or-fake');
-
-    if (networkContracts.keyringWhitelist) {
-      console.log(`Adding queue to keyring whitelist (${networkContracts.keyringWhitelist})`);
-      const whitelist = await ethers.getContractAt("KeyringWhitelist", networkContracts.keyringWhitelist, multisig);
-      await whitelist.connect(multisig).setWhitelistStatus(queue.address, true);
+    if (args.keyring) {
+      console.log(`Adding queue to keyring whitelist (${args.keyring})`);
+      const whitelist = await ethers.getContractAt("KeyringWhitelist", args.keyring, signer);
+      await whitelist.connect(signer).setWhitelistStatus(queue.address, true);
     }
+
+    return queue.address;
 });
 
 /**
@@ -1230,13 +1323,31 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
   .setAction(async (args) => {
-    // Run compile task
-    await run("compile");
     // Check that cdo is passed
     if (!args.cdo) {
       console.log("🛑 cdo address must be defined");
       return;
     }
+
+    const writeOffEscrowByChainId = {
+      1: 'IdleCreditVaultWriteOffEscrow',
+      10: null,
+      137: null,
+      1101: null,
+      42161: null,
+      8453: null,
+      43114: 'IdleCreditVaultWriteOffEscrowAvax',
+    };
+    const chainId = await getRuntimeChainId(hre);
+    console.log('chainId', chainId);
+    const contractName = writeOffEscrowByChainId[chainId];
+    if (!contractName) {
+      console.log('contract not available for this network');
+      return;
+    }
+
+    // Run compile task
+    await run("compile");
 
     // Get signer
     const signer = await helpers.getSigner();
@@ -1252,11 +1363,11 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
       args.isaa || true
     ];
 
-    console.log('Params for IdleCreditVaultWriteOffEscrow', params);
+    console.log(`Params for ${contractName}`, params);
 
     // Deploy write off escrow contract
     const queue = await helpers.deployUpgradableContract(
-      'IdleCreditVaultWriteOffEscrow',
+      contractName,
       params,
       signer
     );
@@ -1289,7 +1400,7 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
 
 /**
  * @name deploy-cv-factory
- * task to deploy ProxyAdmin
+ * task to deploy IdleCreditVaultFactory
  */
 task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
   .setAction(async (args) => {
@@ -1303,14 +1414,19 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`Deploying IdleCreditVaultFactory with ${addr}`);
     console.log()
 
-    const creditVaultFactory = await helpers.deployContract('IdleCreditVaultFactory', [], signer);
-    console.log(`IdleCreditVaultFactory deployed at ${creditVaultFactory.address}`);
+    const creditVaultFactory = await helpers.deployUpgradableContract('IdleCreditVaultFactory', [], signer);
+    const implementation = await getImplementationAddress(hre.ethers.provider, creditVaultFactory.address);
+
+    console.log(`IdleCreditVaultFactory proxy deployed at ${creditVaultFactory.address}`);
+    console.log(`IdleCreditVaultFactory implementation deployed at ${implementation}`);
 
     await run("verify:verify", {
       constructorArguments: [],
-      address: creditVaultFactory.address,
+      address: implementation,
       contract: "contracts/IdleCreditVaultFactory.sol:IdleCreditVaultFactory"
     });
+
+    return creditVaultFactory;
 });
 
 /**
@@ -1340,11 +1456,13 @@ task("deploy-keyring-whitelist", "Deploy KeyringIdleWhitelist")
       signer
     );
 
-    await run("verify:verify", {
-      constructorArguments: [keyringAddress, args.owner],
-      address: contract.address,
-      contract: "contracts/KeyringIdleWhitelist.sol:KeyringIdleWhitelist"
-    });
+    // await run("verify:verify", {
+    //   constructorArguments: [keyringAddress, args.owner],
+    //   address: contract.address,
+    //   contract: "contracts/KeyringIdleWhitelist.sol:KeyringIdleWhitelist"
+    // });
+
+    return contract.address;
 });
 
 /**

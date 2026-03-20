@@ -3,6 +3,7 @@ pragma solidity 0.8.10;
 import "forge-std/Test.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
+import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantPrefunded.sol";
 import {IdleCDOEpochQueue} from "../../contracts/IdleCDOEpochQueue.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
@@ -16,6 +17,7 @@ contract TestIdleCDOEpochQueue is Test {
 
   uint256 public constant ONE_TRANCHE = 1e18;
   uint256 public constant ONE_TOKEN = 1e6; // vault uses USDC with 6 decimals
+  uint256 public constant PREFUNDED_DEPOSIT_WINDOW = 1;
   IdleCDOEpochVariant public constant cdoEpoch = IdleCDOEpochVariant(0xf6223C567F21E33e859ED7A045773526E9E3c2D5);
   IdleCDOEpochQueue public queue;
   IERC20Detailed public underlying;
@@ -31,7 +33,7 @@ contract TestIdleCDOEpochQueue is Test {
     // we deploy a new IdleCDOEpochVariant and IdleCreditVault contract used only to get the bytecode 
     // and etch at the same address of the original one so to enable console.log in the IdleCDOEpochVariant 
     // and new features not yet deployed on mainnet
-    IdleCDOEpochVariant dummy = new IdleCDOEpochVariant();
+    IdleCDOEpochVariant dummy = IdleCDOEpochVariant(address(new IdleCDOEpochVariantPrefunded()));
     IdleCreditVault dummyStrategy = new IdleCreditVault();
     vm.etch(address(cdoEpoch), address(dummy).code);
     vm.etch(cdoEpoch.strategy(), address(dummyStrategy).code);
@@ -173,6 +175,271 @@ contract TestIdleCDOEpochQueue is Test {
     assertEq(queue.epochPrice(strategy.epochNumber()), tranchePrice, 'epoch price is wrong');
   }
 
+  function testProcessPrefundedDepositsToBorrower() external {
+    uint256 amount1 = 3e6; // 3 USDC
+    address user1 = makeAddr('user1');
+
+    // enable prefunded queue automation in cdo variant
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    _requestDepositWithUser(user1, amount1);
+    uint256 requestEpoch = strategy.epochNumber() + 1;
+
+    // while epoch is running, forward already queued deposits to borrower without minting tranche tokens
+    address borrower = strategy.borrower();
+    uint256 borrowerBalPre = underlying.balanceOf(borrower);
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+    vm.prank(manager);
+    queue.processDepositsToBorrower();
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), amount1, 'prefunded deposits is wrong');
+    assertEq(underlying.balanceOf(address(queue)), 0, 'queue underlying balance after prefund is wrong');
+    assertEq(queue.epochPendingDeposits(requestEpoch), 0, 'pending deposits should be moved out of queue');
+    assertEq(underlying.balanceOf(borrower) - borrowerBalPre, amount1, 'borrower prefunded amount is wrong');
+    assertEq(tranche.balanceOf(address(queue)), 0, 'queue tranche balance should not increase before processing');
+
+    // prefunded requests cannot be deleted as funds are already sent to borrower
+    vm.prank(user1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.deleteRequest(requestEpoch);
+
+    // once prefunding starts, that epoch is closed to new deposits
+    address user2 = makeAddr('user2');
+    deal(address(underlying), user2, 2e6);
+    vm.startPrank(user2);
+    underlying.approve(address(queue), 2e6);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.requestDeposit(2e6);
+    vm.stopPrank();
+
+    _stopCurrentEpochPrefunded();
+
+    // prefunded deposits are processed at stopEpoch with a single epoch price
+    assertEq(underlying.balanceOf(address(queue)), 0, 'queue underlying should be empty');
+    assertEq(queue.epochPendingDeposits(requestEpoch), 0, 'pending deposits should be reset');
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, 'prefunded deposits should be reset');
+
+    uint256 epochPrice = queue.epochPrice(requestEpoch);
+    assertApproxEqAbs(epochPrice, cdoEpoch.virtualPrice(address(tranche)), 1, 'epoch price is wrong');
+    assertEq(
+      tranche.balanceOf(address(queue)),
+      amount1 * ONE_TRANCHE / epochPrice,
+      'queue tranche balance is wrong after processing'
+    );
+
+    uint256 user1BalPre = tranche.balanceOf(user1);
+    vm.prank(user1);
+    queue.claimDepositRequest(requestEpoch);
+    assertEq(
+      tranche.balanceOf(user1) - user1BalPre,
+      amount1 * ONE_TRANCHE / epochPrice,
+      'user1 tranche balance is wrong after claim'
+    );
+  }
+
+  /// @notice only owner or strategy manager can update the prefunded deposit window
+  function testSetPrefundedDepositWindowOnlyOwnerOrManager() external {
+    vm.prank(address(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+    assertEq(queue.prefundedDepositWindow(), PREFUNDED_DEPOSIT_WINDOW, 'prefunded deposit window is wrong');
+  }
+
+  /// @notice prefunded deposits can only be forwarded by owner or strategy manager
+  function testProcessDepositsToBorrowerOnlyOwnerOrManager() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    _requestDepositWithUser(user1, amount);
+
+    vm.prank(address(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processDepositsToBorrower();
+  }
+
+  function testProcessDepositsToBorrowerRequiresPrefundedQueueSetup() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+    _requestDepositWithUser(user1, amount);
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processDepositsToBorrower();
+  }
+
+  function testProcessDepositsToBorrowerRevertsBeforePrefundedWindow() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+    _requestDepositWithUser(user1, amount);
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processDepositsToBorrower();
+  }
+
+  function testProcessPrefundedDepositsOnlyCdoCanCall() external {
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processPrefundedDeposits(1, 1);
+  }
+
+  function testProcessPrefundedDepositsClearsPrefundedDust() external {
+    uint256 amount = 1; // dust-sized request to force manual 0-mint branch
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    _requestDepositWithUser(user1, amount);
+    uint256 requestEpoch = strategy.epochNumber() + 1;
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+    vm.prank(manager);
+    queue.processDepositsToBorrower();
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), amount, 'prefunded deposits should be set');
+
+    // Simulate zero minted shares on prefunded settlement.
+    vm.prank(address(cdoEpoch));
+    queue.processPrefundedDeposits(requestEpoch, 0);
+
+    assertEq(queue.epochPendingDeposits(requestEpoch), 0, 'pending deposits should be cleared');
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, 'prefunded deposits should be cleared');
+    assertTrue(queue.epochPrice(requestEpoch) != 0, 'epoch price should be set');
+  }
+
+  /// @notice prefunded deposits cannot be forwarded once the epoch has already been stopped
+  function testProcessDepositsToBorrowerRevertsIfEpochNotRunning() external {
+    _stopCurrentEpoch();
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
+    queue.processDepositsToBorrower();
+  }
+
+  /// @notice prefunded forwarding can happen only once per epoch
+  function testProcessDepositsToBorrowerRevertsIfAlreadyPrefunded() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+    _requestDepositWithUser(user1, amount);
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    vm.prank(manager);
+    queue.processDepositsToBorrower();
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processDepositsToBorrower();
+  }
+
+  /// @notice prefunded queues cannot use the normal buffer-period deposit processing path
+  function testProcessDepositsRevertsWhenPrefundedQueueIsEnabled() external {
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.processDeposits();
+  }
+
+  function testRequestDepositRevertsInsidePrefundedWindow() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    deal(address(underlying), user1, amount);
+    vm.startPrank(user1);
+    underlying.approve(address(queue), amount);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    queue.requestDeposit(amount);
+    vm.stopPrank();
+  }
+
+  function testStopEpochWithDurationRevertsIfPrefundedQueueWasNotPrefunded() external {
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(queue));
+    vm.prank(manager);
+    queue.setPrefundedDepositWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    _requestDepositWithUser(user1, amount);
+    uint256 requestEpoch = strategy.epochNumber() + 1;
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
+
+    uint256 interest = 1000 * 1e6;
+    uint256 pendingWithdraw = strategy.pendingWithdraws();
+    address borrower = strategy.borrower();
+    uint256 toRepay = interest + pendingWithdraw;
+
+    deal(address(underlying), borrower, toRepay);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), toRepay);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.stopEpochWithDuration(0, interest, duration, 0);
+
+    assertEq(queue.epochPendingDeposits(requestEpoch), amount, 'pending deposits should stay queued');
+    assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, 'prefunded deposits should stay empty');
+    assertEq(queue.epochPrice(requestEpoch), 0, 'epoch price should not be set');
+  }
+
+  /// @notice the prefunded flow is AA-only and must reject BB queues
+  function testProcessDepositsToBorrowerRevertsForBBQueue() external {
+    IdleCDOEpochQueue bbQueue = new IdleCDOEpochQueue();
+    stdstore.target(address(bbQueue)).sig(bbQueue.idleCDOEpoch.selector).checked_write(address(0));
+    bbQueue.initialize(address(cdoEpoch), address(this), false);
+
+    uint256 amount = 1e6;
+    address user1 = makeAddr('user1');
+
+    vm.prank(manager);
+    IdleCDOEpochVariantPrefunded(address(cdoEpoch)).setEpochQueue(address(bbQueue));
+
+    deal(address(underlying), user1, amount);
+    vm.startPrank(user1);
+    underlying.approve(address(bbQueue), amount);
+    bbQueue.requestDeposit(amount);
+    vm.stopPrank();
+
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    bbQueue.processDepositsToBorrower();
+  }
+
   function testClaimDepositRequest() external {
     // request deposit with user1
     uint256 amount1 = 1e6; // 1USDC
@@ -254,10 +521,12 @@ contract TestIdleCDOEpochQueue is Test {
     address user2 = makeAddr('user2');
     _requestDepositWithUser(user2, amount2);
 
-    // trying to delete request while the epoch is running
+    // deleting a queued request is allowed while the epoch is running as long as it was not prefunded/processed
     vm.prank(user1);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     queue.deleteRequest(depositEpoch);
+    assertEq(queue.userDepositsEpochs(user1, depositEpoch), 0, 'user1 userDepositsEpochs is wrong after running delete');
+    assertEq(queue.epochPendingDeposits(1), amount2, 'pending deposits is wrong after running delete');
+    assertEq(underlying.balanceOf(user1) - balUser1, amount1, 'user1 balance is wrong after running delete');
 
     // stop epoch
     _stopCurrentEpoch();
@@ -270,14 +539,6 @@ contract TestIdleCDOEpochQueue is Test {
     queue.deleteRequest(depositEpoch);
     assertEq(underlying.balanceOf(badUser) - balBadUser, 0, 'badUser balance is wrong after badUser delete');
     assertEq(queue.epochPendingDeposits(1), pendingDepositsPre, 'pending deposits is wrong after badUser delete');
-
-    // delete request with user1
-    vm.prank(user1);
-    queue.deleteRequest(depositEpoch);
-
-    assertEq(queue.userDepositsEpochs(user1, depositEpoch), 0, 'user1 userDepositsEpochs is wrong after delete');
-    assertEq(queue.epochPendingDeposits(1), amount2, 'pending deposits is wrong after delete');
-    assertEq(underlying.balanceOf(user1) - balUser1, amount1, 'user1 balance is wrong after delete');
 
     // process deposits
     vm.prank(manager);
@@ -1079,6 +1340,31 @@ contract TestIdleCDOEpochQueue is Test {
     }
 
     assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted');
+  }
+
+  function _stopCurrentEpochPrefunded() internal {
+    uint256 interest = 1000 * 1e6;
+    uint256 pendingWithdraw = strategy.pendingWithdraws();
+    address borrower = strategy.borrower();
+    uint256 toRepay = interest + pendingWithdraw;
+
+    deal(address(underlying), borrower, toRepay);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), toRepay);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, interest, duration, 0);
+
+    assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted');
+  }
+
+  function _enterPrefundedWindow(uint256 _window) internal {
+    uint256 target = cdoEpoch.epochEndDate() - _window + 1;
+    if (block.timestamp < target) {
+      vm.warp(target);
+    }
   }
 
   function _expectedFundsEndEpoch() internal view returns (uint256 expected) {
