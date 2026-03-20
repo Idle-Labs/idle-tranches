@@ -139,6 +139,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
 
   /// @notice Send all queued deposits for the next epoch to the borrower before epoch stop
   /// @dev This switches the epoch from "pending in queue" to "prefunded to borrower".
+  /// Prefunding can start only once the deposit window for that epoch has closed.
   /// After this call, no additional deposits can join the same epoch.
   function processDepositsToBorrower() external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
@@ -153,6 +154,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     if (!_cdo.isEpochRunning()) {
       revert EpochNotRunning();
     }
+    // Keep prefunding aligned with the same cutoff enforced for new queued deposits.
+    uint256 _prefundedWindow = prefundedDepositWindow;
+    _checkNotAllowed(_prefundedWindow == 0 || block.timestamp + _prefundedWindow < _cdo.epochEndDate());
 
     uint256 _epoch = _strategy.epochNumber() + 1;
     // prefunding can happen only once for an epoch

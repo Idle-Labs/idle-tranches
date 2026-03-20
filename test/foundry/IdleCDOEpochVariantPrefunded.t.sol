@@ -142,6 +142,7 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     _requestDepositWithUser(user1, amount);
     uint256 requestEpoch = strategy.epochNumber() + 1;
 
+    _enterPrefundedWindow(PREFUNDED_DEPOSIT_WINDOW);
     vm.prank(manager);
     queue.processDepositsToBorrower();
 
