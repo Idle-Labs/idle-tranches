@@ -81,6 +81,10 @@ contract IdleCreditVault is
   mapping (address => Apr0UserData) public apr0Users;
   /// @notice net APR=0 interest rate per epoch, scaled by 1e18
   mapping (uint256 => uint256) public apr0RateByEpoch;
+  /// @notice default maximum allowed scaled apr
+  uint256 public constant DEFAULT_MAX_APR = 20e18;
+  /// @notice maximum allowed scaled apr, 0 disables the cap
+  uint256 public maxApr;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -108,6 +112,7 @@ contract IdleCreditVault is
     oneToken = 10**(tokenDecimals);
     borrower = _borrower;
     manager = _manager;
+    maxApr = DEFAULT_MAX_APR;
     // on the first setup we set the lastApr equal to the unscaledApr
     lastApr = _apr;
     unscaledApr = _apr;
@@ -159,6 +164,12 @@ contract IdleCreditVault is
     borrower = _borrower;
   }
 
+  /// @notice set maximum allowed scaled apr, 0 disables the cap
+  /// @param _maxApr new max apr
+  function setMaxApr(uint256 _maxApr) external onlyOwner {
+    maxApr = _maxApr;
+  }
+
   /// @notice set both the scaled and unscaled apr
   /// @dev only cdo and manager can set the apr.
   /// @param _unscaledApr unscaled apr
@@ -180,6 +191,10 @@ contract IdleCreditVault is
       if (msg.sender != _cdo && msg.sender != manager) {
         revert NotAllowed();
       }
+    }
+    uint256 _maxApr = maxApr;
+    if (_maxApr != 0 && _apr > _maxApr) {
+      revert NotAllowed();
     }
     lastApr = _apr;
   }

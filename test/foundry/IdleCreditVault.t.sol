@@ -12,6 +12,7 @@ import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 
 error EpochRunning();
 error NotAllowed();
+error NotAuthorized();
 error Default();
 
 contract TestIdleCreditVault is TestIdleCDOLossMgmt {
@@ -343,6 +344,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_strategy.manager(), manager, 'manager is wrong');
     assertEq(_strategy.borrower(), borrower, 'borrower is wrong');
     assertEq(_strategy.lastApr(), _scaleAprWithBuffer(initialProvidedApr), 'lastApr is wrong');
+    assertEq(_strategy.maxApr(), _strategy.DEFAULT_MAX_APR(), 'maxApr is wrong');
     assertEq(IERC20Detailed(address(_strategy)).name(), "Pareto Credit Vault testBorrower", 'token name is wrong');
     assertEq(IERC20Detailed(address(_strategy)).symbol(), "testBorrower", 'symbol is wrong');
     assertEq(IERC20Detailed(address(_strategy)).decimals(), IERC20Detailed(defaultUnderlying).decimals(), 'decimals is wrong');
@@ -364,6 +366,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.expectRevert(bytes("IS_0"));
     _strategy.setBorrower(address(0));
     vm.stopPrank();
+  }
+
+  function testSetIsInterestMintedOnlyOwner() external {
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    vm.prank(manager);
+    cdoEpoch.setIsInterestMinted(true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+    assertEq(cdoEpoch.isInterestMinted(), true, 'isInterestMinted is wrong');
   }
 
   function testSetBorrowerAffectsEpochFlows() external {
@@ -1198,6 +1210,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
     vm.prank(owner);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
+    vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
 
     vm.startPrank(manager);
@@ -1263,11 +1277,74 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testStopEpochMintInterestOverrideCanExceedExpectedInterestUpToMaxAprCap() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    uint256 maxApr = _scaleAprWithBuffer(initialProvidedApr);
+    vm.prank(owner);
+    cv.setMaxApr(maxApr);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    vm.startPrank(manager);
+    cv.setAprs(0, 0);
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    _startEpochAndCheckPrices(0);
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'expectedEpochInterest should be 0');
+
+    uint256 overrideInterest = _calcInterestAtApr(cdoEpoch.getContractValue(), cv.maxApr());
+    assertGt(overrideInterest, cdoEpoch.expectedEpochInterest(), 'override should exceed expected interest');
+    uint256 strategyTokenBalPre = strategyToken.balanceOf(address(cdoEpoch));
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, overrideInterest);
+
+    assertEq(
+      strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
+      overrideInterest,
+      'strategy tokens not minted up to cap'
+    );
+    assertEq(cdoEpoch.lastEpochInterest(), overrideInterest, 'lastEpochInterest is wrong');
+  }
+
+  function testStopEpochMintInterestOverrideAboveMaxAprCapReverts() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    uint256 maxApr = _scaleAprWithBuffer(initialProvidedApr);
+    vm.prank(owner);
+    cv.setMaxApr(maxApr);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    vm.startPrank(manager);
+    cv.setAprs(0, 0);
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    _startEpochAndCheckPrices(0);
+
+    uint256 overrideInterest = _calcInterestAtApr(cdoEpoch.getContractValue(), cv.maxApr()) + 1;
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, overrideInterest);
+  }
+
   function testStopEpochMintInterestWithPendingWithdraws() external {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
+    vm.prank(owner);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
     vm.startPrank(manager);
@@ -2427,7 +2504,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
-    return _amount * (IdleCreditVault(address(strategy)).getApr() / 100) * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN);
+    return _calcInterestAtApr(_amount, IdleCreditVault(address(strategy)).getApr());
+  }
+
+  function _calcInterestAtApr(uint256 _amount, uint256 _apr) internal view returns (uint256) {
+    return _amount * (_apr / 100) * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN);
   }
 
   function _calcInterestWithdrawRequest(uint256 _amount, address _tranche) internal view returns (uint256) {
@@ -3554,6 +3635,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testStopEpochWithDuration() external {
     vm.startPrank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.stopPrank();
 
     IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
@@ -3630,6 +3712,40 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertEq(cv.getApr(), 4, 'apr is wrong');
     assertEq(cv.unscaledApr(), 3, 'unscaledApr is wrong');
+  }
+
+  function testSetAprRespectsMaxApr() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.prank(owner);
+    cv.setMaxApr(4);
+
+    vm.prank(manager);
+    cv.setApr(4);
+    assertEq(cv.getApr(), 4, 'apr is wrong after capped set');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cv.setApr(5);
+
+    assertEq(cv.getApr(), 4, 'apr should stay unchanged after revert');
+  }
+
+  function testSetAprsRevertsAndRollsBackWhenScaledAprAboveMaxApr() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+
+    vm.prank(owner);
+    cv.setMaxApr(4);
+
+    vm.prank(manager);
+    cv.setAprs(3, 4);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cv.setAprs(5, 5);
+
+    assertEq(cv.getApr(), 4, 'apr should stay unchanged after revert');
+    assertEq(cv.unscaledApr(), 3, 'unscaledApr should roll back after revert');
   }
 
   function testRequestAndClaimBeforeFirstEpoch() external {
@@ -3862,6 +3978,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testStopEpochWithDurationLossWithMintedInterest() external {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    vm.prank(owner);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
 

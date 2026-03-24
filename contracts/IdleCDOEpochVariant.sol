@@ -171,7 +171,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice set flag to mint interest as strategy tokens without moving underlyings
   /// @param _isMinted true to mint interest instead of transferring underlyings
   function setIsInterestMinted(bool _isMinted) external {
-    _checkOnlyOwnerOrManager();
+    _checkOnlyOwner();
     isInterestMinted = _isMinted;
   }
 
@@ -264,7 +264,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// be greater than the pending withdraw fees and newApr must be 0. If `_interest` is 1 then
   /// it is interpreted as a special case where we request everything back from the borrower
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
-  function stopEpoch(uint256 _newApr, uint256 _interest) public virtual {
+  function stopEpoch(uint256 _newApr, uint256 _interest) public {
+    _beforeStopEpoch();
     _checkOnlyOwnerOrManager();
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
@@ -303,6 +304,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     }
     uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
     bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
+    if (_mintInterest && _interest > 1) {
+      uint256 _maxApr = _strategy.maxApr();
+      _checkNotAllowed(_maxApr != 0 && _grossInterest > _calcInterestWithApr(getContractValue(), _maxApr) + _pendingWithdrawFees);
+    }
 
     // This is called before the getFundsFromBorrower to eventually 
     // withdraw funds from the landing protocol in case of a programmable borrower
@@ -407,7 +412,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _interest Interest gained in the epoch
   /// @param _duration New epoch duration
   /// @param _lossAmount Amount of strategy tokens to burn as realized loss
-  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public virtual {
+  function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public {
     // stop epoch checks that msg.sender is allowed
     stopEpoch(_newApr, _interest);
     if (_lossAmount > 0 && !defaulted) {
@@ -420,7 +425,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
     // scale the apr with the new durantion and buffer
     _setScaledApr(_newApr);
+    _afterStopEpochWithDuration();
   }
+
+  /// @notice internal function called in stop epoch before doing anything else
+  function _beforeStopEpoch() internal virtual {}
+
+  /// @notice internal function called in stop epoch with duration after doing anything else
+  function _afterStopEpochWithDuration() internal virtual {}
 
   /// @notice Set the scaled apr for the next epoch
   /// @param _newApr New apr to set for the next epoch
@@ -684,7 +696,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Calculate the interest of an epoch for the given amount
   /// @param _amount Amount of underlyings
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
-    return _amount * (_getStrategyApr() / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
+    return _calcInterestWithApr(_amount, _getStrategyApr());
+  }
+
+  /// @notice Calculate the interest of an epoch for the given amount and apr
+  /// @param _amount Amount of underlyings
+  /// @param _apr Apr used for the calculation
+  function _calcInterestWithApr(uint256 _amount, uint256 _apr) internal view returns (uint256) {
+    return _amount * (_apr / 100) * epochDuration / (365 days * ONE_TRANCHE_TOKEN);
   }
 
   /// @notice Get current tranches value
