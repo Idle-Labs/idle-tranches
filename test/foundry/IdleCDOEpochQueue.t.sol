@@ -295,7 +295,7 @@ contract TestIdleCDOEpochQueue is Test {
 
     vm.prank(manager);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    queue.processPrefundedDeposits(1, 1);
+    queue.processPrefundedDeposits(1);
   }
 
   function testProcessPrefundedDepositsClearsPrefundedDust() external {
@@ -314,9 +314,11 @@ contract TestIdleCDOEpochQueue is Test {
     queue.processDepositsToBorrower();
     assertEq(queue.epochPrefundedDeposits(requestEpoch), amount, 'prefunded deposits should be set');
 
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(requestEpoch);
+
     // Simulate zero minted shares on prefunded settlement.
     vm.prank(address(cdoEpoch));
-    queue.processPrefundedDeposits(requestEpoch, 0);
+    queue.processPrefundedDeposits(0);
 
     assertEq(queue.epochPendingDeposits(requestEpoch), 0, 'pending deposits should be cleared');
     assertEq(queue.epochPrefundedDeposits(requestEpoch), 0, 'prefunded deposits should be cleared');
