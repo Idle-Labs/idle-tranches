@@ -328,6 +328,26 @@ const avaxContracts = {
   USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
 }
 
+const tempoContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  treasuryMultisig: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  devLeagueMultisig: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  proxyAdmin: '0x2a6f03a198d245daf1fdb330d1d50bcc607eecab',
+  // Same as proxyAdmin
+  proxyAdminWithTimelock: '0x2a6f03a198d245daf1fdb330d1d50bcc607eecab',
+  timelock: 'aaa',
+  keyring: 'bb',
+  keyringWhitelist: 'ccc',
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: 'ddd',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  USDC: '0x20c000000000000000000000b9537d11c60e8b50',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonzk: polygonZKContracts,
@@ -336,6 +356,7 @@ exports.IdleTokens = {
   arbitrum: arbitrumContracts,
   base: baseContracts,
   avax: avaxContracts,
+  tempo: tempoContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -1088,6 +1109,18 @@ const CDOs = {
     writeOff: '0x6120e46A4dD1bC8E4a94aeE0f71987C62De99931',
     keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
     queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
+  },
+  creditm1capitalusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xf6b24eC487680Aa3716f0DAEfB9264419b429384',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x7A4E728B9fEbec04de724821eb9056828C2D1c06',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xf6b24eC487680Aa3716f0DAEfB9264419b429384',
+    AATranche: '0x9372a533Db980bD9591D3c7C457dC220Bf1A0Ab4',
+    BBTranche: '0x9704B7b30775Bc5712b5Fc186dE6e224853dED4D',
+    keyringWhitelist: '0x42e64544E71E8d2ad6590f78a07B1A81133d7CbD',
   },
   creditgauntlettestusdc: {
     decimals: 6,
@@ -3542,7 +3575,53 @@ exports.deployTokens = {
     hypernative: true,
     interestMinted: true,
     depositDuringEpoch: false,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '604800', // 7 days
     proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
+  },
+  creditm1capitalusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0x91174b63f72E6557A21045D411b5e0894f80323d', // borrower
+      'M1_USDC', // borrower name
+      6e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditm1capitalusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '3600', // 1 hour initially
+    bufferPeriod: '0', // 0 seconds initially
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 9769439,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: false,
+    hypernative: true,
+    interestMinted: false,
+    depositDuringEpoch: true,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '0',
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
   usualusd0pptest: {
     decimals: 18,
