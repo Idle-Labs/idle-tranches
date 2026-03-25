@@ -1110,6 +1110,18 @@ const CDOs = {
     keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
     queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
   },
+  creditm1capitalusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xf6b24eC487680Aa3716f0DAEfB9264419b429384',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x7A4E728B9fEbec04de724821eb9056828C2D1c06',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xf6b24eC487680Aa3716f0DAEfB9264419b429384',
+    AATranche: '0x9372a533Db980bD9591D3c7C457dC220Bf1A0Ab4',
+    BBTranche: '0x9704B7b30775Bc5712b5Fc186dE6e224853dED4D',
+    keyringWhitelist: '0x42e64544E71E8d2ad6590f78a07B1A81133d7CbD',
+  },
   creditgauntlettestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -3566,6 +3578,50 @@ exports.deployTokens = {
     prefundedDeposits: false,
     prefundedDepositsWindows: '604800', // 7 days
     proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
+  },
+  creditm1capitalusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      '0x91174b63f72E6557A21045D411b5e0894f80323d', // borrower
+      'M1_USDC', // borrower name
+      6e18.toString(), // intialApr
+    ],
+    cdo: CDOs.creditm1capitalusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '3600', // 1 hour initially
+    bufferPeriod: '0', // 0 seconds initially
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 9769439,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: false,
+    writeoff: false,
+    hypernative: true,
+    interestMinted: false,
+    depositDuringEpoch: true,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '0',
+    proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
   usualusd0pptest: {
     decimals: 18,
