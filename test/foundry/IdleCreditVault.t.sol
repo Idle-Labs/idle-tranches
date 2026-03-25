@@ -335,7 +335,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'allowAAWithdrawRequest is wrong');
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 1.5e18, 'instantWithdrawAprDelta is wrong');
-    assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
+    // assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
     // assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
     // assertEq(cdoEpoch.keyringPolicyId() != 0, true, 'keyring policy id is wrong');
 

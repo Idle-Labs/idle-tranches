@@ -1022,7 +1022,6 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
     console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}, allow withdraw ${keyringAllowWithdraw}`);
     const fees = deployToken.fees;
-    console.log(`Setting fees ${fees}`);
     console.log(`Has queue: ${deployToken.queue}`);
     let queueImplementation;
     if (deployToken.queue) {
@@ -1037,6 +1036,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
 
     // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
     const owner = networkContracts.treasuryMultisig;
+    console.log(`Setting fees ${fees} to ${owner}`);
     console.log('Owner of all contracts: ', owner);
 
     const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);

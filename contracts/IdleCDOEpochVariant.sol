@@ -75,16 +75,11 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   event BorrowerDefault(uint256 funds);
 
   function _additionalInit() internal virtual override {
-    // no unlent perc
-    unlentPerc = 0;
-
     // Set the contract with monotranche as default (can still be changed if needed)
     // losses are split according to tvl, senior has no priority
     lossToleranceBps = FULL_ALLOC;
     // all yield to senior
     isAYSActive = false;
-    // deposit directly in the strategy
-    directDeposit = true;
 
     // set epoch params
     epochDuration = 30 days;

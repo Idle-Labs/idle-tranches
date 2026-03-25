@@ -80,13 +80,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     // Set allowance for strategy
     _allowUnlimitedSpend(_guardedToken, _strategy);
     _allowUnlimitedSpend(_strategyToken, _strategy);
-    // Save current strategy price
-    lastStrategyPrice = _strategyPrice();
-    // Fee params
-    fee = 15000; // 15% performance fee
-    feeReceiver = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814); // treasury multisig
     guardian = _owner;
-    // feeSplit = 0; // default all to feeReceiver
     isAYSActive = true; // adaptive yield split
     minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
 
@@ -201,9 +195,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     // update trancheAPRSplitRatio
     _updateSplitRatio(_getAARatio(true));
 
-    if (directDeposit) {
-      IIdleCDOStrategy(strategy).deposit(_amount);
-    }
+    // direct deposit in the strategy
+    IIdleCDOStrategy(strategy).deposit(_amount);
   }
 
   /// @notice this method is called on depositXX/withdrawXX and
