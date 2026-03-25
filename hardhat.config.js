@@ -16,6 +16,7 @@ require("./tasks/chain-utils");
 require("./tasks/tranches-utils");
 require("./tasks/cdo-factory");
 require("./tasks/deploy-by");
+require("./tasks/verify-tempo");
 
 const BN = require("bignumber.js");
 const mainContactRuns = 170;
@@ -195,6 +196,14 @@ module.exports = {
       gasMultiplier: 1.1,
       timeout: 1200000
     },
+    tempo: {
+      url: `https://tempo-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      gasPrice: 'auto',
+      gas: 'auto',
+      gasMultiplier: 1.1,
+      chainId: 4217,
+      timeout: 1200000
+    },
     base: {
       url: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
@@ -249,6 +258,7 @@ module.exports = {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
       avax: process.env.AVASCAN_API_KEY,
+      tempo: process.env.ETHERSCAN_API_KEY,
       base: process.env.ETHERSCAN_API_KEY,
       arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
@@ -287,6 +297,14 @@ module.exports = {
         urls: {
           apiURL: "https://api.avascan.info/v2/network/mainnet/evm/43114/etherscan",
           browserURL: "https://avascan.info/"
+        }
+      },
+      {
+        network: "tempo",
+        chainId: 4217,
+        urls: {
+          apiURL: "https://contracts.tempo.xyz/v2/verify/4217",
+          browserURL: "https://explore.tempo.xyz"
         }
       },
     ]

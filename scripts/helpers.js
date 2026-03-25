@@ -36,6 +36,7 @@ const getMultisigSigner = async (skipLog) => {
   const isArbitrum = hre.network.name == 'arbitrum' || hre.network.config.chainId == 42161;
   const isBase = hre.network.name == 'base' || hre.network.config.chainId == 8453;
   const isAvax = hre.network.name == 'avax' || hre.network.config.chainId == 43114;
+  const isTempo = hre.network.name == 'tempo' || hre.network.config.chainId == 4217;
   let safeServiceUrl;
   let networkKey;
   if (isOptimism) {
@@ -56,6 +57,9 @@ const getMultisigSigner = async (skipLog) => {
   } else if (isAvax) {
     safeServiceUrl = 'https://safe-transaction-avalanche.safe.global/';
     networkKey = 'avax';
+  } else if (isTempo) {
+    safeServiceUrl = 'https://api.safe.global/tx-service/tempo/';
+    networkKey = 'tempo';
   } else {
     safeServiceUrl = 'https://safe-transaction-mainnet.safe.global/';
     networkKey = 'mainnet';
@@ -140,7 +144,8 @@ const getSigner = async (acc) => {
     hre.network.name == 'optimism' ||
     hre.network.name == 'arbitrum' ||
     hre.network.name == 'avax' ||
-    hre.network.name == 'base'
+    hre.network.name == 'base' ||
+    hre.network.name == 'tempo'
   ) {
     signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   }

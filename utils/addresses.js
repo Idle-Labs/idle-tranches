@@ -328,6 +328,26 @@ const avaxContracts = {
   USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
 }
 
+const tempoContracts = {
+  deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+  cdoFactory: '0xB5D4D8d9122Bf252B65DAbb64AaD68346405443C',
+  rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
+  feeReceiver: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  treasuryMultisig: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  devLeagueMultisig: '0x55a9a501F35bAe5999F2C15E9B7F2B8EE9080f6e',
+  proxyAdmin: '0x2a6f03a198d245daf1fdb330d1d50bcc607eecab',
+  // Same as proxyAdmin
+  proxyAdminWithTimelock: '0x2a6f03a198d245daf1fdb330d1d50bcc607eecab',
+  timelock: 'aaa',
+  keyring: 'bb',
+  keyringWhitelist: 'ccc',
+  // This is an instance of HypernativeBatchPauser
+  pauserMultisig: 'ddd',
+  // This is generated in hypernative dashboard
+  hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  USDC: '0x20c000000000000000000000b9537d11c60e8b50',
+}
+
 exports.IdleTokens = {
   polygon: polygonContracts,
   polygonzk: polygonZKContracts,
@@ -336,6 +356,7 @@ exports.IdleTokens = {
   arbitrum: arbitrumContracts,
   base: baseContracts,
   avax: avaxContracts,
+  tempo: tempoContracts,
   local: mainnetContracts,
   kovan: {
     idleDAIBest: "0x295CA5bC5153698162dDbcE5dF50E436a58BA21e",
@@ -3542,6 +3563,8 @@ exports.deployTokens = {
     hypernative: true,
     interestMinted: true,
     depositDuringEpoch: false,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '604800', // 7 days
     proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
   },
   usualusd0pptest: {
