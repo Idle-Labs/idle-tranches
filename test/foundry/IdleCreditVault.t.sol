@@ -15,6 +15,8 @@ error NotAllowed();
 error NotAuthorized();
 error Default();
 
+contract NonProgrammableBorrower {}
+
 contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   using stdStorage for StdStorage;
 
@@ -376,6 +378,49 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
     assertEq(cdoEpoch.isInterestMinted(), true, 'isInterestMinted is wrong');
+  }
+
+  function testSetIsProgrammableBorrowerOnlyOwner() external {
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    vm.prank(manager);
+    cdoEpoch.setIsProgrammableBorrower(true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsProgrammableBorrower(true);
+    assertEq(cdoEpoch.isProgrammableBorrower(), true, 'isProgrammableBorrower is wrong');
+  }
+
+  function testSetIsProgrammableBorrowerRevertsDuringEpoch() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _transferBurnedTrancheTokens(address(this), true);
+    _startEpochAndCheckPrices(0);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(owner);
+    cdoEpoch.setIsProgrammableBorrower(true);
+  }
+
+  function testContractBorrowerWithCodeDoesNotRequireProgrammableMode() external {
+    IdleCreditVault _strategy = IdleCreditVault(address(strategy));
+    NonProgrammableBorrower safeLikeBorrower = new NonProgrammableBorrower();
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    vm.prank(owner);
+    _strategy.setBorrower(address(safeLikeBorrower));
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    assertEq(cdoEpoch.isEpochRunning(), true, 'epoch should start');
+    assertEq(cdoEpoch.isProgrammableBorrower(), false, 'contract borrower should not be auto-programmable');
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(address(safeLikeBorrower)),
+      amount,
+      'contract borrower did not receive funds'
+    );
   }
 
   function testSetBorrowerAffectsEpochFlows() external {

@@ -115,6 +115,14 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     cdoEpoch.stopEpoch(0, 0);
   }
 
+  function testDepositDuringEpochNotSupported() external {
+    deal(address(underlying), address(this), 1e6);
+    underlying.approve(address(cdoEpoch), 1e6);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(1e6, address(tranche));
+  }
+
   function testStopEpochWithoutQueueConfigurationDoesNotProcessDeposits() external {
     uint256 amount = 1e6;
     address user1 = makeAddr("user1");

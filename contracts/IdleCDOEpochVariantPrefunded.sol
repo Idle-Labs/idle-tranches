@@ -32,6 +32,12 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
     _checkNotAllowed(epochQueue != address(0) && msg.sig == this.stopEpoch.selector);
   }
 
+  /// @notice Disable mid-epoch deposits for the prefunded variant.
+  function depositDuringEpoch(uint256, address) external pure override returns (uint256) {
+    _checkNotAllowed(true);
+    return 0;
+  }
+
   /// @notice Finalize prefunded queue deposits after the base stop flow completes
   /// @dev Prefunded AA deposits are minted at the post-stop price even if the borrower defaulted during stop
   function _afterStopEpochWithDuration() internal override {

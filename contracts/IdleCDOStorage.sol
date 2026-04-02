@@ -122,6 +122,9 @@ contract IdleCDOStorage {
   uint256 public lossToleranceBps;
   // Amount of stkIDLE required to mint 1 underlying
   uint256 public stkIDLEPerUnderlying;
+  // Explicit flag for epoch variants using programmable borrower hooks.
+  // This lives in shared storage so upgrading prefunded epoch variants does not shift child storage.
+  bool public isProgrammableBorrower;
   // uint256 public test;
 
 
@@ -135,7 +138,7 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[46] private __gap;
+  uint256[45] private __gap;
   // uint256[45] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
