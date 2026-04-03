@@ -111,7 +111,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     idleCDO.depositAA(amount);
     _startEpochAndCheckPrices(0);
 
-    assertApproxEqAbs(_programmableMorphoAssets(), amount, 2, "epoch funds not parked in morpho");
+    assertApproxEqAbs(_programmableVaultAssets(), amount, 2, "epoch funds not parked in vault");
 
     vm.prank(revolvingBorrower);
     programmableBorrower.borrow(drawAmount);
@@ -120,17 +120,17 @@ contract TestProgrammableBorrowerCreditVault is Test {
     _accrueMorphoVaultInterest();
 
     uint256 expectedBorrowerInterest = programmableBorrower.borrowerInterestAccruedNow();
-    uint256 expectedMorphoInterest = programmableBorrower.morphoInterestAccrued();
+    uint256 expectedVaultInterest = programmableBorrower.vaultInterestAccrued();
     uint256 expectedTotalInterest = programmableBorrower.totalInterestDueNow();
     uint256 pricePre = cdoEpoch.virtualPrice(address(aaTranche));
 
     assertGt(expectedBorrowerInterest, 0, "borrower interest should accrue");
-    assertGt(expectedMorphoInterest, 0, "morpho interest should accrue");
+    assertGt(expectedVaultInterest, 0, "vault interest should accrue");
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     _accrueMorphoVaultInterest();
     expectedBorrowerInterest = programmableBorrower.borrowerInterestAccruedNow();
-    expectedMorphoInterest = programmableBorrower.morphoInterestAccrued();
+    expectedVaultInterest = programmableBorrower.vaultInterestAccrued();
     expectedTotalInterest = programmableBorrower.totalInterestDueNow();
 
     vm.prank(manager);
@@ -148,7 +148,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertEq(strategy.unscaledApr(), 0, "strategy apr should stay zero");
   }
 
-  function testProgrammableBorrowerMorphoLossDoesNotReduceSettledBorrowerDebt() external {
+  function testProgrammableBorrowerVaultLossDoesNotReduceSettledBorrowerDebt() external {
     uint256 amount = 10_000 * oneScale;
     uint256 drawAmount = 5_000 * oneScale;
 
@@ -172,12 +172,12 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.rescueTokens(address(morphoVault), makeAddr("shareSink"), sharesToRescue);
 
     uint256 expectedBorrowerInterest = programmableBorrower.borrowerInterestAccruedNow();
-    uint256 expectedMorphoLoss = programmableBorrower.morphoLoss();
+    uint256 expectedVaultLoss = programmableBorrower.vaultLoss();
     uint256 expectedTotalInterest = programmableBorrower.totalInterestDueNow();
 
     assertGt(expectedBorrowerInterest, 0, "borrower interest should accrue");
-    assertGt(expectedMorphoLoss, 0, "morpho loss should be recognized");
-    assertLt(expectedTotalInterest, expectedBorrowerInterest, "pool interest should be net of morpho loss");
+    assertGt(expectedVaultLoss, 0, "vault loss should be recognized");
+    assertLt(expectedTotalInterest, expectedBorrowerInterest, "pool interest should be net of vault loss");
 
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, 0);
@@ -187,7 +187,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
       programmableBorrower.borrowerInterestDebt(),
       expectedBorrowerInterest,
       5,
-      "contractual borrower debt should not be reduced by morpho loss"
+      "contractual borrower debt should not be reduced by vault loss"
     );
   }
 
@@ -370,7 +370,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     uint256 outstandingBorrowerInterest = secondPeriodInterest + thirdPeriodInterest;
     uint256 totalBorrowerInterestForEpoch = firstPeriodInterest + outstandingBorrowerInterest;
     uint256 manualMorphoGain =
-      _programmableMorphoAssets() +
+      _programmableVaultAssets() +
       firstDraw +
       secondDraw -
       (amount + principalRepaidInEpoch);
@@ -426,7 +426,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertEq(programmableBorrower.borrowerPrincipal(), drawAmount, "principal should carry into the next epoch");
 
     _startEpochAndCheckPrices(1);
-    uint256 epoch1StartAssets = programmableBorrower.epochStartMorphoAssets();
+    uint256 epoch1StartAssets = programmableBorrower.epochStartVaultAssets();
 
     vm.warp(block.timestamp + 5 days);
     uint256 unfrontedInterestAtRepay = programmableBorrower.borrowerInterestAccruedNow();
@@ -444,7 +444,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     vm.warp(cdoEpoch.epochEndDate() + 1);
     _accrueMorphoVaultInterest();
 
-    uint256 expectedEpoch1Interest = _programmableMorphoAssets() - (epoch1StartAssets + debtFromEpoch0 + drawAmount);
+    uint256 expectedEpoch1Interest = _programmableVaultAssets() - (epoch1StartAssets + debtFromEpoch0 + drawAmount);
     assertGe(expectedEpoch1Interest, unfrontedInterestAtRepay, "only the newly accrued unfronted interest should remain as new epoch profit");
     assertApproxEqAbs(
       programmableBorrower.totalInterestDueNow(),
@@ -484,7 +484,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     _startEpochAndCheckPrices(1);
 
-    uint256 morphoAssetsPre = _programmableMorphoAssets();
+    uint256 vaultAssetsPre = _programmableVaultAssets();
     uint256 principalPre = programmableBorrower.borrowerPrincipal();
 
     deal(USDC, revolvingBorrower, frontedDebt, true);
@@ -493,7 +493,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     assertEq(programmableBorrower.borrowerInterestDebt(), 0, "fronted debt not cleared");
     assertEq(programmableBorrower.borrowerPrincipal(), principalPre, "principal should not change");
-    assertApproxEqAbs(_programmableMorphoAssets() - morphoAssetsPre, frontedDebt, 5, "repayment not redeployed");
+    assertApproxEqAbs(_programmableVaultAssets() - vaultAssetsPre, frontedDebt, 5, "repayment not redeployed");
   }
 
   function testProgrammableBorrowerRepayWhenEpochInactiveKeepsCashOnHand() external {
@@ -516,7 +516,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     cdoEpoch.stopEpoch(0, 0);
 
     uint256 frontedDebt = programmableBorrower.borrowerInterestDebt();
-    uint256 morphoAssetsPre = _programmableMorphoAssets();
+    uint256 vaultAssetsPre = _programmableVaultAssets();
     uint256 onHandPre = underlying.balanceOf(address(programmableBorrower));
 
     deal(USDC, revolvingBorrower, frontedDebt, true);
@@ -530,7 +530,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
       2,
       "repayment should stay on-hand while epoch is inactive"
     );
-    assertApproxEqAbs(_programmableMorphoAssets(), morphoAssetsPre, 2, "inactive repayment should not redeploy");
+    assertApproxEqAbs(_programmableVaultAssets(), vaultAssetsPre, 2, "inactive repayment should not redeploy");
   }
 
   function testProgrammableBorrowerStopEpochSettlesFullBorrowerInterestWithApr0PendingWithdraws() external {
@@ -565,7 +565,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "current borrower interest not cleared");
   }
 
-  function testProgrammableBorrowerStopEpochDefaultsWhenMorphoCannotReturnEnoughLiquidity() external {
+  function testProgrammableBorrowerStopEpochDefaultsWhenVaultCannotReturnEnoughLiquidity() external {
     uint256 amount = 10_000 * oneScale;
     uint256 drawAmount = 1_000 * oneScale;
 
@@ -665,14 +665,14 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertApproxEqRel(newPeriodInterest, interestBefore * 2, 0.01e18, "second period should accrue at double rate");
   }
 
-  function testSetMorphoVaultRejectsWrongAssetVault() external {
+  function testSetVaultRejectsWrongAssetVault() external {
     address wethVault = 0x38989BBA00BDF8181F4082995b3DEAe96163aC5D;
 
     vm.expectRevert(abi.encodeWithSelector(InvalidAddress.selector));
-    programmableBorrower.setMorphoVault(wethVault);
+    programmableBorrower.setVault(wethVault);
   }
 
-  function testTotalInterestDueNowFloorsAtZeroWhenMorphoLossExceedsGains() external {
+  function testTotalInterestDueNowFloorsAtZeroWhenVaultLossExceedsGains() external {
     uint256 amount = 10_000 * oneScale;
 
     vm.prank(owner);
@@ -687,7 +687,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     uint256 sharesToRescue = morphoVault.balanceOf(address(programmableBorrower)) * 9 / 10;
     programmableBorrower.rescueTokens(address(morphoVault), makeAddr("shareSinkZeroFloor"), sharesToRescue);
 
-    assertGt(programmableBorrower.morphoLoss(), 0, "expected morpho loss");
+    assertGt(programmableBorrower.vaultLoss(), 0, "expected vault loss");
     assertEq(programmableBorrower.totalInterestDueNow(), 0, "net interest should floor at zero");
   }
 
@@ -764,15 +764,15 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.onStopEpoch(0);
   }
 
-  function testEmergencyExitMorphoRevertsForNonOwner() external {
+  function testEmergencyExitVaultRevertsForNonOwner() external {
     vm.expectRevert("Ownable: caller is not the owner");
     vm.prank(revolvingBorrower);
-    programmableBorrower.emergencyExitMorpho(0);
+    programmableBorrower.emergencyExitVault(0);
   }
 
-  // ─── emergencyExitMorpho ──────────────────────────────────────────────
+  // ─── emergencyExitVault ───────────────────────────────────────────────
 
-  function testEmergencyExitMorphoFullRedeem() external {
+  function testEmergencyExitVaultFullRedeem() external {
     uint256 amount = 10_000 * oneScale;
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
@@ -784,7 +784,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertGt(morphoSharesBefore, 0, "should have morpho shares");
 
     // Full redeem (shares=0 means all)
-    programmableBorrower.emergencyExitMorpho(0);
+    programmableBorrower.emergencyExitVault(0);
 
     assertEq(morphoVault.balanceOf(address(programmableBorrower)), 0, "all shares should be redeemed");
     assertApproxEqAbs(
@@ -795,7 +795,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     );
   }
 
-  function testEmergencyExitMorphoPartialRedeem() external {
+  function testEmergencyExitVaultPartialRedeem() external {
     uint256 amount = 10_000 * oneScale;
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
@@ -807,7 +807,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     uint256 halfShares = totalShares / 2;
 
     // Partial redeem
-    programmableBorrower.emergencyExitMorpho(halfShares);
+    programmableBorrower.emergencyExitVault(halfShares);
 
     assertApproxEqAbs(
       morphoVault.balanceOf(address(programmableBorrower)),
@@ -1016,7 +1016,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     }
   }
 
-  function _programmableMorphoAssets() internal view returns (uint256) {
+  function _programmableVaultAssets() internal view returns (uint256) {
     return morphoVault.convertToAssets(morphoVault.balanceOf(address(programmableBorrower)));
   }
 
