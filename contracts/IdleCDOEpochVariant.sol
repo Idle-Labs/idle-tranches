@@ -477,11 +477,11 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
   /// @notice Get funds from borrower to fullfill instant withdraw requests
   /// Manager should call this method after instantWithdrawDeadline (when epoch is running)
+  /// @dev Instant withdrawals are not supported when a programmable borrower is configured.
   function getInstantWithdrawFunds() external {
     _checkOnlyOwnerOrManager();
-
-    // Check that epoch is running and that current time is after the deadline
-    _checkNotAllowed(!isEpochRunning || block.timestamp < instantWithdrawDeadline);
+    // Check that programmable mode is disabled, the epoch is running and the deadline passed.
+    _checkNotAllowed(isProgrammableBorrower || !isEpochRunning || block.timestamp < instantWithdrawDeadline);
 
     IdleCreditVault _strategy = IdleCreditVault(strategy);
     uint256 _instantWithdraws = _pendingInstant();
@@ -662,9 +662,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
     uint256 _userTrancheTokens = _userTrancheBal(msg.sender, _tranche);
 
-    if (!disableInstantWithdraw) {
-      // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
-      // we compare unscaled aprs
+    // Programmable borrower deployments do not support instant withdrawals.
+    // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
+    // we compare unscaled aprs
+    if (!disableInstantWithdraw && !isProgrammableBorrower) {
       if (lastEpochApr > (creditVault.unscaledApr() + instantWithdrawAprDelta)) {
         // Calc max withdrawable if amount passed is 0
         _underlyings = _amount == 0 ? _trancheToUnderlyings(_userTrancheBal(msg.sender, _tranche), _tranche) : _underlyings;

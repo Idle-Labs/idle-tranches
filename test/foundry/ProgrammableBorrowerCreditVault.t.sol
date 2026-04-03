@@ -191,6 +191,41 @@ contract TestProgrammableBorrowerCreditVault is Test {
     );
   }
 
+  function testProgrammableBorrowerRequestWithdrawNeverCreatesInstantWithdraws() external {
+    uint256 amount = 10_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+
+    // Force the generic APR-drop predicate so this test proves programmable mode bypasses the
+    // instant-withdraw path explicitly, rather than relying only on the current APR=0 operating mode.
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.lastEpochApr.selector).checked_write(5e18);
+
+    uint256 requested = cdoEpoch.requestWithdraw(0, address(aaTranche));
+
+    assertEq(strategy.pendingInstantWithdraws(), 0, "programmable mode should not create instant withdraws");
+    assertEq(strategy.instantWithdrawsRequests(address(this)), 0, "instant withdraw receipt should stay empty");
+    assertEq(strategy.pendingWithdraws(), requested, "request should use the normal withdraw path");
+  }
+
+  function testProgrammableBorrowerGetInstantWithdrawFundsIsUnsupported() external {
+    uint256 amount = 10_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.getInstantWithdrawFunds();
+  }
+
   function testProgrammableBorrowerClosePoolRealizesInterestWithRealVault() external {
     uint256 amount = 10_000 * oneScale;
 
@@ -214,6 +249,215 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertEq(cdoEpoch.epochEndDate(), 0, "epoch should be closed");
     assertEq(cdoEpoch.disableInstantWithdraw(), true, "instant withdraw should be disabled after close");
     assertEq(cdoEpoch.allowInstantWithdraw(), true, "withdraw claims should be allowed after close");
+  }
+
+  function testProgrammableBorrowerClosePoolDefaultsWhenPrincipalStillOutstanding() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 4_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(cdoEpoch.defaulted(), true, "close pool should default with outstanding principal");
+    assertEq(cdoEpoch.isEpochRunning(), false, "epoch should stop on default");
+    assertEq(programmableBorrower.borrowerInterestDebt(), 0, "default path should not settle borrower debt");
+  }
+
+  function testProgrammableBorrowerClosePoolAfterFullRepayRecognizesBorrowerInterest() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 4_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(block.timestamp + 15 days);
+
+    uint256 expectedBorrowerInterest = programmableBorrower.borrowerInterestAccruedNow();
+    assertGt(expectedBorrowerInterest, 0, "borrower interest should accrue before repay");
+
+    deal(USDC, revolvingBorrower, underlying.balanceOf(revolvingBorrower) + expectedBorrowerInterest, true);
+    vm.prank(revolvingBorrower);
+    programmableBorrower.repay(drawAmount + expectedBorrowerInterest);
+
+    assertEq(programmableBorrower.borrowerPrincipal(), 0, "principal should be cleared before close");
+    assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "accrued interest should be cleared before close");
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 expectedTotalInterest = programmableBorrower.totalInterestDueNow();
+    assertGe(expectedTotalInterest, expectedBorrowerInterest, "repaid borrower interest should still contribute to close interest");
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(cdoEpoch.defaulted(), false, "close pool should succeed after full repay");
+    assertEq(cdoEpoch.epochEndDate(), 0, "pool should be closed");
+    assertApproxEqAbs(
+      cdoEpoch.lastEpochInterest(),
+      expectedTotalInterest,
+      10,
+      "close-pool interest should match programmable borrower accounting after full repay"
+    );
+  }
+
+  function testProgrammableBorrowerMultipleBorrowRepayCyclesWithinSingleEpoch() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 firstDraw = 4_000 * oneScale;
+    uint256 secondDraw = 1_000 * oneScale;
+    uint256 principalRepaidInEpoch = 1_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(firstDraw);
+
+    vm.warp(block.timestamp + 10 days);
+    uint256 firstPeriodInterest = _onePercentPerDayInterest(firstDraw, 10);
+    assertApproxEqAbs(
+      programmableBorrower.borrowerInterestAccruedNow(),
+      firstPeriodInterest,
+      2,
+      "first borrow leg should accrue 1% per day"
+    );
+
+    deal(USDC, revolvingBorrower, firstPeriodInterest + principalRepaidInEpoch, true);
+    vm.prank(revolvingBorrower);
+    programmableBorrower.repay(firstPeriodInterest + principalRepaidInEpoch);
+
+    assertEq(
+      programmableBorrower.borrowerPrincipal(),
+      firstDraw - principalRepaidInEpoch,
+      "principal should be reduced by the same-epoch repayment"
+    );
+    assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "first interest leg should be fully repaid");
+
+    vm.warp(block.timestamp + 5 days);
+    uint256 secondPeriodInterest = _onePercentPerDayInterest(firstDraw - principalRepaidInEpoch, 5);
+    assertApproxEqAbs(
+      programmableBorrower.borrowerInterestAccruedNow(),
+      secondPeriodInterest,
+      2,
+      "interest should continue on the reduced principal"
+    );
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(secondDraw);
+
+    vm.warp(block.timestamp + 22 days);
+    _accrueMorphoVaultInterest();
+
+    uint256 thirdPeriodInterest = _onePercentPerDayInterest(firstDraw, 22);
+    uint256 outstandingBorrowerInterest = secondPeriodInterest + thirdPeriodInterest;
+    uint256 totalBorrowerInterestForEpoch = firstPeriodInterest + outstandingBorrowerInterest;
+    uint256 manualMorphoGain =
+      _programmableMorphoAssets() +
+      firstDraw +
+      secondDraw -
+      (amount + principalRepaidInEpoch);
+    uint256 expectedTotalInterest = manualMorphoGain + outstandingBorrowerInterest;
+
+    assertApproxEqAbs(
+      programmableBorrower.borrowerInterestAccruedNow(),
+      outstandingBorrowerInterest,
+      2,
+      "outstanding borrower interest should match the unrepaid legs"
+    );
+    assertGe(expectedTotalInterest, totalBorrowerInterestForEpoch, "repaid same-epoch interest should remain visible as epoch profit");
+    assertApproxEqAbs(
+      programmableBorrower.totalInterestDueNow(),
+      expectedTotalInterest,
+      20,
+      "manual epoch interest should match borrower accounting across same-epoch cycles"
+    );
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    assertApproxEqAbs(cdoEpoch.lastEpochInterest(), expectedTotalInterest, 20, "epoch interest mismatch after same-epoch cycles");
+    assertApproxEqAbs(
+      programmableBorrower.borrowerInterestDebt(),
+      outstandingBorrowerInterest,
+      5,
+      "only the unpaid borrower interest should be settled into debt"
+    );
+  }
+
+  function testProgrammableBorrowerBorrowInOneEpochAndRepayInNextEpoch() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 4_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    _accrueMorphoVaultInterest();
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    uint256 debtFromEpoch0 = programmableBorrower.borrowerInterestDebt();
+    assertGt(debtFromEpoch0, 0, "first epoch should front borrower interest");
+    assertEq(programmableBorrower.borrowerPrincipal(), drawAmount, "principal should carry into the next epoch");
+
+    _startEpochAndCheckPrices(1);
+    uint256 epoch1StartAssets = programmableBorrower.epochStartMorphoAssets();
+
+    vm.warp(block.timestamp + 5 days);
+    uint256 unfrontedInterestAtRepay = programmableBorrower.borrowerInterestAccruedNow();
+    assertGt(unfrontedInterestAtRepay, 0, "carried principal should accrue fresh interest before next-epoch repay");
+    uint256 repayAmount = debtFromEpoch0 + unfrontedInterestAtRepay + drawAmount;
+
+    deal(USDC, revolvingBorrower, repayAmount, true);
+    vm.prank(revolvingBorrower);
+    programmableBorrower.repay(repayAmount);
+
+    assertEq(programmableBorrower.borrowerInterestDebt(), 0, "previous epoch debt should be cleared");
+    assertEq(programmableBorrower.borrowerPrincipal(), 0, "principal should be fully repaid");
+    assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "current epoch accrued interest should be cleared");
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    _accrueMorphoVaultInterest();
+
+    uint256 expectedEpoch1Interest = _programmableMorphoAssets() - (epoch1StartAssets + debtFromEpoch0 + drawAmount);
+    assertGe(expectedEpoch1Interest, unfrontedInterestAtRepay, "only the newly accrued unfronted interest should remain as new epoch profit");
+    assertApproxEqAbs(
+      programmableBorrower.totalInterestDueNow(),
+      expectedEpoch1Interest,
+      20,
+      "manual epoch-1 interest should exclude repaid prior-epoch debt"
+    );
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    assertApproxEqAbs(cdoEpoch.lastEpochInterest(), expectedEpoch1Interest, 20, "epoch-1 interest mismatch");
+    assertEq(programmableBorrower.borrowerInterestDebt(), 0, "no new borrower debt should be fronted after a full next-epoch repay");
   }
 
   function testProgrammableBorrowerRepayClearsFrontedDebtAndRedeploysCashWithRealVault() external {
@@ -774,5 +1018,9 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
   function _programmableMorphoAssets() internal view returns (uint256) {
     return morphoVault.convertToAssets(morphoVault.balanceOf(address(programmableBorrower)));
+  }
+
+  function _onePercentPerDayInterest(uint256 principal, uint256 elapsedDays) internal pure returns (uint256) {
+    return principal * elapsedDays / 100;
   }
 }

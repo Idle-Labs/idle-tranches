@@ -164,7 +164,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     // exact pre-deposit amount instead of a post-deposit share-conversion round-down.
     uint256 startAssets = underlyingToken.balanceOf(address(this)) + _currentMorphoAssets();
     // Any idle balance left on the contract between epochs is parked immediately into Morpho.
-    _depositAllToMorphoInternal();
+    _depositAllToMorphoInternal(0);
     _startEpochAccountingInternal(startAssets);
   }
 
@@ -194,7 +194,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
     // Stop reserving epoch-end withdraw liquidity once IdleCDO has started the stop flow.
     epochPendingWithdraws = 0;
-    _stopEpochAccountingInternal();
+    epochAccountingActive = false;
+    emit EpochAccountingStopped();
   }
 
   /// @notice Settle accrued borrower interest into debt after IdleCDO successfully fronted it.
@@ -223,11 +224,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     epochAccountingActive = true;
     lastBorrowerAccrual = block.timestamp;
     emit EpochAccountingStarted(epochStartMorphoAssets);
-  }
-
-  function _stopEpochAccountingInternal() internal {
-    epochAccountingActive = false;
-    emit EpochAccountingStopped();
   }
 
   /// @notice interest accrued in Morpho since the last `startEpochAccounting`
@@ -308,12 +304,14 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice Move the contract's full idle underlying balance into Morpho.
-  function _depositAllToMorphoInternal() internal {
+  /// @param _principalAssets Portion of the deposited assets that should extend the epoch principal
+  /// baseline instead of being recognized as current-epoch profit.
+  function _depositAllToMorphoInternal(uint256 _principalAssets) internal {
     uint256 assets = underlyingToken.balanceOf(address(this));
     if (assets == 0) return;
     uint256 shares = morphoVault.deposit(assets, address(this));
-    if (epochAccountingActive) {
-      epochDepositedToMorpho += assets;
+    if (epochAccountingActive && _principalAssets != 0) {
+      epochDepositedToMorpho += _principalAssets;
     }
     emit DepositedIntoMorpho(assets, shares);
   }
@@ -365,6 +363,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     _accrueBorrowerInterest();
 
     underlyingToken.safeTransferFrom(borrower, address(this), assets);
+    uint256 totalRepaidAssets = assets;
+    uint256 currentEpochInterestPaid;
 
     // First clear interest that IdleCDO already fronted during previous epoch settlements.
     uint256 settledInterestDue = borrowerInterestDebt;
@@ -378,7 +378,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
         emit Repaid(assets, assets, 0);
         if (epochAccountingActive) {
           // While an epoch is active, even partial repayments are parked back into Morpho immediately.
-          _depositAllToMorphoInternal();
+          // This repayment only clears previously-fronted debt, so it should not count as new epoch profit.
+          _depositAllToMorphoInternal(assets);
         }
         return (assets, 0);
       }
@@ -388,6 +389,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     uint256 accruedInterestDue = borrowerInterestAccrued;
     if (assets >= accruedInterestDue) {
       interestPaid += accruedInterestDue;
+      currentEpochInterestPaid = accruedInterestDue;
       borrowerInterestAccrued = 0;
       assets -= accruedInterestDue;
 
@@ -397,12 +399,15 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       borrowerPrincipal = principalDue - principalPaid;
     } else {
       interestPaid += assets;
+      currentEpochInterestPaid = assets;
       borrowerInterestAccrued = accruedInterestDue - assets;
     }
 
     emit Repaid(interestPaid + principalPaid, interestPaid, principalPaid);
     if (epochAccountingActive) {
-      _depositAllToMorphoInternal();
+      // Current-epoch borrower interest must remain visible as profit at stopEpoch, while principal,
+      // previously-fronted debt, and any excess repayment should only extend the epoch principal baseline.
+      _depositAllToMorphoInternal(totalRepaidAssets - currentEpochInterestPaid);
     }
   }
 
@@ -428,11 +433,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   function _accrueBorrowerInterest() internal {
     uint256 last = lastBorrowerAccrual;
     uint256 principal = borrowerPrincipal;
-    if (last == 0) {
-      lastBorrowerAccrual = block.timestamp;
-      return;
-    }
-    if (principal == 0 || borrowerApr == 0) {
+    if (last == 0 || principal == 0 || borrowerApr == 0) {
       lastBorrowerAccrual = block.timestamp;
       return;
     }
@@ -440,8 +441,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     if (elapsed == 0) {
       return;
     }
-    uint256 interest = principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
-    borrowerInterestAccrued += interest;
+    borrowerInterestAccrued += principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
     lastBorrowerAccrual = block.timestamp;
   }
 
