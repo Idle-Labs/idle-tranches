@@ -62,11 +62,15 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   bool public epochAccountingActive;
   /// @notice pending withdraw requests amount reserved for the epoch
   uint256 public epochPendingWithdraws;
+  /// @notice optional manager allowed to operate routine facility admin actions
+  /// @dev This is append-only storage for upgrade safety. The owner can update or clear it.
+  address public manager;
 
   event DepositedIntoVault(uint256 assets, uint256 shares);
   event WithdrawnFromVault(uint256 assets, uint256 shares, address indexed receiver);
   event RedeemedFromVault(uint256 shares, uint256 assets, address indexed receiver);
   event VaultUpdated(address indexed newVault);
+  event ManagerSet(address indexed newManager);
   event BorrowerSet(address indexed newBorrower);
   event BorrowerAprSet(uint256 newApr);
   event Borrowed(uint256 assets);
@@ -87,18 +91,18 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _vault ERC4626 vault where funds will be deployed
   /// @param _idleCDO IdleCDOEpochVariant contract allowed to pull funds
   /// @param _owner owner address
+  /// @param _manager routine manager allowed to operate facility admin actions
   function initialize(
     address _underlyingToken,
     address _vault,
     address _idleCDO,
-    address _owner
+    address _owner,
+    address _manager
   ) external initializer {
     if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
     if (
-      _underlyingToken == address(0) ||
-      _vault == address(0) ||
-      _owner == address(0) ||
-      _idleCDO == address(0) ||
+      _underlyingToken == address(0) || _vault == address(0) || 
+      _owner == address(0) || _manager == address(0) || _idleCDO == address(0) ||
       IERC4626(_vault).asset() != _underlyingToken
     ) {
       revert InvalidAddress();
@@ -111,18 +115,28 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     underlyingToken = IERC20Detailed(_underlyingToken);
     vault = IERC4626(_vault);
     idleCDO = _idleCDO;
+    manager = _manager;
 
     // Set approvals for vault and IdleCDO
     _allowUnlimitedSpend(_underlyingToken, _vault);
     _allowUnlimitedSpend(_underlyingToken, _idleCDO);
   }
 
+  /// @notice Set or clear the routine manager role.
+  /// @dev The owner can set this to the zero address to disable manager permissions.
+  /// @param _manager manager address, or zero to clear the role
+  function setManager(address _manager) external onlyOwner {
+    manager = _manager;
+    emit ManagerSet(_manager);
+  }
+
   /// @notice Set the vault used to deploy idle funds.
-  /// @dev This does not migrate an existing position. The owner must first withdraw from the old
-  /// vault, otherwise assets can remain stranded there and the live accounting views will stop
-  /// including them after the switch.
+  /// @dev Owner or manager. This does not migrate an existing position. The operator must first
+  /// withdraw from the old vault, otherwise assets can remain stranded there and the live
+  /// accounting views will stop including them after the switch.
   /// @param _vault new ERC4626 vault address
-  function setVault(address _vault) external onlyOwner {
+  function setVault(address _vault) external {
+    _checkOnlyOwnerOrManager();
     if (_vault == address(0) || IERC4626(_vault).asset() != address(underlyingToken)) {
       revert InvalidAddress();
     }
@@ -133,19 +147,20 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice Set the real borrower allowed to draw and repay funds.
+  /// @dev Owner or manager.
   /// @param _borrower borrower EOA or controller address
-  function setBorrower(address _borrower) external onlyOwner {
-    if (_borrower == address(0)) {
-      revert InvalidAddress();
-    }
+  function setBorrower(address _borrower) external {
+    _checkOnlyOwnerOrManager();
+    if (_borrower == address(0)) revert InvalidAddress();
     borrower = _borrower;
     emit BorrowerSet(_borrower);
   }
 
   /// @notice Set the fixed APR charged on drawn borrower principal (100e18 = 100% APR).
-  /// @dev Checkpoints accrued interest at the old rate before applying the new APR.
+  /// @dev Owner or manager. Checkpoints accrued interest at the old rate before applying the new APR.
   /// @param _apr borrower APR expressed as a percentage scaled by 1e18
-  function setBorrowerApr(uint256 _apr) external onlyOwner {
+  function setBorrowerApr(uint256 _apr) external {
+    _checkOnlyOwnerOrManager();
     _accrueBorrowerInterest();
     borrowerApr = _apr;
     emit BorrowerAprSet(_apr);
@@ -287,10 +302,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice Emergency escape: redeem vault shares back to this contract.
-  /// @dev Owner-only. Pass 0 to redeem all shares.
+  /// @dev Owner or manager. Pass 0 to redeem all shares.
   /// @param _shares number of vault shares to redeem (0 = redeem all)
   /// @return assets amount of underlying redeemed
-  function emergencyExitVault(uint256 _shares) external nonReentrant onlyOwner returns (uint256 assets) {
+  function emergencyExitVault(uint256 _shares) external nonReentrant returns (uint256 assets) {
+    _checkOnlyOwnerOrManager();
     if (_shares == 0) {
       _shares = vault.balanceOf(address(this));
     }
@@ -447,6 +463,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Revert unless the caller is the configured IdleCDO.
   function _checkOnlyIdleCDO() internal view {
     if (msg.sender != idleCDO) revert NotAllowed();
+  }
+
+  /// @notice Revert unless the caller is the owner or configured manager.
+  function _checkOnlyOwnerOrManager() internal view {
+    if (msg.sender != owner() && msg.sender != manager) revert NotAllowed();
   }
 
   /// @notice Emergency token rescue.

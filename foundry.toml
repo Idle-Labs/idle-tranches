@@ -13,6 +13,10 @@ optimizer_runs = 1
 runs = 1000
 max_test_rejects = 1000000
 
+[invariant]
+runs = 20
+depth = 50
+
 [profile.optimized]
 solc = '0.8.10'
 

@@ -30,6 +30,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
   address internal owner = address(0xdeadbad);
   address internal rebalancer = address(0xbaddead);
   address internal manager = makeAddr("manager");
+  address internal borrowerManager = makeAddr("borrowerManager");
   address internal placeholderBorrower = makeAddr("placeholderBorrower");
   address internal revolvingBorrower = makeAddr("revolvingBorrower");
 
@@ -84,7 +85,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
       .target(address(programmableBorrower))
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
-    programmableBorrower.initialize(USDC, STEAKHOUSE_USDC, address(cdoEpoch), address(this));
+    programmableBorrower.initialize(USDC, STEAKHOUSE_USDC, address(cdoEpoch), address(this), manager);
     programmableBorrower.setBorrower(revolvingBorrower);
     programmableBorrower.setBorrowerApr(365e18);
 
@@ -672,6 +673,59 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.setVault(wethVault);
   }
 
+  function testSetManagerOnlyOwner() external {
+    assertEq(programmableBorrower.manager(), manager, "manager should be initialized");
+
+    vm.expectRevert("Ownable: caller is not the owner");
+    vm.prank(revolvingBorrower);
+    programmableBorrower.setManager(borrowerManager);
+
+    programmableBorrower.setManager(borrowerManager);
+    assertEq(programmableBorrower.manager(), borrowerManager, "owner should update manager");
+
+    programmableBorrower.setManager(address(0));
+    assertEq(programmableBorrower.manager(), address(0), "owner should be able to clear manager");
+  }
+
+  function testManagerCanOperateRoutineAdminFunctions() external {
+    uint256 amount = 10_000 * oneScale;
+    address newBorrower = makeAddr("newBorrower");
+
+    programmableBorrower.setManager(borrowerManager);
+
+    vm.prank(borrowerManager);
+    programmableBorrower.setBorrower(newBorrower);
+    assertEq(programmableBorrower.borrower(), newBorrower, "manager should update borrower");
+
+    vm.prank(borrowerManager);
+    programmableBorrower.setBorrowerApr(730e18);
+    assertEq(programmableBorrower.borrowerApr(), 730e18, "manager should update borrower apr");
+
+    vm.prank(borrowerManager);
+    programmableBorrower.setVault(STEAKHOUSE_USDC);
+    assertEq(address(programmableBorrower.vault()), STEAKHOUSE_USDC, "manager should update vault");
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    uint256 sharesBefore = morphoVault.balanceOf(address(programmableBorrower));
+    assertGt(sharesBefore, 0, "expected vault shares before emergency exit");
+
+    vm.prank(borrowerManager);
+    programmableBorrower.emergencyExitVault(0);
+
+    assertEq(morphoVault.balanceOf(address(programmableBorrower)), 0, "manager should redeem all shares");
+    assertApproxEqAbs(
+      underlying.balanceOf(address(programmableBorrower)),
+      amount,
+      2,
+      "redeemed underlying should return to programmable borrower"
+    );
+  }
+
   function testTotalInterestDueNowFloorsAtZeroWhenVaultLossExceedsGains() external {
     uint256 amount = 10_000 * oneScale;
 
@@ -764,8 +818,8 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.onStopEpoch(0);
   }
 
-  function testEmergencyExitVaultRevertsForNonOwner() external {
-    vm.expectRevert("Ownable: caller is not the owner");
+  function testEmergencyExitVaultRevertsForNonOwnerOrManager() external {
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(revolvingBorrower);
     programmableBorrower.emergencyExitVault(0);
   }
