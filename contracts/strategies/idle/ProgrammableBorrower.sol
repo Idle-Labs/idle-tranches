@@ -20,7 +20,7 @@ error InsufficientBorrowable();
 /// 1. keep undrawn capital parked inside an ERC4626 vault
 /// 2. track interest owed by the real borrower when that capital is temporarily drawn
 ///
-/// IdleCDO only orchestrates the epoch lifecycle and reads a single stop-epoch interest value from
+/// IdleCDOEpochVariant only orchestrates the epoch lifecycle and reads a single stop-epoch interest value from
 /// this contract. The detailed split between vault yield and borrower interest stays here.
 contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Detailed;
@@ -51,7 +51,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   uint256 public borrowerInterestDebt;
   /// @notice last timestamp borrower interest was accrued
   uint256 public lastBorrowerAccrual;
-
   /// @notice Vault assets held at epoch start (baseline)
   uint256 public epochStartVaultAssets;
   /// @notice cumulative assets deposited to vault during epoch
@@ -62,15 +61,19 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   bool public epochAccountingActive;
   /// @notice pending withdraw requests amount reserved for the epoch
   uint256 public epochPendingWithdraws;
-  /// @notice optional manager allowed to operate routine facility admin actions
-  /// @dev This is append-only storage for upgrade safety. The owner can update or clear it.
+  /// @notice allowed to operate routine facility admin actions
   address public manager;
+  /// @notice vault assets left invested when the previous epoch stopped
+  /// @dev Used to measure vault PnL generated during the buffer so it is carried into the next epoch.
+  uint256 public bufferStartVaultAssets;
+  /// @notice net vault PnL earned during the buffer and not yet realized by IdleCDO
+  /// @dev Positive values represent gains, negative values represent losses.
+  int256 public bufferedVaultDelta;
 
   event DepositedIntoVault(uint256 assets, uint256 shares);
   event WithdrawnFromVault(uint256 assets, uint256 shares, address indexed receiver);
   event RedeemedFromVault(uint256 shares, uint256 assets, address indexed receiver);
   event VaultUpdated(address indexed newVault);
-  event ManagerSet(address indexed newManager);
   event BorrowerSet(address indexed newBorrower);
   event BorrowerAprSet(uint256 newApr);
   event Borrowed(uint256 assets);
@@ -92,18 +95,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _idleCDO IdleCDOEpochVariant contract allowed to pull funds
   /// @param _owner owner address
   /// @param _manager routine manager allowed to operate facility admin actions
-  function initialize(
-    address _underlyingToken,
-    address _vault,
-    address _idleCDO,
-    address _owner,
-    address _manager
-  ) external initializer {
+  function initialize(address _underlyingToken, address _vault, address _idleCDO, address _owner, address _manager) external initializer {
     if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
     if (
-      _underlyingToken == address(0) || _vault == address(0) || 
-      _owner == address(0) || _manager == address(0) || _idleCDO == address(0) ||
-      IERC4626(_vault).asset() != _underlyingToken
+      _underlyingToken == address(0) || _vault == address(0) || _owner == address(0) || 
+      _manager == address(0) || _idleCDO == address(0) || IERC4626(_vault).asset() != _underlyingToken
     ) {
       revert InvalidAddress();
     }
@@ -127,19 +123,21 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _manager manager address, or zero to clear the role
   function setManager(address _manager) external onlyOwner {
     manager = _manager;
-    emit ManagerSet(_manager);
   }
 
   /// @notice Set the vault used to deploy idle funds.
   /// @dev Owner or manager. This does not migrate an existing position. The operator must first
-  /// withdraw from the old vault, otherwise assets can remain stranded there and the live
-  /// accounting views will stop including them after the switch.
+  /// withdraw from the old vault and wait until epoch accounting is inactive, otherwise assets can
+  /// remain stranded there and the live accounting views will stop including them after the switch.
   /// @param _vault new ERC4626 vault address
   function setVault(address _vault) external {
     _checkOnlyOwnerOrManager();
     if (_vault == address(0) || IERC4626(_vault).asset() != address(underlyingToken)) {
       revert InvalidAddress();
     }
+    // Switching the accounting source is only safe once the current epoch is fully settled and the
+    // old vault position has been unwound.
+    if (epochAccountingActive || vault.balanceOf(address(this)) != 0) revert NotAllowed();
     underlyingToken.safeApprove(address(vault), 0);
     vault = IERC4626(_vault);
     _allowUnlimitedSpend(address(underlyingToken), _vault);
@@ -147,11 +145,17 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice Set the real borrower allowed to draw and repay funds.
-  /// @dev Owner or manager.
+  /// @dev Owner or manager. This is only allowed while the facility is idle with no borrower-side
+  /// principal or interest exposure left to reconcile.
   /// @param _borrower borrower EOA or controller address
   function setBorrower(address _borrower) external {
     _checkOnlyOwnerOrManager();
     if (_borrower == address(0)) revert InvalidAddress();
+    // Reassigning the borrower is unsafe while an epoch is active or while the previous borrower
+    // still owes principal / interest, because repayment rights would move to a different address.
+    if (epochAccountingActive || borrowerPrincipal != 0 || borrowerInterestAccrued != 0 || borrowerInterestDebt != 0) {
+      revert NotAllowed();
+    }
     borrower = _borrower;
     emit BorrowerSet(_borrower);
   }
@@ -174,12 +178,24 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     _accrueBorrowerInterest();
     // Reserve the amount IdleCDO expects to pull back at stopEpoch before the real borrower can draw again.
     epochPendingWithdraws = _pendingWithdraws;
+    uint256 currentVaultAssets = _currentVaultAssets();
+    uint256 bufferStartAssets = bufferStartVaultAssets;
+    // Carry vault PnL generated while the pool was in the buffer into the new active epoch so it
+    // is eventually realized in tranche prices at the next stopEpoch.
+    bufferedVaultDelta = int256(currentVaultAssets) - int256(bufferStartAssets);
+    bufferStartVaultAssets = 0;
     // Snapshot total assets before re-depositing idle cash so the epoch principal baseline uses the
     // exact pre-deposit amount instead of a post-deposit share-conversion round-down.
-    uint256 startAssets = underlyingToken.balanceOf(address(this)) + _currentVaultAssets();
+    uint256 startAssets = underlyingToken.balanceOf(address(this)) + currentVaultAssets;
     // Any idle balance left on the contract between epochs is parked immediately into the vault.
     _depositAllToVaultInternal(0);
-    _startEpochAccountingInternal(startAssets);
+    // Reset the epoch accounting baseline from the exact pre-start total assets so the new epoch
+    // does not treat the just-deposited idle balance as fresh vault profit or loss.
+    epochStartVaultAssets = startAssets;
+    epochDepositedToVault = 0;
+    epochWithdrawnFromVault = 0;
+    epochAccountingActive = true;
+    emit EpochAccountingStarted(startAssets);
   }
 
   /// @notice Hook called by IdleCDOEpochVariant before stopping an epoch.
@@ -206,6 +222,12 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       }
     }
 
+    // `totalInterestDueNow()` was already read by IdleCDO before calling this hook, so once the
+    // stop flow begins we can clear the previous carry and snapshot the remaining vault sleeve
+    // as the baseline for measuring buffer-period vault PnL before the next epoch starts.
+    bufferedVaultDelta = 0;
+    bufferStartVaultAssets = _currentVaultAssets();
+
     // Stop reserving epoch-end withdraw liquidity once IdleCDO has started the stop flow.
     epochPendingWithdraws = 0;
     epochAccountingActive = false;
@@ -227,45 +249,24 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     emit BorrowerInterestSettled(settled);
   }
 
-  /// @notice Reset the epoch accounting baseline for a newly started epoch.
-  /// @dev `_startAssets` is the exact pre-start total asset amount. Using that value avoids
-  /// immediately baking vault share-conversion rounding into the new epoch's interest accounting.
-  /// @param _startAssets total assets controlled by the programmable borrower at epoch start
-  function _startEpochAccountingInternal(uint256 _startAssets) internal {
-    epochStartVaultAssets = _startAssets;
-    epochDepositedToVault = 0;
-    epochWithdrawnFromVault = 0;
-    epochAccountingActive = true;
-    lastBorrowerAccrual = block.timestamp;
-    emit EpochAccountingStarted(epochStartVaultAssets);
-  }
-
   /// @notice interest accrued in the vault since the last `startEpochAccounting`
-  function vaultInterestAccrued() public view returns (uint256) {
+  function vaultInterestAccrued() external view returns (uint256) {
     (uint256 interest,) = _vaultNetInterest();
     return interest;
   }
 
   /// @notice borrower interest accrued since epoch start up to now (includes uncheckpointed interest)
   function borrowerInterestAccruedNow() public view returns (uint256) {
-    uint256 principal = borrowerPrincipal;
-    uint256 accrued = borrowerInterestAccrued;
-    uint256 last = lastBorrowerAccrual;
-    if (principal == 0 || last == 0 || borrowerApr == 0) return accrued;
-    uint256 elapsed = block.timestamp - last;
-    uint256 additional = elapsed == 0
-      ? 0
-      : principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
-    return accrued + additional;
+    return borrowerInterestAccrued + _pendingBorrowerInterest(borrowerPrincipal, lastBorrowerAccrual);
   }
 
   /// @notice total borrower interest still owed by the real borrower
-  function borrowerInterestOwedNow() external view returns (uint256) {
+  function borrowerInterestOwedNow() public view returns (uint256) {
     return borrowerInterestDebt + borrowerInterestAccruedNow();
   }
 
   /// @notice unrealized loss from the vault position since epoch start
-  function vaultLoss() public view returns (uint256) {
+  function vaultLoss() external view returns (uint256) {
     (,uint256 loss) = _vaultNetInterest();
     return loss;
   }
@@ -286,10 +287,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     if (!epochAccountingActive) return (0, 0);
     uint256 earnedAssets = _currentVaultAssets() + epochWithdrawnFromVault;
     uint256 principalAssets = epochStartVaultAssets + epochDepositedToVault;
-    if (earnedAssets > principalAssets) {
-      interest = earnedAssets - principalAssets;
+    int256 netDelta = bufferedVaultDelta + int256(earnedAssets) - int256(principalAssets);
+    if (netDelta > 0) {
+      interest = uint256(netDelta);
     } else {
-      loss = principalAssets - earnedAssets;
+      loss = uint256(-netDelta);
     }
   }
 
@@ -332,7 +334,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice Draw funds from the revolving-credit facility.
-  /// @dev Only the configured real borrower can call this while an epoch is active. If there is
+  /// @dev Only the configured borrower address can call this while an epoch is active. If there is
   /// not enough on-hand liquidity, the shortfall is first withdrawn from the vault.
   /// @param assets amount of underlying to draw
   /// @return withdrawnShares vault shares burned, if any liquidity had to be freed first
@@ -366,14 +368,20 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// 2. `borrowerInterestAccrued` not yet fronted
   /// 3. `borrowerPrincipal`
   ///
+  /// Passing `assets = 0` repays the full currently tracked obligation.
+  ///
   /// Any excess over the tracked debt simply remains on this contract. When an epoch is active,
   /// the received funds are redeployed into the vault before the function returns.
-  /// @param assets amount of underlying to repay
+  /// @param assets amount of underlying to repay (`0` = repay all currently owed)
   /// @return interestPaid interest component cleared by the repayment
   /// @return principalPaid principal component cleared by the repayment
   function repay(uint256 assets) external nonReentrant returns (uint256 interestPaid, uint256 principalPaid) {
     if (msg.sender != borrower) revert NotAllowed();
-    if (assets == 0) revert InvalidAmount();
+
+    if (assets == 0) {
+      assets = borrowerPrincipal + borrowerInterestOwedNow();
+      if (assets == 0) revert InvalidAmount();
+    }
 
     _accrueBorrowerInterest();
 
@@ -442,6 +450,20 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     return shares == 0 ? 0 : vault.convertToAssets(shares);
   }
 
+  /// @notice Compute uncheckpointed borrower interest since the last accrual timestamp.
+  /// @dev `borrowerApr` is stored as a percentage scaled by `1e18`, so dividing by 100 converts
+  /// it into a `1e18`-scaled rate fraction before prorating it over a year.
+  function _pendingBorrowerInterest(uint256 principal, uint256 last) internal view returns (uint256) {
+    if (principal == 0 || last == 0 || borrowerApr == 0) return 0;
+    uint256 elapsed = block.timestamp - last;
+    return elapsed == 0 ? 0 : _calcInterest(principal, elapsed);
+  }
+
+  /// @notice Compute simple time-based borrower interest for a principal over an elapsed period.
+  function _calcInterest(uint256 principal, uint256 elapsed) internal view returns (uint256) {
+    return principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
+  }
+
   /// @notice Checkpoint borrower interest up to `block.timestamp`.
   /// @dev The first call only seeds the accrual clock. When principal or APR is zero we still
   /// move the timestamp forward so interest starts accruing cleanly from the next state change.
@@ -453,10 +475,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       return;
     }
     uint256 elapsed = block.timestamp - last;
-    if (elapsed == 0) {
-      return;
-    }
-    borrowerInterestAccrued += principal * (borrowerApr / 100) * elapsed / (YEAR * ONE_TRANCHE_TOKEN);
+    if (elapsed == 0) return;
+    borrowerInterestAccrued += _calcInterest(principal, elapsed);
     lastBorrowerAccrual = block.timestamp;
   }
 
