@@ -188,14 +188,10 @@ contract IdleCreditVault is
 
     // if cdo is not yet set we skip the check (this can happen only during the setup)
     if (_cdo != address(0)) {
-      if (msg.sender != _cdo && msg.sender != manager) {
-        revert NotAllowed();
-      }
+      if (msg.sender != _cdo && msg.sender != manager) revert NotAllowed();
     }
     uint256 _maxApr = maxApr;
-    if (_maxApr != 0 && _apr > _maxApr) {
-      revert NotAllowed();
-    }
+    if (_maxApr != 0 && _apr > _maxApr) revert NotAllowed();
     lastApr = _apr;
   }
 

@@ -883,9 +883,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Ask a programmable borrower to free stop-epoch liquidity before IdleCDO pulls funds.
   /// @dev A hook failure is treated as a borrower default because IdleCDO cannot continue the stop flow safely.
   function _prepareStopEpochBorrower(uint256 _amountRequired) internal returns (bool) {
-    if (!isProgrammableBorrower) {
-      return true;
-    }
+    if (!isProgrammableBorrower) return true;
 
     try IProgrammableBorrower(_borrower()).onStopEpoch(_amountRequired) {
       return true;

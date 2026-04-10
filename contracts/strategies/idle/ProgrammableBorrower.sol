@@ -208,17 +208,16 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     uint256 onHand = underlyingToken.balanceOf(address(this));
     if (_amountRequired > onHand) {
       uint256 shortfall = _amountRequired - onHand;
-      // Cap withdrawal to what the vault can actually provide. If total on-hand is still
-      // insufficient after a partial withdrawal, the CDO's transferFrom will revert and
-      // trigger default handling with ProgrammableBorrower state properly settled.
-      uint256 maxW = vault.maxWithdraw(address(this));
-      uint256 toWithdraw = shortfall > maxW ? maxW : shortfall;
-      if (toWithdraw > 0) {
-        uint256 shares = vault.withdraw(toWithdraw, address(this), address(this));
+      // Do the same thing as the borrower draw path: ask the vault for the exact shortfall and let
+      // the hook revert if the vault cannot serve it. IdleCDO catches that revert and treats the
+      // stop flow as a borrower default. This avoids depending on vaults whose `maxWithdraw`
+      // bookkeeping is conservative or simply broken.
+      if (shortfall > 0) {
+        uint256 shares = vault.withdraw(shortfall, address(this), address(this));
         if (epochAccountingActive) {
-          epochWithdrawnFromVault += toWithdraw;
+          epochWithdrawnFromVault += shortfall;
         }
-        emit WithdrawnFromVault(toWithdraw, shares, address(this));
+        emit WithdrawnFromVault(shortfall, shares, address(this));
       }
     }
 

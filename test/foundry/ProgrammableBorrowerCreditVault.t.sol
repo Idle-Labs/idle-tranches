@@ -7,6 +7,7 @@ import {IdleCDO} from "../../contracts/IdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
+import {IERC4626} from "../../contracts/interfaces/IERC4626.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {ProgrammableBorrower} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
 import {IMMVault} from "../../contracts/interfaces/morpho/IMMVault.sol";
@@ -24,8 +25,10 @@ contract TestProgrammableBorrowerCreditVault is Test {
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
   address internal constant STEAKHOUSE_USDC = 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB;
+  address internal constant GAUNTLET_USDC_PRIME = 0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0;
   address internal constant MORPHO_AAVE_USDC = 0xA5269A8e31B93Ff27B887B56720A25F844db0529;
   uint256 internal constant FORK_BLOCK = 19225935;
+  uint256 internal constant GAUNTLET_FORK_BLOCK = 24850150;
   string internal constant BORROWER_NAME = "testBorrower";
 
   address internal owner = address(0xdeadbad);
@@ -45,10 +48,14 @@ contract TestProgrammableBorrowerCreditVault is Test {
   IERC20Detailed internal underlying;
   IdleCreditVault internal strategy;
   ProgrammableBorrower internal programmableBorrower;
-  IMMVault internal morphoVault = IMMVault(STEAKHOUSE_USDC);
+  IMMVault internal morphoVault;
 
   function setUp() public {
-    vm.createSelectFork("mainnet", FORK_BLOCK);
+    _setUpProgrammableBorrowerCreditVault(FORK_BLOCK, STEAKHOUSE_USDC);
+  }
+
+  function _setUpProgrammableBorrowerCreditVault(uint256 forkBlock, address vaultAddress) internal {
+    vm.createSelectFork("mainnet", forkBlock);
 
     strategy = new IdleCreditVault();
     stdstore.target(address(strategy)).sig(strategy.token.selector).checked_write(address(0));
@@ -86,9 +93,10 @@ contract TestProgrammableBorrowerCreditVault is Test {
       .target(address(programmableBorrower))
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
-    programmableBorrower.initialize(USDC, STEAKHOUSE_USDC, address(cdoEpoch), address(this), manager);
+    programmableBorrower.initialize(USDC, vaultAddress, address(cdoEpoch), address(this), manager);
     programmableBorrower.setBorrower(revolvingBorrower);
     programmableBorrower.setBorrowerApr(365e18);
+    morphoVault = IMMVault(vaultAddress);
 
     vm.prank(owner);
     strategy.setBorrower(address(programmableBorrower));
@@ -226,6 +234,34 @@ contract TestProgrammableBorrowerCreditVault is Test {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.getInstantWithdrawFunds();
+  }
+
+  function testProgrammableBorrowerStopEpochDoesNotTrustBrokenMaxWithdraw() external {
+    _setUpProgrammableBorrowerCreditVault(GAUNTLET_FORK_BLOCK, GAUNTLET_USDC_PRIME);
+
+    IERC4626 gauntletVault = IERC4626(GAUNTLET_USDC_PRIME);
+    uint256 amount = 10_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+
+    uint256 withdrawReceipt = cdoEpoch.requestWithdraw(aaTranche.balanceOf(address(this)) / 2, address(aaTranche));
+    assertGt(withdrawReceipt, 0, "expected a pending withdraw receipt");
+
+    _startEpochAndCheckPrices(0);
+
+    assertGt(gauntletVault.balanceOf(address(programmableBorrower)), 0, "idle funds not parked in gauntlet vault");
+    assertEq(gauntletVault.maxWithdraw(address(programmableBorrower)), 0, "regression prerequisite changed");
+    assertGt(strategy.pendingWithdraws(), 0, "stop epoch should need liquidity recall");
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    assertFalse(cdoEpoch.defaulted(), "stop epoch should not default just because maxWithdraw is zero");
+    assertEq(strategy.pendingWithdraws(), 0, "pending withdraws should be funded");
   }
 
   function testProgrammableBorrowerClosePoolRealizesInterestWithRealVault() external {
