@@ -95,11 +95,17 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _idleCDO IdleCDOEpochVariant contract allowed to pull funds
   /// @param _owner owner address
   /// @param _manager routine manager allowed to operate facility admin actions
-  function initialize(address _underlyingToken, address _vault, address _idleCDO, address _owner, address _manager) external initializer {
+  /// @param _borrower real borrower address allowed to draw and repay
+  /// @param _borrowerApr borrower APR expressed as a percentage scaled by 1e18
+  function initialize(
+    address _underlyingToken, address _vault, address _idleCDO, address _owner,
+    address _manager, address _borrower, uint256 _borrowerApr
+  ) external initializer {
     if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
     if (
       _underlyingToken == address(0) || _vault == address(0) || _owner == address(0) || 
-      _manager == address(0) || _idleCDO == address(0) || IERC4626(_vault).asset() != _underlyingToken
+      _manager == address(0) || _borrower == address(0) || _idleCDO == address(0) || 
+      IERC4626(_vault).asset() != _underlyingToken
     ) {
       revert InvalidAddress();
     }
@@ -112,6 +118,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     vault = IERC4626(_vault);
     idleCDO = _idleCDO;
     manager = _manager;
+    borrower = _borrower;
+    borrowerApr = _borrowerApr;
 
     // Set approvals for vault and IdleCDO
     _allowUnlimitedSpend(_underlyingToken, _vault);
@@ -246,6 +254,20 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       borrowerInterestDebt += settled;
     }
     emit BorrowerInterestSettled(settled);
+  }
+
+  /// @notice Abort active epoch accounting after IdleCDO defaulted the facility.
+  /// @dev This keeps borrower-side epoch state aligned with IdleCDO's stopped/defaulted state
+  /// when the stop hook could not complete successfully.
+  function onDefault() external nonReentrant {
+    _checkOnlyIdleCDO();
+    if (!epochAccountingActive) return;
+
+    bufferedVaultDelta = 0;
+    bufferStartVaultAssets = _currentVaultAssets();
+    epochPendingWithdraws = 0;
+    epochAccountingActive = false;
+    emit EpochAccountingStopped();
   }
 
   /// @notice interest accrued in the vault since the last `startEpochAccounting`

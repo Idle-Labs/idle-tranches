@@ -399,9 +399,15 @@ contract ProgrammableBorrowerEpochInvariant is StdInvariant, Test {
       .target(address(programmableBorrower))
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
-    programmableBorrower.initialize(address(underlying), address(vault), address(cdoEpoch), address(this), manager);
-    programmableBorrower.setBorrower(revolvingBorrower);
-    programmableBorrower.setBorrowerApr(365e18);
+    programmableBorrower.initialize(
+      address(underlying),
+      address(vault),
+      address(cdoEpoch),
+      address(this),
+      manager,
+      revolvingBorrower,
+      365e18
+    );
 
     vm.prank(owner);
     strategy.setBorrower(address(programmableBorrower));

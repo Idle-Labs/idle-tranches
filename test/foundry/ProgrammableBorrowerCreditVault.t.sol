@@ -93,9 +93,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
       .target(address(programmableBorrower))
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
-    programmableBorrower.initialize(USDC, vaultAddress, address(cdoEpoch), address(this), manager);
-    programmableBorrower.setBorrower(revolvingBorrower);
-    programmableBorrower.setBorrowerApr(365e18);
+    programmableBorrower.initialize(USDC, vaultAddress, address(cdoEpoch), address(this), manager, revolvingBorrower, 365e18);
     morphoVault = IMMVault(vaultAddress);
 
     vm.prank(owner);
@@ -309,6 +307,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     assertEq(cdoEpoch.defaulted(), true, "close pool should default with outstanding principal");
     assertEq(cdoEpoch.isEpochRunning(), false, "epoch should stop on default");
+    assertFalse(programmableBorrower.epochAccountingActive(), "borrower accounting should stop on default");
     assertEq(programmableBorrower.borrowerInterestDebt(), 0, "default path should not settle borrower debt");
   }
 
@@ -691,6 +690,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertEq(cdoEpoch.defaulted(), true, "pool should default");
     assertEq(cdoEpoch.allowInstantWithdraw(), true, "instant withdraw should be allowed after default");
     assertEq(cdoEpoch.isEpochRunning(), false, "epoch should stop on default");
+    assertFalse(programmableBorrower.epochAccountingActive(), "borrower accounting should stop on default");
     assertEq(programmableBorrower.borrowerInterestDebt(), 0, "default path should not settle borrower debt");
     assertApproxEqAbs(
       programmableBorrower.borrowerInterestAccruedNow(),

@@ -436,9 +436,7 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
       .target(address(borrowerContract))
       .sig(borrowerContract.underlyingToken.selector)
       .checked_write(address(0));
-    borrowerContract.initialize(address(underlying), address(vault), idleCDO, address(this), address(this));
-    borrowerContract.setBorrower(borrower);
-    borrowerContract.setBorrowerApr(365e18);
+    borrowerContract.initialize(address(underlying), address(vault), idleCDO, address(this), address(this), borrower, 365e18);
 
     // Prefund the borrower contract with idle capital and the real borrower with ample repayment liquidity.
     underlying.mint(address(borrowerContract), 1_000_000e18);

@@ -21,4 +21,8 @@ interface IProgrammableBorrower {
   /// @dev Called only on success path after IdleCDO fronted the interest. This settles the full
   /// contractual borrower-interest sleeve, independently from vault gains or losses.
   function settleBorrowerInterest() external;
+
+  /// @notice Abort active epoch accounting after IdleCDO has defaulted the facility.
+  /// @dev Used only on the default path when `onStopEpoch` could not complete successfully.
+  function onDefault() external;
 }

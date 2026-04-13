@@ -502,6 +502,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function _handleBorrowerDefault(uint256 funds) internal {
     defaulted = true;
 
+    if (isProgrammableBorrower) {
+      IProgrammableBorrower(_borrower()).onDefault();
+    }
+
     // deposits should be already prevented
     if (!paused()) {
       _pause();
