@@ -6,11 +6,13 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOEpochQueue} from "./IdleCDOEpochQueue.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
+import {ProgrammableBorrower} from "./strategies/idle/ProgrammableBorrower.sol";
 
 contract IdleCreditVaultFactory is Initializable {
   event CreditVaultDeployed(address proxy);
   event StrategyDeployed(address proxy);
   event QueueDeployed(address proxy);
+  event ProgrammableBorrowerDeployed(address proxy);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -40,6 +42,19 @@ contract IdleCreditVaultFactory is Initializable {
     bool isDepositDuringEpochDisabled;
   }
 
+  struct ProgrammableBorrowerProxyData {
+    address implementation;
+    address proxyAdmin;
+  }
+
+  struct ProgrammableBorrowerParams {
+    address underlyingToken;
+    address vault;
+    address manager;
+    address borrower;
+    uint256 borrowerApr;
+  }
+
   function deployCreditVault(
     TransparentProxyData memory cvData,
     TransparentProxyData memory strategyData,
@@ -47,45 +62,128 @@ contract IdleCreditVaultFactory is Initializable {
     address queueImplementation,
     address owner
   ) external {
-    // Deploy and initialize strategy
-    IdleCreditVault strategy = IdleCreditVault(_deployProxy(strategyData));
-    emit StrategyDeployed(address(strategy));
-
-    // get guardian address from cvData because it will be overwritten in _replaceInitializeData
-    // and we need to set it after deploying the credit vault
-    address guardian = _getGuardian(cvData.initializeData);
-    // Replace strategy address with the deployed strategy address
-    // and owner address with address(this) in the CV initialize data
-    cvData.initializeData = _replaceInitializeData(cvData.initializeData, address(strategy));
-
-    // Deploy and initialize credit vault
-    IdleCDOEpochVariant cv = IdleCDOEpochVariant(_deployProxy(cvData));
-    emit CreditVaultDeployed(address(cv));
+    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) = _deployBaseCreditVault(cvData, strategyData);
 
     _setCVParams(cv, strategy, cvParams);
 
-    if (queueImplementation != address(0)) {
-      // Deploy and initialize strategy
-      IdleCDOEpochQueue queue = IdleCDOEpochQueue(_deployProxy(
-        TransparentProxyData({
-          implementation: queueImplementation,
-          proxyAdmin: strategyData.proxyAdmin, // same as strategy
-          initializeData: abi.encodeWithSelector(
-            IdleCDOEpochQueue.initialize.selector,
-            address(cv), // Use the deployed credit vault address
-            owner,
-            true // Always AA tranche
-          )
-        })
-      ));
-      emit QueueDeployed(address(queue));
-    }
+    _deployQueue(queueImplementation, strategyData.proxyAdmin, cv, owner);
 
     cv.setFeeParams(owner, cvParams.fees);
     cv.setGuardian(guardian);
     // Transfer ownership of strategy and credit vault to owner
     strategy.transferOwnership(owner);
     cv.transferOwnership(owner);
+  }
+
+  function deployRevolvingCreditVault(
+    TransparentProxyData memory cvData,
+    TransparentProxyData memory strategyData,
+    CreditVaultParams memory cvParams,
+    ProgrammableBorrowerProxyData memory programmableBorrowerData,
+    ProgrammableBorrowerParams memory programmableBorrowerParams,
+    address queueImplementation,
+    address owner
+  ) external {
+    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) = _deployBaseCreditVault(cvData, strategyData);
+
+    CreditVaultParams memory revolvingParams = cvParams;
+    revolvingParams.apr = 0;
+    revolvingParams.isInterestMinted = true;
+    revolvingParams.disableInstantWithdraw = true;
+    _setCVParams(cv, strategy, revolvingParams);
+
+    ProgrammableBorrower programmableBorrower = _deployProgrammableBorrower(
+      programmableBorrowerData,
+      programmableBorrowerParams,
+      cv,
+      strategy
+    );
+
+    _deployQueue(queueImplementation, strategyData.proxyAdmin, cv, owner);
+
+    cv.setFeeParams(owner, cvParams.fees);
+    cv.setGuardian(guardian);
+    strategy.transferOwnership(owner);
+    cv.transferOwnership(owner);
+    programmableBorrower.transferOwnership(owner);
+  }
+
+  function _deployBaseCreditVault(
+    TransparentProxyData memory cvData,
+    TransparentProxyData memory strategyData
+  ) internal returns (
+    IdleCDOEpochVariant cv, 
+    IdleCreditVault strategy, 
+    address guardian
+  ) {
+    // Deploy and initialize strategy
+    strategy = IdleCreditVault(_deployProxy(strategyData));
+    emit StrategyDeployed(address(strategy));
+
+    // get guardian address from cvData because it will be overwritten in _replaceInitializeData
+    // and we need to set it after deploying the credit vault
+    guardian = _getGuardian(cvData.initializeData);
+    // Replace strategy address with the deployed strategy address
+    // and owner address with address(this) in the CV initialize data
+    cvData.initializeData = _replaceInitializeData(cvData.initializeData, address(strategy));
+
+    // Deploy and initialize credit vault
+    cv = IdleCDOEpochVariant(_deployProxy(cvData));
+    emit CreditVaultDeployed(address(cv));
+  }
+
+  function _deployProgrammableBorrower(
+    ProgrammableBorrowerProxyData memory programmableBorrowerData,
+    ProgrammableBorrowerParams memory programmableBorrowerParams,
+    IdleCDOEpochVariant cv,
+    IdleCreditVault strategy
+  ) internal returns (ProgrammableBorrower programmableBorrower) {
+    programmableBorrower = ProgrammableBorrower(_deployProxy(
+      TransparentProxyData({
+        implementation: programmableBorrowerData.implementation,
+        proxyAdmin: programmableBorrowerData.proxyAdmin,
+        initializeData: abi.encodeWithSelector(
+          ProgrammableBorrower.initialize.selector,
+          programmableBorrowerParams.underlyingToken,
+          programmableBorrowerParams.vault,
+          address(cv),
+          address(this),
+          programmableBorrowerParams.manager,
+          programmableBorrowerParams.borrower,
+          programmableBorrowerParams.borrowerApr
+        )
+      })
+    ));
+    emit ProgrammableBorrowerDeployed(address(programmableBorrower));
+
+    strategy.setBorrower(address(programmableBorrower));
+    // Programmable mode is explicit and should always be enabled on the revolving path.
+    cv.setIsProgrammableBorrower(true);
+  }
+
+  function _deployQueue(
+    address queueImplementation,
+    address proxyAdmin,
+    IdleCDOEpochVariant cv,
+    address owner
+  ) internal {
+    if (queueImplementation == address(0)) {
+      return;
+    }
+
+    IdleCDOEpochQueue queue = IdleCDOEpochQueue(_deployProxy(
+      TransparentProxyData({
+        implementation: queueImplementation,
+        proxyAdmin: proxyAdmin,
+        initializeData: abi.encodeWithSelector(
+          IdleCDOEpochQueue.initialize.selector,
+          address(cv),
+          owner,
+          true
+        )
+      })
+    ));
+    emit QueueDeployed(address(queue));
   }
 
   function _deployProxy(TransparentProxyData memory data) internal returns (address) {
