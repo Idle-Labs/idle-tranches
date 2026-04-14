@@ -1110,6 +1110,21 @@ const CDOs = {
     keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
     queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
   },
+  creditapollousdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
+    underlying: mainnetContracts.USDC,
+    // NOTE: this is the prefunded variant
+    cdoAddr: '0x1e157459A4E03822C2784ba5ea98AD204BD7D479',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
+    AATranche: '0xF444E23e4371ef92487279a6C5f23F735DB88a7E',
+    BBTranche: '0x5f630650C0E4b80e0a5948B7e9B9bA6fBCE631D2',
+    writeOff: '0xe05f146b17CCc77f6c9224A613Bb156d65DA43E0',
+    keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
+    queue: '0x3Ee06a5c8b15951cb68711e21e451409EBfdF3F9'
+  },
   creditm1capitalusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -3556,15 +3571,14 @@ exports.deployTokens = {
     // #########
     isCreditVault: true,
     // ## epoch params
-    epochDuration: '86400', // 1 day
+    epochDuration: '604800', // 1 week
     bufferPeriod: '0', // 0 seconds
     // ## instant params values
     instantWithdrawDelay: '120', // 2 minutes
     instantWithdrawAprDelta: 5e18.toString(),
     disableInstantWithdraw: true,
     // ## keyring params
-    keyring: '', // a new whitelist will be deployed
-    // keyring: mainnetContracts.keyringWhitelist,
+    keyring: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
     keyringPolicy: 4725443,
     keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
@@ -3575,8 +3589,8 @@ exports.deployTokens = {
     hypernative: true,
     interestMinted: true,
     depositDuringEpoch: false,
-    prefundedDeposits: false,
-    prefundedDepositsWindows: '604800', // 7 days
+    prefundedDeposits: true,
+    prefundedDepositsWindows: '172800', // 2 days
     proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
   },
   creditm1capitalusdc: {
