@@ -179,6 +179,17 @@ const getDeployTokens = (_hre) => {
   return addresses.deployTokens;
 }
 
+const normalizeAddress = (address) => (address || '').toLowerCase();
+const getTrackedCreditVault = (_hre, cdoAddress) => {
+  if (!cdoAddress) {
+    return null;
+  }
+  return Object.values(getNetworkCDOs(_hre)).find(
+    ({ cdoAddr }) => normalizeAddress(cdoAddr) === normalizeAddress(cdoAddress)
+  ) || null;
+}
+const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+
 /**
  * @name deploy
  * deploy factory for CDOs
@@ -1108,23 +1119,30 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       await whitelist.connect(signer).setWhitelistStatus(queue, true);
     }
 
+    let writeOffEscrow;
     if (deployToken.writeoff) {
       console.log('Deploying write off escrow');
-      await hre.run("deploy-writeoff-escrow", { cdo: cv });
+      writeOffEscrow = await hre.run("deploy-writeoff-escrow", { cdo: cv });
     }
 
-    await hre.run("print-contracts-info", { cdo: cv, strategy, queue });
+    await hre.run("print-contracts-info", { cdo: cv, strategy, queue, writeoff: writeOffEscrow });
 });
 
 task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('cdo', 'Cdo address')
   .addOptionalParam('strategy', 'Strategy address')
   .addOptionalParam('queue', 'Queue address')
+  .addOptionalParam('writeoff', 'Write-off escrow address')
   .setAction(async (args) => {
     console.log('Printing contracts info');
+    const trackedCdo = getTrackedCreditVault(hre, args.cdo);
+    const queueAddress = args.queue || trackedCdo?.queue;
+    const writeOffAddress = args.writeoff || getTrackedWriteOff(trackedCdo);
     const cdo = args.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", args.cdo) : null;
     const strategy = args.strategy ? await ethers.getContractAt("IdleCreditVault", args.strategy) : null;
-    const queue = args.queue ? await ethers.getContractAt("IdleCDOEpochQueue", args.queue) : null;
+    const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
+    const writeOffEscrow = writeOffAddress ? await ethers.getContractAt("IdleCreditVaultWriteOffEscrow", writeOffAddress) : null;
+    let cdoPrefundedQueue = null;
     if (cdo) {
       const [
         owner,
@@ -1142,6 +1160,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         aprDelta,
         instantDelay,
         keyringPolicy,
+        prefundedQueue,
       ] = await Promise.all([
         cdo.owner(),
         cdo.guardian(),
@@ -1173,7 +1192,19 @@ task("print-contracts-info", "Prints deployed contracts info")
         cdo.instantWithdrawAprDelta(),
         cdo.instantWithdrawDelay(),
         cdo.keyringPolicyId(),
+        (async () => {
+          try {
+            const prefundedCdo = await ethers.getContractAt(
+              'contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded',
+              cdo.address
+            );
+            return await prefundedCdo.epochQueue();
+          } catch (error) {
+            return null;
+          }
+        })(),
       ]);
+      cdoPrefundedQueue = prefundedQueue;
       console.log(`CDO at ${cdo.address}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  Guardian:       ${guardian}`);
@@ -1194,6 +1225,9 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  APR Delta:      ${aprDelta}`);
       console.log(`  Instant Delay:  ${instantDelay}`);
       console.log(`  Keyring Policy: ${keyringPolicy}`);
+      if (cdoPrefundedQueue !== null) {
+        console.log(`  Prefunded Queue:${cdoPrefundedQueue}`);
+      }
 
       console.log(``);
     }
@@ -1234,19 +1268,59 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(``);
     }
     if (queue) {
-      const [owner, epochCdo, underlying, tranche, queueAllowed] = await Promise.all([
+      const [owner, epochCdo, underlying, tranche, queueAllowed, prefundedDepositWindow] = await Promise.all([
         queue.owner(),
         queue.idleCDOEpoch(),
         queue.underlying(),
         queue.tranche(),
-        cdo.isWalletAllowed(args.queue),
+        cdo ? cdo.isWalletAllowed(queue.address) : null,
+        (async () => {
+          try {
+            return await queue.prefundedDepositWindow();
+          } catch (error) {
+            return null;
+          }
+        })(),
       ]);
+      const isPrefundedQueue = cdoPrefundedQueue !== null &&
+        cdoPrefundedQueue !== addr0 &&
+        normalizeAddress(cdoPrefundedQueue) === normalizeAddress(queue.address);
       console.log(`Queue at ${queue.address}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  CDO:            ${epochCdo}`);
       console.log(`  Underlying:     ${underlying}`);
       console.log(`  Tranche:        ${tranche}`);
-      console.log(`  Queue allowed:  ${queueAllowed}`);
+      if (queueAllowed !== null) {
+        console.log(`  Queue allowed:  ${queueAllowed}`);
+      }
+      if (prefundedDepositWindow !== null) {
+        console.log(`  Prefund Window: ${prefundedDepositWindow}`);
+      }
+      if (cdoPrefundedQueue !== null) {
+        console.log(`  Is Prefunded:   ${isPrefundedQueue}`);
+      }
+      console.log(``);
+    }
+    if (writeOffEscrow) {
+      const [owner, epochCdo, strategyAddress, underlying, tranche, borrower, exitFee, feeReceiver] = await Promise.all([
+        writeOffEscrow.owner(),
+        writeOffEscrow.idleCDOEpoch(),
+        writeOffEscrow.strategy(),
+        writeOffEscrow.underlying(),
+        writeOffEscrow.tranche(),
+        writeOffEscrow.borrower(),
+        writeOffEscrow.exitFee(),
+        writeOffEscrow.feeReceiver(),
+      ]);
+      console.log(`WriteOff escrow at ${writeOffEscrow.address}`);
+      console.log(`  Owner:          ${owner}`);
+      console.log(`  CDO:            ${epochCdo}`);
+      console.log(`  Strategy:       ${strategyAddress}`);
+      console.log(`  Underlying:     ${underlying}`);
+      console.log(`  Tranche:        ${tranche}`);
+      console.log(`  Borrower:       ${borrower}`);
+      console.log(`  Exit Fee:       ${exitFee}`);
+      console.log(`  Fee Receiver:   ${feeReceiver}`);
       console.log(``);
     }
   });
@@ -1366,11 +1440,12 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
     console.log(`Params for ${contractName}`, params);
 
     // Deploy write off escrow contract
-    const queue = await helpers.deployUpgradableContract(
+    const writeOffEscrow = await helpers.deployUpgradableContract(
       contractName,
       params,
       signer
     );
+    return writeOffEscrow.address;
   });
 
 /**
