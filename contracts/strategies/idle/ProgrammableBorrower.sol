@@ -69,6 +69,8 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice net vault PnL earned during the buffer and not yet realized by IdleCDO
   /// @dev Positive values represent gains, negative values represent losses.
   int256 public bufferedVaultDelta;
+  /// @notice keepers allowed to trigger borrow and repay on behalf of the borrower
+  mapping(address => bool) public authorizedExecutors;
 
   event DepositedIntoVault(uint256 assets, uint256 shares);
   event WithdrawnFromVault(uint256 assets, uint256 shares, address indexed receiver);
@@ -81,6 +83,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   event EpochAccountingStarted(uint256 startAssets);
   event EpochAccountingStopped();
   event BorrowerInterestSettled(uint256 amount);
+  event AuthorizedExecutorSet(address indexed executor, bool allowed);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -131,6 +134,15 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _manager manager address, or zero to clear the role
   function setManager(address _manager) external onlyOwner {
     manager = _manager;
+  }
+
+  /// @notice Allow or revoke a keeper that can trigger borrow and repay on behalf of the borrower.
+  /// @param _executor keeper address
+  /// @param _allowed true to authorize, false to revoke
+  function setAuthorizedExecutor(address _executor, bool _allowed) external onlyOwner {
+    if (_executor == address(0)) revert InvalidAddress();
+    authorizedExecutors[_executor] = _allowed;
+    emit AuthorizedExecutorSet(_executor, _allowed);
   }
 
   /// @notice Set the vault used to deploy idle funds.
@@ -357,14 +369,62 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Draw funds from the revolving-credit facility.
   /// @dev Only the configured borrower address can call this while an epoch is active. If there is
   /// not enough on-hand liquidity, the shortfall is first withdrawn from the vault.
-  /// @param assets amount of underlying to draw
+  /// @param assets amount of underlying to draw (`0` = draw all currently available)
   /// @return withdrawnShares vault shares burned, if any liquidity had to be freed first
   function borrow(uint256 assets) external nonReentrant returns (uint256 withdrawnShares) {
-    if (msg.sender != borrower || !epochAccountingActive) revert NotAllowed();
-    if (assets == 0) revert InvalidAmount();
+    if (msg.sender != borrower) revert NotAllowed();
+    return _borrow(assets);
+  }
+
+  /// @notice Trigger a borrower draw from an authorized executor.
+  /// @dev Funds are still transferred only to the configured borrower address.
+  /// @param assets amount of underlying to draw (`0` = draw all currently available)
+  /// @return withdrawnShares vault shares burned, if any liquidity had to be freed first
+  function executeBorrow(uint256 assets) external nonReentrant returns (uint256 withdrawnShares) {
+    _checkOnlyAuthorizedExecutor();
+    return _borrow(assets);
+  }
+
+  /// @notice Repay drawn funds back into the facility.
+  /// @dev Repayments are applied in this order:
+  /// 1. `borrowerInterestDebt` already fronted by IdleCDO
+  /// 2. `borrowerInterestAccrued` not yet fronted
+  /// 3. `borrowerPrincipal`
+  ///
+  /// Passing `assets = 0` repays the full currently tracked obligation.
+  ///
+  /// Amounts above the tracked debt are capped to the live obligation before any transfer. When an
+  /// epoch is active, the received funds are redeployed into the vault before the function returns.
+  /// @param assets amount of underlying to repay (`0` = repay all currently owed)
+  /// @return interestPaid interest component cleared by the repayment
+  /// @return principalPaid principal component cleared by the repayment
+  function repay(uint256 assets) external nonReentrant returns (uint256 interestPaid, uint256 principalPaid) {
+    if (msg.sender != borrower) revert NotAllowed();
+    return _repay(assets);
+  }
+
+  /// @notice Trigger a borrower repayment from an authorized executor.
+  /// @dev Funds are still pulled only from the configured borrower address using its allowance.
+  /// @param assets amount of underlying to repay (`0` = repay all currently owed)
+  /// @return interestPaid interest component cleared by the repayment
+  /// @return principalPaid principal component cleared by the repayment
+  function executeRepay(uint256 assets) external nonReentrant returns (uint256 interestPaid, uint256 principalPaid) {
+    _checkOnlyAuthorizedExecutor();
+    return _repay(assets);
+  }
+
+  /// @notice Shared borrow implementation for direct borrower calls and authorized executors.
+  function _borrow(uint256 assets) internal returns (uint256 withdrawnShares) {
+    if (!epochAccountingActive) revert NotAllowed();
+    // `0` is treated as "draw the full currently borrowable amount" after reserving epoch-end obligations.
+    uint256 borrowable = availableToBorrow();
+    if (assets == 0) {
+      if (borrowable == 0) revert InvalidAmount();
+      assets = borrowable;
+    }
 
     // Borrows are capped by the live "reserved vs free" view so epoch-end obligations always stay covered.
-    if (assets > availableToBorrow()) revert InsufficientBorrowable();
+    if (assets > borrowable) revert InsufficientBorrowable();
 
     _accrueBorrowerInterest();
 
@@ -378,33 +438,28 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       emit WithdrawnFromVault(shortfall, withdrawnShares, address(this));
     }
 
+    // Executors can trigger the draw, but proceeds are always delivered to the borrower wallet.
     borrowerPrincipal += assets;
     underlyingToken.safeTransfer(borrower, assets);
     emit Borrowed(assets);
   }
 
-  /// @notice Repay drawn funds back into the facility.
-  /// @dev Repayments are applied in this order:
-  /// 1. `borrowerInterestDebt` already fronted by IdleCDO
-  /// 2. `borrowerInterestAccrued` not yet fronted
-  /// 3. `borrowerPrincipal`
-  ///
-  /// Passing `assets = 0` repays the full currently tracked obligation.
-  ///
-  /// Any excess over the tracked debt simply remains on this contract. When an epoch is active,
-  /// the received funds are redeployed into the vault before the function returns.
-  /// @param assets amount of underlying to repay (`0` = repay all currently owed)
-  /// @return interestPaid interest component cleared by the repayment
-  /// @return principalPaid principal component cleared by the repayment
-  function repay(uint256 assets) external nonReentrant returns (uint256 interestPaid, uint256 principalPaid) {
-    if (msg.sender != borrower) revert NotAllowed();
+  /// @notice Shared repay implementation for direct borrower calls and authorized executors.
+  function _repay(uint256 assets) internal returns (uint256 interestPaid, uint256 principalPaid) {
+    _accrueBorrowerInterest();
+    // `_accrueBorrowerInterest` checkpoints the live pending leg into `borrowerInterestAccrued`,
+    // so the capped amount can be computed directly from the stored debt buckets.
+    uint256 totalOwed = borrowerPrincipal + borrowerInterestDebt + borrowerInterestAccrued;
 
     if (assets == 0) {
-      assets = borrowerPrincipal + borrowerInterestOwedNow();
-      if (assets == 0) revert InvalidAmount();
+      if (totalOwed == 0) revert InvalidAmount();
+      assets = totalOwed;
+    } else {
+      if (totalOwed == 0) revert InvalidAmount();
+      if (assets > totalOwed) {
+        assets = totalOwed;
+      }
     }
-
-    _accrueBorrowerInterest();
 
     underlyingToken.safeTransferFrom(borrower, address(this), assets);
     uint256 totalRepaidAssets = assets;
@@ -509,6 +564,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Revert unless the caller is the owner or configured manager.
   function _checkOnlyOwnerOrManager() internal view {
     if (msg.sender != owner() && msg.sender != manager) revert NotAllowed();
+  }
+
+  /// @notice Revert unless the caller is an authorized executor.
+  function _checkOnlyAuthorizedExecutor() internal view {
+    if (!authorizedExecutors[msg.sender]) revert NotAllowed();
   }
 
   /// @notice Emergency token rescue.

@@ -37,6 +37,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
   address internal borrowerManager = makeAddr("borrowerManager");
   address internal placeholderBorrower = makeAddr("placeholderBorrower");
   address internal revolvingBorrower = makeAddr("revolvingBorrower");
+  address internal authorizedExecutor = makeAddr("authorizedExecutor");
 
   uint256 internal initialProvidedApr = 10e18;
   uint256 internal oneScale;
@@ -858,6 +859,20 @@ contract TestProgrammableBorrowerCreditVault is Test {
     assertEq(programmableBorrower.manager(), address(0), "owner should be able to clear manager");
   }
 
+  function testSetAuthorizedExecutorOnlyOwner() external {
+    assertFalse(programmableBorrower.authorizedExecutors(authorizedExecutor), "executor should start unauthorized");
+
+    vm.expectRevert("Ownable: caller is not the owner");
+    vm.prank(revolvingBorrower);
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+    assertTrue(programmableBorrower.authorizedExecutors(authorizedExecutor), "owner should authorize executor");
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, false);
+    assertFalse(programmableBorrower.authorizedExecutors(authorizedExecutor), "owner should revoke executor");
+  }
+
   function testManagerCanOperateRoutineAdminFunctions() external {
     uint256 amount = 10_000 * oneScale;
     address newBorrower = makeAddr("newBorrower");
@@ -931,6 +946,55 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.borrow(1_000 * oneScale);
   }
 
+  function testExecuteBorrowByAuthorizedExecutorTransfersFundsToBorrower() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 1_500 * oneScale;
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    uint256 borrowerBalPre = underlying.balanceOf(revolvingBorrower);
+
+    vm.prank(authorizedExecutor);
+    programmableBorrower.executeBorrow(drawAmount);
+
+    assertEq(programmableBorrower.borrowerPrincipal(), drawAmount, "borrow should increase borrower principal");
+    assertEq(
+      underlying.balanceOf(revolvingBorrower), borrowerBalPre + drawAmount, "borrow should pay borrower wallet"
+    );
+    assertEq(underlying.balanceOf(authorizedExecutor), 0, "executor should not receive funds");
+  }
+
+  function testExecuteBorrowZeroUsesAllAvailable() external {
+    uint256 amount = 10_000 * oneScale;
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    cdoEpoch.requestWithdraw(aaTranche.balanceOf(address(this)) / 2, address(aaTranche));
+    _startEpochAndCheckPrices(0);
+
+    uint256 available = programmableBorrower.availableToBorrow();
+    uint256 borrowerBalPre = underlying.balanceOf(revolvingBorrower);
+
+    vm.prank(authorizedExecutor);
+    programmableBorrower.executeBorrow(0);
+
+    assertGt(available, 0, "expected available amount");
+    assertEq(programmableBorrower.borrowerPrincipal(), available, "borrow(0) should draw all available funds");
+    assertEq(
+      underlying.balanceOf(revolvingBorrower), borrowerBalPre + available, "borrow(0) should pay the borrower wallet"
+    );
+  }
+
   function testBorrowRevertsWhenEpochInactive() external {
     // No epoch started — borrowing should revert
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
@@ -938,13 +1002,38 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.borrow(100 * oneScale);
   }
 
-  function testBorrowRevertsOnZeroAmount() external {
+  function testBorrowZeroUsesAllAvailable() external {
     uint256 amount = 10_000 * oneScale;
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
 
     idleCDO.depositAA(amount);
+    cdoEpoch.requestWithdraw(aaTranche.balanceOf(address(this)) / 2, address(aaTranche));
     _startEpochAndCheckPrices(0);
+
+    uint256 available = programmableBorrower.availableToBorrow();
+    uint256 borrowerBalPre = underlying.balanceOf(revolvingBorrower);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(0);
+
+    assertGt(available, 0, "expected available amount");
+    assertEq(programmableBorrower.borrowerPrincipal(), available, "borrow(0) should draw all available funds");
+    assertEq(
+      underlying.balanceOf(revolvingBorrower), borrowerBalPre + available, "borrow(0) should pay the borrower wallet"
+    );
+  }
+
+  function testBorrowZeroRevertsWhenNothingIsAvailable() external {
+    uint256 amount = 10_000 * oneScale;
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    cdoEpoch.requestWithdraw(0, address(aaTranche));
+    _startEpochAndCheckPrices(0);
+
+    assertEq(programmableBorrower.availableToBorrow(), 0, "expected no available liquidity");
 
     vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector));
     vm.prank(revolvingBorrower);
@@ -977,6 +1066,69 @@ contract TestProgrammableBorrowerCreditVault is Test {
     vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector));
     vm.prank(revolvingBorrower);
     programmableBorrower.repay(0);
+  }
+
+  function testExecuteRepayByAuthorizedExecutorPullsFromBorrowerAllowance() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 4_000 * oneScale;
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(block.timestamp + 5 days);
+
+    uint256 interestOwedNow = programmableBorrower.borrowerInterestOwedNow();
+    uint256 totalOwed = drawAmount + interestOwedNow;
+    deal(USDC, revolvingBorrower, totalOwed, true);
+
+    vm.prank(authorizedExecutor);
+    (uint256 interestPaid, uint256 principalPaid) = programmableBorrower.executeRepay(0);
+
+    assertEq(interestPaid, interestOwedNow, "executor repay should clear live interest");
+    assertEq(principalPaid, drawAmount, "executor repay should clear full principal");
+    assertEq(programmableBorrower.borrowerInterestDebt(), 0, "fronted debt should remain cleared");
+    assertEq(programmableBorrower.borrowerPrincipal(), 0, "principal should be fully cleared");
+    assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "live accrued interest should be cleared");
+    assertEq(underlying.balanceOf(revolvingBorrower), 0, "repayment should be pulled from borrower wallet");
+  }
+
+  function testRepayCapsRequestedAmountToTrackedDebt() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 4_000 * oneScale;
+    uint256 extra = 1_000 * oneScale;
+
+    programmableBorrower.setAuthorizedExecutor(authorizedExecutor, true);
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(block.timestamp + 5 days);
+
+    uint256 totalOwed = programmableBorrower.borrowerPrincipal() + programmableBorrower.borrowerInterestOwedNow();
+    deal(USDC, revolvingBorrower, totalOwed + extra, true);
+
+    vm.prank(authorizedExecutor);
+    (uint256 interestPaid, uint256 principalPaid) = programmableBorrower.executeRepay(totalOwed + extra);
+
+    assertEq(interestPaid + principalPaid, totalOwed, "repay should be capped to tracked debt");
+    assertEq(underlying.balanceOf(revolvingBorrower), extra, "repay should not pull excess borrower funds");
+    assertEq(programmableBorrower.borrowerInterestDebt(), 0, "fronted debt should remain cleared");
+    assertEq(programmableBorrower.borrowerPrincipal(), 0, "principal should be fully cleared");
+    assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "live accrued interest should be cleared");
   }
 
   function testRepayZeroRepaysEverythingOwed() external {
