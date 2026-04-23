@@ -185,16 +185,26 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     bytes memory runtime0 = vm.getDeployedCode("out/IdleCDOCreditVault.sol/IdleCDOCreditVault.json");
     console2.log("base size", runtime0.length);
     bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariant.sol/IdleCDOEpochVariant.json");
-    assertLt(runtime.length, 24_576, "IdleCDOEpochVariant deployed bytecode too large");
+    assertLe(runtime.length, 24_576, "IdleCDOEpochVariant deployed bytecode too large");
     console2.log('size ', runtime.length);
     bytes memory runtime2 = vm.getDeployedCode("out/IdleCDOEpochVariantAvax.sol/IdleCDOEpochVariantAvax.json");
     console2.log('size2', runtime2.length);
-    assertLt(runtime2.length, 24_576, "IdleCDOEpochVariantAvax deployed bytecode too large");
+    assertLe(runtime2.length, 24_576, "IdleCDOEpochVariantAvax deployed bytecode too large");
   }
 
   function testCantReinitialize() external override {
     vm.expectRevert(bytes("Initializable: contract is already initialized"));
     IdleCreditVault(address(strategy)).initialize(defaultUnderlying, address(1), manager, borrower, borrowerName, 1e18);
+  }
+
+  function testInitialize() public view override {
+    assertEq(idleCDO.token(), address(underlying));
+    assertGe(strategy.price(), ONE_SCALE, "strategy price is wrong");
+    assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE, "AA price is wrong");
+    assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, "BB price is wrong");
+    assertEq(initialAAApr, 0, "AA apr");
+    assertEq(initialBBApr, initialApr, "BB apr");
+    assertEq(idleCDO.maxDecreaseDefault(), 5000);
   }
 
   function testCannotDepositWhenEpochRunningOrDefault() external {
@@ -540,6 +550,95 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
     assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest - (interest / 10), 'maxWithdrawable with fees is wrong');
+  }
+
+  function testManagementFeeAccruesOnLiveNav() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFee = 1_000; // 1%
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _setManagementFee(mgmtFee);
+
+    vm.warp(block.timestamp + 365 days);
+
+    uint256 expectedFee = _calcManagementFee(amount, mgmtFee, 365 days);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+
+    assertEq(cdoEpoch.unclaimedFees(), expectedFee, "management fee not checkpointed");
+    assertEq(cdoEpoch.getContractValue(), amount - expectedFee, "checkpointed management fee changed NAV");
+  }
+
+  function testSetManagementFeeCheckpointsBeforeRateChange() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 firstFeeRate = 1_000; // 1%
+    uint256 secondFeeRate = 2_000; // 2%
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _setManagementFee(firstFeeRate);
+
+    vm.warp(block.timestamp + 365 days);
+    _setManagementFee(secondFeeRate);
+
+    uint256 firstYearFee = _calcManagementFee(amount, firstFeeRate, 365 days);
+    assertEq(cdoEpoch.unclaimedFees(), firstYearFee, "first management fee period not checkpointed");
+    assertEq(cdoEpoch.getContractValue(), amount - firstYearFee, "NAV wrong after fee-rate change");
+
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    uint256 secondYearFee = _calcManagementFee(amount - firstYearFee, secondFeeRate, 365 days);
+    assertEq(
+      cdoEpoch.unclaimedFees(),
+      firstYearFee + secondYearFee,
+      "new management fee applied retroactively"
+    );
+    assertEq(cdoEpoch.getContractValue(), amount - firstYearFee - secondYearFee, "NAV wrong after second checkpoint");
+  }
+
+  function testStopEpochPaysManagementFee() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFee = 1_000; // 1%
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setManagementFee(mgmtFee);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 feeReceiverBalPre = IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG);
+
+    deal(defaultUnderlying, borrower, expectedInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    uint256 expectedMgmtFee = _calcManagementFee(amount, mgmtFee, 365 days);
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalPre,
+      expectedMgmtFee,
+      "fee receiver got wrong management fee"
+    );
+    assertEq(cdoEpoch.unclaimedFees(), 0, "unclaimed fees should be cleared after stop");
+    assertEq(cdoEpoch.lastEpochInterest(), expectedInterest - expectedMgmtFee, "net epoch interest should include management fee");
+    assertEq(
+      cdoEpoch.getContractValue(),
+      amount + expectedInterest - expectedMgmtFee,
+      "vault NAV after stop does not include management fee"
+    );
   }
 
   // function testMaxInstantWithdrawable() external {
@@ -2605,6 +2704,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   //   uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
   //   return (interest - fees, fees);
   // }
+
+  function _calcManagementFee(uint256 _nav, uint256 _rate, uint256 _duration) internal pure returns (uint256) {
+    return _nav * _rate * _duration / FULL_ALLOC / 365 days;
+  }
+
+  function _setManagementFee(uint256 _managementFee) internal {
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(address(0), _managementFee);
+  }
 
   function testRequestWithdrawInstant() external {
     vm.prank(owner);

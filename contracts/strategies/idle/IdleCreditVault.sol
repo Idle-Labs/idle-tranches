@@ -320,6 +320,8 @@ contract IdleCreditVault is
     _expInterest = _interest > 1 ? _interest : _cdo.expectedEpochInterest();
     _adjPendingWithdrawFees = _pendingFees;
     // Principal currently waiting for withdraw that was requested while APR was 0.
+    // Management fees are intentionally not charged on these pending withdraw receipts in the
+    // minimal live-NAV-only implementation.
     uint256 _principal = apr0TotalPrincipal;
 
     // Fast path: no APR0 accounting needed.

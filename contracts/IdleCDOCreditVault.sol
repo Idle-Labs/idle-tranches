@@ -83,7 +83,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     guardian = _owner;
     isAYSActive = true; // adaptive yield split
     minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
-
+    // Credit vaults reuse this legacy slot as the management-fee checkpoint timestamp.
+    latestHarvestBlock = block.timestamp;
     maxDecreaseDefault = 5000; // 5% decrease for triggering a default
     _additionalInit();
   }
@@ -125,19 +126,28 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @notice calculates the current net TVL (in `token` terms)
   /// @dev `unclaimedFees` are not counted.
   function getContractValue() public override view returns (uint256) {
-    address _strategyToken = strategyToken;
-    // TVL is the sum of unlent balance in the contract + the balance in lending - unclaimedFees.
-    // Balance in lending is the value of the interest bearing assets (strategyTokens) in this contract
-    // TVL = (strategyTokens * strategy token price) + unlent balance - unclaimedFees
-    return (_contractTokenBalance(_strategyToken) * _strategyPrice() / (10**(IERC20Detailed(_strategyToken).decimals()))) +
-            _contractTokenBalance(token) -
-            unclaimedFees;
+    // Credit vault strategy tokens are minted 1:1 with underlyings and use the same decimals.
+    return _contractTokenBalance(strategyToken) + _contractTokenBalance(token) - unclaimedFees;
   }
 
   /// @param _tranche tranche address
   /// @return actual apr given current ratio between AA and BB tranches
   function getApr(address _tranche) external view returns (uint256) {
-    return _getApr(_tranche, _getAARatio(false));
+    uint256 _AATrancheSplitRatio = _getAARatio(false);
+    uint256 stratApr = _getStrategyApr();
+    if (_AATrancheSplitRatio == 0) {
+      // if there are no AA tranches, apr for AA is 0 (all apr to BB and it will be equal to stratApr)
+      return _tranche == AATranche ? 0 : stratApr;
+    }
+    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
+    if (_tranche != AATranche) {
+      // BB apr is: stratApr * BBaprSplitRatio / BBSplitRatio -> where
+      // BBaprSplitRatio is: (FULL_ALLOC - _trancheAPRSplitRatio) and
+      // BBSplitRatio is: (FULL_ALLOC - _AATrancheSplitRatio)
+      return stratApr * (FULL_ALLOC - _trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
+    }
+    // AA apr is: stratApr * AAaprSplitRatio / AASplitRatio
+    return stratApr * _trancheAPRSplitRatio / _AATrancheSplitRatio;
   }
 
   /// @notice calculates the current AA tranches ratio
@@ -207,6 +217,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
   /// - update fee accounting (unclaimedFees)
   function _updateAccounting() internal virtual {
+    _accrueManagementFee();
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
     uint256 _lastNAV = _lastNAVAA + _lastNAVBB;
@@ -446,11 +457,6 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     return AABal * FULL_ALLOC / contractVal;
   }
 
-  /// @return strategy price, in underlyings
-  function _strategyPrice() internal view returns (uint256) {
-    return IIdleCDOStrategy(strategy).price();
-  }
-
   /// @param _tranche tranche address
   /// @return last saved tranche price, in underlyings
   function _tranchePrice(address _tranche) internal view returns (uint256) {
@@ -458,28 +464,6 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
       return oneToken;
     }
     return _tranche == AATranche ? priceAA : priceBB;
-  }
-
-  /// @notice returns the current apr for a tranche based on trancheAPRSplitRatio and the provided AA ratio
-  /// @dev the apr for a tranche can be higher than the strategy apr
-  /// @param _tranche tranche token address
-  /// @param _AATrancheSplitRatio AA split ratio used for calculations
-  /// @return apr for the specific tranche
-  function _getApr(address _tranche, uint256 _AATrancheSplitRatio) internal view returns (uint256) {
-    uint256 stratApr = _getStrategyApr();
-    uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
-    bool isAATranche = _tranche == AATranche;
-    if (_AATrancheSplitRatio == 0) {
-      // if there are no AA tranches, apr for AA is 0 (all apr to BB and it will be equal to stratApr)
-      return isAATranche ? 0 : stratApr;
-    }
-    return isAATranche ?
-      // AA apr is: stratApr * AAaprSplitRatio / AASplitRatio
-      stratApr * _trancheAPRSplitRatio / _AATrancheSplitRatio :
-      // BB apr is: stratApr * BBaprSplitRatio / BBSplitRatio -> where
-      // BBaprSplitRatio is: (FULL_ALLOC - _trancheAPRSplitRatio) and
-      // BBSplitRatio is: (FULL_ALLOC - _AATrancheSplitRatio)
-      stratApr * (FULL_ALLOC - _trancheAPRSplitRatio) / (FULL_ALLOC - _AATrancheSplitRatio);
   }
 
   /// @notice internal method used to deploy a new tranche token
@@ -501,12 +485,18 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     isAYSActive = _active;
   }
 
-  /// @param _feeReceiver new fee receiver address
+  /// @param _feeReceiver new fee receiver address, or `address(0)` to update the management fee
   /// @param _fee new fee value (in % with 100000 = 100%)
   function setFeeParams(address _feeReceiver, uint256 _fee) external {
     _checkOnlyOwner();
-    _checkIs0((feeReceiver = _feeReceiver) == address(0));
-    _checkAmountTooHigh((fee = _fee) > MAX_FEE);
+    if (_feeReceiver == address(0)) {
+      // Credit vaults reuse the legacy `feeSplit` slot to store the annualized management fee.
+      _accrueManagementFee();
+      _checkAmountTooHigh((feeSplit = _fee) > FULL_ALLOC);
+    } else {
+      feeReceiver = _feeReceiver;
+      _checkAmountTooHigh((fee = _fee) > MAX_FEE);
+    }
   }
 
   /// @param _guardian new guardian (pauser) address
@@ -610,6 +600,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
     return IERC20Detailed(_token).balanceOf(address(this));
+  }
+
+  /// @notice checkpoint accrued management fees into `unclaimedFees`
+  function _accrueManagementFee() internal {
+    unclaimedFees += getContractValue() * feeSplit * (block.timestamp - latestHarvestBlock) / (FULL_ALLOC * 365 days);
+    latestHarvestBlock = block.timestamp;
   }
 
   /// @notice returns the user tranche balance for a specific tranche

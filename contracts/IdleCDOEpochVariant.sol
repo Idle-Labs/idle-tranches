@@ -331,6 +331,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       return;
     }
 
+    // Checkpoint management fees before borrower funds are pulled in so the elapsed-period
+    // accrual applies only to the pre-stop live NAV, not to newly received epoch interest.
+    _accrueManagementFee();
+
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
     try this.getFundsFromBorrower(_amountToPullFromBorrower, _pendingWithdraws, 0) {
@@ -705,7 +709,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     /// expectedEpochInterest at the startEpoch.
     /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
     interestForOverUnderPerformance += diff;
-    
+
+    // Management fees accrue only on live vault NAV. Once principal is turned into a withdraw
+    // receipt it stops participating in that fee base by design in this minimal implementation.
     // request normal withdraw, we burn strategy tokens without interest for the new epoch and mint and eq amount to msg.sender
     creditVault.requestWithdraw(_underlyings, msg.sender, netInterest);
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
