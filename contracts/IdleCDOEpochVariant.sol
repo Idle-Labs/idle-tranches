@@ -667,42 +667,39 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _updateAccounting();
 
     IdleCreditVault creditVault = IdleCreditVault(strategy);
+    if (_amount == 0) {
+      _amount = _userTrancheBal(msg.sender, _tranche);
+    }
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
-    uint256 _userTrancheTokens = _userTrancheBal(msg.sender, _tranche);
 
     // Programmable borrower deployments do not support instant withdrawals.
     // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
     // we compare unscaled aprs
     if (!disableInstantWithdraw && !isProgrammableBorrower) {
       if (lastEpochApr > (creditVault.unscaledApr() + instantWithdrawAprDelta)) {
-        // Calc max withdrawable if amount passed is 0
-        _underlyings = _amount == 0 ? _trancheToUnderlyings(_userTrancheBal(msg.sender, _tranche), _tranche) : _underlyings;
         // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
-
         // burn tranche tokens and decrease NAV
-        if (_amount == 0) {
-          _amount = _userTrancheTokens;
-        }
         _withdrawOps(_amount, _underlyings, _tranche);
         return _underlyings;
       }
     }
 
-    // recalculate underlyings considering also interest accrued in the epoch as normal withdraws
-    // will still accrue interest for the next epoch
-    if (_amount == 0) {
-      _underlyings = _trancheToUnderlyings(_userTrancheTokens, _tranche);
-      _amount = _userTrancheTokens;
-    }
-
+    uint256 principal = _underlyings;
+    // calculate performance fee
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
     uint256 netInterest = interest - fees;
     // user is requesting principal + interest of next epoch minus fees
     _underlyings += netInterest;
+    // Charge one epoch of management fee only on the principal that is leaving live NAV.
+    uint256 managementFee = _calculateManagementFee(principal, epochDuration);
+    if (managementFee > _underlyings) {
+      managementFee = _underlyings;
+    }
+    _underlyings -= managementFee;
     // add expected fees to pending withdraw fees counter
-    pendingWithdrawFees += fees;
+    pendingWithdrawFees += fees + managementFee;
 
     /// if there is an AA withdrawal the overperformance that the amount withdrawed would have generated for BB tranches
     /// is saved in interestForOverUnderPerformance. This is used to calculate the interest that should be added to the
@@ -710,12 +707,11 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
     interestForOverUnderPerformance += diff;
 
-    // Management fees accrue only on live vault NAV. Once principal is turned into a withdraw
-    // receipt it stops participating in that fee base by design in this minimal implementation.
-    // request normal withdraw, we burn strategy tokens without interest for the new epoch and mint and eq amount to msg.sender
-    creditVault.requestWithdraw(_underlyings, msg.sender, netInterest);
+    // Charge the management fee upfront on the withdraw receipt for one epoch (buffer excluded).
+    // This keeps pending receipts outside the live-NAV accrual path while still making the withdrawer pay.
+    creditVault.requestWithdraw(_underlyings, msg.sender, principal);
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
-    _withdrawOps(_amount, _underlyings - netInterest, _tranche);
+    _withdrawOps(_amount, principal, _tranche);
     return _underlyings;
   }
 

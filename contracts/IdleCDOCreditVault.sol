@@ -604,8 +604,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   /// @notice checkpoint accrued management fees into `unclaimedFees`
   function _accrueManagementFee() internal {
-    unclaimedFees += getContractValue() * feeSplit * (block.timestamp - latestHarvestBlock) / (FULL_ALLOC * 365 days);
+    unclaimedFees += _calculateManagementFee(getContractValue(), block.timestamp - latestHarvestBlock);
     latestHarvestBlock = block.timestamp;
+  }
+
+  function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256) {
+    return _nav * feeSplit * _duration / (FULL_ALLOC * 365 days);
   }
 
   /// @notice returns the user tranche balance for a specific tranche

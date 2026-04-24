@@ -641,6 +641,124 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testRequestWithdrawChargesManagementFeeUpfront() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFeeRate = 1_000; // 1%
+
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setManagementFee(mgmtFeeRate);
+
+    uint256 trancheAmount = idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
+    (uint256 netInterest, ) = _calcInterestForTranche(address(AAtranche), trancheAmount);
+    uint256 claimAmountPreFee = principal + netInterest;
+    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, cdoEpoch.epochDuration());
+    uint256 expectedClaimAmount = claimAmountPreFee - expectedMgmtFee;
+
+    uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
+
+    assertEq(requested, expectedClaimAmount, "withdraw receipt should be haircut by management fee");
+    assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee, "pending withdraw fees should include management fee");
+    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), expectedClaimAmount, "pending withdraws should be net of management fee");
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    uint256 feeReceiverBalPre = underlying.balanceOf(TL_MULTISIG);
+    deal(
+      defaultUnderlying,
+      borrower,
+      cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws()
+    );
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeReceiverBalPre, expectedMgmtFee, "fee receiver got wrong upfront management fee");
+
+    uint256 balPre = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(address(this)) - balPre, expectedClaimAmount, "claim amount should stay net of management fee");
+  }
+
+  function testApr0RequestChargesManagementFeeUpfront() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 poolInterest = 1_000 * ONE_SCALE;
+    uint256 mgmtFeeRate = 1_000; // 1%
+
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _startEpochAndCheckPrices(0);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    _forceLastEpochAprToZero();
+    _setManagementFee(mgmtFeeRate);
+
+    uint256 trancheReq = IERC20(AAtranche).balanceOf(address(this)) / 2;
+    uint256 principal = trancheReq * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
+    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, cdoEpoch.epochDuration());
+    uint256 expectedPrincipal = principal - expectedMgmtFee;
+    uint256 requested = cdoEpoch.requestWithdraw(trancheReq, address(AAtranche));
+    uint256 poolPrincipal = cdoEpoch.getContractValue();
+    uint256 expectedLiveMgmtFee = _calcManagementFee(
+      poolPrincipal,
+      mgmtFeeRate,
+      cdoEpoch.bufferPeriod() + cdoEpoch.epochDuration()
+    );
+
+    assertEq(requested, expectedPrincipal, "apr0 receipt principal should be haircut by management fee");
+    assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee, "apr0 management fee should be booked in pending withdraw fees");
+    assertEq(IdleCreditVault(address(strategy)).apr0TotalPrincipal(), expectedPrincipal, "apr0 principal bucket should be net of management fee");
+
+    _startEpochAndCheckPrices(1);
+
+    uint256 feeReceiverBalPre = underlying.balanceOf(TL_MULTISIG);
+    uint256 grossInterest = poolInterest + expectedMgmtFee;
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
+    deal(defaultUnderlying, borrower, grossInterest + pendingWithdraws + amount);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, grossInterest);
+
+    uint256 balBefore = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    uint256 balAfter = underlying.balanceOf(address(this));
+
+    uint256 expectedWithdrawInterest = _calcApr0NetForPrincipal(
+      poolInterest,
+      poolPrincipal,
+      expectedPrincipal,
+      expectedPrincipal,
+      cdoEpoch.fee()
+    );
+    assertApproxEqAbs(
+      underlying.balanceOf(TL_MULTISIG) - feeReceiverBalPre,
+      expectedMgmtFee + expectedLiveMgmtFee,
+      5,
+      "fee receiver got wrong apr0 management fee"
+    );
+    assertApproxEqAbs(
+      balAfter - balBefore,
+      expectedPrincipal + expectedWithdrawInterest,
+      5,
+      "apr0 claim should use post-fee principal"
+    );
+  }
+
   // function testMaxInstantWithdrawable() external {
   //   assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.AATranche()), 0, 'maxWithdrawableInstant AA is wrong');
   //   assertEq(cdoEpoch.maxWithdrawableInstant(address(this), idleCDO.BBTranche()), 0, 'maxWithdrawableInstant BB is wrong');
