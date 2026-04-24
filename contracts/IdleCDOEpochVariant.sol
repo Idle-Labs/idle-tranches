@@ -8,7 +8,6 @@ import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-error EpochRunning();
 error NotAllowed();
 error Default();
 
@@ -139,9 +138,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _disable flag to disable instant withdraw
   function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) external {
     _checkOnlyOwnerOrManager();
-    if (isEpochRunning) {
-      revert EpochRunning();
-    }
+    _checkNotAllowed(isEpochRunning);
     instantWithdrawDelay = _delay;
     instantWithdrawAprDelta = _aprDelta;
     disableInstantWithdraw = _disable;
@@ -649,14 +646,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Request a withdraw from the vault
   /// @param _amount Amount of tranche tokens 
   /// @param _tranche Tranche to withdraw from
-  /// @return Amount of underlyings requested
-  function requestWithdraw(uint256 _amount, address _tranche) external returns (uint256) {
-    address aa = AATranche;
-    address bb = BBTranche;
+  /// @return _underlyings Amount of underlyings requested
+  function requestWithdraw(uint256 _amount, address _tranche) external returns (uint256 _underlyings) {
     // check if _tranche is valid and if withdraws for that tranche are allowed and if user is allowed
-    _checkNotAllowed(!(_tranche == aa || _tranche == bb) || 
-      (!allowAAWithdrawRequest && _tranche == aa) || 
-      (!allowBBWithdrawRequest && _tranche == bb) ||
+    _checkNotAllowed((_tranche != AATranche && _tranche != BBTranche) || 
+      (!allowAAWithdrawRequest && _tranche == AATranche) || 
+      (!allowBBWithdrawRequest && _tranche == BBTranche) ||
       (!keyringAllowWithdraw && !isWalletAllowed(msg.sender))
     );
   
@@ -670,7 +665,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     if (_amount == 0) {
       _amount = _userTrancheBal(msg.sender, _tranche);
     }
-    uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
+    _underlyings = _trancheToUnderlyings(_amount, _tranche);
 
     // Programmable borrower deployments do not support instant withdrawals.
     // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
@@ -690,14 +685,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
     uint256 netInterest = interest - fees;
-    // user is requesting principal + interest of next epoch minus fees
-    _underlyings += netInterest;
     // Charge one epoch of management fee only on the principal that is leaving live NAV.
     uint256 managementFee = _calculateManagementFee(principal, epochDuration);
-    if (managementFee > _underlyings) {
-      managementFee = _underlyings;
-    }
-    _underlyings -= managementFee;
+    // user is requesting principal + interest of next epoch minus fees and upfront management fee
+    _underlyings = principal + netInterest - managementFee;
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += fees + managementFee;
 
@@ -712,7 +703,6 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     creditVault.requestWithdraw(_underlyings, msg.sender, principal);
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
     _withdrawOps(_amount, principal, _tranche);
-    return _underlyings;
   }
 
   /// @notice Transfer donated assets to the feeReceiver
@@ -801,12 +791,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
-  function maxWithdrawable(address _user, address _tranche) external view returns (uint256) {
-    uint256 currentUnderlyings = _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
+  function maxWithdrawable(address _user, address _tranche) external view returns (uint256 currentUnderlyings) {
+    currentUnderlyings = _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
-    // sum and remove fees
-    return currentUnderlyings + interest - (interest * fee / FULL_ALLOC);
+    // remove perf fee from projected interest and upfront management fee from principal only
+    uint256 managementFee = _calculateManagementFee(currentUnderlyings, epochDuration);
+    currentUnderlyings = currentUnderlyings + interest - (interest * fee / FULL_ALLOC) - managementFee;
   }
 
   /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement

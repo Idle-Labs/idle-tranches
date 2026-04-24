@@ -608,8 +608,11 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     latestHarvestBlock = block.timestamp;
   }
 
-  function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256) {
-    return _nav * feeSplit * _duration / (FULL_ALLOC * 365 days);
+  /// @notice calculate annualized management fee for a balance over a duration
+  /// @dev Fee is capped to the input balance so callers can safely reuse it for previews and accrual.
+  function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256 managementFee) {
+    managementFee = _nav * feeSplit * _duration / (FULL_ALLOC * 365 days);
+    if (managementFee > _nav) return _nav;
   }
 
   /// @notice returns the user tranche balance for a specific tranche

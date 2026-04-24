@@ -10,7 +10,6 @@ import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantP
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 
-error EpochRunning();
 error NotAllowed();
 error NotAuthorized();
 error Default();
@@ -520,7 +519,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.setEpochParams(4, 3 days);
 
-    vm.expectRevert(abi.encodeWithSelector(EpochRunning.selector));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.setInstantWithdrawParams(4, 3 days, false);
 
@@ -550,6 +549,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
     assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest - (interest / 10), 'maxWithdrawable with fees is wrong');
+
+    _setManagementFee(1_000); // 1%
+    uint256 managementFee = _calcManagementFee(amount, 1_000, cdoEpoch.epochDuration());
+    assertEq(
+      cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()),
+      amount + interest - (interest / 10) - managementFee,
+      'maxWithdrawable with management fee is wrong'
+    );
   }
 
   function testManagementFeeAccruesOnLiveNav() external {
