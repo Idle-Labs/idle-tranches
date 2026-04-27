@@ -9,7 +9,6 @@ import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 error NotAllowed();
-error Default();
 
 /// @title IdleCDO variant that supports epochs. 
 /// @dev When epoch is running no deposits or withdrawals are allowed. When epoch ends 
@@ -360,7 +359,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
         // if interest is not transferred we mint strategy tokens equal to the full epoch interest
         if (_grossInterest != 0) _strategy.mintStrategyTokens(_grossInterest);
         // and increase unclaimedFees by pending withdraw fees before _updateAccounting
-        if (_pendingWithdrawFees != 0) unclaimedFees += _pendingWithdrawFees;
+        unclaimedFees += _pendingWithdrawFees;
       }
 
       // update tranche prices and unclaimed fees
@@ -434,7 +433,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public {
     // stop epoch checks that msg.sender is allowed
     stopEpoch(_newApr, _interest);
-    if (_lossAmount > 0 && !defaulted) {
+    if (_lossAmount != 0 && !defaulted) {
       IdleCreditVault(strategy).burnStrategyTokens(_lossAmount);
       // realize the loss right away and update stored tranche prices/NAV
       _forceUpdateAccounting();
@@ -688,11 +687,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // calculate performance fee
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
-    uint256 netInterest = interest - fees;
     // Charge one epoch of management fee only on the principal that is leaving live NAV.
     uint256 managementFee = _calculateManagementFee(principal, epochDuration);
     // user is requesting principal + interest of next epoch minus fees and upfront management fee
-    _underlyings = principal + netInterest - managementFee;
+    _underlyings = principal + (interest - fees) - managementFee;
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += fees + managementFee;
 
@@ -809,8 +807,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // remove perf fee from projected interest and upfront management fee from principal only
-    uint256 managementFee = _calculateManagementFee(currentUnderlyings, epochDuration);
-    currentUnderlyings = currentUnderlyings + interest - (interest * fee / FULL_ALLOC) - managementFee;
+    currentUnderlyings = currentUnderlyings + interest - (interest * fee / FULL_ALLOC) -
+      _calculateManagementFee(currentUnderlyings, epochDuration);
   }
 
   /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement

@@ -20,11 +20,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   // ERROR MESSAGES:
   error AlreadyInitialized();
-  error WithdrawNotAllowed(); // (Paused or in shutdown)
   error Default();
-  error AmountTooLow();
   error AmountTooHigh();
-  error SameBlock();
 
   // Used to prevent initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -542,35 +539,11 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     _emergencyShutdown(false);
   }
 
-  function _emergencyShutdown(bool isAAWithdrawAllowed) internal virtual {
-    // prevent deposits
-    if (!paused()) {
-      _pause();
-    }
-    // prevent withdraws
-    allowAAWithdraw = isAAWithdrawAllowed;
-    allowBBWithdraw = false;
-    // Allow deposits/withdraws (once selectively re-enabled, eg for AA holders)
-    // without checking for lending protocol default
-    skipDefaultCheck = true;
-    revertIfTooLow = true;
-  }
+  function _emergencyShutdown(bool) internal virtual {}
 
   /// @notice allow deposits and redeems for all classes of tranches
   /// @dev can be called by the owner only
-  function restoreOperations() external virtual {
-    _checkOnlyOwner();
-    // restore deposits
-    if (paused()) {
-      _unpause();
-    }
-    // restore withdraws
-    allowAAWithdraw = true;
-    allowBBWithdraw = true;
-    // Allow deposits/withdraws but checks for lending protocol default
-    skipDefaultCheck = false;
-    revertIfTooLow = true;
-  }
+  function restoreOperations() external virtual {}
 
   /// @notice Pauses deposits
   /// @dev can be called by both the owner and the guardian
