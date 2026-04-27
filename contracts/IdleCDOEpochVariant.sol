@@ -594,6 +594,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Check that limit is not exceeded
     _guarded(_amount);
     _skimDonatedAssets();
+    _updateAccounting();
 
     // Get underlyings from user
     _transferUnderlyingsFrom(msg.sender, address(this), _amount);
@@ -603,23 +604,29 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     //   So when a user joins mid‑epoch, we take the fraction of that full‑period interest 
     //   that matches the time they actually remain plus the entire buffer
     uint256 buffer = bufferPeriod;
+    uint256 remaining = epochEndDate - block.timestamp;
     uint256 interest = _calcInterest(_amount) *
       // the time the depositor actually participates (remaining epoch + full buffer)
-      (epochEndDate - block.timestamp + buffer) /
+      (remaining + buffer) /
       // the total time baked into the scaled APR (epoch + buffer).
       (epochDuration + buffer);
 
-    uint256 feeComplement = FULL_ALLOC - fee;
     uint256 expectedInt = expectedEpochInterest;
     uint256 pendingFees = pendingWithdrawFees;
     uint256 trancheExpected;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
     // (exclude pendingWithdrawFees since they go to feeReceiver, not tranche holders)
     if (expectedInt > pendingFees) {
-      trancheExpected = _calcTrancheInterestShare((expectedInt - pendingFees) * feeComplement / FULL_ALLOC, _tranche);
+      trancheExpected = _calcTrancheInterestShare(
+        _netGainAfterFees(expectedInt - pendingFees, _calculateManagementFee(lastNAVAA + lastNAVBB, remaining)),
+        _tranche
+      );
     }
     // interest this deposit will earn for the tranche over the remaining time (net of fees)
-    uint256 trancheInterest = _calcTrancheInterestShare(interest * feeComplement / FULL_ALLOC, _tranche);
+    uint256 trancheInterest = _calcTrancheInterestShare(
+      _netGainAfterFees(interest, _calculateManagementFee(_amount, remaining)),
+      _tranche
+    );
     // pre-deposit expected final NAV for existing holders.
     // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
     uint256 expectedFinal = _lastSavedNAV(_tranche) + trancheExpected;
@@ -638,9 +645,6 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault(strategy).mintStrategyTokens(_amount);
     // transfer underlyings to the borrower
     _transferUnderlyings(_borrower(), _amount);
-
-    // Update APR split ratio if AYS is active
-    _updateSplitRatio(_getAARatio(true));
   }
 
   /// @notice Request a withdraw from the vault
@@ -786,6 +790,15 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function _calcTrancheInterestShare(uint256 _totalInterest, address _tranche) internal view returns (uint256) {
     uint256 ratio = trancheAPRSplitRatio;
     return _totalInterest * (_tranche == AATranche ? ratio : FULL_ALLOC - ratio) / FULL_ALLOC;
+  }
+
+  /// @notice Apply projected management and performance fees to a positive gain.
+  function _netGainAfterFees(uint256 _gain, uint256 _managementFee) private view returns (uint256 netGain) {
+    if (_managementFee >= _gain) return netGain;
+    // remove mgmt fee
+    _gain -= _managementFee;
+    // remove performance fee
+    return _gain - _gain * fee / FULL_ALLOC;
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user

@@ -8,7 +8,9 @@ import "../IdleCDOEpochVariant.sol";
 contract IdleCDOEpochVariantAvax is IdleCDOEpochVariant {
   /// @notice update avax addresses
   function _additionalInit() internal override {
-    feeReceiver = 0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550;
+    assembly {
+      sstore(feeReceiver.slot, 0x8b2aAC97A2dEae85dCD506558c1DeE0f2aeC0550)
+    }
     super._additionalInit();
   }
 }
