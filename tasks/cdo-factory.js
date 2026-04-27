@@ -696,7 +696,6 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       if (programmableBorrowerConfig) {
         programmableBorrower = await hre.run("deploy-programmable-borrower", {
           cdo: idleCDOAddress,
-          underlying: deployToken.underlying,
           vault: programmableBorrowerConfig.vault,
           manager: programmableBorrowerConfig.manager,
           borrower: programmableBorrowerConfig.borrower,
@@ -1366,7 +1365,6 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
       proxyAdmin
     };
     const programmableBorrowerParams = {
-      underlyingToken: deployToken.underlying,
       vault: programmableBorrowerConfig.vault,
       manager: programmableBorrowerManager,
       borrower: programmableBorrowerConfig.borrower,
@@ -1771,7 +1769,6 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
 */
 task("deploy-programmable-borrower", "Deploy and configure a ProgrammableBorrower proxy")
   .addParam('cdo')
-  .addParam('underlying')
   .addParam('vault')
   .addParam('manager')
   .addParam('borrower')
@@ -1785,7 +1782,7 @@ task("deploy-programmable-borrower", "Deploy and configure a ProgrammableBorrowe
 
     const programmableBorrower = await helpers.deployUpgradableContract(
       'ProgrammableBorrower',
-      [args.underlying, args.vault, args.cdo, deployer, args.manager, args.borrower, args.borrowerapr],
+      [args.vault, args.cdo, deployer, args.manager, args.borrower, args.borrowerapr],
       signer
     );
 

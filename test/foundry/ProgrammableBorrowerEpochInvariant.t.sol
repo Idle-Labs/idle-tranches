@@ -400,7 +400,6 @@ contract ProgrammableBorrowerEpochInvariant is StdInvariant, Test {
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
     programmableBorrower.initialize(
-      address(underlying),
       address(vault),
       address(cdoEpoch),
       address(this),

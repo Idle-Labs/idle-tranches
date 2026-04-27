@@ -48,7 +48,6 @@ contract IdleCreditVaultFactory is Initializable {
   }
 
   struct ProgrammableBorrowerParams {
-    address underlyingToken;
     address vault;
     address manager;
     address borrower;
@@ -144,7 +143,6 @@ contract IdleCreditVaultFactory is Initializable {
         proxyAdmin: programmableBorrowerData.proxyAdmin,
         initializeData: abi.encodeWithSelector(
           ProgrammableBorrower.initialize.selector,
-          programmableBorrowerParams.underlyingToken,
           programmableBorrowerParams.vault,
           address(cv),
           address(this),

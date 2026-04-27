@@ -27,6 +27,14 @@ contract MockFactoryERC20 is ERC20 {
   }
 }
 
+contract MockFactoryCDO {
+  address public token;
+
+  constructor(address token_) {
+    token = token_;
+  }
+}
+
 contract MockFactoryVault is ERC20 {
   MockFactoryERC20 public immutable assetToken;
 
@@ -128,14 +136,13 @@ contract IdleCreditVaultFactoryTest is Test {
   function testInitializeProgrammableBorrowerSetsBorrowerAndApr() external {
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
     MockFactoryVault vault = new MockFactoryVault(address(underlying));
-    address idleCDOAddress = makeAddr("idleCDO");
+    address idleCDOAddress = address(new MockFactoryCDO(address(underlying)));
     ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
     ProgrammableBorrower programmableBorrower = ProgrammableBorrower(address(new TransparentUpgradeableProxy(
       address(programmableBorrowerImplementation),
       proxyAdmin,
       abi.encodeWithSelector(
         ProgrammableBorrower.initialize.selector,
-        address(underlying),
         address(vault),
         idleCDOAddress,
         owner,
@@ -227,7 +234,6 @@ contract IdleCreditVaultFactoryTest is Test {
       });
     IdleCreditVaultFactory.ProgrammableBorrowerParams memory programmableBorrowerParams =
       IdleCreditVaultFactory.ProgrammableBorrowerParams({
-        underlyingToken: address(underlying),
         vault: address(vault),
         manager: manager,
         borrower: realBorrower,

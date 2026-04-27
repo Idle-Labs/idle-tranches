@@ -21,6 +21,14 @@ contract MockInvariantERC20 is ERC20 {
   }
 }
 
+contract MockInvariantCDO {
+  address public token;
+
+  constructor(address _token) {
+    token = _token;
+  }
+}
+
 /// @notice Deterministic ERC4626-style vault used to isolate programmable-borrower accounting.
 /// @dev The vault exposes explicit gain, loss, and withdraw-limit knobs so the invariant harness
 /// can exercise non-zero PnL and partial-liquidity paths without relying on a forked integration.
@@ -424,19 +432,20 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
   ProgrammableBorrower internal borrowerContract;
   ProgrammableBorrowerAccountingHandler internal handler;
 
-  address internal idleCDO = makeAddr("idleCDO");
+  address internal idleCDO;
   address internal borrower = makeAddr("borrower");
 
   function setUp() public {
     underlying = new MockInvariantERC20();
     vault = new MockInvariantVault(address(underlying));
+    idleCDO = address(new MockInvariantCDO(address(underlying)));
 
     borrowerContract = new ProgrammableBorrower();
     stdstore
       .target(address(borrowerContract))
       .sig(borrowerContract.underlyingToken.selector)
       .checked_write(address(0));
-    borrowerContract.initialize(address(underlying), address(vault), idleCDO, address(this), address(this), borrower, 365e18);
+    borrowerContract.initialize(address(vault), idleCDO, address(this), address(this), borrower, 365e18);
 
     // Prefund the borrower contract with idle capital and the real borrower with ample repayment liquidity.
     underlying.mint(address(borrowerContract), 1_000_000e18);

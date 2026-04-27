@@ -94,7 +94,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
       .target(address(programmableBorrower))
       .sig(programmableBorrower.underlyingToken.selector)
       .checked_write(address(0));
-    programmableBorrower.initialize(USDC, vaultAddress, address(cdoEpoch), address(this), manager, revolvingBorrower, 365e18);
+    programmableBorrower.initialize(vaultAddress, address(cdoEpoch), address(this), manager, revolvingBorrower, 365e18);
     morphoVault = IMMVault(vaultAddress);
 
     vm.prank(owner);

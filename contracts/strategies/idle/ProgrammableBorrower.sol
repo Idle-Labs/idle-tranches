@@ -14,6 +14,10 @@ error InvalidAmount();
 error AlreadyInitialized();
 error InsufficientBorrowable();
 
+interface IIdleCDOToken {
+  function token() external view returns (address);
+}
+
 /// @title ProgrammableBorrower
 /// @dev Borrower adapter used by `IdleCDOEpochVariant` for revolving-credit facilities.
 /// It has two jobs:
@@ -93,7 +97,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   }
 
   /// @notice initialize the contract
-  /// @param _underlyingToken address of the underlying token
   /// @param _vault ERC4626 vault where funds will be deployed
   /// @param _idleCDO IdleCDOEpochVariant contract allowed to pull funds
   /// @param _owner owner address
@@ -101,17 +104,18 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @param _borrower real borrower address allowed to draw and repay
   /// @param _borrowerApr borrower APR expressed as a percentage scaled by 1e18
   function initialize(
-    address _underlyingToken, address _vault, address _idleCDO, address _owner,
+    address _vault, address _idleCDO, address _owner,
     address _manager, address _borrower, uint256 _borrowerApr
   ) external initializer {
     if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
     if (
-      _underlyingToken == address(0) || _vault == address(0) || _owner == address(0) || 
-      _manager == address(0) || _borrower == address(0) || _idleCDO == address(0) || 
-      IERC4626(_vault).asset() != _underlyingToken
+      _vault == address(0) || _owner == address(0) || _manager == address(0) ||
+      _borrower == address(0) || _idleCDO == address(0)
     ) {
       revert InvalidAddress();
     }
+    address _underlyingToken = IIdleCDOToken(_idleCDO).token();
+    if (_underlyingToken == address(0) || IERC4626(_vault).asset() != _underlyingToken) revert InvalidAddress();
 
     __Ownable_init();
     __ReentrancyGuard_init();
