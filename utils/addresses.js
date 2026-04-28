@@ -3637,6 +3637,56 @@ exports.deployTokens = {
     prefundedDepositsWindows: '0',
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
+  creditrevolvingearnifitestusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      addr0, // temporary borrower, replaced with ProgrammableBorrower by the factory
+      'Earnifi_USDC', // borrower name
+      '0', // intialApr
+    ],
+    cdo: CDOs.creditrevolvingearnifitestusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '604800', // 1 week initially
+    bufferPeriod: '0', // 0 seconds not enforced as apr is 0
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 9769439,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    writeoff: false,
+    hypernative: true,
+    interestMinted: true,
+    depositDuringEpoch: false,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '0',
+    programmableBorrower: {
+      vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
+      manager: '0xeA173648F959790baea225cE3E75dF8A53a6BDE5',
+      borrower: 'xxxxxx',
+      borrowerApr: 10e18.toString(),
+    },
+    proxyCdoAddress: '',
+  },
   usualusd0pptest: {
     decimals: 18,
     underlying: mainnetContracts.USD0pp,

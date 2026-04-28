@@ -139,6 +139,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
 
   /// @notice Send all queued deposits for the next epoch to the borrower before epoch stop
   /// @dev This switches the epoch from "pending in queue" to "prefunded to borrower".
+  /// Prefunding can start only once the deposit window for that epoch has closed.
   /// After this call, no additional deposits can join the same epoch.
   function processDepositsToBorrower() external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
@@ -153,6 +154,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     if (!_cdo.isEpochRunning()) {
       revert EpochNotRunning();
     }
+    // Keep prefunding aligned with the same cutoff enforced for new queued deposits.
+    uint256 _prefundedWindow = prefundedDepositWindow;
+    _checkNotAllowed(_prefundedWindow == 0 || block.timestamp + _prefundedWindow < _cdo.epochEndDate());
 
     uint256 _epoch = _strategy.epochNumber() + 1;
     // prefunding can happen only once for an epoch
@@ -235,9 +239,8 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   }
 
   /// @notice Process deposits for prefunded flow (called atomically from stopEpoch on prefunded variant)
-  /// @param _epoch epoch being finalized for the prefunded queue
   /// @param _prefundedMinted tranche tokens minted in CDO for prefunded amount
-  function processPrefundedDeposits(uint256 _epoch, uint256 _prefundedMinted) external {
+  function processPrefundedDeposits(uint256 _prefundedMinted) external {
     IdleCDOEpochVariant _cdo = IdleCDOEpochVariant(idleCDOEpoch);
     _checkNotAllowed(
       // final prefunded settlement is driven only by stopEpoch on the prefunded variant
@@ -248,6 +251,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
       !_isPrefundedQueueEnabled()
     );
 
+    uint256 _epoch = _prefundedEpochToProcess(_cdo);
     uint256 _prefunded = epochPrefundedDeposits[_epoch];
     // in prefunded mode stopEpoch must not leave queue-held deposits behind
     // and must pass the minted tranche amount for the prefunded funds
@@ -258,6 +262,25 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // This should not block epoch finalization, as the borrower already has the funds and the epoch can be priced at the current virtual price.
     epochPrice[_epoch] = _prefundedMinted == 0 ? _cdo.virtualPrice(tranche) : _prefunded * ONE_TRANCHE / _prefundedMinted;
     epochPrefundedDeposits[_epoch] = 0;
+  }
+
+  /// @notice Get the prefunded deposits amount that the prefunded CDO stop flow must settle
+  /// @dev Reverts if the target epoch still has raw pending deposits sitting in the queue
+  /// @return _prefunded amount already prefunded to the borrower for the epoch being settled
+  function prefundedDepositsToProcess() external view returns (uint256 _prefunded) {
+    uint256 _epoch = _prefundedEpochToProcess(IdleCDOEpochVariant(idleCDOEpoch));
+    _prefunded = epochPrefundedDeposits[_epoch];
+    // Prefunded queues must not reach stopEpochWithDuration with raw underlyings still sitting in the queue.
+    _checkNotAllowed(epochPendingDeposits[_epoch] != 0);
+  }
+
+  /// @notice Resolve the queue epoch that the prefunded stop flow must settle
+  /// @dev On borrower default the strategy epoch number is not bumped, so the just-finished epoch is `epochNumber + 1`
+  /// @param _cdo prefunded CDO variant calling into the queue
+  /// @return _epoch epoch id whose prefunded deposits must be finalized
+  function _prefundedEpochToProcess(IdleCDOEpochVariant _cdo) internal view returns (uint256 _epoch) {
+    // Prefunded deposits still belong to the epoch that just finished and must be settled against that epoch id.
+    _epoch = IdleCreditVault(strategy).epochNumber() + (_cdo.defaulted() ? 1 : 0);
   }
 
   /// @notice process withdraw requests during buffer period. Only owner or strategy manager can call this

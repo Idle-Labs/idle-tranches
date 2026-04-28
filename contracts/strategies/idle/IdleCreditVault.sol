@@ -81,6 +81,10 @@ contract IdleCreditVault is
   mapping (address => Apr0UserData) public apr0Users;
   /// @notice net APR=0 interest rate per epoch, scaled by 1e18
   mapping (uint256 => uint256) public apr0RateByEpoch;
+  /// @notice default maximum allowed scaled apr
+  uint256 public constant DEFAULT_MAX_APR = 20e18;
+  /// @notice maximum allowed scaled apr, 0 disables the cap
+  uint256 public maxApr;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
@@ -108,6 +112,7 @@ contract IdleCreditVault is
     oneToken = 10**(tokenDecimals);
     borrower = _borrower;
     manager = _manager;
+    maxApr = DEFAULT_MAX_APR;
     // on the first setup we set the lastApr equal to the unscaledApr
     lastApr = _apr;
     unscaledApr = _apr;
@@ -159,6 +164,12 @@ contract IdleCreditVault is
     borrower = _borrower;
   }
 
+  /// @notice set maximum allowed scaled apr, 0 disables the cap
+  /// @param _maxApr new max apr
+  function setMaxApr(uint256 _maxApr) external onlyOwner {
+    maxApr = _maxApr;
+  }
+
   /// @notice set both the scaled and unscaled apr
   /// @dev only cdo and manager can set the apr.
   /// @param _unscaledApr unscaled apr
@@ -177,37 +188,37 @@ contract IdleCreditVault is
 
     // if cdo is not yet set we skip the check (this can happen only during the setup)
     if (_cdo != address(0)) {
-      if (msg.sender != _cdo && msg.sender != manager) {
-        revert NotAllowed();
-      }
+      if (msg.sender != _cdo && msg.sender != manager) revert NotAllowed();
     }
+    uint256 _maxApr = maxApr;
+    if (_maxApr != 0 && _apr > _maxApr) revert NotAllowed();
     lastApr = _apr;
   }
 
   /// @notice request withdraw of underlying token from the vault
   /// @dev we don't burn strategy tokens here, but we increase the withdraw requests
-  /// @param _amount number of tokens to withdraw
+  /// @param _amount number of tokens claimable by the user
   /// @param _user address of the user
-  /// @param _netInterest net interest gained in the next epoch
-  function requestWithdraw(uint256 _amount, address _user, uint256 _netInterest) external {
+  /// @param _principal principal amount backing the withdraw request
+  function requestWithdraw(uint256 _amount, address _user, uint256 _principal) external {
     _onlyIdleCDO();
     if (_amount == 0) return;
-    // burn strategy tokens from cdo (we don't burn interest here, only the principal)
-    _burn(msg.sender, _amount - _netInterest);
+    // burn strategy tokens from cdo (we don't burn future interest here, only the principal)
+    _burn(msg.sender, _principal);
     // mint equal amount of strategy tokens to the user as receipt (interest included), useful in case of default
     _mint(_user, _amount);
     // Global amount that stopEpoch must source from borrower/strategy for all pending receipts.
     pendingWithdraws += _amount;
     // save the epoch of the last withdraw request (buffer + epochDuration is 1 epoch)
     lastWithdrawRequest[_user] = epochNumber;
-    // apr=0 requests keep separate accounting and settle interest at stopEpoch
-    if (_netInterest == 0 && unscaledApr == 0) {
+    // APR=0 requests keep separate accounting and settle interest at stopEpoch.
+    // `_amount` here is the post-management-fee principal bucket for that flow.
+    if (unscaledApr == 0) {
       _requestWithdrawApr0(_amount, _user);
-      return;
+    } else {
+      // increase the withdraw requests for the user
+      withdrawsRequests[_user] += _amount;
     }
-
-    // increase the withdraw requests for the user
-    withdrawsRequests[_user] += _amount;
   }
 
   /// @notice claim the withdraw request
@@ -308,7 +319,8 @@ contract IdleCreditVault is
     uint256 _tvl = _cdo.getContractValue();
     _expInterest = _interest > 1 ? _interest : _cdo.expectedEpochInterest();
     _adjPendingWithdrawFees = _pendingFees;
-    // Principal currently waiting for withdraw that was requested while APR was 0.
+    // Principal currently waiting for withdraw that was requested while APR was 0,
+    // net of the upfront management fee charged at request time.
     uint256 _principal = apr0TotalPrincipal;
 
     // Fast path: no APR0 accounting needed.

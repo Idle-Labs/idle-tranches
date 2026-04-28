@@ -53,6 +53,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   uint256 public exitFee;
   /// @notice address of the fee receiver (where exit fee is sent)
   address public feeReceiver;
+  /// @notice amount of pending underlyings requested across all users
+  uint256 public pendingUnderlyings;
 
   /// @notice disable initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -101,6 +103,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
       tranches: currentRequest.tranches + amount,
       underlyings: currentRequest.underlyings + underlyingsRequested
     });
+    pendingUnderlyings += underlyingsRequested;
   }
 
   /// @notice delete the write-off request and transfer tranche tokens back to the user
@@ -113,6 +116,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     if (currentRequest.tranches == 0) revert Is0();
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[msg.sender];
     // transfer tranche tokens back to the user
     IERC20Detailed(tranche).safeTransfer(msg.sender, currentRequest.tranches);
@@ -138,6 +142,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     }
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);
