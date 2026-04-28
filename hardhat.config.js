@@ -11,6 +11,40 @@ require("hardhat-etherscan-abi");
 // require('hardhat-docgen');
 require("solidity-coverage");
 
+// @nomiclabs/hardhat-etherscan@3.1.8 still resolves full solc versions from
+// solc-bin.ethereum.org, whose DNS can fail. Keep the existing plugin but point
+// that lookup at the current Solidity compiler index host.
+try {
+  const etherscanSolcVersion = require("@nomiclabs/hardhat-etherscan/dist/src/solc/version");
+  const { sendGetRequest } = require("@nomiclabs/hardhat-etherscan/dist/src/undici");
+  const COMPILERS_LIST_URL = "https://binaries.soliditylang.org/bin/list.json";
+  let compilersList;
+
+  etherscanSolcVersion.getVersions = async () => {
+    if (compilersList) {
+      return compilersList;
+    }
+    const response = await sendGetRequest(new URL(COMPILERS_LIST_URL));
+    if (!(response.statusCode >= 200 && response.statusCode <= 299)) {
+      const responseText = await response.body.text();
+      throw new Error(`Failed to obtain list of solc versions: ${response.statusCode} ${responseText}`);
+    }
+    compilersList = await response.body.json();
+    return compilersList;
+  };
+
+  etherscanSolcVersion.getLongVersion = async (shortVersion) => {
+    const versions = await etherscanSolcVersion.getVersions();
+    const fullVersion = versions.releases[shortVersion];
+    if (!fullVersion) {
+      throw new Error(`Given solc version doesn't exist: ${shortVersion}`);
+    }
+    return fullVersion.replace(/(soljson-)(.*)(.js)/, "$2");
+  };
+} catch (error) {
+  console.warn("Could not patch hardhat-etherscan solc version lookup:", error.message);
+}
+
 // Tasks
 require("./tasks/chain-utils");
 require("./tasks/tranches-utils");

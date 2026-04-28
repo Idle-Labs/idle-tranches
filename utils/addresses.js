@@ -1137,6 +1137,20 @@ const CDOs = {
     BBTranche: '0x9704B7b30775Bc5712b5Fc186dE6e224853dED4D',
     keyringWhitelist: '0x42e64544E71E8d2ad6590f78a07B1A81133d7CbD',
   },
+  creditrevolvingearnifitestusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x40dfe8a2C8B95746b1F36f921Fb4E812A1A6725a',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xC779EC03D2E6A31e309D27cDc0e000b4692eeD18',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x40dfe8a2C8B95746b1F36f921Fb4E812A1A6725a',
+    AATranche: '0xC4b8b886e2d18E1DF14762E5a2dc9032e15FCB29',
+    BBTranche: '0x6FbD5BA59A260e9e238f2EBB19932cA06cE44978',
+    keyringWhitelist: '0xdA7514AD3B2B3ed739B529b3D0897a18c2Dbf80c',
+    queue: '0x9C8AeFb643e538043FE624Ff6C2a7c803651292d',
+    programmableBorrower: '0x7BFE8D96491f7B1039F14a8e44439E4DC46f9eB7',
+  },
   creditgauntlettestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -3682,7 +3696,7 @@ exports.deployTokens = {
     programmableBorrower: {
       vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
       manager: '0xeA173648F959790baea225cE3E75dF8A53a6BDE5',
-      borrower: 'xxxxxx',
+      borrower: '0x9a9a68E02deD99210057Ce889014FD9AF4b2C7Eb',
       borrowerApr: 10e18.toString(),
     },
     proxyCdoAddress: '',
