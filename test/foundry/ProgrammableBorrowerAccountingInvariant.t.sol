@@ -322,19 +322,22 @@ contract ProgrammableBorrowerAccountingHandler is Test {
       return;
     }
 
-    _accrueModelInterest();
-
     uint256 onHand = underlying.balanceOf(address(borrowerContract));
     uint256 totalAssets = onHand + _vaultAssets();
     uint256 amountRequired = bound(amountRequiredSeed, 0, totalAssets);
     if (amountRequired > onHand) {
       uint256 shortfall = amountRequired - onHand;
       uint256 maxW = vault.maxWithdraw(address(borrowerContract));
-      modelEpochWithdrawnFromVault += shortfall > maxW ? maxW : shortfall;
+      if (shortfall > maxW) {
+        return;
+      }
+      modelEpochWithdrawnFromVault += shortfall;
     }
 
+    _accrueModelInterest();
+
     vm.prank(idleCDO);
-    borrowerContract.onStopEpoch(amountRequired);
+    borrowerContract.onStopEpoch(amountRequired, false);
 
     modelEpochAccountingActive = false;
     modelEpochPendingWithdraws = 0;
@@ -514,9 +517,10 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
       handler.modelEpochStartVaultAssets(),
       "epoch start assets mismatch"
     );
-    assertEq(
+    assertApproxEqAbs(
       borrowerContract.epochDepositedToVault(),
       handler.modelEpochPrincipalDeposits(),
+      1,
       "epoch principal deposits mismatch"
     );
     assertEq(

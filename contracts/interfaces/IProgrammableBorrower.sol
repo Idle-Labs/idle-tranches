@@ -9,7 +9,9 @@ interface IProgrammableBorrower {
 
   /// @notice Free enough liquidity so IdleCDO can pull stop-epoch funds.
   /// @param _amountRequired Total underlyings IdleCDO will transfer from the borrower.
-  function onStopEpoch(uint256 _amountRequired) external;
+  /// @param _isRequestingAllFunds Whether IdleCDO is closing the pool and recalling all funds.
+  /// @return success False when the borrower ledger makes close-pool settlement a real default.
+  function onStopEpoch(uint256 _amountRequired, bool _isRequestingAllFunds) external returns (bool success);
 
   /// @notice Return the total net interest currently due for the running epoch.
   /// @dev This is the pool-facing stop-epoch value: borrower contractual interest plus positive

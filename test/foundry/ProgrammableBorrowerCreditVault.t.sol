@@ -3,13 +3,14 @@ pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
 
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IdleCDO} from "../../contracts/IdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IERC4626} from "../../contracts/interfaces/IERC4626.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
-import {ProgrammableBorrower} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
+import {ProgrammableBorrower, StopEpochVaultLiquidityUnavailable} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
 import {IMMVault} from "../../contracts/interfaces/morpho/IMMVault.sol";
 import {IMorpho} from "../../contracts/interfaces/morpho/IMorpho.sol";
 
@@ -17,6 +18,66 @@ error NotAllowed();
 error InvalidAmount();
 error InvalidAddress();
 error InsufficientBorrowable();
+
+contract MockStopEpochLiquidityVault is ERC20 {
+  IERC20Detailed public immutable assetToken;
+  uint256 public withdrawLimit = type(uint256).max;
+
+  constructor(address _asset) ERC20("Stop Epoch Liquidity Vault", "SELV") {
+    assetToken = IERC20Detailed(_asset);
+  }
+
+  function asset() external view returns (address) {
+    return address(assetToken);
+  }
+
+  function convertToAssets(uint256 shares) public view returns (uint256) {
+    uint256 supply = totalSupply();
+    if (supply == 0) return shares;
+    return shares * assetToken.balanceOf(address(this)) / supply;
+  }
+
+  function maxWithdraw(address owner) external view returns (uint256) {
+    uint256 assets = convertToAssets(balanceOf(owner));
+    return assets < withdrawLimit ? assets : withdrawLimit;
+  }
+
+  function setWithdrawLimit(uint256 assets) external {
+    withdrawLimit = assets;
+  }
+
+  function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
+    uint256 assetsBefore = assetToken.balanceOf(address(this));
+    uint256 supply = totalSupply();
+    shares = supply == 0 || assetsBefore == 0 ? assets : assets * supply / assetsBefore;
+    assetToken.transferFrom(msg.sender, address(this), assets);
+    _mint(receiver, shares);
+  }
+
+  function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+    require(assets <= withdrawLimit, "insufficient-liquidity");
+    shares = _toSharesRoundUp(assets);
+    if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
+    _burn(owner, shares);
+    assetToken.transfer(receiver, assets);
+  }
+
+  function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
+    assets = convertToAssets(shares);
+    require(assets <= withdrawLimit, "insufficient-liquidity");
+    if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
+    _burn(owner, shares);
+    assetToken.transfer(receiver, assets);
+  }
+
+  function _toSharesRoundUp(uint256 assets) internal view returns (uint256 shares) {
+    uint256 supply = totalSupply();
+    uint256 managedAssets = assetToken.balanceOf(address(this));
+    if (supply == 0 || managedAssets == 0) return assets;
+    shares = assets * supply / managedAssets;
+    if (shares * managedAssets < assets * supply) shares += 1;
+  }
+}
 
 contract TestProgrammableBorrowerCreditVault is Test {
   using stdStorage for StdStorage;
@@ -261,6 +322,35 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     assertFalse(cdoEpoch.defaulted(), "stop epoch should not default just because maxWithdraw is zero");
     assertEq(strategy.pendingWithdraws(), 0, "pending withdraws should be funded");
+  }
+
+  function testProgrammableBorrowerStopEpochRevertsWhenVaultLiquidityUnavailable() external {
+    MockStopEpochLiquidityVault limitedVault = new MockStopEpochLiquidityVault(USDC);
+    uint256 amount = 10_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+    vm.prank(manager);
+    programmableBorrower.setVault(address(limitedVault));
+
+    idleCDO.depositAA(amount);
+    cdoEpoch.requestWithdraw(aaTranche.balanceOf(address(this)) / 2, address(aaTranche));
+    _startEpochAndCheckPrices(0);
+
+    uint256 pendingWithdraws = strategy.pendingWithdraws();
+    assertGt(pendingWithdraws, 1, "stop epoch should need liquidity recall");
+    assertGe(limitedVault.convertToAssets(limitedVault.balanceOf(address(programmableBorrower))), pendingWithdraws);
+    limitedVault.setWithdrawLimit(pendingWithdraws - 1);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.expectRevert(abi.encodeWithSelector(StopEpochVaultLiquidityUnavailable.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    assertFalse(cdoEpoch.defaulted(), "vault liquidity failure should not default");
+    assertTrue(cdoEpoch.isEpochRunning(), "epoch should remain running after retryable failure");
+    assertTrue(programmableBorrower.epochAccountingActive(), "borrower accounting should remain active");
+    assertEq(strategy.pendingWithdraws(), pendingWithdraws, "withdraw requests should remain pending");
   }
 
   function testProgrammableBorrowerClosePoolRealizesInterestWithRealVault() external {
@@ -1205,7 +1295,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
   function testOnStopEpochRevertsForNonCDO() external {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    programmableBorrower.onStopEpoch(0);
+    programmableBorrower.onStopEpoch(0, false);
   }
 
   function testEmergencyExitVaultRevertsForNonOwnerOrManager() external {

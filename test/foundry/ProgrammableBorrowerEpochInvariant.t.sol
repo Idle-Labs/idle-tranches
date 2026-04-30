@@ -314,7 +314,13 @@ contract ProgrammableBorrowerEpochHandler is Test {
     uint256 principalBefore = programmableBorrower.borrowerPrincipal();
 
     vm.prank(manager);
-    cdoEpoch.stopEpoch(0, closePool ? 1 : 0);
+    try cdoEpoch.stopEpoch(0, closePool ? 1 : 0) {
+    } catch {
+      assertEq(cdoEpoch.defaulted(), false, "retryable stop revert should not default");
+      assertTrue(cdoEpoch.isEpochRunning(), "retryable stop revert should keep epoch running");
+      assertTrue(programmableBorrower.epochAccountingActive(), "retryable stop revert should keep accounting active");
+      return;
+    }
 
     if (cdoEpoch.defaulted()) {
       assertEq(

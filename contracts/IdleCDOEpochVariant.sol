@@ -321,10 +321,15 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _checkNotAllowed(_maxApr != 0 && _grossInterest > _calcInterestWithApr(getContractValue(), _maxApr) + _pendingWithdrawFees);
     }
 
-    // This is called before the getFundsFromBorrower to eventually 
-    // withdraw funds from the lending protocol in case of a programmable borrower
-    if (!_prepareStopEpochBorrower(_amountToPullFromBorrower + _pendingWithdraws)) {
-      return;
+    uint256 _amountRequired = _amountToPullFromBorrower + _pendingWithdraws;
+    if (isProgrammableBorrower) {
+      // Ask the programmable borrower to recall ERC4626 liquidity before IdleCDO pulls funds.
+      // Hook reverts bubble so transient ERC4626 liquidity failures can be retried.
+      if (!IProgrammableBorrower(_borrower()).onStopEpoch(_amountRequired, _isRequestingAllFunds)) {
+        allowInstantWithdraw = true;
+        _handleBorrowerDefault(_amountRequired);
+        return;
+      }
     }
 
     // Checkpoint management fees before borrower funds are pulled in so the elapsed-period
@@ -888,17 +893,4 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _resolvedInterest = _interest;
   }
 
-  /// @notice Ask a programmable borrower to free stop-epoch liquidity before IdleCDO pulls funds.
-  /// @dev A hook failure is treated as a borrower default because IdleCDO cannot continue the stop flow safely.
-  function _prepareStopEpochBorrower(uint256 _amountRequired) internal returns (bool) {
-    if (!isProgrammableBorrower) return true;
-
-    try IProgrammableBorrower(_borrower()).onStopEpoch(_amountRequired) {
-      return true;
-    } catch {
-      allowInstantWithdraw = true;
-      _handleBorrowerDefault(_amountRequired);
-      return false;
-    }
-  }
 }

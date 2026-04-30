@@ -13,6 +13,7 @@ error InvalidAddress();
 error InvalidAmount();
 error AlreadyInitialized();
 error InsufficientBorrowable();
+error StopEpochVaultLiquidityUnavailable();
 
 interface IIdleCDOToken {
   function token() external view returns (address);
@@ -225,23 +226,30 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// @notice Hook called by IdleCDOEpochVariant before stopping an epoch.
   /// Withdraws enough liquidity from the vault so IdleCDO can pull funds.
   /// @param _amountRequired total amount IdleCDO will pull via transferFrom.
-  function onStopEpoch(uint256 _amountRequired) external nonReentrant {
+  /// @param _isRequestingAllFunds whether IdleCDO is closing the pool and recalling all funds.
+  /// @return success false when the borrower ledger makes close-pool settlement a real default.
+  function onStopEpoch(uint256 _amountRequired, bool _isRequestingAllFunds) external nonReentrant returns (bool success) {
     _checkOnlyIdleCDO();
     _accrueBorrowerInterest();
+    // if we want to close the pool and the borrower still owes any amount, consider it a failure and let IdleCDO handle it as a default instead of a close. 
+    if (_isRequestingAllFunds && (borrowerPrincipal != 0 || borrowerInterestDebt != 0 || borrowerInterestAccrued != 0)) {
+      return false;
+    }
 
     uint256 onHand = underlyingToken.balanceOf(address(this));
     if (_amountRequired > onHand) {
       uint256 shortfall = _amountRequired - onHand;
-      // Do the same thing as the borrower draw path: ask the vault for the exact shortfall and let
-      // the hook revert if the vault cannot serve it. IdleCDO catches that revert and treats the
-      // stop flow as a borrower default. This avoids depending on vaults whose `maxWithdraw`
-      // bookkeeping is conservative or simply broken.
-      if (shortfall > 0) {
-        uint256 shares = vault.withdraw(shortfall, address(this), address(this));
+      // If the vault shares do not economically cover the shortfall, let IdleCDO's later
+      // transferFrom fail and use the existing default path. Only an otherwise-covered ERC4626
+      // withdrawal failure should make stopEpoch retryable.
+      if (shortfall > _currentVaultAssets()) return true;
+      try vault.withdraw(shortfall, address(this), address(this)) returns (uint256 shares) {
         if (epochAccountingActive) {
           epochWithdrawnFromVault += shortfall;
         }
         emit WithdrawnFromVault(shortfall, shares, address(this));
+      } catch {
+        revert StopEpochVaultLiquidityUnavailable();
       }
     }
 
@@ -255,6 +263,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     epochPendingWithdraws = 0;
     epochAccountingActive = false;
     emit EpochAccountingStopped();
+    success = true;
   }
 
   /// @notice Settle accrued borrower interest into debt after IdleCDO successfully fronted it.
