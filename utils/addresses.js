@@ -155,6 +155,7 @@ const mainnetContracts = {
   proxyAdmin: '0x9438904ABC7d8944A6E2A89671fEf51C629af351',
   // same as proxyAdmin which now has a timelock
   proxyAdminWithTimelock: '0x9438904ABC7d8944A6E2A89671fEf51C629af351',
+  proxyAdminEOA: '0x07116391a797E4B3cfbeA13912a15845fA843f5b',
   eulerMain: '0x27182842E098f60e3D576794A5bFFb0777E025d3',
   eulerDistributor: '0xd524E29E3BAF5BB085403Ca5665301E94387A7e2',
   idleCDORegistry: '0x84fdee80f18957a041354e99c7eb407467d94d8e',
@@ -1150,6 +1151,21 @@ const CDOs = {
     keyringWhitelist: '0xdA7514AD3B2B3ed739B529b3D0897a18c2Dbf80c',
     queue: '0x9C8AeFb643e538043FE624Ff6C2a7c803651292d',
     programmableBorrower: '0x7BFE8D96491f7B1039F14a8e44439E4DC46f9eB7',
+  },
+  creditrevolvingblueprintusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x01b8a788d2742d8d1706fcE7204fb523C51E175c',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0xdeE2233543D1F29619f949b111C9988089337FeE',
+    proxyAdmin: mainnetContracts.proxyAdminEOA,
+    strategy: '0x01b8a788d2742d8d1706fcE7204fb523C51E175c',
+    AATranche: '0xad4d924575320240173FeAf47e19E1959174ea8F',
+    BBTranche: '0x7A59C880BC9bb969Ad6211bd35A3ae787C6F922E',
+    keyringWhitelist: '0x1A4d23403c31bA26a4B84Af09364D503ad2bcc68',
+    queue: '0xF06DC60E2f7aCe741620c11963f470318c34BA7d',
+    programmableBorrower: '0x36569d9AfAfC8bFD6bb844EE371F401c695F1bf6',
+    writeOff: '0x8A00A03465277d96F4996f397550259aC6D0DEAe',
   },
   creditgauntlettestusdc: {
     decimals: 6,
@@ -3697,6 +3713,56 @@ exports.deployTokens = {
       vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
       manager: '0xeA173648F959790baea225cE3E75dF8A53a6BDE5',
       borrower: '0x9a9a68E02deD99210057Ce889014FD9AF4b2C7Eb',
+      borrowerApr: 10e18.toString(),
+    },
+    proxyCdoAddress: '',
+  },
+  creditrevolvingblueprintusdc: {
+    decimals: 6,
+    underlying: mainnetContracts.USDC,
+    strategyName: 'IdleCreditVault',
+    strategyParams: [
+      mainnetContracts.USDC,
+      'owner', // owner address
+      '0xeA173648F959790baea225cE3E75dF8A53a6BDE5', // manager
+      addr0, // temporary borrower, replaced with ProgrammableBorrower by the factory
+      'DummyBlueprint', // borrower name
+      '0', // intialApr
+    ],
+    cdo: CDOs.creditrevolvingblueprintusdc,
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    ...baseCDOArgs,
+    AARatio: '100000',
+    isAYSActive: false,
+    limit: '0',
+    // #########
+    isCreditVault: true,
+    // ## epoch params
+    epochDuration: '3600', // 1 hour initially
+    bufferPeriod: '0', // 0 seconds not enforced as apr is 0
+    // ## instant params values
+    instantWithdrawDelay: '120', // 2 minutes
+    instantWithdrawAprDelta: 5e18.toString(),
+    disableInstantWithdraw: true,
+    // ## keyring params
+    keyring: '', // a new whitelist will be deployed
+    // keyring: mainnetContracts.keyringWhitelist,
+    keyringPolicy: 9769439,
+    keyringAllowWithdraw: false,
+    // ## fees (if different from 15%)
+    fees: '10000', // 10%
+    // #########
+    queue: true,
+    writeoff: true,
+    hypernative: false,
+    interestMinted: true,
+    depositDuringEpoch: true,
+    prefundedDeposits: false,
+    prefundedDepositsWindows: '0',
+    programmableBorrower: {
+      vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
+      manager: '0xeA173648F959790baea225cE3E75dF8A53a6BDE5',
+      borrower: '0xeA173648F959790baea225cE3E75dF8A53a6BDE5',
       borrowerApr: 10e18.toString(),
     },
     proxyCdoAddress: '',
