@@ -7,6 +7,7 @@ import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.s
 import {IdleCDOCreditVault} from "../../contracts/IdleCDOCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantPrefunded.sol";
+import {IdleCreditVaultImpliedPrice} from "../../contracts/IdleCreditVaultImpliedPrice.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 
@@ -271,6 +272,24 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     expected = cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws();
   }
 
+  function _expectedImpliedVirtualPrice(address _tranche, uint256 elapsed, uint256 duration) internal view returns (uint256) {
+    uint256 trancheSupply = IERC20(_tranche).totalSupply();
+    uint256 basePrice = cdoEpoch.virtualPrice(_tranche);
+    uint256 expectedGain = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 accruedGain = expectedGain * elapsed / duration;
+    accruedGain -= accruedGain * cdoEpoch.fee() / FULL_ALLOC;
+
+    uint256 trancheGain;
+    if (_tranche == address(AAtranche)) {
+      uint256 bbGain = accruedGain * (FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio()) / FULL_ALLOC;
+      trancheGain = accruedGain - bbGain;
+    } else {
+      trancheGain = accruedGain * (FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio()) / FULL_ALLOC;
+    }
+
+    return ((trancheSupply * basePrice / ONE_TRANCHE_TOKEN) + trancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
+  }
+
   function testDeposits() external override {
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -329,6 +348,48 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // virtualPrice should increase too
     assertGt(idleCDO.virtualPrice(address(AAtranche)), ONE_SCALE, "AA virtual price");
     assertGt(idleCDO.virtualPrice(address(BBtranche)), ONE_SCALE, "BB virtual price");
+  }
+
+  function testImpliedVirtualPriceAccruesExpectedInterestDuringEpoch() external {
+    IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
+    uint256 amountWei = 10000 * ONE_SCALE;
+
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    uint256 aaVirtualPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 bbVirtualPrice = cdoEpoch.virtualPrice(address(BBtranche));
+    assertEq(impliedPrice.impliedVirtualPrice(address(AAtranche)), aaVirtualPrice, 'AA implied price before epoch');
+    assertEq(impliedPrice.impliedVirtualPrice(address(BBtranche)), bbVirtualPrice, 'BB implied price before epoch');
+
+    _startEpochAndCheckPrices(0);
+    assertEq(impliedPrice.impliedVirtualPrice(address(AAtranche)), aaVirtualPrice, 'AA implied price at epoch start');
+    assertEq(impliedPrice.impliedVirtualPrice(address(BBtranche)), bbVirtualPrice, 'BB implied price at epoch start');
+
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 elapsed = duration / 2;
+    vm.warp(cdoEpoch.epochEndDate() - (duration - elapsed));
+
+    uint256 aaImpliedHalf = impliedPrice.impliedVirtualPrice(address(AAtranche));
+    uint256 bbImpliedHalf = impliedPrice.impliedVirtualPrice(address(BBtranche));
+    assertEq(aaImpliedHalf, _expectedImpliedVirtualPrice(address(AAtranche), elapsed, duration), 'AA half epoch implied price');
+    assertEq(bbImpliedHalf, _expectedImpliedVirtualPrice(address(BBtranche), elapsed, duration), 'BB half epoch implied price');
+    assertGt(aaImpliedHalf, cdoEpoch.virtualPrice(address(AAtranche)), 'AA implied price should include interest');
+    assertGt(bbImpliedHalf, cdoEpoch.virtualPrice(address(BBtranche)), 'BB implied price should include interest');
+
+    vm.warp(cdoEpoch.epochEndDate());
+    uint256 aaImpliedEnd = impliedPrice.impliedVirtualPrice(address(AAtranche));
+    uint256 bbImpliedEnd = impliedPrice.impliedVirtualPrice(address(BBtranche));
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), aaImpliedEnd, 1, 'AA implied price should match stopped price');
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(BBtranche)), bbImpliedEnd, 1, 'BB implied price should match stopped price');
   }
 
   /// @notice test init values for both cdo and strategy
