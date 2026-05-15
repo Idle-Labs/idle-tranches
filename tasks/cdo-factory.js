@@ -201,6 +201,62 @@ const getTrackedCreditVault = (_hre, cdoAddress) => {
   ) || null;
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const getWriteOffEscrowContractName = (chainId) => ({
+  1: 'IdleCreditVaultWriteOffEscrow',
+  10: null,
+  137: null,
+  1101: null,
+  42161: null,
+  8453: null,
+  43114: 'IdleCreditVaultWriteOffEscrowAvax',
+})[chainId];
+
+const buildCreditVaultAncillaryParams = async ({ deployToken, copyToken, networkContracts, includeWriteOff = true }) => {
+  const shouldDeployKeyring = helpers.isEmptyString(deployToken.keyring) && deployToken.keyring != addr0;
+  const keyring = shouldDeployKeyring ? addr0 : (deployToken.keyring || addr0);
+  const hasKeyring = shouldDeployKeyring || hasAddress(keyring);
+  const params = {
+    keyringContract: shouldDeployKeyring ? networkContracts.keyring : addr0,
+    queueImplementation: addr0,
+    whitelistQueue: !!deployToken.queue && hasKeyring,
+    prefundedDepositWindow: deployToken.prefundedDeposits ? (deployToken.prefundedDepositsWindows || '0') : '0',
+  };
+  let writeOffImplementation = addr0;
+
+  if (deployToken.queue) {
+    params.queueImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.queue);
+    console.log(`Queue implementation: ${params.queueImplementation}`);
+  }
+
+  if (deployToken.writeoff && includeWriteOff) {
+    const configuredWriteOffImplementation =
+      deployToken.writeOffImplementation ||
+      deployToken.writeoffImplementation ||
+      networkContracts.writeOffImplementation ||
+      networkContracts.writeoffImplementation;
+    const trackedWriteOff = getTrackedWriteOff(copyToken);
+    if (hasAddress(configuredWriteOffImplementation)) {
+      writeOffImplementation = configuredWriteOffImplementation;
+    } else if (hasAddress(trackedWriteOff)) {
+      writeOffImplementation = await getImplementationAddress(hre.ethers.provider, trackedWriteOff);
+    } else {
+      throw new Error('writeoff is enabled but no writeOffImplementation and no copy writeOff proxy were found');
+    }
+    if (writeOffImplementation != addr0) {
+      console.log(`Write-off implementation: ${writeOffImplementation}`);
+    }
+  } else if (deployToken.writeoff) {
+    console.log('Write-off escrow is not supported for revolving credit vaults; skipping');
+  }
+
+  if (shouldDeployKeyring) {
+    console.log(`Factory will deploy KeyringIdleWhitelist for keyring ${params.keyringContract}`);
+  } else {
+    console.log(`Using keyring ${keyring}`);
+  }
+
+  return { params, keyring, writeOffImplementation };
+};
 
 /**
  * @name deploy
@@ -692,13 +748,13 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       const currentKeyringPolicy = await cdoEpoch.keyringPolicyId();
       if (deployToken.keyring && (deployToken.keyring.toLowerCase() != currentKeyring.toLowerCase() || deployToken.keyringPolicy != currentKeyringPolicy)) {
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
-        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, false);
       } else if (!deployToken.keyring) {
         console.log(`Deploying new keyring with default params and setting it`);
         const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
         deployToken.keyring = newKeyring;
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
-        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, false);
       }
       if (deployToken.interestMinted && !await cdoEpoch.isInterestMinted()) {
         console.log(`Setting interest minted ${deployToken.interestMinted}`);
@@ -1107,16 +1163,13 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log("Copy Strategy:           ", copyToken.strategy);
     console.log("Factory:                 ", factoryAddr);
     
-    // Replace owner as last param
+    // Resolve `owner` placeholders; the factory will force strategy ownership to itself.
     const params = deployToken.strategyParams.map(
       p => p === 'owner' ? addr : p
     );
 
     const apr = params[params.length - 1];
     console.log('APR:                     ', apr.toString());
-
-    // replace owner address with factory address 
-    params[1] = factoryAddr;
 
     const strategyCopy = await ethers.getContractAt("IdleCreditVault", copyToken.strategy);
     const strategyData = {
@@ -1162,31 +1215,24 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18); // default 0
     const disableInstantWithdraw = deployToken.disableInstantWithdraw || false; // default false
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
-    if (!deployToken.keyring && deployToken.keyring != addr0) {
-      console.log(`Deploying new keyring with default params and setting it`);
-      const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
-      deployToken.keyring = newKeyring;
-    }
-    const keyring = deployToken.keyring;
+    const owner = networkContracts.treasuryMultisig;
+    const { params: ancillaryParams, keyring, writeOffImplementation } = await buildCreditVaultAncillaryParams({
+      deployToken,
+      copyToken,
+      networkContracts,
+    });
     const keyringPolicy = deployToken.keyringPolicy;
-    const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
-    console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}, allow withdraw ${keyringAllowWithdraw}`);
+    console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}`);
     const fees = deployToken.fees;
     console.log(`Has queue: ${deployToken.queue}`);
-    let queueImplementation;
-    if (deployToken.queue) {
-      queueImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.queue);
-      console.log(`Queue implementation: ${queueImplementation}`);
-    }
     console.log()
 
     console.log('Is interest minted: ', deployToken.interestMinted);
     console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
     console.log();
 
-    // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
-    const owner = networkContracts.treasuryMultisig;
     console.log(`Setting fees ${fees} to ${owner}`);
+    console.log(`Setting management fee ${deployToken.managementFee || '0'}`);
     console.log('Owner of all contracts: ', owner);
 
     const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
@@ -1200,8 +1246,8 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       disableInstantWithdraw,
       keyring,
       keyringPolicy,
-      keyringAllowWithdraw,
       fees,
+      managementFee: deployToken.managementFee || '0',
       isInterestMinted: deployToken.interestMinted,
       isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     }
@@ -1209,8 +1255,8 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       cvData, 
       strategyData,
       creditVaultPostInitParams,
-      queueImplementation ? queueImplementation : addr0, // if queue is not defined, use zero address
-      owner
+      ancillaryParams,
+      writeOffImplementation
     );
     const receipt = await tx.wait();
 
@@ -1229,18 +1275,14 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
-      if (deployToken.prefundedDeposits) {
-        console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
-        const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', cv, signer);
-        await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
-
-        console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
-        const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
-        await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
-      }
       if (shouldVerify) {
         await hre.run("verify-contract", { address: queue });
       }
+    }
+    const keyringEvent = receipt.events.find(e => e.event === "KeyringWhitelistDeployed");
+    if (keyringEvent) {
+      const [keyringWhitelist] = keyringEvent.args;
+      console.log('Keyring whitelist deployed at', keyringWhitelist);
     }
 
     if (hypernative) {
@@ -1251,17 +1293,16 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       await hre.run("watch-cdo", { cdo: cv, name });
     }
 
-    if (deployToken.queue && deployToken.keyring != addr0) {
-      console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      console.log(`Adding queue to keyring whitelist (${deployToken.keyring})`);
-      const whitelist = await ethers.getContractAt("KeyringWhitelist", deployToken.keyring, signer);
-      await whitelist.connect(signer).setWhitelistStatus(queue, true);
-    }
-
     let writeOffEscrow;
     if (deployToken.writeoff) {
-      console.log('Deploying write off escrow');
-      writeOffEscrow = await hre.run("deploy-writeoff-escrow", { cdo: cv });
+      const writeOffEvent = receipt.events.find(e => e.event === "WriteOffEscrowDeployed");
+      if (writeOffEvent) {
+        [writeOffEscrow] = writeOffEvent.args;
+        console.log('Write off escrow deployed at', writeOffEscrow);
+        if (shouldVerify) {
+          await hre.run("verify-contract", { address: writeOffEscrow });
+        }
+      }
     }
 
     await hre.run("print-contracts-info", { cdo: cv, strategy, queue, writeoff: writeOffEscrow });
@@ -1310,16 +1351,12 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     const params = deployToken.strategyParams.map(
       p => p === 'owner' ? addr : p
     );
-    params[1] = factoryAddr;
     if (!params[3]) {
       params[3] = addr0;
     }
     params[params.length - 1] = BN(0);
 
-    const programmableBorrowerManager = programmableBorrowerConfig.manager;
     if (
-      !programmableBorrowerManager ||
-      programmableBorrowerManager === addr0 ||
       !programmableBorrowerConfig.vault ||
       programmableBorrowerConfig.vault === addr0 ||
       !programmableBorrowerConfig.borrower ||
@@ -1329,8 +1366,11 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     ) {
       console.log("🛑 programmable borrower config incomplete");
       console.log("Provide:");
-      console.log("  programmableBorrower: { vault, borrower, borrowerApr, manager, implementation? }");
+      console.log("  programmableBorrower: { vault, borrower, borrowerApr, implementation? }");
       return;
+    }
+    if (programmableBorrowerConfig.manager) {
+      params[2] = programmableBorrowerConfig.manager;
     }
 
     const strategyCopy = await ethers.getContractAt("IdleCreditVault", copyToken.strategy);
@@ -1382,23 +1422,18 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     const disableInstantWithdraw = true;
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
 
-    if (!deployToken.keyring && deployToken.keyring != addr0) {
-      console.log(`Deploying new keyring with default params and setting it`);
-      const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
-      deployToken.keyring = newKeyring;
-    }
-    const keyring = deployToken.keyring;
+    const owner = networkContracts.treasuryMultisig;
+    const { params: ancillaryParams, keyring } = await buildCreditVaultAncillaryParams({
+      deployToken,
+      copyToken,
+      networkContracts,
+      includeWriteOff: false,
+    });
     const keyringPolicy = deployToken.keyringPolicy;
-    const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
-    console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}, allow withdraw ${keyringAllowWithdraw}`);
+    console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}`);
 
     const fees = deployToken.fees;
     console.log(`Has queue: ${deployToken.queue}`);
-    let queueImplementation;
-    if (deployToken.queue) {
-      queueImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.queue);
-      console.log(`Queue implementation: ${queueImplementation}`);
-    }
     console.log()
 
     let programmableBorrowerImplementation = programmableBorrowerConfig.implementation;
@@ -1412,12 +1447,12 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     console.log("ProgrammableBorrower implementation:", programmableBorrowerImplementation);
     console.log("ProgrammableBorrower vault:         ", programmableBorrowerConfig.vault);
     console.log("ProgrammableBorrower borrower:      ", programmableBorrowerConfig.borrower);
-    console.log("ProgrammableBorrower manager:       ", programmableBorrowerManager);
+    console.log("ProgrammableBorrower manager:       ", params[2]);
     console.log("ProgrammableBorrower APR:           ", programmableBorrowerConfig.borrowerApr);
     console.log()
 
-    const owner = networkContracts.treasuryMultisig;
     console.log(`Setting fees ${fees} to ${owner}`);
+    console.log(`Setting management fee ${deployToken.managementFee || '0'}`);
     console.log('Owner of all contracts: ', owner);
 
     const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
@@ -1432,8 +1467,8 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
       disableInstantWithdraw,
       keyring,
       keyringPolicy,
-      keyringAllowWithdraw,
       fees,
+      managementFee: deployToken.managementFee || '0',
       isInterestMinted: true,
       isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     };
@@ -1443,7 +1478,6 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     };
     const programmableBorrowerParams = {
       vault: programmableBorrowerConfig.vault,
-      manager: programmableBorrowerManager,
       borrower: programmableBorrowerConfig.borrower,
       borrowerApr: programmableBorrowerConfig.borrowerApr
     };
@@ -1454,8 +1488,7 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
       creditVaultPostInitParams,
       programmableBorrowerData,
       programmableBorrowerParams,
-      queueImplementation ? queueImplementation : addr0,
-      owner
+      ancillaryParams
     );
     const receipt = await tx.wait();
 
@@ -1483,18 +1516,14 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     if (deployToken.queue) {
       [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at             ', queue);
-      if (deployToken.prefundedDeposits) {
-        console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
-        const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', cv, signer);
-        await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
-
-        console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
-        const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
-        await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
-      }
       if (shouldVerify) {
         await hre.run("verify-contract", { address: queue });
       }
+    }
+    const keyringEvent = receipt.events.find(e => e.event === "KeyringWhitelistDeployed");
+    if (keyringEvent) {
+      const [keyringWhitelist] = keyringEvent.args;
+      console.log('Keyring whitelist deployed at ', keyringWhitelist);
     }
 
     if (hypernative) {
@@ -1503,18 +1532,6 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
       const name = await strategyContract.symbol();
       await hre.run("protect-cdo", { cdo: cv });
       await hre.run("watch-cdo", { cdo: cv, name });
-    }
-
-    if (deployToken.queue && deployToken.keyring != addr0) {
-      console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      console.log(`Adding queue to keyring whitelist (${deployToken.keyring})`);
-      const whitelist = await ethers.getContractAt("KeyringWhitelist", deployToken.keyring, signer);
-      await whitelist.connect(signer).setWhitelistStatus(queue, true);
-    }
-
-    if (deployToken.writeoff) {
-      console.log('Deploying write off escrow');
-      await hre.run("deploy-writeoff-escrow", { cdo: cv });
     }
 
     await hre.run("print-contracts-info", { cdo: cv, strategy, queue });
@@ -1548,6 +1565,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         epochDuration,
         bufferPeriod,
         feeValue,
+        managementFee,
         instantDisabled,
         aprDelta,
         instantDelay,
@@ -1580,6 +1598,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         cdo.epochDuration(),
         cdo.bufferPeriod(),
         cdo.fee(),
+        cdo.feeSplit(),
         cdo.disableInstantWithdraw(),
         cdo.instantWithdrawAprDelta(),
         cdo.instantWithdrawDelay(),
@@ -1613,6 +1632,7 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  EpochDuration:  ${epochDuration}`);
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);
+      console.log(`  ManagementFee:  ${managementFee}`);
       console.log(`  Instant disable:${instantDisabled}`);
       console.log(`  APR Delta:      ${aprDelta}`);
       console.log(`  Instant Delay:  ${instantDelay}`);
@@ -1802,18 +1822,9 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
       return;
     }
 
-    const writeOffEscrowByChainId = {
-      1: 'IdleCreditVaultWriteOffEscrow',
-      10: null,
-      137: null,
-      1101: null,
-      42161: null,
-      8453: null,
-      43114: 'IdleCreditVaultWriteOffEscrowAvax',
-    };
     const chainId = await getRuntimeChainId(hre);
     console.log('chainId', chainId);
-    const contractName = writeOffEscrowByChainId[chainId];
+    const contractName = getWriteOffEscrowContractName(chainId);
     if (!contractName) {
       console.log('contract not available for this network');
       return;
@@ -1917,7 +1928,12 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`Deploying IdleCreditVaultFactory with ${addr}`);
     console.log()
 
-    const creditVaultFactory = await helpers.deployUpgradableContract('IdleCreditVaultFactory', [], signer);
+    const networkContracts = getNetworkContracts(hre);
+    const creditVaultFactory = await helpers.deployUpgradableContract(
+      'IdleCreditVaultFactory',
+      [networkContracts.treasuryMultisig],
+      signer
+    );
     const implementation = await getImplementationAddress(hre.ethers.provider, creditVaultFactory.address);
 
     console.log(`IdleCreditVaultFactory proxy deployed at ${creditVaultFactory.address}`);

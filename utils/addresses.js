@@ -2867,7 +2867,6 @@ exports.deployTokens = {
     // keyring: '0xD18d17791f2071Bf3C855bA770420a9EdEa0728d',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: ''
   },
@@ -2902,7 +2901,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -2940,7 +2938,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 20,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '2380', // 2.38%
     // #########
@@ -2980,7 +2977,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 7304190,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3018,7 +3014,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: addr0,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3057,7 +3052,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16310000,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3096,7 +3090,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 18,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3134,7 +3127,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 13083170,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3173,7 +3165,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 13083170,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3211,7 +3202,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3250,7 +3240,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3289,7 +3278,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3328,7 +3316,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3367,7 +3354,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3406,7 +3392,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3447,7 +3432,6 @@ exports.deployTokens = {
   //   // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
   //   keyring: mainnetContracts.keyringWhitelist,
   //   keyringPolicy: 1280224,
-  //   keyringAllowWithdraw: false,
   //   // ## fees (if different from 15%)
   //   fees: '10000', // 10%
   //   // #########
@@ -3485,7 +3469,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: '', // a new whitelist will be deployed
     keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3525,7 +3508,6 @@ exports.deployTokens = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: '0xb84957322Bb6381f21f3414584483458050D77A0', // a new whitelist will be deployed
     keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3566,7 +3548,6 @@ exports.deployTokens = {
     keyring: '', // a new whitelist will be deployed
     // keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '15000', // 15%
     // #########
@@ -3610,7 +3591,6 @@ exports.deployTokens = {
     // ## keyring params
     keyring: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
     keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3654,7 +3634,6 @@ exports.deployTokens = {
     keyring: '', // a new whitelist will be deployed
     // keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 9769439,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3698,7 +3677,6 @@ exports.deployTokens = {
     keyring: '', // a new whitelist will be deployed
     // keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 9769439,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3748,7 +3726,6 @@ exports.deployTokens = {
     keyring: '', // a new whitelist will be deployed
     // keyring: mainnetContracts.keyringWhitelist,
     keyringPolicy: 9769439,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3833,7 +3810,6 @@ exports.deployTokensAvax = {
     // keyring: '', // a new whitelist will be deployed
     keyring: avaxContracts.keyringWhitelist,
     keyringPolicy: 4725443,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3875,7 +3851,6 @@ exports.deployTokensBase = {
     // ## keyring params
     keyring: baseContracts.keyringWhitelist,
     keyringPolicy: 16003355,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -3940,7 +3915,6 @@ exports.deployTokensPolygon = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: polygonContracts.keyringWhitelist,
     keyringPolicy: 20,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -4142,7 +4116,6 @@ exports.deployTokensOptimism = {
     // ## keyring params
     keyring: addr0,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: ''
   },
@@ -4176,7 +4149,6 @@ exports.deployTokensOptimism = {
     // ## keyring params
     keyring: addr0,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // #########
     proxyCdoAddress: optimismCDOs.credittestsamusdc.cdoAddr
   },
@@ -4210,7 +4182,6 @@ exports.deployTokensOptimism = {
     // ## keyring params
     keyring: addr0,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // #########
     queue: true,
     proxyCdoAddress: ''
@@ -4246,7 +4217,6 @@ exports.deployTokensOptimism = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: optimismContracts.keyringWhitelist,
     keyringPolicy: 18,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -4284,7 +4254,6 @@ exports.deployTokensOptimism = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: optimismContracts.keyringWhitelist,
     keyringPolicy: 18,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -4322,7 +4291,6 @@ exports.deployTokensOptimism = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: optimismContracts.keyringWhitelist,
     keyringPolicy: 18,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -4381,7 +4349,6 @@ exports.deployTokensArbitrum = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: arbitrumContracts.keyringWhitelist,
     keyringPolicy: 4,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########
@@ -4419,7 +4386,6 @@ exports.deployTokensArbitrum = {
     // keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
     keyring: arbitrumContracts.keyringWhitelist,
     keyringPolicy: 20,
-    keyringAllowWithdraw: false,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########

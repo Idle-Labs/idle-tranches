@@ -7,7 +7,11 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
+import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantPrefunded.sol";
+import {IdleCDOEpochQueue} from "../../contracts/IdleCDOEpochQueue.sol";
 import {IdleCreditVaultFactory} from "../../contracts/IdleCreditVaultFactory.sol";
+import {IdleCreditVaultWriteOffEscrow} from "../../contracts/IdleCreditVaultWriteOffEscrow.sol";
+import {KeyringIdleWhitelist} from "../../contracts/KeyringIdleWhitelist.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {ProgrammableBorrower} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
 
@@ -32,6 +36,12 @@ contract MockFactoryCDO {
 
   constructor(address token_) {
     token = token_;
+  }
+}
+
+contract MockFactoryKeyring {
+  function checkCredential(uint256, address) external pure returns (bool) {
+    return false;
   }
 }
 
@@ -114,7 +124,16 @@ contract IdleCreditVaultFactoryTest is Test {
   bytes4 internal constant CDO_INITIALIZE_SELECTOR =
     bytes4(keccak256("initialize(uint256,address,address,address,address,address,uint256)"));
 
+  struct AncillaryDeployment {
+    address cv;
+    address strategy;
+    address queue;
+    address keyringWhitelist;
+    address writeOffEscrow;
+  }
+
   address internal owner = makeAddr("owner");
+  address internal creator = makeAddr("creator");
   address internal manager = makeAddr("manager");
   address internal rebalancer = makeAddr("rebalancer");
   address internal realBorrower = makeAddr("realBorrower");
@@ -159,6 +178,40 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(programmableBorrower.borrowerApr(), 365e18, "borrower apr");
   }
 
+  function testDeployCreditVaultWiresAncillaryContracts() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryKeyring keyringContract = new MockFactoryKeyring();
+    IdleCreditVaultFactory factory = _deployFactory();
+    AncillaryDeployment memory deployment =
+      _deployCreditVaultWithAncillaries(factory, underlying, address(keyringContract));
+
+    IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
+    IdleCreditVault strategy = IdleCreditVault(deployment.strategy);
+    IdleCDOEpochQueue queue = IdleCDOEpochQueue(deployment.queue);
+    KeyringIdleWhitelist keyringWhitelist = KeyringIdleWhitelist(deployment.keyringWhitelist);
+    IdleCreditVaultWriteOffEscrow writeOffEscrow = IdleCreditVaultWriteOffEscrow(deployment.writeOffEscrow);
+
+    assertEq(cv.owner(), owner, "cdo owner");
+    assertEq(strategy.owner(), owner, "strategy owner");
+    assertEq(strategy.manager(), manager, "strategy manager");
+    assertEq(queue.owner(), owner, "queue owner");
+    assertEq(writeOffEscrow.owner(), owner, "write-off owner");
+    assertEq(cv.keyring(), deployment.keyringWhitelist, "deployed keyring");
+    assertEq(keyringWhitelist.keyring(), address(keyringContract), "keyring contract");
+    assertEq(keyringWhitelist.admin(), owner, "keyring admin");
+    assertTrue(keyringWhitelist.whitelist(deployment.queue), "queue whitelisted");
+    assertEq(IdleCDOEpochVariantPrefunded(deployment.cv).epochQueue(), deployment.queue, "prefunded queue");
+    assertEq(queue.prefundedDepositWindow(), 2 days, "prefunded window");
+    assertEq(writeOffEscrow.idleCDOEpoch(), deployment.cv, "write-off cdo");
+    assertEq(writeOffEscrow.strategy(), deployment.strategy, "write-off strategy");
+    assertEq(cv.feeReceiver(), owner, "fee receiver");
+    assertEq(cv.fee(), 10000, "performance fee");
+    assertEq(cv.feeSplit(), 500, "management fee");
+    assertEq(cv.isDepositDuringEpochDisabled(), false, "deposit during epoch should be enabled");
+  }
+
   function _findProxy(Vm.Log[] memory entries, bytes32 eventSignature) internal pure returns (address deployed) {
     for (uint256 i = 0; i < entries.length; i++) {
       if (entries[i].topics[0] == eventSignature) {
@@ -168,12 +221,21 @@ contract IdleCreditVaultFactoryTest is Test {
     revert("deployment event not found");
   }
 
+  function _hasEvent(Vm.Log[] memory entries, bytes32 eventSignature) internal pure returns (bool found) {
+    for (uint256 i = 0; i < entries.length; i++) {
+      if (entries[i].topics[0] == eventSignature) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function _deployFactory() internal returns (IdleCreditVaultFactory factory) {
     IdleCreditVaultFactory factoryImplementation = new IdleCreditVaultFactory();
     factory = IdleCreditVaultFactory(address(new TransparentUpgradeableProxy(
       address(factoryImplementation),
       factoryProxyAdmin,
-      abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector)
+      abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector, owner)
     )));
   }
 
@@ -186,33 +248,9 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
     ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
 
-    IdleCreditVaultFactory.TransparentProxyData memory cvData = IdleCreditVaultFactory.TransparentProxyData({
-      implementation: address(cdoImplementation),
-      proxyAdmin: proxyAdmin,
-      initializeData: abi.encodeWithSelector(
-        CDO_INITIALIZE_SELECTOR,
-        0,
-        address(underlying),
-        governanceFund,
-        guardian,
-        rebalancer,
-        address(0),
-        100000
-      )
-    });
-    IdleCreditVaultFactory.TransparentProxyData memory strategyData = IdleCreditVaultFactory.TransparentProxyData({
-      implementation: address(strategyImplementation),
-      proxyAdmin: proxyAdmin,
-      initializeData: abi.encodeWithSelector(
-        IdleCreditVault.initialize.selector,
-        address(underlying),
-        address(factory),
-        manager,
-        realBorrower,
-        "Revolver",
-        12e18
-      )
-    });
+    IdleCreditVaultFactory.TransparentProxyData memory cvData = _makeCVData(address(cdoImplementation), address(underlying));
+    IdleCreditVaultFactory.TransparentProxyData memory strategyData =
+      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Revolver", 12e18);
     IdleCreditVaultFactory.CreditVaultParams memory cvParams = IdleCreditVaultFactory.CreditVaultParams({
       apr: 12e18,
       epochDuration: 7 days,
@@ -222,10 +260,16 @@ contract IdleCreditVaultFactoryTest is Test {
       disableInstantWithdraw: false,
       keyring: address(0),
       keyringPolicy: 0,
-      keyringAllowWithdraw: false,
       fees: 10000,
+      managementFee: 0,
       isInterestMinted: false,
       isDepositDuringEpochDisabled: true
+    });
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyringContract: address(0),
+      queueImplementation: address(0),
+      whitelistQueue: false,
+      prefundedDepositWindow: 0
     });
     IdleCreditVaultFactory.ProgrammableBorrowerProxyData memory programmableBorrowerData =
       IdleCreditVaultFactory.ProgrammableBorrowerProxyData({
@@ -235,25 +279,118 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory.ProgrammableBorrowerParams memory programmableBorrowerParams =
       IdleCreditVaultFactory.ProgrammableBorrowerParams({
         vault: address(vault),
-        manager: manager,
         borrower: realBorrower,
         borrowerApr: 365e18
       });
 
     vm.recordLogs();
+    vm.prank(creator);
     factory.deployRevolvingCreditVault(
       cvData,
       strategyData,
       cvParams,
       programmableBorrowerData,
       programmableBorrowerParams,
-      address(0),
-      owner
+      ancillaryParams
     );
     Vm.Log[] memory entries = vm.getRecordedLogs();
     cvProxy = _findProxy(entries, keccak256("CreditVaultDeployed(address)"));
     strategyProxy = _findProxy(entries, keccak256("StrategyDeployed(address)"));
     programmableBorrowerProxy = _findProxy(entries, keccak256("ProgrammableBorrowerDeployed(address)"));
+    assertFalse(_hasEvent(entries, keccak256("WriteOffEscrowDeployed(address)")), "revolving write-off unsupported");
+  }
+
+  function _deployCreditVaultWithAncillaries(
+    IdleCreditVaultFactory factory,
+    MockFactoryERC20 underlying,
+    address keyringContract
+  ) internal returns (AncillaryDeployment memory deployment) {
+    IdleCreditVault strategyImplementation = new IdleCreditVault();
+    IdleCDOEpochVariantPrefunded cdoImplementation = new IdleCDOEpochVariantPrefunded();
+    IdleCDOEpochQueue queueImplementation = new IdleCDOEpochQueue();
+    IdleCreditVaultWriteOffEscrow writeOffImplementation = new IdleCreditVaultWriteOffEscrow();
+
+    IdleCreditVaultFactory.TransparentProxyData memory cvData = _makeCVData(address(cdoImplementation), address(underlying));
+    IdleCreditVaultFactory.TransparentProxyData memory strategyData =
+      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Standard", 12e18);
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = IdleCreditVaultFactory.CreditVaultParams({
+      apr: 12e18,
+      epochDuration: 7 days,
+      bufferPeriod: 1 days,
+      instantWithdrawDelay: 1 hours,
+      instantWithdrawAprDelta: 1e18,
+      disableInstantWithdraw: true,
+      keyring: address(0),
+      keyringPolicy: 42,
+      fees: 10000,
+      managementFee: 500,
+      isInterestMinted: false,
+      isDepositDuringEpochDisabled: false
+    });
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyringContract: keyringContract,
+      queueImplementation: address(queueImplementation),
+      whitelistQueue: true,
+      prefundedDepositWindow: 2 days
+    });
+
+    vm.recordLogs();
+    vm.prank(creator);
+    factory.deployCreditVault(
+      cvData,
+      strategyData,
+      cvParams,
+      ancillaryParams,
+      address(writeOffImplementation)
+    );
+    Vm.Log[] memory entries = vm.getRecordedLogs();
+    deployment.cv = _findProxy(entries, keccak256("CreditVaultDeployed(address)"));
+    deployment.strategy = _findProxy(entries, keccak256("StrategyDeployed(address)"));
+    deployment.queue = _findProxy(entries, keccak256("QueueDeployed(address)"));
+    deployment.keyringWhitelist = _findProxy(entries, keccak256("KeyringWhitelistDeployed(address)"));
+    deployment.writeOffEscrow = _findProxy(entries, keccak256("WriteOffEscrowDeployed(address)"));
+  }
+
+  function _makeCVData(
+    address implementation,
+    address underlying
+  ) internal view returns (IdleCreditVaultFactory.TransparentProxyData memory) {
+    return IdleCreditVaultFactory.TransparentProxyData({
+      implementation: implementation,
+      proxyAdmin: proxyAdmin,
+      initializeData: abi.encodeWithSelector(
+        CDO_INITIALIZE_SELECTOR,
+        0,
+        underlying,
+        governanceFund,
+        guardian,
+        rebalancer,
+        address(0),
+        100000
+      )
+    });
+  }
+
+  function _makeStrategyData(
+    address implementation,
+    address underlying,
+    address,
+    string memory borrowerName,
+    uint256 apr
+  ) internal view returns (IdleCreditVaultFactory.TransparentProxyData memory) {
+    return IdleCreditVaultFactory.TransparentProxyData({
+      implementation: implementation,
+      proxyAdmin: proxyAdmin,
+      initializeData: abi.encodeWithSelector(
+        IdleCreditVault.initialize.selector,
+        underlying,
+        address(0x123456),
+        manager,
+        realBorrower,
+        borrowerName,
+        apr
+      )
+    });
   }
 
   function _assertDeployment(
@@ -270,6 +407,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.owner(), owner, "cdo owner");
     assertEq(strategy.owner(), owner, "strategy owner");
     assertEq(programmableBorrower.owner(), owner, "programmable borrower owner");
+    assertEq(strategy.manager(), manager, "strategy manager");
     assertEq(strategy.idleCDO(), cvProxy, "strategy cdo");
     assertEq(strategy.borrower(), programmableBorrowerProxy, "strategy borrower");
     assertEq(strategy.unscaledApr(), 0, "strategy apr should be zero");

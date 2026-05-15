@@ -4,22 +4,32 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
+import {IdleCDOEpochVariantPrefunded} from "./IdleCDOEpochVariantPrefunded.sol";
 import {IdleCDOEpochQueue} from "./IdleCDOEpochQueue.sol";
+import {IdleCreditVaultWriteOffEscrow} from "./IdleCreditVaultWriteOffEscrow.sol";
+import {KeyringIdleWhitelist} from "./KeyringIdleWhitelist.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {ProgrammableBorrower} from "./strategies/idle/ProgrammableBorrower.sol";
 
 contract IdleCreditVaultFactory is Initializable {
+  address public treasury;
+
   event CreditVaultDeployed(address proxy);
   event StrategyDeployed(address proxy);
   event QueueDeployed(address proxy);
   event ProgrammableBorrowerDeployed(address proxy);
+  event KeyringWhitelistDeployed(address keyringWhitelist);
+  event WriteOffEscrowDeployed(address proxy);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
     _disableInitializers();
   }
 
-  function initialize() external initializer {}
+  function initialize(address _treasury) external initializer {
+    require(_treasury != address(0), "IS_0");
+    treasury = _treasury;
+  }
 
   struct TransparentProxyData {
     address implementation;
@@ -36,10 +46,17 @@ contract IdleCreditVaultFactory is Initializable {
     bool disableInstantWithdraw;
     address keyring;
     uint256 keyringPolicy;
-    bool keyringAllowWithdraw;
     uint256 fees;
+    uint256 managementFee;
     bool isInterestMinted;
     bool isDepositDuringEpochDisabled;
+  }
+
+  struct AncillaryParams {
+    address keyringContract;
+    address queueImplementation;
+    bool whitelistQueue;
+    uint256 prefundedDepositWindow;
   }
 
   struct ProgrammableBorrowerProxyData {
@@ -49,7 +66,6 @@ contract IdleCreditVaultFactory is Initializable {
 
   struct ProgrammableBorrowerParams {
     address vault;
-    address manager;
     address borrower;
     uint256 borrowerApr;
   }
@@ -58,20 +74,27 @@ contract IdleCreditVaultFactory is Initializable {
     TransparentProxyData memory cvData,
     TransparentProxyData memory strategyData,
     CreditVaultParams memory cvParams,
-    address queueImplementation,
-    address owner
+    AncillaryParams memory ancillaryParams,
+    address writeOffImplementation
   ) external {
-    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) = _deployBaseCreditVault(cvData, strategyData);
+    require(_getStrategyManager(strategyData.initializeData) != address(0), "IS_0");
+    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) =
+      _deployBaseCreditVault(cvData, strategyData);
 
+    (bool deployedKeyring, address keyring) =
+      _prepareKeyring(cvParams.keyring, ancillaryParams);
+    cvParams.keyring = keyring;
     _setCVParams(cv, strategy, cvParams);
 
-    _deployQueue(queueImplementation, strategyData.proxyAdmin, cv, owner);
+    _deployAndConfigureQueue(ancillaryParams, strategyData.proxyAdmin, cv, keyring, treasury);
+    _deployWriteOffEscrow(writeOffImplementation, strategyData.proxyAdmin, cv, treasury);
 
-    cv.setFeeParams(owner, cvParams.fees);
+    _setFeeParams(cv, treasury, cvParams);
     cv.setGuardian(guardian);
-    // Transfer ownership of strategy and credit vault to owner
-    strategy.transferOwnership(owner);
-    cv.transferOwnership(owner);
+    _finalizeKeyringAdmin(keyring, deployedKeyring);
+    // Transfer ownership of strategy and credit vault to treasury
+    strategy.transferOwnership(treasury);
+    cv.transferOwnership(treasury);
   }
 
   function deployRevolvingCreditVault(
@@ -80,31 +103,51 @@ contract IdleCreditVaultFactory is Initializable {
     CreditVaultParams memory cvParams,
     ProgrammableBorrowerProxyData memory programmableBorrowerData,
     ProgrammableBorrowerParams memory programmableBorrowerParams,
-    address queueImplementation,
-    address owner
+    AncillaryParams memory ancillaryParams
   ) external {
-    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) = _deployBaseCreditVault(cvData, strategyData);
+    address manager = _getStrategyManager(strategyData.initializeData);
+    require(manager != address(0), "IS_0");
+    (IdleCDOEpochVariant cv, IdleCreditVault strategy, address guardian) =
+      _deployBaseCreditVault(cvData, strategyData);
 
-    CreditVaultParams memory revolvingParams = cvParams;
-    revolvingParams.apr = 0;
-    revolvingParams.isInterestMinted = true;
-    revolvingParams.disableInstantWithdraw = true;
-    _setCVParams(cv, strategy, revolvingParams);
+    cvParams.apr = 0;
+    cvParams.isInterestMinted = true;
+    cvParams.disableInstantWithdraw = true;
+    (bool deployedKeyring, address keyring) =
+      _prepareKeyring(cvParams.keyring, ancillaryParams);
+    cvParams.keyring = keyring;
+    _setCVParams(cv, strategy, cvParams);
 
     ProgrammableBorrower programmableBorrower = _deployProgrammableBorrower(
       programmableBorrowerData,
       programmableBorrowerParams,
       cv,
-      strategy
+      strategy,
+      manager
     );
 
-    _deployQueue(queueImplementation, strategyData.proxyAdmin, cv, owner);
+    _deployAndConfigureQueue(ancillaryParams, strategyData.proxyAdmin, cv, keyring, treasury);
 
-    cv.setFeeParams(owner, cvParams.fees);
+    _setFeeParams(cv, treasury, cvParams);
     cv.setGuardian(guardian);
-    strategy.transferOwnership(owner);
-    cv.transferOwnership(owner);
-    programmableBorrower.transferOwnership(owner);
+    _finalizeKeyringAdmin(keyring, deployedKeyring);
+    strategy.transferOwnership(treasury);
+    cv.transferOwnership(treasury);
+    programmableBorrower.transferOwnership(treasury);
+  }
+
+  function _prepareKeyring(
+    address currentKeyring,
+    AncillaryParams memory ancillaryParams
+  ) internal returns (bool deployedKeyring, address keyring) {
+    if (ancillaryParams.keyringContract == address(0)) {
+      return (false, currentKeyring);
+    }
+
+    KeyringIdleWhitelist keyringWhitelist = new KeyringIdleWhitelist(ancillaryParams.keyringContract, address(this));
+    keyring = address(keyringWhitelist);
+    emit KeyringWhitelistDeployed(address(keyringWhitelist));
+    return (true, keyring);
   }
 
   function _deployBaseCreditVault(
@@ -115,6 +158,8 @@ contract IdleCreditVaultFactory is Initializable {
     IdleCreditVault strategy, 
     address guardian
   ) {
+    // Force ownership through this factory while keeping the encoded manager unchanged.
+    strategyData.initializeData = _replaceStrategyInitializeData(strategyData.initializeData);
     // Deploy and initialize strategy
     strategy = IdleCreditVault(_deployProxy(strategyData));
     emit StrategyDeployed(address(strategy));
@@ -135,7 +180,8 @@ contract IdleCreditVaultFactory is Initializable {
     ProgrammableBorrowerProxyData memory programmableBorrowerData,
     ProgrammableBorrowerParams memory programmableBorrowerParams,
     IdleCDOEpochVariant cv,
-    IdleCreditVault strategy
+    IdleCreditVault strategy,
+    address manager
   ) internal returns (ProgrammableBorrower programmableBorrower) {
     programmableBorrower = ProgrammableBorrower(_deployProxy(
       TransparentProxyData({
@@ -146,7 +192,7 @@ contract IdleCreditVaultFactory is Initializable {
           programmableBorrowerParams.vault,
           address(cv),
           address(this),
-          programmableBorrowerParams.manager,
+          manager,
           programmableBorrowerParams.borrower,
           programmableBorrowerParams.borrowerApr
         )
@@ -162,26 +208,82 @@ contract IdleCreditVaultFactory is Initializable {
   function _deployQueue(
     address queueImplementation,
     address proxyAdmin,
-    IdleCDOEpochVariant cv,
-    address owner
-  ) internal {
+    IdleCDOEpochVariant cv
+  ) internal returns (IdleCDOEpochQueue queue) {
     if (queueImplementation == address(0)) {
-      return;
+      return queue;
     }
 
-    IdleCDOEpochQueue queue = IdleCDOEpochQueue(_deployProxy(
+    queue = IdleCDOEpochQueue(_deployProxy(
       TransparentProxyData({
         implementation: queueImplementation,
         proxyAdmin: proxyAdmin,
         initializeData: abi.encodeWithSelector(
           IdleCDOEpochQueue.initialize.selector,
           address(cv),
-          owner,
+          address(this),
           true
         )
       })
     ));
     emit QueueDeployed(address(queue));
+  }
+
+  function _deployAndConfigureQueue(
+    AncillaryParams memory ancillaryParams,
+    address proxyAdmin,
+    IdleCDOEpochVariant cv,
+    address keyring,
+    address owner
+  ) internal {
+    IdleCDOEpochQueue queue = _deployQueue(ancillaryParams.queueImplementation, proxyAdmin, cv);
+    _configureQueue(queue, cv, keyring, ancillaryParams, owner);
+  }
+
+  function _configureQueue(
+    IdleCDOEpochQueue queue,
+    IdleCDOEpochVariant cv,
+    address keyring,
+    AncillaryParams memory ancillaryParams,
+    address owner
+  ) internal {
+    if (address(queue) == address(0)) {
+      return;
+    }
+
+    if (ancillaryParams.prefundedDepositWindow != 0) {
+      IdleCDOEpochVariantPrefunded(address(cv)).setEpochQueue(address(queue));
+      queue.setPrefundedDepositWindow(ancillaryParams.prefundedDepositWindow);
+    }
+    if (ancillaryParams.whitelistQueue && keyring != address(0)) {
+      KeyringIdleWhitelist(keyring).setWhitelistStatus(address(queue), true);
+    }
+    queue.transferOwnership(owner);
+  }
+
+  function _deployWriteOffEscrow(
+    address writeOffImplementation,
+    address proxyAdmin,
+    IdleCDOEpochVariant cv,
+    address owner
+  ) internal returns (IdleCreditVaultWriteOffEscrow writeOffEscrow) {
+    if (writeOffImplementation == address(0)) {
+      return writeOffEscrow;
+    }
+
+    writeOffEscrow = IdleCreditVaultWriteOffEscrow(_deployProxy(
+      TransparentProxyData({
+        implementation: writeOffImplementation,
+        proxyAdmin: proxyAdmin,
+        initializeData: abi.encodeWithSelector(
+          IdleCreditVaultWriteOffEscrow.initialize.selector,
+          address(cv),
+          owner,
+          true
+        )
+      })
+    ));
+    emit WriteOffEscrowDeployed(address(writeOffEscrow));
   }
 
   function _deployProxy(TransparentProxyData memory data) internal returns (address) {
@@ -200,16 +302,27 @@ contract IdleCreditVaultFactory is Initializable {
   ) internal {
     cv.setEpochParams(par.epochDuration, par.bufferPeriod);
     cv.setInstantWithdrawParams(par.instantWithdrawDelay, par.instantWithdrawAprDelta, par.disableInstantWithdraw);
-    cv.setKeyringParams(par.keyring, par.keyringPolicy, par.keyringAllowWithdraw);
+    cv.setKeyringParams(par.keyring, par.keyringPolicy, false);
     if (par.isInterestMinted) {
       cv.setIsInterestMinted(par.isInterestMinted);
     }
-    if (par.isDepositDuringEpochDisabled) {
-      cv.setIsDepositDuringEpochDisabled(par.isDepositDuringEpochDisabled);
-    }
+    cv.setIsDepositDuringEpochDisabled(par.isDepositDuringEpochDisabled);
     // setAprs should be done before setWhitelistedCDO
     strategy.setAprs(par.apr, par.apr * (par.epochDuration + par.bufferPeriod) / par.epochDuration);
     strategy.setWhitelistedCDO(address(cv));
+  }
+
+  function _setFeeParams(IdleCDOEpochVariant cv, address owner, CreditVaultParams memory cvParams) internal {
+    cv.setFeeParams(owner, cvParams.fees);
+    if (cvParams.managementFee != 0) {
+      cv.setFeeParams(address(0), cvParams.managementFee);
+    }
+  }
+
+  function _finalizeKeyringAdmin(address keyring, bool deployedKeyring) internal {
+    if (deployedKeyring) {
+      KeyringIdleWhitelist(keyring).changeAdmin(treasury);
+    }
   }
 
   function _getGuardian(bytes memory cvData) internal pure returns (address guardian) {
@@ -252,6 +365,25 @@ contract IdleCreditVaultFactory is Initializable {
       // Offset = 4 + 160 = 164 bytes from the start of the content.
       // The memory address is `data` + 0x20 + 164 = `data` + 0xc4.
       mstore(add(data, 0xc4), strategyAddress)
+    }
+
+    return data;
+  }
+
+  function _getStrategyManager(bytes memory data) internal pure returns (address manager) {
+    assembly {
+      // Read manager (3rd argument): content start + selector (4 bytes) + 2 * 32 bytes.
+      manager := mload(add(data, 0x64))
+    }
+  }
+
+  function _replaceStrategyInitializeData(bytes memory data) internal view returns (bytes memory) {
+    // The data is ABI encoded calldata for
+    // `initialize(address,address,address,address,string,uint256)`.
+    // We force the 2nd argument (owner) to `address(this)`.
+    assembly {
+      // Replace owner (2nd argument): content start + selector (4 bytes) + 1 * 32 bytes.
+      mstore(add(data, 0x44), address())
     }
 
     return data;
