@@ -392,11 +392,11 @@ contract ProgrammableBorrowerEpochInvariant is StdInvariant, Test {
 
     vm.startPrank(owner);
     cdoEpoch.setIsAYSActive(false);
-    cdoEpoch.setFeeParams(address(this), 0);
+    cdoEpoch.setFeeParams(address(this), 0, 100000, 0);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(30 days, 5 days);
-    cdoEpoch.setKeyringParams(address(0), 0, false);
+    cdoEpoch.setKeyringParams(address(0), 0);
     cdoEpoch.setIsInterestMinted(true);
     vm.stopPrank();
 

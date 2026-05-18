@@ -161,14 +161,10 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _tranche address of the requested tranche
   /// @return _virtualPrice tranche price considering all interest/losses
   function virtualPrice(address _tranche) public virtual view returns (uint256 _virtualPrice) {
-    // get both NAVs, because we need the total NAV anyway
-    uint256 _lastNAVAA = lastNAVAA;
-    uint256 _lastNAVBB = lastNAVBB;
-
     (_virtualPrice, ) = _virtualPriceAux(
       _tranche,
       getContractValue(), // nav
-      _lastNAVAA + _lastNAVBB, // lastNAV
+      lastNAVAA + lastNAVBB, // lastNAV
       _lastSavedNAV(_tranche), // lastTrancheNAV
       trancheAPRSplitRatio
     );
@@ -482,18 +478,20 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     isAYSActive = _active;
   }
 
-  /// @param _feeReceiver new fee receiver address, or `address(0)` to update the management fee
-  /// @param _fee new fee value (in % with 100000 = 100%)
-  function setFeeParams(address _feeReceiver, uint256 _fee) external {
+  /// @param _feeReceiver fee receiver address. It gets the portion of fees specified by `_feeSplit`.
+  /// The remaining fee portion goes to `owner()`.
+  /// @param _fee new performance fee value (in % with 100000 = 100%)
+  /// @param _feeSplit portion of collected fees sent to `_feeReceiver` (100000 = 100%)
+  /// @param _managementFee annualized management fee (in % with 100000 = 100%)
+  function setFeeParams(address _feeReceiver, uint256 _fee, uint256 _feeSplit, uint256 _managementFee) external {
     _checkOnlyOwner();
-    if (_feeReceiver == address(0)) {
-      // Credit vaults reuse the legacy `feeSplit` slot to store the annualized management fee.
-      _accrueManagementFee();
-      _checkAmountTooHigh((feeSplit = _fee) > FULL_ALLOC);
-    } else {
-      feeReceiver = _feeReceiver;
-      _checkAmountTooHigh((fee = _fee) > MAX_FEE);
-    }
+    _checkAmountTooHigh(_fee > MAX_FEE || _feeSplit > FULL_ALLOC || _managementFee > MAX_FEE / 10);
+
+    _accrueManagementFee();
+    feeReceiver = _feeReceiver;
+    fee = _fee;
+    feeSplit = _feeSplit;
+    managementFee = _managementFee;
   }
 
   /// @param _guardian new guardian (pauser) address
@@ -582,10 +580,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   }
 
   /// @notice calculate annualized management fee for a balance over a duration
-  /// @dev Fee is capped to the input balance so callers can safely reuse it for previews and accrual.
-  function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256 managementFee) {
-    managementFee = _nav * feeSplit * _duration / (FULL_ALLOC * 365 days);
-    if (managementFee > _nav) return _nav;
+  function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256) {
+    // 3153600000000 == FULL_ALLOC * 365 days
+    return _nav * managementFee * _duration / 3153600000000;
   }
 
   /// @notice returns the user tranche balance for a specific tranche
@@ -608,6 +605,21 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   function _transferUnderlyings(address _to, uint256 _amount) internal {
     if (_amount == 0) return;
     IERC20Detailed(token).safeTransfer(_to, _amount);
+  }
+
+  /// @notice transfer fee to feeReceiver and owner according to feeSplit
+  /// @param _amount total fee amount to split and transfer (in underlyings)
+  function _transferFeeUnderlyings(uint256 _amount) internal {
+    uint256 feeReceiverAmount = _feeReceiverAmount(_amount);
+    _transferUnderlyings(feeReceiver, feeReceiverAmount);
+    _transferUnderlyings(owner(), _amount - feeReceiverAmount);
+  }
+
+  /// @notice calculates the amount to transfer to feeReceiver based on the feeSplit
+  /// @param _amount total fee amount to split
+  function _feeReceiverAmount(uint256 _amount) internal view returns (uint256) {
+    if (feeReceiver == address(0)) return 0;
+    return _amount * feeSplit / FULL_ALLOC;
   }
 
   /// @dev transfer underlyings from a specific address to another address

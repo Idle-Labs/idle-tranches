@@ -41,7 +41,7 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     underlying.approve(address(queue), type(uint256).max);
 
     vm.prank(cdoEpoch.owner());
-    cdoEpoch.setKeyringParams(address(0), 1, false);
+    cdoEpoch.setKeyringParams(address(0), 1);
   }
 
   function testContractSize() public view {

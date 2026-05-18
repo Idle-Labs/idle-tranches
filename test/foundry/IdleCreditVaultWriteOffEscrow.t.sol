@@ -56,7 +56,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
     // allow everyone to deposit
     vm.prank(cdoEpoch.owner());
-    cdoEpoch.setKeyringParams(address(0), 1, false);
+    cdoEpoch.setKeyringParams(address(0), 1);
 
     vm.prank(LP);
     tranche.approve(address(escrow), type(uint256).max);
@@ -83,7 +83,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     address keyring = address(1);
 
     vm.prank(cdoEpoch.owner());
-    cdoEpoch.setKeyringParams(keyring, 1, false);
+    cdoEpoch.setKeyringParams(keyring, 1);
 
     vm.mockCall(
       keyring,

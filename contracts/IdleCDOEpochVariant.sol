@@ -56,10 +56,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   uint256 public keyringPolicyId;
   /// @notice time between 2 epochs, can be set to 0 to start the next epoch without waiting a specified time
   uint256 public bufferPeriod;
-  /// @notice flag for enabling anyone to request a withdraw (needed for liquidations)
-  bool public keyringAllowWithdraw;
+  /// @dev Deprecated storage slot. Do not remove: kept to preserve the upgradeable storage layout.
+  bool internal keyringAllowWithdraw;
   /// @notice amount of over/under performance that withdrawal requests will cause
-  int256 public interestForOverUnderPerformance;
+  int256 internal interestForOverUnderPerformance;
   /// @notice flag to disable deposits during an epoch
   bool public isDepositDuringEpochDisabled;
   /// @notice flag to mint interest as strategy tokens without moving underlyings
@@ -146,12 +146,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice update keyring address
   /// @param _keyring address of the keyring contract
   /// @param _keyringPolicyId policyId to check for wallet
-  /// @param _keyringAllowWithdraw flag to allow anyone to request a withdraw
-  function setKeyringParams(address _keyring, uint256 _keyringPolicyId, bool _keyringAllowWithdraw) external {
+  function setKeyringParams(address _keyring, uint256 _keyringPolicyId) external {
     _checkOnlyOwnerOrManager();
     keyring = _keyring;
     keyringPolicyId = _keyringPolicyId;
-    keyringAllowWithdraw = _keyringAllowWithdraw;
   }
 
   /// @notice set flag to disable deposits during an epoch
@@ -222,7 +220,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 _totEpochDeposits = _strategy.totEpochDeposits();
     // If interest is minted we do not transfer interest to the strategy
     uint256 _toSend = isInterestMinted ? _totEpochDeposits : lastEpochInterest + _totEpochDeposits;
-    if (_toSend > 0) {
+    if (_toSend != 0) {
       _strategy.sendInterestAndDeposits(_toSend);
     }
 
@@ -286,7 +284,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       block.timestamp < epochEndDate || 
       // Check that there are no pending instant withdraws, ie `getInstantWithdrawFunds` was called
       // before closing the epoch
-      _pendingInstant() > 0 ||
+      _pendingInstant() != 0 ||
       // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
       // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
       (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
@@ -340,7 +338,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Send also tot withdraw requests amount to the IdleCreditVault contract
     try this.getFundsFromBorrower(_amountToPullFromBorrower, _pendingWithdraws, 0) {
       // transfer in strategy and decrease pendingWithdraws
-      if (_pendingWithdraws > 0) {
+      if (_pendingWithdraws != 0) {
         _strategy.collectWithdrawFunds(_pendingWithdraws);
       }
       // Only settle borrower interest when CDO is fronting it (minted mode, not closing pool).
@@ -348,10 +346,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       if (_mintInterest && isProgrammableBorrower) {
         IProgrammableBorrower(_borrower()).settleBorrowerInterest();
       }
-      // Transfer pending withdraw fees to feeReceiver before update accounting
+      // Split pending withdraw fees before update accounting
       // NOTE: Fees are sent with 2 different transfer calls, here and after updateAccounting, to avoid complicated calculations
       if (!_mintInterest) {
-        _transferUnderlyings(feeReceiver, _pendingWithdrawFees);
+        _transferFeeUnderlyings(_pendingWithdrawFees);
       }
 
       if (_isRequestingAllFunds) {
@@ -373,13 +371,17 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       // transfer fees
       uint256 _fees = unclaimedFees;
       if (_mintInterest) {
-        // If interest is minted then we mint new shares for the feeReceiver instead of transferring underlyings
+        // If interest is minted then we mint new shares for fee receivers instead of transferring underlyings
         if (_fees != 0) {
-          _mintSharesAtCurrPrice(_fees, feeReceiver, AATranche);
+          uint256 feeReceiverAmount = _feeReceiverAmount(_fees);
+          if (feeReceiverAmount != 0) {
+            _mintSharesAtCurrPrice(feeReceiverAmount, feeReceiver, AATranche);
+          }
+          _mintSharesAtCurrPrice(_fees - feeReceiverAmount, owner(), AATranche);
           _updateSplitRatio(_getAARatio(true));
         }
       } else {
-        _transferUnderlyings(feeReceiver, _fees);
+        _transferFeeUnderlyings(_fees);
       }
       unclaimedFees = 0;
 
@@ -493,7 +495,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // transfer funds for instant withdraw to this contract
     try this.getFundsFromBorrower(0, 0, _instantWithdraws) {
       // transfer funds to IdleCreditVault and decrease pendingInstantWithdraws
-      if (_instantWithdraws > 0) {
+      if (_instantWithdraws != 0) {
         _strategy.collectInstantWithdrawFunds(_instantWithdraws);
       }
       // allow instant withdraws
@@ -619,7 +621,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 pendingFees = pendingWithdrawFees;
     uint256 trancheExpected;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
-    // (exclude pendingWithdrawFees since they go to feeReceiver, not tranche holders)
+    // (exclude pendingWithdrawFees since they go to fee receivers, not tranche holders)
     if (expectedInt > pendingFees) {
       trancheExpected = _calcTrancheInterestShare(
         _netGainAfterFees(expectedInt - pendingFees, _calculateManagementFee(lastNAVAA + lastNAVBB, remaining)),
@@ -660,7 +662,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _checkNotAllowed((_tranche != AATranche && _tranche != BBTranche) || 
       (!allowAAWithdrawRequest && _tranche == AATranche) || 
       (!allowBBWithdrawRequest && _tranche == BBTranche) ||
-      (!keyringAllowWithdraw && !isWalletAllowed(msg.sender))
+      !isWalletAllowed(msg.sender)
     );
   
     // we check if there are donated assets to the pool and transfer them to the feeReceiver if any
@@ -693,11 +695,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
     // Charge one epoch of management fee only on the principal that is leaving live NAV.
-    uint256 managementFee = _calculateManagementFee(principal, epochDuration);
+    uint256 upfrontManagementFee = _calculateManagementFee(principal, epochDuration);
+    uint256 totalFees = fees + upfrontManagementFee;
     // user is requesting principal + interest of next epoch minus fees and upfront management fee
-    _underlyings = principal + (interest - fees) - managementFee;
+    _underlyings = principal + interest - totalFees;
     // add expected fees to pending withdraw fees counter
-    pendingWithdrawFees += fees + managementFee;
+    pendingWithdrawFees += totalFees;
 
     /// if there is an AA withdrawal the overperformance that the amount withdrawed would have generated for BB tranches
     /// is saved in interestForOverUnderPerformance. This is used to calculate the interest that should be added to the
@@ -798,9 +801,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Apply projected management and performance fees to a positive gain.
   function _netGainAfterFees(uint256 _gain, uint256 _managementFee) private view returns (uint256 netGain) {
     if (_managementFee >= _gain) return netGain;
-    // remove mgmt fee
+    // remove mgmt fee and performance fee
     _gain -= _managementFee;
-    // remove performance fee
     return _gain - _gain * fee / FULL_ALLOC;
   }
 

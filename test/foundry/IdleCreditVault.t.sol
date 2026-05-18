@@ -83,7 +83,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(_owner);
     _cdo.setIsAYSActive(true);
-    _cdo.setFeeParams(TL_MULTISIG, 0);
+    IdleCDOEpochVariant(address(_cdo)).setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
     vm.stopPrank();
 
     _postDeploy(address(_cdo), _owner);
@@ -106,7 +106,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(epochDuration, buffer); // set this to have an epoch during 1/10 of the year
-    cdoEpoch.setKeyringParams(address(0), 0, false); // deactivate keyring
+    cdoEpoch.setKeyringParams(address(0), 0); // deactivate keyring
     vm.stopPrank();
 
     // we set the apr again manually for tests because we changed epoch params
@@ -354,8 +354,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
     uint256 amountWei = 10000 * ONE_SCALE;
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     idleCDO.depositAA(amountWei);
     idleCDO.depositBB(amountWei);
@@ -607,8 +606,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     (uint256 interest,) = _calcInterestForTranche(address(AAtranche), 10000 * ONE_TRANCHE_TOKEN);
     assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest, 'maxWithdrawable is wrong');
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     assertEq(cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()), amount + interest - (interest / 10), 'maxWithdrawable with fees is wrong');
 
     _setManagementFee(1_000); // 1%
@@ -675,8 +673,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(amount);
     _transferBurnedTrancheTokens(address(this), true);
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     _setManagementFee(mgmtFee);
 
     vm.startPrank(manager);
@@ -709,12 +706,85 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testStopEpochSplitsManagementFeeBetweenFeeReceiverAndOwner() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFee = 1_000; // 1%
+    uint256 feeSplit = 80_000; // 80% to feeReceiver, 20% to owner
+    address creatorFeeReceiver = makeAddr("creatorFeeReceiver");
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _setFeeParams(creatorFeeReceiver, 0, feeSplit, mgmtFee);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 receiverBalPre = IERC20Detailed(defaultUnderlying).balanceOf(creatorFeeReceiver);
+    uint256 ownerBalPre = IERC20Detailed(defaultUnderlying).balanceOf(owner);
+
+    deal(defaultUnderlying, borrower, expectedInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    uint256 expectedMgmtFee = _calcManagementFee(amount, mgmtFee, 365 days);
+    uint256 expectedReceiverFee = expectedMgmtFee * feeSplit / FULL_ALLOC;
+    uint256 expectedOwnerFee = expectedMgmtFee - expectedReceiverFee;
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(creatorFeeReceiver) - receiverBalPre,
+      expectedReceiverFee,
+      "fee receiver got wrong split"
+    );
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre,
+      expectedOwnerFee,
+      "owner got wrong split"
+    );
+  }
+
+  function testStopEpochSendsAllFeesToOwnerWhenFeeReceiverIsZero() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFee = 1_000; // 1%
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _setFeeParams(address(0), 0, 80_000, mgmtFee);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 ownerBalPre = IERC20Detailed(defaultUnderlying).balanceOf(owner);
+
+    deal(defaultUnderlying, borrower, expectedInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertEq(cdoEpoch.feeReceiver(), address(0), "fee receiver should be unset");
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre,
+      _calcManagementFee(amount, mgmtFee, 365 days),
+      "owner should receive all fees"
+    );
+  }
+
   function testRequestWithdrawChargesManagementFeeUpfront() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 mgmtFeeRate = 1_000; // 1%
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     _setManagementFee(mgmtFeeRate);
 
     uint256 trancheAmount = idleCDO.depositAA(amount);
@@ -757,8 +827,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 poolInterest = 1_000 * ONE_SCALE;
     uint256 mgmtFeeRate = 1_000; // 1%
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -1041,8 +1110,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testDepositDuringEpochNumericalAAWithFees() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     // 10% apr, 365-day epoch, no buffer
     vm.startPrank(manager);
@@ -1123,8 +1191,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(address(0), mgmtFeeRate);
+    _setFeeParams(cdoEpoch.feeReceiver(), cdoEpoch.fee(), cdoEpoch.feeSplit(), mgmtFeeRate);
 
     uint256 remaining = cdoEpoch.epochDuration() / 2;
     vm.warp(cdoEpoch.epochEndDate() - remaining);
@@ -1181,8 +1248,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 mgmtFeeRate = 1_000; // 1%
     uint256 perfFeeRate = 10_000; // 10%
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, perfFeeRate);
+    _setFeeParams(TL_MULTISIG, perfFeeRate, FULL_ALLOC, cdoEpoch.managementFee());
 
     // 10% apr, 365-day epoch, no buffer
     vm.startPrank(manager);
@@ -1196,8 +1262,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setIsAYSActive(false);
 
     _startEpochAndCheckPrices(0);
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(address(0), mgmtFeeRate);
+    _setFeeParams(cdoEpoch.feeReceiver(), cdoEpoch.fee(), cdoEpoch.feeSplit(), mgmtFeeRate);
 
     uint256 remaining = cdoEpoch.epochDuration() / 2;
     vm.warp(cdoEpoch.epochEndDate() - remaining);
@@ -1511,7 +1576,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault _strategy = IdleCreditVault(address(strategy));
 
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     cdoEpoch.setIsAYSActive(false); // we do the test only with AA so 100% of the interest shoudl go to AA
     vm.stopPrank();
 
@@ -1556,13 +1621,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // of the user with a pending withdraw (we scale the interest with the buffer period as we do with the apr)
     assertEq(
       cdoEpoch.expectedEpochInterest(), 
-      uint256(int256(_scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees) + cdoEpoch.interestForOverUnderPerformance()),
+      _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees,
       'expectedEpochInterest is wrong epoch 1'
     );
     // stop epoch.
 
     // gross interest
-    interest = uint256(int256(_scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawInterest + withdrawFees) + cdoEpoch.interestForOverUnderPerformance());
+    interest = _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawInterest + withdrawFees;
     fees = fee * interest / FULL_ALLOC;
     feeBalPre = IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
 
@@ -1629,8 +1694,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(manager);
     cdoEpoch.setInstantWithdrawParams(cdoEpoch.instantWithdrawDelay(), 1000, false);
     vm.stopPrank();
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     // check that manager cannot call stopEpoch if there is no epoch running
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
@@ -1716,8 +1780,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStopEpochMintInterestMintsStrategyTokensAndFees() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.prank(owner);
     IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.prank(owner);
@@ -1786,6 +1849,41 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testStopEpochMintInterestSendsAllFeesToOwnerWhenFeeReceiverIsZero() external {
+    _setFeeParams(address(0), 10000, 80_000, cdoEpoch.managementFee()); // 10%
+    vm.prank(owner);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    vm.startPrank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+    vm.stopPrank();
+
+    uint256 amountWei = 10000 * ONE_SCALE;
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    _startEpochAndCheckPrices(0);
+
+    uint256 ownerAAPre = IERC20(address(AAtranche)).balanceOf(owner);
+    uint256 overrideInterest = 1000 * ONE_SCALE;
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, overrideInterest);
+
+    uint256 feeExpected = overrideInterest * cdoEpoch.fee() / FULL_ALLOC;
+    uint256 expectedFeeShares = feeExpected * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche));
+    assertEq(cdoEpoch.feeReceiver(), address(0), "fee receiver should be unset");
+    assertApproxEqAbs(
+      IERC20(address(AAtranche)).balanceOf(owner) - ownerAAPre,
+      expectedFeeShares,
+      1,
+      "owner should receive all minted fee shares"
+    );
+  }
+
   function testStopEpochMintInterestOverrideCanExceedExpectedInterestUpToMaxAprCap() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     uint256 maxApr = _scaleAprWithBuffer(initialProvidedApr);
@@ -1848,8 +1946,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStopEpochMintInterestWithPendingWithdraws() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(owner);
@@ -1946,8 +2043,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStartEpochAfterMintInterestDoesNotPullInterest() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
 
@@ -1987,8 +2083,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStopEpochMintInterestWithAprNoOverride() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsInterestMinted(true);
 
@@ -2087,8 +2182,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setInstantWithdrawParams(cdoEpoch.instantWithdrawDelay(), 1000, true);
     vm.stopPrank();
 
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -2142,8 +2236,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(manager);
     cdoEpoch.setInstantWithdrawParams(cdoEpoch.instantWithdrawDelay(), 1000, false);
     vm.stopPrank();
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -2257,8 +2350,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testRequestWithdrawNormal() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amountWei = 10000 * ONE_SCALE;
 
@@ -2333,8 +2425,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testRequestWithdrawNormalWithPrevRequests() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     // deposit 10000 with this contract
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -2377,8 +2468,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawGetsInterestAtStopEpoch() external {
     // Scenario: APR is 0 at request time and stopEpoch receives a positive override interest.
     // Expectation: requester receives principal + pro-rata APR0 interest on claim.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -2429,8 +2519,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawGetsNetInterestAtStopEpochWithFees() external {
     // Scenario: same as above but with protocol fees enabled.
     // Expectation: requester receives principal + pro-rata APR0 interest net of fees.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -2480,8 +2569,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawMultiUserProRataSameEpoch() external {
     // Scenario: two AA users request APR0 withdraws in the same epoch, then withdraw remaining balances.
     // Expectation: each claim is pro-rata by APR0 principal and total gains match 2:1 deposit ratio.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -2589,8 +2677,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawMixedAABBProRata() external {
     // Scenario: one AA user and one BB user both request APR0 withdraws in the same epoch.
     // Expectation: each claim amount matches principal + expected APR0 interest for that principal.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(manager);
     IdleCreditVault(address(strategy)).setAprs(0, 0);
 
@@ -2666,8 +2753,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawNoOverrideInterestGetsNoApr0Interest() external {
     // Scenario: APR0 withdraw exists but next stopEpoch has no override interest (_interest == 0).
     // Expectation: apr0RateByEpoch stays 0 and claim pays principal only.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -2709,8 +2795,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawNoOverrideInterestWhenClosingPool() external {
     // Scenario: APR0 withdraw exists and pool is closed with sentinel (_interest == 1).
     // Expectation: APR0 rate is not set and claim remains principal-only.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
 
@@ -2750,8 +2835,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0InvariantRevertsIfAprChangesAfterApr0Request() external {
     // Scenario: APR0 request is created, then APR is changed before settlement.
     // Expectation: stopEpoch reverts to enforce APR0 lifecycle invariant.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
 
@@ -2785,8 +2869,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawRollsAcrossEpochsNoDoubleAccrual() external {
     // Scenario: same user makes APR0 requests in different epochs before claiming.
     // Expectation: each request accrues exactly once for its own epoch (no double accrual).
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
 
@@ -2862,8 +2945,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testApr0WithdrawLateClaimDoesNotAccrueExtraEpochs() external {
     // Scenario: user delays claiming across multiple subsequent epochs.
     // Expectation: claim amount is fixed by the original APR0 settlement epoch only.
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
 
@@ -3075,13 +3157,21 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _setManagementFee(uint256 _managementFee) internal {
+    _setFeeParams(cdoEpoch.feeReceiver(), cdoEpoch.fee(), cdoEpoch.feeSplit(), _managementFee);
+  }
+
+  function _setFeeParams(
+    address _feeReceiver,
+    uint256 _fee,
+    uint256 _feeSplit,
+    uint256 _managementFee
+  ) internal {
     vm.prank(owner);
-    cdoEpoch.setFeeParams(address(0), _managementFee);
+    cdoEpoch.setFeeParams(_feeReceiver, _fee, _feeSplit, _managementFee);
   }
 
   function testRequestWithdrawInstant() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3143,8 +3233,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
   
   function testClaimWithdrawRequest() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3196,8 +3285,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimWithdrawRequestEpochRunning() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3229,8 +3317,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimWithdrawRequestWithInstantDefault() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3274,8 +3361,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimWithdrawRequestWithDefault() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3315,8 +3401,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testDefaultDoesNotAutomaticallyEnableReceiptTransfers() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amountWei = 10000 * ONE_SCALE;
     address user = makeAddr("user");
@@ -3387,8 +3472,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimInstantWithdrawRequest() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3466,8 +3550,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimInstantWithdrawRequestAfterAnEpoch() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3499,8 +3582,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testClaimInstantWithdrawRequestAfterAnEpochWithInstantWithdraw() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amount = 10000;
     uint256 amountWei = amount * ONE_SCALE;
@@ -3958,7 +4040,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     address keyring = address(1);
 
     vm.prank(owner);
-    cdoEpoch.setKeyringParams(keyring, 1, false);
+    cdoEpoch.setKeyringParams(keyring, 1);
 
     vm.mockCall(
       keyring,
@@ -3972,13 +4054,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(1e18);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.requestWithdraw(0, address(AAtranche));
-
-    vm.prank(owner);
-    // allow request redeem even if checkCredential is false
-    cdoEpoch.setKeyringParams(keyring, 1, true);
-    cdoEpoch.requestWithdraw(0, address(AAtranche));
-
-    vm.clearMockedCalls();
 
     vm.mockCall(
       keyring,
@@ -4000,7 +4075,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     trancheTokens += 10**3;
 
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.stopPrank();
 
     // Set new block.height to avoid reentrancy check on deposit/withdraw
@@ -4036,7 +4111,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testClosePool() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.stopPrank();
 
     IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
@@ -4122,7 +4197,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testClosePoolWithUnderlyingInContract() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.stopPrank();
 
     IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
@@ -4152,7 +4227,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testStopEpochWithDuration() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.stopPrank();
 
@@ -4189,7 +4264,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testStopEpochDonatedAssets() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.stopPrank();
 
     IdleCDOEpochVariant _vault = IdleCDOEpochVariant(address(idleCDO));
@@ -4494,8 +4569,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStopEpochWithDurationLossWithMintedInterest() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.prank(owner);
@@ -4530,8 +4604,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function testStopEpochWithDurationLossWithApr0PendingWithdraws() external {
-    vm.prank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
     cdoEpoch.setIsAYSActive(false);
     vm.prank(manager);
@@ -4617,7 +4690,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 10000); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     cdoEpoch.setIsAYSActive(false); // we do the test only with AA so 100% of the interest shoudl go to AA
     cdoEpoch.setEpochParams(365 days, 365 days); // set this to have an epoch during 1 year and buffer of 1 year
     vm.stopPrank();
@@ -4675,7 +4748,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     // set isAYSActive to true
     stdstore
       .target(address(cdoEpoch))
@@ -4740,7 +4813,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     // set isAYSActive to true
     stdstore
       .target(address(cdoEpoch))
@@ -4808,7 +4881,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testRequestWithdrawNormalOnlyAA() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 0); 
     vm.stopPrank();
@@ -4849,7 +4922,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testRequestWithdrawNormalOnlyAAWithBuffer() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 365 days); 
     vm.stopPrank();
@@ -4892,7 +4965,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
  function testRequestWithdrawNormalMultipleAA() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 0); 
     vm.stopPrank();
@@ -4948,7 +5021,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testRequestWithdrawNormalOnlyBB() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 0); 
     vm.stopPrank();
@@ -4989,7 +5062,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testRequestWithdrawNormalOnlyBBWithBuffer() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 365 days); 
     vm.stopPrank();
@@ -5032,7 +5105,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
  function testRequestWithdrawNormalMultipleBB() external {
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0); // 10%
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     // epoch 1 year and not buffer to simply accounting
     cdoEpoch.setEpochParams(365 days, 0); 
     vm.stopPrank();

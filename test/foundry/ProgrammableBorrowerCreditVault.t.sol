@@ -140,11 +140,11 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     vm.startPrank(owner);
     cdoEpoch.setIsAYSActive(false);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, 100000, 0);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
     cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(36.5 days, 5 days);
-    cdoEpoch.setKeyringParams(address(0), 0, false);
+    cdoEpoch.setKeyringParams(address(0), 0);
     vm.stopPrank();
 
     deal(USDC, address(this), 1_000_000 * oneScale, true);

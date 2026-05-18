@@ -15,7 +15,7 @@ contract IdleCDOStorage {
   // variable used to save the block of the latest harvest
   uint256 internal latestHarvestBlock;
   // WETH address
-  address public weth;
+  address internal weth;
   // [DEPRECATED] tokens used to incentivize the idle tranche ideal ratio
   address[] public incentiveTokens;
   // underlying token (eg DAI)
@@ -48,16 +48,16 @@ contract IdleCDOStorage {
   // address of BB Tranche token contract
   address public BBTranche;
   // address for stkIDLE gating for AA tranche. addr(0) -> inactive, addr(1) -> active
-  address public AAStaking;
+  address internal AAStaking;
   // address for stkIDLE gating for BB tranche. addr(0) -> inactive, addr(1) -> active
-  address public BBStaking;
+  address internal BBStaking;
 
   // Apr split ratio for AA tranches
   // (relative to FULL_ALLOC so 50% => 50000 => 50% of the interest to tranche AA)
   uint256 public trancheAPRSplitRatio; //
   // [DEPRECATED] Ideal tranche split ratio in `token` value
   // (relative to FULL_ALLOC so 50% => 50000 means 50% of tranches (in value) should be AA)
-  uint256 public trancheIdealWeightRatio;
+  uint256 internal trancheIdealWeightRatio;
   // Price for minting AA tranche, in underlyings
   uint256 public priceAA;
   // Price for minting BB tranche, in underlyings
@@ -68,18 +68,18 @@ contract IdleCDOStorage {
   uint256 public lastNAVBB;
   // last saved lending provider price
   uint256 public lastStrategyPrice;
-  // Keeps track of unclaimed fees for feeReceiver
+  // Keeps track of unclaimed fees for fee receivers
   uint256 public unclaimedFees;
   // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
   uint256 public unlentPerc;
 
   // Fee amount (relative to FULL_ALLOC)
   uint256 public fee;
-  // address of the fee receiver
+  // address receiving the feeSplit portion of collected fees
   address public feeReceiver;
 
   // [DEPRECATED] trancheIdealWeightRatio ± idealRanges, used in updateIncentives
-  uint256 public idealRange;
+  uint256 internal idealRange;
   // period, in blocks, for progressively releasing harvested rewards to users
   uint256 public releaseBlocksPeriod;
   // amount of rewards sold in the last harvest (in `token`)
@@ -92,7 +92,7 @@ contract IdleCDOStorage {
   bool public directDeposit;
   // referral address of the strategy developer
   address public referral;
-  // amount of fee for feeReceiver. Max is FULL_ALLOC
+  // portion of collected fees sent to feeReceiver. The rest goes to owner()
   uint256 public feeSplit;
 
   // if Adaptive Yield Split is active
@@ -121,10 +121,12 @@ contract IdleCDOStorage {
   // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
   uint256 public lossToleranceBps;
   // Amount of stkIDLE required to mint 1 underlying
-  uint256 public stkIDLEPerUnderlying;
+  uint256 internal stkIDLEPerUnderlying;
   // Explicit flag for epoch variants using programmable borrower hooks.
   // This lives in shared storage so upgrading prefunded epoch variants does not shift child storage.
   bool public isProgrammableBorrower;
+  // annualized management fee. Max is MAX_FEE / 10
+  uint256 public managementFee;
   // uint256 public test;
 
 
@@ -138,8 +140,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[45] private __gap;
-  // uint256[45] private __gap; -> after adding `test`
+  uint256[44] private __gap;
+  // uint256[43] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }
