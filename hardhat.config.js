@@ -133,7 +133,6 @@ module.exports = {
       "contracts/base/IdleCDOEpochVariantBase.sol": ultraminimalSizeConfig,
       "contracts/base/IdleCDOBase.sol": overrideConfig,
       "contracts/avax/IdleCDOEpochVariantAvax.sol": ultraminimalSizeConfig,
-      "contracts/avax/IdleCreditVaultWriteOffEscrowAvax.sol": overrideConfig,
       "contracts/IdleCDOGearboxVariant.sol": overrideConfig,
       "contracts/polygon-zk/IdleCDOPolygonZK.sol": overrideConfig,
       "contracts/optimism/IdleCDOOptimism.sol": overrideConfig,

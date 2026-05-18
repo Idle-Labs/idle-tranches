@@ -346,6 +346,34 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     assertEq(escrow.exitFee(), 1000, 'exit fee is not 1000');
   }
 
+  function testSetFeeReceiver() external {
+    address newFeeReceiver = makeAddr("newFeeReceiver");
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    escrow.setFeeReceiver(newFeeReceiver);
+
+    vm.startPrank(TL_MULTISIG);
+    vm.expectRevert(abi.encodeWithSelector(Is0.selector));
+    escrow.setFeeReceiver(address(0));
+    escrow.setFeeReceiver(newFeeReceiver);
+    vm.stopPrank();
+
+    assertEq(escrow.feeReceiver(), newFeeReceiver, 'fee receiver is wrong');
+
+    vm.prank(LP);
+    escrow.createWriteOffRequest(10000e18, 10000e6);
+    deal(address(underlying), borrower, 10000e6);
+
+    uint256 balPreFeeReceiver = underlying.balanceOf(newFeeReceiver);
+    vm.startPrank(borrower);
+    underlying.approve(address(escrow), 10000e6);
+    escrow.fullfillWriteOffRequest(LP, 10000e18, 10000e6);
+    vm.stopPrank();
+
+    uint256 fee = 10000e6 * escrow.exitFee() / escrow.FULL_VALUE();
+    assertEq(underlying.balanceOf(newFeeReceiver) - balPreFeeReceiver, fee, 'fee receiver balance is wrong');
+  }
+
   function testEmergencyWithdraw() external {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     escrow.emergencyWithdraw(address(underlying), TL_MULTISIG, 1);

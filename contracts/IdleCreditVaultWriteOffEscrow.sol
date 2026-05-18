@@ -32,9 +32,6 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   uint256 public constant FULL_VALUE = 100_000; // 100_000 = 100%
   /// @notice maximum exit fee percentage
   uint256 public constant MAX_EXIT_FEE = 1_000; // 1_000 = 1%
-  /// @notice address of the TL multisig that will receive exit fees
-  address public constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
-
   /// @notice 1 tranche token = 1e18
   uint256 private constant ONE_TRANCHE = 1e18;
   /// @notice idleCDOEpochVariant contract
@@ -79,7 +76,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     tranche = _isAATranche ? _cdo.AATranche() : _cdo.BBTranche();
     borrower = IdleCreditVault(strategy).borrower();
     exitFee = 100; // 0.1%
-    feeReceiver = TL_MULTISIG; // set fee receiver to TL multisig
+    feeReceiver = _owner; // set fee receiver to owner
     // transfer ownership to the owner
     transferOwnership(_owner);
   }
@@ -170,6 +167,12 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     // check if the exit fee is valid
     if (_exitFee > MAX_EXIT_FEE) revert NotAllowed();
     exitFee = _exitFee;
+  }
+
+  function setFeeReceiver(address _feeReceiver) external {
+    _checkOnlyOwner();
+    if (_feeReceiver == address(0)) revert Is0();
+    feeReceiver = _feeReceiver;
   }
 
   /// @notice emergency withdraw function to allow the owner to withdraw tokens from the contract
