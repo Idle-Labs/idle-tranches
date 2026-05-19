@@ -8,6 +8,9 @@ const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
+const FULL_ALLOC = '100000';
+const MIN_CREDIT_VAULT_PERFORMANCE_FEE = '10000';
+const MIN_CREDIT_VAULT_MANAGEMENT_FEE = '500';
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
@@ -179,7 +182,31 @@ const getDeployTokens = (_hre) => {
   return addresses.deployTokens;
 }
 
+const getProgrammableBorrowerConfig = (deployToken) => {
+  if (!deployToken.programmableBorrower || typeof deployToken.programmableBorrower !== "object") {
+    return null;
+  }
+
+  return deployToken.programmableBorrower;
+};
+
+const sameAddress = (left, right) => {
+  return left && right && left.toLowerCase() === right.toLowerCase();
+};
 const normalizeAddress = (address) => (address || '').toLowerCase();
+const hasAddress = (address) => !helpers.isEmptyString(address) && ethers.utils.isAddress(address.toString().trim()) && address.toString().trim().toLowerCase() !== addr0;
+const getCreditVaultFee = (deployToken) => deployToken.fees === undefined ? '0' : deployToken.fees;
+const getCreditVaultFactoryFee = (deployToken) => deployToken.fees === undefined ? MIN_CREDIT_VAULT_PERFORMANCE_FEE : deployToken.fees;
+const getCreditVaultFeeSplit = (deployToken) => deployToken.feeSplit === undefined ? FULL_ALLOC : deployToken.feeSplit;
+const getCreditVaultFeeReceiver = (deployToken, owner) => deployToken.feeReceiver || owner;
+const getCreditVaultManagementFee = (deployToken) => deployToken.managementFee === undefined ? '0' : deployToken.managementFee;
+const validateCreditVaultMinimumFees = (fees, managementFee) => {
+  if (BN(fees).lt(MIN_CREDIT_VAULT_PERFORMANCE_FEE) && BN(managementFee).lt(MIN_CREDIT_VAULT_MANAGEMENT_FEE)) {
+    throw new Error(
+      `Credit vault fees too low: performance fee must be at least ${MIN_CREDIT_VAULT_PERFORMANCE_FEE} or management fee at least ${MIN_CREDIT_VAULT_MANAGEMENT_FEE}`
+    );
+  }
+};
 const getTrackedCreditVault = (_hre, cdoAddress) => {
   if (!cdoAddress) {
     return null;
@@ -189,6 +216,60 @@ const getTrackedCreditVault = (_hre, cdoAddress) => {
   ) || null;
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const getWriteOffEscrowContractName = (chainId) => ({
+  1: 'IdleCreditVaultWriteOffEscrow',
+  10: null,
+  137: null,
+  1101: null,
+  42161: null,
+  8453: null,
+  43114: 'IdleCreditVaultWriteOffEscrow',
+})[chainId];
+
+const buildCreditVaultAncillaryParams = async ({ deployToken, copyToken, networkContracts, includeWriteOff = true }) => {
+  const keyringDisabled = !helpers.isEmptyString(deployToken.keyring) && normalizeAddress(deployToken.keyring) === addr0;
+  const shouldDeployKeyring = !keyringDisabled;
+  const params = {
+    keyring: shouldDeployKeyring ? networkContracts.keyring : addr0,
+    queueImplementation: addr0,
+    prefundedDepositWindow: deployToken.prefundedDeposits ? (deployToken.prefundedDepositsWindows || '0') : '0',
+    writeOffImplementation: addr0,
+  };
+
+  if (deployToken.queue) {
+    params.queueImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.queue);
+    console.log(`Queue implementation: ${params.queueImplementation}`);
+  }
+
+  if (deployToken.writeoff && includeWriteOff) {
+    const configuredWriteOffImplementation =
+      deployToken.writeOffImplementation ||
+      deployToken.writeoffImplementation ||
+      networkContracts.writeOffImplementation ||
+      networkContracts.writeoffImplementation;
+    const trackedWriteOff = getTrackedWriteOff(copyToken);
+    if (hasAddress(configuredWriteOffImplementation)) {
+      params.writeOffImplementation = configuredWriteOffImplementation;
+    } else if (hasAddress(trackedWriteOff)) {
+      params.writeOffImplementation = await getImplementationAddress(hre.ethers.provider, trackedWriteOff);
+    } else {
+      throw new Error('writeoff is enabled but no writeOffImplementation and no copy writeOff proxy were found');
+    }
+    if (params.writeOffImplementation != addr0) {
+      console.log(`Write-off implementation: ${params.writeOffImplementation}`);
+    }
+  } else if (deployToken.writeoff) {
+    console.log('Write-off escrow is not supported for revolving credit vaults; skipping');
+  }
+
+  if (shouldDeployKeyring) {
+    console.log(`Factory will deploy KeyringIdleWhitelist using Keyring contract ${params.keyring}`);
+  } else {
+    console.log('Keyring disabled');
+  }
+
+  return { params };
+};
 
 /**
  * @name deploy
@@ -453,7 +534,7 @@ subtask("deploy-cdo-with-factory", "Deploy IdleCDO using IdleCDOFactory with all
       underlyingAddressCDO,
       governanceFund, // recovery address
       creator, // guardian
-      networkContracts.rebalancer,
+      addr0, // unused initializer slot on credit vaults
       strategyAddress,
       trancheAPRSplitRatio
     ]);
@@ -484,10 +565,12 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
   .addOptionalParam('aaStaking', 'flag whether AA staking is active', true, types.boolean)
   .addOptionalParam('bbStaking', 'flag whether BB staking is active', false, types.boolean)
   .addOptionalParam('stkAAVEActive', 'flag whether the IdleCDO receives stkAAVE', true, types.boolean)
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
   .setAction(async (args) => {
     const cdoname = args.cdoname;
     let cdoProxyAddressToClone = args.proxyCdoAddress;
-    const strategyAddress = args.strategyAddress;
+    const proxyAdminAddress = args.proxyAdmin;
+    let strategyAddress = args.strategyAddress;
     const isMatic = hre.network.name == 'matic' || hre.network.config.chainId == 137;
     const isPolygonZK = hre.network.name == 'polygonzk' || hre.network.config.chainId == 1101;
     const isOptimism = hre.network.name == 'optimism' || hre.network.config.chainId == 10;
@@ -504,9 +587,23 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     if (deployToken === undefined) {
       console.log(`🛑 deployToken not found with specified cdoname (${cdoname})`)
       return;
-    } 
-    
+    }
+    const programmableBorrowerConfig = getProgrammableBorrowerConfig(deployToken);
+    if (programmableBorrowerConfig && !deployToken.isCreditVault) {
+      console.log("🛑 programmable borrower can be used only with credit vault deployments");
+      return;
+    }
+
+    const cdoConfig = getNetworkCDOs(hre)[args.cdoname] || {};
     const signer = await helpers.getSigner();
+    if (helpers.isEmptyString(strategyAddress) && hasAddress(cdoConfig.strategy)) {
+      strategyAddress = cdoConfig.strategy;
+      console.log("Using existing Strategy: ", strategyAddress);
+    }
+    if (helpers.isEmptyString(strategyAddress)) {
+      console.log("🛑 strategyAddress must be specified or available in CDO config");
+      return;
+    }
     let strategy = await ethers.getContractAt(args.strategyName, strategyAddress, signer);
     const creator = await signer.getAddress();
     let networkCDOName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
@@ -523,8 +620,14 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
     let idleCDOAddress;
     const contractName = deployToken.cdoVariant || networkCDOName;
+    if (!helpers.isEmptyString(proxyAdminAddress)) {
+      console.log("ProxyAdmin override:     ", proxyAdminAddress);
+    }
 
-    if (helpers.isEmptyString(cdoProxyAddressToClone)) {
+    if (hasAddress(cdoConfig.cdoAddr)) {
+      idleCDOAddress = cdoConfig.cdoAddr;
+      console.log("Using existing CDO:      ", idleCDOAddress);
+    } else if (helpers.isEmptyString(cdoProxyAddressToClone)) {
       console.log("🛑 cdoProxyAddressToClone must be specified");
       await helpers.prompt(`Deploy a new instance of ${contractName}? [y/n]`, true);
 
@@ -539,7 +642,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
           strategy.address,
           BN(args.aaRatio) // apr split: 10% interest to AA and 90% BB
         ],
-        signer
+        signer,
+        proxyAdminAddress
       );
       idleCDOAddress = newCDO.address;
     } else {
@@ -552,6 +656,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         governanceFund: networkContracts.treasuryMultisig, // recovery address
         strategy: strategy.address,
         trancheAPRSplitRatio: BN(args.aaRatio).toString(), // apr split: 10% interest to AA and 80% BB
+        proxyAdmin: proxyAdminAddress,
       }
       idleCDOAddress = await hre.run("deploy-cdo-with-factory", deployParams);
     }
@@ -564,7 +669,18 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     console.log(`AATranche: ${AAaddr}, BBTranche: ${BBaddr}`);
     console.log()
 
-    if (strategy.setWhitelistedCDO) {
+    let programmableBorrower;
+
+    if (programmableBorrowerConfig) {
+      const currentUnscaledApr = await strategy.unscaledApr();
+      const currentApr = await strategy.getApr();
+      if (!currentUnscaledApr.eq(0) || !currentApr.eq(0)) {
+        console.log("Setting strategy APRs to 0 for programmable borrower mode");
+        await strategy.connect(signer).setAprs(0, 0);
+      }
+    }
+
+    if (strategy.setWhitelistedCDO && (await strategy.idleCDO())?.toLowerCase() != idleCDO.address.toLowerCase()) {
       console.log("Setting whitelisted CDO");
       await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     }
@@ -587,10 +703,33 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     const feeReceiver = await idleCDO.feeReceiver();
     const cdoFee = await idleCDO.fee();
-    if (feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() || (deployToken.fees && cdoFee.toString() != deployToken.fees.toString())) {
-      const fee = deployToken.fees ? deployToken.fees : cdoFee;
+    const fee = deployToken.fees === undefined ? cdoFee : deployToken.fees;
+    if (deployToken.isCreditVault) {
+      const configuredFeeReceiver = getCreditVaultFeeReceiver(deployToken, networkContracts.treasuryMultisig);
+      const feeSplit = getCreditVaultFeeSplit(deployToken);
+      const managementFee = deployToken.managementFee === undefined ? await idleCDO.managementFee() : deployToken.managementFee;
+      const cdoFeeSplit = await idleCDO.feeSplit();
+      const cdoManagementFee = await idleCDO.managementFee();
+      if (
+        feeReceiver.toLowerCase() != configuredFeeReceiver.toLowerCase() ||
+        cdoFee.toString() != fee.toString() ||
+        cdoFeeSplit.toString() != feeSplit.toString() ||
+        cdoManagementFee.toString() != managementFee.toString()
+      ) {
+        console.log('Setting credit vault fee params with ', configuredFeeReceiver, fee, feeSplit, managementFee);
+        await idleCDO.connect(signer)["setFeeParams(address,uint256,uint256,uint256)"](
+          configuredFeeReceiver,
+          fee,
+          feeSplit,
+          managementFee
+        );
+      }
+    } else if (
+      feeReceiver.toLowerCase() != networkContracts.feeReceiver.toLowerCase() ||
+      cdoFee.toString() != fee.toString()
+    ) {
       console.log('Setting fee params with ', networkContracts.feeReceiver, fee);
-      await idleCDO.connect(signer).setFeeParams(networkContracts.feeReceiver, fee);
+      await idleCDO.connect(signer)["setFeeParams(address,uint256)"](networkContracts.feeReceiver, fee);
     }
 
     if (deployToken.unlent == 0 && !deployToken.isCreditVault) {
@@ -617,11 +756,19 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       } else {
         cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
       }
-      if (deployToken.epochDuration || deployToken.bufferPeriod) {
+      const currentEpochDuration = await cdoEpoch.epochDuration();
+      const currentBufferPeriod = await cdoEpoch.bufferPeriod();
+      if ((deployToken.epochDuration || deployToken.bufferPeriod) && (!currentEpochDuration.eq(BN(deployToken.epochDuration)) || !currentBufferPeriod.eq(BN(deployToken.bufferPeriod)))) {
         console.log(`Setting epoch duration to ${deployToken.epochDuration}, buffer period to ${deployToken.bufferPeriod}`);
         await cdoEpoch.connect(signer).setEpochParams(BN(deployToken.epochDuration), BN(deployToken.bufferPeriod));
       }
-      if (deployToken.disableInstantWithdraw || deployToken.instantWithdrawDelay || deployToken.instantWithdrawAprDelta) {
+      const currentDisableInstantWithdraw = await cdoEpoch.disableInstantWithdraw();
+      const currentInstantWithdrawDelay = await cdoEpoch.instantWithdrawDelay();
+      const currentInstantWithdrawAprDelta = await cdoEpoch.instantWithdrawAprDelta();
+      if ((deployToken.disableInstantWithdraw || deployToken.instantWithdrawDelay || deployToken.instantWithdrawAprDelta) && 
+          (currentDisableInstantWithdraw != deployToken.disableInstantWithdraw) || 
+           !currentInstantWithdrawDelay.eq(BN(deployToken.instantWithdrawDelay)) || 
+           !currentInstantWithdrawAprDelta.eq(BN(deployToken.instantWithdrawAprDelta))) {
         console.log(`Setting instant withdraw params disable: ${deployToken.disableInstantWithdraw}, instant delay: ${deployToken.instantWithdrawDelay}, instant apr delta ${deployToken.instantWithdrawAprDelta}`);
         await cdoEpoch.connect(signer).setInstantWithdrawParams(
           BN(deployToken.instantWithdrawDelay), 
@@ -629,17 +776,23 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
           deployToken.disableInstantWithdraw
         );
       }
-      if (deployToken.keyring) {
+      if (helpers.isEmptyString(deployToken.keyring) && deployToken.keyring != addr0 && hasAddress(cdoConfig.keyringWhitelist)) {
+        deployToken.keyring = cdoConfig.keyringWhitelist;
+        console.log("Using existing keyring:  ", deployToken.keyring);
+      }
+      const currentKeyring = await cdoEpoch.keyring();
+      const currentKeyringPolicy = await cdoEpoch.keyringPolicyId();
+      if (deployToken.keyring && (deployToken.keyring.toLowerCase() != currentKeyring.toLowerCase() || deployToken.keyringPolicy != currentKeyringPolicy)) {
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
-        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
-      } else if (deployToken.keyring != addr0) {
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy);
+      } else if (!deployToken.keyring) {
         console.log(`Deploying new keyring with default params and setting it`);
         const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
         deployToken.keyring = newKeyring;
         console.log(`Setting keyring ${deployToken.keyring}, policy ${deployToken.keyringPolicy}`);
-        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy, deployToken.keyringAllowWithdraw);
+        await cdoEpoch.connect(signer).setKeyringParams(deployToken.keyring, deployToken.keyringPolicy);
       }
-      if (deployToken.interestMinted) {
+      if (deployToken.interestMinted && !await cdoEpoch.isInterestMinted()) {
         console.log(`Setting interest minted ${deployToken.interestMinted}`);
         await cdoEpoch.connect(signer).setIsInterestMinted(deployToken.interestMinted);
       }
@@ -648,13 +801,19 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
         await cdoEpoch.connect(signer).setIsDepositDuringEpochDisabled(!deployToken.depositDuringEpoch);
       }
       if (deployToken.queue) {
-        const queue = await hre.run("deploy-queue", {
-          cdo: idleCDOAddress,
-          // owner: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
-          owner: networkContracts.treasuryMultisig,
-          isaa: 'true',
-          keyring: deployToken.keyring != addr0 ? deployToken.keyring : undefined
-        });
+        let queue = cdoConfig.queue;
+        if (!hasAddress(queue)) {
+          queue = await hre.run("deploy-queue", {
+            cdo: idleCDOAddress,
+            // owner: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
+            owner: networkContracts.treasuryMultisig,
+            isaa: 'true',
+            keyring: deployToken.keyring != addr0 ? deployToken.keyring : undefined,
+            proxyAdmin: proxyAdminAddress,
+          });
+        } else {
+          console.log("Using existing queue:    ", queue);
+        }
 
         if (deployToken.prefundedDeposits) {
           console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
@@ -666,11 +825,62 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
           await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
         }
       }
-    }
+      if (programmableBorrowerConfig) {
+        let deployedProgrammableBorrower = false;
+        programmableBorrower = cdoConfig.programmableBorrower;
+        if (!hasAddress(programmableBorrower)) {
+          programmableBorrower = await hre.run("deploy-programmable-borrower", {
+            cdo: idleCDOAddress,
+            vault: programmableBorrowerConfig.vault,
+            manager: programmableBorrowerConfig.manager,
+            borrower: programmableBorrowerConfig.borrower,
+            borrowerapr: programmableBorrowerConfig.borrowerApr,
+            proxyAdmin: proxyAdminAddress,
+          });
+          deployedProgrammableBorrower = true;
+        } else {
+          console.log("Using existing ProgrammableBorrower:", programmableBorrower);
+        }
 
-    if (deployToken.writeoff) {
-      console.log('Deploying write off escrow');
-      await hre.run("deploy-writeoff-escrow", { cdo: idleCDOAddress });
+        if ((await strategy.borrower()).toLowerCase() != programmableBorrower.toLowerCase()) {
+          console.log(`Setting strategy borrower to ProgrammableBorrower ${programmableBorrower}`);
+          await strategy.connect(signer).setBorrower(programmableBorrower);
+        }
+
+        if (!await cdoEpoch.isProgrammableBorrower()) {
+          console.log('Enabling programmable borrower mode');
+          await cdoEpoch.connect(signer).setIsProgrammableBorrower(true);
+        }
+
+        if (!await cdoEpoch.isInterestMinted()) {
+          console.log('Enabling minted interest for programmable borrower mode');
+          await cdoEpoch.connect(signer).setIsInterestMinted(true);
+        }
+        if (!await cdoEpoch.disableInstantWithdraw()) {
+          console.log(`Disabling instant withdraw`);
+          await cdoEpoch.connect(signer).setInstantWithdrawParams(0, 0, true);
+        }
+
+        const programmableBorrowerContract = await ethers.getContractAt("ProgrammableBorrower", programmableBorrower, signer);
+        if (deployedProgrammableBorrower) {
+          console.log(`Transfer ownership of ProgrammableBorrower to TL multisig ${networkContracts.treasuryMultisig}`);
+          await programmableBorrowerContract.connect(signer).transferOwnership(networkContracts.treasuryMultisig);
+        }
+      }
+
+      if (deployToken.writeoff) {
+        if (programmableBorrowerConfig) {
+          console.log('Skipping write off escrow for programmable borrower deployment');
+        } else {
+          const writeOffEscrow = cdoConfig.writeOff || cdoConfig.writeoff;
+          if (!hasAddress(writeOffEscrow)) {
+            console.log('Deploying write off escrow');
+            await hre.run("deploy-writeoff-escrow", { cdo: idleCDOAddress, proxyAdmin: proxyAdminAddress });
+          } else {
+            console.log("Using existing write off escrow:", writeOffEscrow);
+          }
+        }
+      }
     }
 
     console.log(`Set guardian of CDO to Pause multisig ${networkContracts.pauserMultisig}`);
@@ -684,7 +894,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     await hre.run("protect-cdo", { cdo: idleCDOAddress });
     
-    return {idleCDO, strategy, AAaddr, BBaddr};
+    return {idleCDO, strategy, AAaddr, BBaddr, programmableBorrower};
   });
 
 task("protect-cdo", "Add cdo to hypernative pauser module")
@@ -862,6 +1072,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
  */
 task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optionally staking rewards via CDOFactory")
   .addParam('cdoname')
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
@@ -875,6 +1086,10 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
 
     // Get config params
     const deployToken = networkTokens[args.cdoname];
+    if (deployToken === undefined) {
+      console.log(`🛑 deployToken not found with specified cdoname (${args.cdoname})`)
+      return;
+    }
     
     // Check that args has strategyName and strategyParams
     if (!deployToken.strategyName || !deployToken.strategyParams) {
@@ -884,6 +1099,7 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
     // Get signer
     const signer = await helpers.getSigner();
     const addr = await signer.getAddress();
+    const cdoConfig = getNetworkCDOs(hre)[args.cdoname] || {};
 
     console.log(`Deploying with ${addr}`);
     console.log()
@@ -893,16 +1109,26 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       p => p === 'owner' ? addr : p
     );  
 
-    console.log("Deploying Strategy:      ", deployToken.strategyName);
-    console.log("Strategy params:         ", JSON.stringify(params));
-    console.log()
+    if (!helpers.isEmptyString(args.proxyAdmin)) {
+      console.log("ProxyAdmin override:     ", args.proxyAdmin);
+    }
 
-    // Deploy strategy
-    const strategy = await helpers.deployUpgradableContract(
-      deployToken.strategyName, 
-      params,
-      signer
-    );
+    let strategy;
+    if (hasAddress(cdoConfig.strategy)) {
+      console.log("Using existing Strategy: ", cdoConfig.strategy);
+      strategy = await ethers.getContractAt(deployToken.strategyName, cdoConfig.strategy, signer);
+    } else {
+      console.log("Deploying Strategy:      ", deployToken.strategyName);
+      console.log("Strategy params:         ", JSON.stringify(params));
+      console.log()
+
+      strategy = await helpers.deployUpgradableContract(
+        deployToken.strategyName, 
+        params,
+        signer,
+        args.proxyAdmin
+      );
+    }
     
     // Deploy IdleCDO with new strategy
     await hre.run("deploy-with-factory", {
@@ -917,6 +1143,7 @@ task("deploy-with-factory-params", "Deploy IdleCDO with a new strategy and optio
       limit: deployToken.limit,
       aaRatio: deployToken.AARatio,
       isAYSActive: deployToken.isAYSActive,
+      proxyAdmin: args.proxyAdmin,
     });
 });
 
@@ -944,13 +1171,16 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const networkContracts = getNetworkContracts(hre);
     const networkCDOs = getNetworkCDOs(hre);
     const deployToken = networkTokens[args.cdoname];
-    const proxyAdmin = networkContracts.proxyAdmin;
+    if (deployToken.programmableBorrower) {
+      console.log("Programmable borrower config detected, using revolving deployment path");
+      return run("deploy-revolving-cv-with-factory", args);
+    }
     const copyToken = networkCDOs[args.copyname];
     const addr0 = '0x0000000000000000000000000000000000000000';
 
     // Check that args has strategyName and strategyParams
-    if (!proxyAdmin || !deployToken.strategyParams) {
-      console.log("🛑 proxyAdmin and strategyParams must be specified");
+    if (!deployToken.strategyParams) {
+      console.log("🛑 strategyParams must be specified");
       return;
     }
 
@@ -963,12 +1193,11 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
 
     const factoryAddr = networkContracts.creditVaultFactoryV2;
 
-    console.log("ProxyAdmin:              ", proxyAdmin);
     console.log("Copy CDO:                ", copyToken.cdoAddr);
     console.log("Copy Strategy:           ", copyToken.strategy);
     console.log("Factory:                 ", factoryAddr);
     
-    // Replace owner as last param
+    // Keep the legacy strategyParams shape; the factory ignores the owner slot.
     const params = deployToken.strategyParams.map(
       p => p === 'owner' ? addr : p
     );
@@ -976,45 +1205,19 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const apr = params[params.length - 1];
     console.log('APR:                     ', apr.toString());
 
-    // replace owner address with factory address 
-    params[1] = factoryAddr;
-
-    const strategyCopy = await ethers.getContractAt("IdleCreditVault", copyToken.strategy);
     const strategyData = {
       implementation: await getImplementationAddress(hre.ethers.provider, copyToken.strategy),
-      proxyAdmin,
-      initializeData: strategyCopy.interface.encodeFunctionData("initialize", params)
+      manager: params[2],
+      borrower: params[3],
+      borrowerName: params[4]
     };
 
     console.log('Strategy data for IdleCDOEpochVariant:');
     console.log("Strategy implementation: ", strategyData.implementation);
     console.log("Strategy params:         ", params);
-    console.log("Strategy initialize data: ", strategyData.initializeData);
     console.log()
     const hypernative = deployToken.hypernative;
     console.log("Hypernative:             ", hypernative);
-
-    const cvParams = [
-      BN(deployToken.limit).mul(ONE_TOKEN(deployToken.decimals)), // limit
-      deployToken.underlying,
-      networkContracts.treasuryMultisig, // recovery address
-      hypernative ? networkContracts.pauserMultisig : networkContracts.treasuryMultisig, // guardian
-      networkContracts.rebalancer,
-      addr0, // strategy address will be set in the contract directly
-      BN(deployToken.AARatio) // apr split: 10% interest to AA and 90% BB
-    ];
-    const cvCopy = await ethers.getContractAt("IdleCDOEpochVariant", copyToken.cdoAddr);
-    const cvData = {
-      implementation: await getImplementationAddress(hre.ethers.provider, copyToken.cdoAddr),
-      proxyAdmin,
-      initializeData: cvCopy.interface.encodeFunctionData("initialize", cvParams)
-    };
-
-    console.log('Credit Vault data for IdleCDOEpochVariant:');
-    console.log("Credit Vault implementation: ", cvData.implementation);
-    console.log("Credit Vault params:         ", cvParams);
-    console.log("Credit vault initialize data: ", cvData.initializeData);
-    console.log()
 
     const epochDuration = deployToken.epochDuration || 604800; // default 7 day
     const bufferPeriod = deployToken.bufferPeriod || 43200; // default 12 hour
@@ -1023,61 +1226,60 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18); // default 0
     const disableInstantWithdraw = deployToken.disableInstantWithdraw || false; // default false
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
-    if (!deployToken.keyring && deployToken.keyring != addr0) {
-      console.log(`Deploying new keyring with default params and setting it`);
-      const newKeyring = await run("deploy-keyring-whitelist", { owner: networkContracts.deployer });
-      deployToken.keyring = newKeyring;
-    }
-    const keyring = deployToken.keyring;
-    const keyringPolicy = deployToken.keyringPolicy;
-    const keyringAllowWithdraw = deployToken.keyringAllowWithdraw;
-    console.log(`Setting keyring ${keyring}, policy ${keyringPolicy}, allow withdraw ${keyringAllowWithdraw}`);
-    const fees = deployToken.fees;
-    console.log(`Setting fees ${fees}`);
+    const owner = networkContracts.treasuryMultisig;
+    const { params: ancillaryParams } = await buildCreditVaultAncillaryParams({
+      deployToken,
+      copyToken,
+      networkContracts,
+    });
+    const keyringPolicy = deployToken.keyringPolicy || '0';
+    console.log(`Setting keyring policy ${keyringPolicy}`);
+    const fees = getCreditVaultFactoryFee(deployToken);
+    const feeReceiver = getCreditVaultFeeReceiver(deployToken, owner);
+    const managementFee = getCreditVaultManagementFee(deployToken);
+    validateCreditVaultMinimumFees(fees, managementFee);
     console.log(`Has queue: ${deployToken.queue}`);
-    let queueImplementation;
-    if (deployToken.queue) {
-      queueImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.queue);
-      console.log(`Queue implementation: ${queueImplementation}`);
-    }
     console.log()
 
-    console.log('Is interest minted: ', deployToken.interestMinted);
+    console.log('Is interest minted: ', !!deployToken.interestMinted);
     console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
     console.log();
 
-    // const owner = '0xE5Dab8208c1F4cce15883348B72086dBace3e64B';
-    const owner = networkContracts.treasuryMultisig;
-    console.log('Owner of all contracts: ', owner);
-
     const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
+    const factoryFeeSplit = await factory.feeSplit();
+    const factoryProxyAdmin = await factory.proxyAdmin();
+    console.log("Factory proxy admin:      ", factoryProxyAdmin);
+    console.log(`Setting fees ${fees} to ${feeReceiver} with factory split ${factoryFeeSplit}; owner receives the remainder`);
+    console.log(`Setting management fee ${managementFee}`);
+    console.log('Owner of all contracts: ', owner);
     console.log(`Deploying contracts via factory at ${factoryAddr}`);
     const creditVaultPostInitParams = {
+      implementation: await getImplementationAddress(hre.ethers.provider, copyToken.cdoAddr),
+      limit: BN(deployToken.limit).mul(ONE_TOKEN(deployToken.decimals)),
+      underlying: deployToken.underlying,
       apr,
       epochDuration,
       bufferPeriod,
       instantWithdrawDelay,
       instantWithdrawAprDelta,
       disableInstantWithdraw,
-      keyring,
       keyringPolicy,
-      keyringAllowWithdraw,
+      feeReceiver,
       fees,
-      isInterestMinted: deployToken.interestMinted,
+      managementFee,
+      isInterestMinted: !!deployToken.interestMinted,
       isDepositDuringEpochDisabled: !deployToken.depositDuringEpoch
     }
+    console.log("Credit Vault params:     ", creditVaultPostInitParams);
     const tx = await factory.connect(signer).deployCreditVault(
-      cvData, 
-      strategyData,
       creditVaultPostInitParams,
-      queueImplementation ? queueImplementation : addr0, // if queue is not defined, use zero address
-      owner
+      strategyData,
+      ancillaryParams
     );
     const receipt = await tx.wait();
 
-    // get tx return values
-    const [cv] = receipt.events.find(e => e.event === "CreditVaultDeployed").args;
-    const [strategy] = receipt.events.find(e => e.event === "StrategyDeployed").args;
+    const deploymentEvent = receipt.events.find(e => e.event === "CreditVaultDeployed");
+    const [cv, strategy, queue, , keyringWhitelist, writeOffEscrow] = deploymentEvent.args;
     console.log('Credit Vault deployed at  ', cv);
     console.log('Strategy deployed at      ', strategy);
 
@@ -1086,22 +1288,14 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       await hre.run("verify-contract", { address: strategy });
     }
 
-    let queue;
     if (deployToken.queue) {
-      [queue] = receipt.events.find(e => e.event === "QueueDeployed").args;
       console.log('Queue deployed at         ', queue);
-      if (deployToken.prefundedDeposits) {
-        console.log(`Setting prefunded deposits queue ${queue} and enabling prefunded deposits`);
-        const cdoPrefundedVariant = await ethers.getContractAt('contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded', cv, signer);
-        await cdoPrefundedVariant.connect(signer).setEpochQueue(queue);
-
-        console.log(`Setting prefunded deposits window -> seconds: ${deployToken.prefundedDepositsWindows}`);
-        const queueContract = await ethers.getContractAt('IdleCDOEpochQueue', queue, signer);
-        await queueContract.setPrefundedDepositWindow(deployToken.prefundedDepositsWindows);
-      }
       if (shouldVerify) {
         await hre.run("verify-contract", { address: queue });
       }
+    }
+    if (keyringWhitelist !== addr0) {
+      console.log('Keyring whitelist deployed at', keyringWhitelist);
     }
 
     if (hypernative) {
@@ -1112,21 +1306,227 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
       await hre.run("watch-cdo", { cdo: cv, name });
     }
 
-    if (deployToken.queue && deployToken.keyring != addr0) {
-      console.log(`Whitelisting queue in KeyringWhitelist if exists`);
-      console.log(`Adding queue to keyring whitelist (${deployToken.keyring})`);
-      const whitelist = await ethers.getContractAt("KeyringWhitelist", deployToken.keyring, signer);
-      await whitelist.connect(signer).setWhitelistStatus(queue, true);
+    if (deployToken.writeoff && writeOffEscrow !== addr0) {
+      console.log('Write off escrow deployed at', writeOffEscrow);
+      if (shouldVerify) {
+        await hre.run("verify-contract", { address: writeOffEscrow });
+      }
     }
 
-    let writeOffEscrow;
-    if (deployToken.writeoff) {
-      console.log('Deploying write off escrow');
-      writeOffEscrow = await hre.run("deploy-writeoff-escrow", { cdo: cv });
-    }
-
-    await hre.run("print-contracts-info", { cdo: cv, strategy, queue, writeoff: writeOffEscrow });
+    await hre.run("print-contracts-info", {
+      cdo: cv,
+      strategy,
+      queue: hasAddress(queue) ? queue : undefined,
+      writeoff: hasAddress(writeOffEscrow) ? writeOffEscrow : undefined
+    });
 });
+
+/**
+ * @name deploy-revolving-cv-with-factory
+ * task to deploy a programmable-borrower credit vault via the shared factory
+ */
+task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCreditVault and ProgrammableBorrower")
+  .addParam('cdoname')
+  .addParam('copyname')
+  .addOptionalParam('skipverification', 'Skip Etherscan verification', false, types.boolean)
+  .setAction(async (args) => {
+    await run("compile");
+    const shouldVerify = !args.skipverification;
+    if (!args.cdoname || !args.copyname) {
+      console.log("🛑 cdoname and copyname must be defined");
+      return;
+    }
+
+    const networkTokens = getDeployTokens(hre);
+    const networkContracts = getNetworkContracts(hre);
+    const networkCDOs = getNetworkCDOs(hre);
+    const deployToken = networkTokens[args.cdoname];
+    const copyToken = networkCDOs[args.copyname];
+    const programmableBorrowerConfig = getProgrammableBorrowerConfig(deployToken);
+
+    if (!deployToken.strategyParams || !programmableBorrowerConfig) {
+      console.log("🛑 strategyParams and programmableBorrower config must be specified");
+      return;
+    }
+
+    const signer = await helpers.getSigner();
+    const addr = await signer.getAddress();
+    console.log(`Deploying with ${addr}`);
+    console.log()
+
+    const factoryAddr = networkContracts.creditVaultFactoryV2;
+    console.log("Copy CDO:                ", copyToken.cdoAddr);
+    console.log("Copy Strategy:           ", copyToken.strategy);
+    console.log("Factory:                 ", factoryAddr);
+
+    const params = deployToken.strategyParams.map(
+      p => p === 'owner' ? addr : p
+    );
+    if (!params[3]) {
+      params[3] = addr0;
+    }
+    params[params.length - 1] = BN(0);
+
+    if (
+      !programmableBorrowerConfig.vault ||
+      programmableBorrowerConfig.vault === addr0 ||
+      !programmableBorrowerConfig.borrower ||
+      programmableBorrowerConfig.borrower === addr0 ||
+      programmableBorrowerConfig.borrowerApr === undefined ||
+      programmableBorrowerConfig.borrowerApr === ""
+    ) {
+      console.log("🛑 programmable borrower config incomplete");
+      console.log("Provide:");
+      console.log("  programmableBorrower: { vault, borrower, borrowerApr, implementation? }");
+      return;
+    }
+    if (programmableBorrowerConfig.manager) {
+      params[2] = programmableBorrowerConfig.manager;
+    }
+
+    const strategyData = {
+      implementation: await getImplementationAddress(hre.ethers.provider, copyToken.strategy),
+      manager: params[2],
+      borrower: params[3],
+      borrowerName: params[4]
+    };
+
+    console.log('Strategy data for IdleCDOEpochVariant:');
+    console.log("Strategy implementation: ", strategyData.implementation);
+    console.log("Strategy params:         ", params);
+    console.log()
+
+    const hypernative = deployToken.hypernative;
+    console.log("Hypernative:             ", hypernative);
+
+    const epochDuration = deployToken.epochDuration || 604800;
+    const bufferPeriod = deployToken.bufferPeriod || 43200;
+    console.log(`Setting epoch duration to ${epochDuration}, buffer period to ${bufferPeriod}`);
+    const instantWithdrawDelay = deployToken.instantWithdrawDelay || 3600;
+    const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18);
+    if (deployToken.disableInstantWithdraw === false) {
+      console.log("Programmable borrower mode forces disableInstantWithdraw to true");
+    }
+    const disableInstantWithdraw = true;
+    console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
+    if (deployToken.depositDuringEpoch) {
+      console.log("Programmable borrower mode forces deposit during epoch disabled");
+    }
+    const isDepositDuringEpochDisabled = true;
+
+    const owner = networkContracts.treasuryMultisig;
+    const { params: ancillaryParams } = await buildCreditVaultAncillaryParams({
+      deployToken,
+      copyToken,
+      networkContracts,
+      includeWriteOff: false,
+    });
+    const keyringPolicy = deployToken.keyringPolicy || '0';
+    console.log(`Setting keyring policy ${keyringPolicy}`);
+
+    const fees = getCreditVaultFactoryFee(deployToken);
+    const feeReceiver = getCreditVaultFeeReceiver(deployToken, owner);
+    const managementFee = getCreditVaultManagementFee(deployToken);
+    validateCreditVaultMinimumFees(fees, managementFee);
+    console.log(`Has queue: ${deployToken.queue}`);
+    console.log()
+
+    let programmableBorrowerImplementation = programmableBorrowerConfig.implementation;
+    let deployedProgrammableBorrowerImplementation = false;
+    if (!programmableBorrowerImplementation) {
+      console.log('Deploying ProgrammableBorrower implementation');
+      const programmableBorrowerImpl = await helpers.deployContract('ProgrammableBorrower', [], signer);
+      programmableBorrowerImplementation = programmableBorrowerImpl.address;
+      deployedProgrammableBorrowerImplementation = true;
+    }
+    console.log("ProgrammableBorrower implementation:", programmableBorrowerImplementation);
+    console.log("ProgrammableBorrower vault:         ", programmableBorrowerConfig.vault);
+    console.log("ProgrammableBorrower borrower:      ", programmableBorrowerConfig.borrower);
+    console.log("ProgrammableBorrower manager:       ", params[2]);
+    console.log("ProgrammableBorrower APR:           ", programmableBorrowerConfig.borrowerApr);
+    console.log()
+
+    const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
+    const factoryFeeSplit = await factory.feeSplit();
+    const factoryProxyAdmin = await factory.proxyAdmin();
+    console.log("Factory proxy admin:      ", factoryProxyAdmin);
+    console.log(`Setting fees ${fees} to ${feeReceiver} with factory split ${factoryFeeSplit}; owner receives the remainder`);
+    console.log(`Setting management fee ${managementFee}`);
+    console.log('Owner of all contracts: ', owner);
+    console.log(`Deploying revolving credit vault via factory at ${factoryAddr}`);
+
+    const creditVaultPostInitParams = {
+      implementation: await getImplementationAddress(hre.ethers.provider, copyToken.cdoAddr),
+      limit: BN(deployToken.limit).mul(ONE_TOKEN(deployToken.decimals)),
+      underlying: deployToken.underlying,
+      apr: BN(0),
+      epochDuration,
+      bufferPeriod,
+      instantWithdrawDelay,
+      instantWithdrawAprDelta,
+      disableInstantWithdraw,
+      keyringPolicy,
+      feeReceiver,
+      fees,
+      managementFee,
+      isInterestMinted: true,
+      isDepositDuringEpochDisabled
+    };
+    console.log("Credit Vault params:     ", creditVaultPostInitParams);
+    const programmableBorrowerParams = {
+      implementation: programmableBorrowerImplementation,
+      vault: programmableBorrowerConfig.vault,
+      borrower: programmableBorrowerConfig.borrower,
+      borrowerApr: programmableBorrowerConfig.borrowerApr
+    };
+
+    const tx = await factory.connect(signer).deployRevolvingCreditVault(
+      creditVaultPostInitParams,
+      strategyData,
+      programmableBorrowerParams,
+      ancillaryParams
+    );
+    const receipt = await tx.wait();
+
+    const deploymentEvent = receipt.events.find(e => e.event === "CreditVaultDeployed");
+    const [cv, strategy, queue, programmableBorrower, keyringWhitelist] = deploymentEvent.args;
+    console.log('Credit Vault deployed at      ', cv);
+    console.log('Strategy deployed at          ', strategy);
+    console.log('ProgrammableBorrower at       ', programmableBorrower);
+
+    if (shouldVerify) {
+      await hre.run("verify-contract", { address: cv });
+      await hre.run("verify-contract", { address: strategy });
+      await hre.run("verify-contract", { address: programmableBorrower });
+      if (deployedProgrammableBorrowerImplementation) {
+        await run("verify:verify", {
+          constructorArguments: [],
+          address: programmableBorrowerImplementation,
+          contract: "contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower"
+        });
+      }
+    }
+
+    if (deployToken.queue) {
+      console.log('Queue deployed at             ', queue);
+      if (shouldVerify) {
+        await hre.run("verify-contract", { address: queue });
+      }
+    }
+    if (keyringWhitelist !== addr0) {
+      console.log('Keyring whitelist deployed at ', keyringWhitelist);
+    }
+
+    if (hypernative) {
+      console.log('Adding Credit Vault to hypernative pauser module');
+      const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const name = await strategyContract.symbol();
+      await hre.run("protect-cdo", { cdo: cv });
+      await hre.run("watch-cdo", { cdo: cv, name });
+    }
+
+    await hre.run("print-contracts-info", { cdo: cv, strategy, queue: hasAddress(queue) ? queue : undefined });
+  });
 
 task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('cdo', 'Cdo address')
@@ -1136,8 +1536,8 @@ task("print-contracts-info", "Prints deployed contracts info")
   .setAction(async (args) => {
     console.log('Printing contracts info');
     const trackedCdo = getTrackedCreditVault(hre, args.cdo);
-    const queueAddress = args.queue || trackedCdo?.queue;
-    const writeOffAddress = args.writeoff || getTrackedWriteOff(trackedCdo);
+    const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
+    const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
     const cdo = args.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", args.cdo) : null;
     const strategy = args.strategy ? await ethers.getContractAt("IdleCreditVault", args.strategy) : null;
     const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
@@ -1156,6 +1556,8 @@ task("print-contracts-info", "Prints deployed contracts info")
         epochDuration,
         bufferPeriod,
         feeValue,
+        feeSplit,
+        managementFee,
         instantDisabled,
         aprDelta,
         instantDelay,
@@ -1188,6 +1590,8 @@ task("print-contracts-info", "Prints deployed contracts info")
         cdo.epochDuration(),
         cdo.bufferPeriod(),
         cdo.fee(),
+        cdo.feeSplit(),
+        cdo.managementFee(),
         cdo.disableInstantWithdraw(),
         cdo.instantWithdrawAprDelta(),
         cdo.instantWithdrawDelay(),
@@ -1221,6 +1625,8 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  EpochDuration:  ${epochDuration}`);
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);
+      console.log(`  FeeSplit:       ${feeSplit}`);
+      console.log(`  ManagementFee:  ${managementFee}`);
       console.log(`  Instant disable:${instantDisabled}`);
       console.log(`  APR Delta:      ${aprDelta}`);
       console.log(`  Instant Delay:  ${instantDelay}`);
@@ -1348,6 +1754,7 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
   .addOptionalParam('keyring')
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
@@ -1376,13 +1783,18 @@ task("deploy-queue", "Deploy IdleCDOEpochQueue")
     const queue = await helpers.deployUpgradableContract(
       'IdleCDOEpochQueue',
       params,
-      signer
+      signer,
+      args.proxyAdmin
     );
 
     if (args.keyring) {
       console.log(`Adding queue to keyring whitelist (${args.keyring})`);
       const whitelist = await ethers.getContractAt("KeyringWhitelist", args.keyring, signer);
-      await whitelist.connect(signer).setWhitelistStatus(queue.address, true);
+      if (await whitelist.whitelist(queue.address)) {
+        console.log('Queue already whitelisted in keyring');
+      } else {
+        await whitelist.connect(signer).setWhitelistStatus(queue.address, true);
+      }
     }
 
     return queue.address;
@@ -1396,6 +1808,7 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
   .addParam('cdo')
   .addOptionalParam('owner')
   .addOptionalParam('isaa')
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
   .setAction(async (args) => {
     // Check that cdo is passed
     if (!args.cdo) {
@@ -1403,18 +1816,9 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
       return;
     }
 
-    const writeOffEscrowByChainId = {
-      1: 'IdleCreditVaultWriteOffEscrow',
-      10: null,
-      137: null,
-      1101: null,
-      42161: null,
-      8453: null,
-      43114: 'IdleCreditVaultWriteOffEscrowAvax',
-    };
     const chainId = await getRuntimeChainId(hre);
     console.log('chainId', chainId);
-    const contractName = writeOffEscrowByChainId[chainId];
+    const contractName = getWriteOffEscrowContractName(chainId);
     if (!contractName) {
       console.log('contract not available for this network');
       return;
@@ -1443,9 +1847,38 @@ task("deploy-writeoff-escrow", "Deploy IdleCreditVaultWriteOffEscrow")
     const writeOffEscrow = await helpers.deployUpgradableContract(
       contractName,
       params,
-      signer
+      signer,
+      args.proxyAdmin
     );
     return writeOffEscrow.address;
+  });
+
+/**
+* @name deploy-programmable-borrower
+* task to deploy and configure a ProgrammableBorrower proxy
+*/
+task("deploy-programmable-borrower", "Deploy and configure a ProgrammableBorrower proxy")
+  .addParam('cdo')
+  .addParam('vault')
+  .addParam('manager')
+  .addParam('borrower')
+  .addParam('borrowerapr')
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
+  .setAction(async (args) => {
+    const signer = await helpers.getSigner();
+    const deployer = await signer.getAddress();
+
+    console.log(`Deploying ProgrammableBorrower with ${deployer}`);
+    console.log()
+
+    const programmableBorrower = await helpers.deployUpgradableContract(
+      'ProgrammableBorrower',
+      [args.vault, args.cdo, deployer, args.manager, args.borrower, args.borrowerapr],
+      signer,
+      args.proxyAdmin
+    );
+
+    return programmableBorrower.address;
   });
 
 /**
@@ -1489,11 +1922,19 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`Deploying IdleCreditVaultFactory with ${addr}`);
     console.log()
 
-    const creditVaultFactory = await helpers.deployUpgradableContract('IdleCreditVaultFactory', [], signer);
+    const networkContracts = getNetworkContracts(hre);
+    const proxyAdmin = networkContracts.proxyAdminWithTimelock || networkContracts.proxyAdmin;
+    const creditVaultFactory = await helpers.deployUpgradableContract(
+      'IdleCreditVaultFactory',
+      [networkContracts.treasuryMultisig, proxyAdmin],
+      signer,
+      proxyAdmin
+    );
     const implementation = await getImplementationAddress(hre.ethers.provider, creditVaultFactory.address);
 
     console.log(`IdleCreditVaultFactory proxy deployed at ${creditVaultFactory.address}`);
     console.log(`IdleCreditVaultFactory implementation deployed at ${implementation}`);
+    console.log(`IdleCreditVaultFactory deployment proxy admin set to ${proxyAdmin}`);
 
     await run("verify:verify", {
       constructorArguments: [],

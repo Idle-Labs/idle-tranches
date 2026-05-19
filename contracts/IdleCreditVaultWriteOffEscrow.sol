@@ -32,9 +32,6 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   uint256 public constant FULL_VALUE = 100_000; // 100_000 = 100%
   /// @notice maximum exit fee percentage
   uint256 public constant MAX_EXIT_FEE = 1_000; // 1_000 = 1%
-  /// @notice address of the TL multisig that will receive exit fees
-  address public constant TL_MULTISIG = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
-
   /// @notice 1 tranche token = 1e18
   uint256 private constant ONE_TRANCHE = 1e18;
   /// @notice idleCDOEpochVariant contract
@@ -53,6 +50,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   uint256 public exitFee;
   /// @notice address of the fee receiver (where exit fee is sent)
   address public feeReceiver;
+  /// @notice amount of pending underlyings requested across all users
+  uint256 public pendingUnderlyings;
 
   /// @notice disable initialization of the implementation contract
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -77,7 +76,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     tranche = _isAATranche ? _cdo.AATranche() : _cdo.BBTranche();
     borrower = IdleCreditVault(strategy).borrower();
     exitFee = 100; // 0.1%
-    feeReceiver = TL_MULTISIG; // set fee receiver to TL multisig
+    feeReceiver = _owner; // set fee receiver to owner
     // transfer ownership to the owner
     transferOwnership(_owner);
   }
@@ -101,6 +100,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
       tranches: currentRequest.tranches + amount,
       underlyings: currentRequest.underlyings + underlyingsRequested
     });
+    pendingUnderlyings += underlyingsRequested;
   }
 
   /// @notice delete the write-off request and transfer tranche tokens back to the user
@@ -113,6 +113,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     if (currentRequest.tranches == 0) revert Is0();
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[msg.sender];
     // transfer tranche tokens back to the user
     IERC20Detailed(tranche).safeTransfer(msg.sender, currentRequest.tranches);
@@ -138,6 +139,7 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     }
 
     // delete user request
+    pendingUnderlyings -= currentRequest.underlyings;
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);
@@ -165,6 +167,12 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     // check if the exit fee is valid
     if (_exitFee > MAX_EXIT_FEE) revert NotAllowed();
     exitFee = _exitFee;
+  }
+
+  function setFeeReceiver(address _feeReceiver) external {
+    _checkOnlyOwner();
+    if (_feeReceiver == address(0)) revert Is0();
+    feeReceiver = _feeReceiver;
   }
 
   /// @notice emergency withdraw function to allow the owner to withdraw tokens from the contract
