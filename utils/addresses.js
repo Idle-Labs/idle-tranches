@@ -167,6 +167,7 @@ const mainnetContracts = {
   cloneableFeeRebateMerkleDistributor: '0x69369507aa7a44156cc297448ab57e3c15d26485',
   timelock: '0xDa86e15d0Cda3A05Db930b248d7a2f775e575A44',
   keyringWhitelist: '0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3',
+  // Canonical underlying Keyring credential contract used to deploy new KeyringIdleWhitelist instances.
   keyring: '0xb0B5E2176E10B12d70e60E3a68738298A7DFe666',
   sealSafeHarbor: '0xeca050F53ee4eCBc039DD07CB4FB785641521707',
   cdoImplWriteOff: '0x6De6ea8659C8cEa1f2aaf29758E40Ff4C8a1A53F',
@@ -3676,7 +3677,7 @@ exports.deployTokens = {
     // ## keyring params
     keyring: '', // a new whitelist will be deployed
     // keyring: mainnetContracts.keyringWhitelist,
-    keyringPolicy: 9769439,
+    keyringPolicy: 10681549,
     // ## fees (if different from 15%)
     fees: '10000', // 10%
     // #########

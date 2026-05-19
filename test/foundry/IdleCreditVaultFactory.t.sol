@@ -121,27 +121,34 @@ contract MockFactoryVault is ERC20 {
 }
 
 contract IdleCreditVaultFactoryTest is Test {
-  bytes4 internal constant CDO_INITIALIZE_SELECTOR =
-    bytes4(keccak256("initialize(uint256,address,address,address,address,address,uint256)"));
+  bytes4 internal constant AMOUNT_TOO_HIGH = bytes4(keccak256("AmountTooHigh()"));
+  bytes4 internal constant FEES_TOO_LOW = bytes4(keccak256("FeesTooLow()"));
+  bytes4 internal constant NOT_ALLOWED = bytes4(keccak256("NotAllowed()"));
+  bytes4 internal constant IS_0 = bytes4(keccak256("Is0()"));
+  bytes4 internal constant ONLY_TREASURY = bytes4(keccak256("OnlyTreasury()"));
+  bytes4 internal constant WRITE_OFF_UNSUPPORTED = bytes4(keccak256("WriteOffUnsupported()"));
+  bytes32 internal constant CREDIT_VAULT_DEPLOYED =
+    keccak256("CreditVaultDeployed(address,address,address,address,address,address)");
+  bytes32 internal constant EIP1967_ADMIN_SLOT =
+    0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
+  uint256 internal constant DEFAULT_FACTORY_FEE_SPLIT = 50000;
 
   struct AncillaryDeployment {
     address cv;
     address strategy;
     address queue;
+    address programmableBorrower;
     address keyringWhitelist;
     address writeOffEscrow;
   }
 
   address internal owner = makeAddr("owner");
   address internal creator = makeAddr("creator");
+  address internal creatorFeeReceiver = makeAddr("creatorFeeReceiver");
   address internal manager = makeAddr("manager");
-  address internal rebalancer = makeAddr("rebalancer");
   address internal realBorrower = makeAddr("realBorrower");
   address internal proxyAdmin = makeAddr("proxyAdmin");
   address internal factoryProxyAdmin = makeAddr("factoryProxyAdmin");
-  address internal guardian = makeAddr("guardian");
-  address internal governanceFund = makeAddr("governanceFund");
-
   function testDeployRevolvingCreditVaultWiresProgrammableBorrower() external {
     vm.warp(100 days);
 
@@ -182,10 +189,10 @@ contract IdleCreditVaultFactoryTest is Test {
     vm.warp(100 days);
 
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
-    MockFactoryKeyring keyringContract = new MockFactoryKeyring();
+    MockFactoryKeyring keyring = new MockFactoryKeyring();
     IdleCreditVaultFactory factory = _deployFactory();
     AncillaryDeployment memory deployment =
-      _deployCreditVaultWithAncillaries(factory, underlying, address(keyringContract));
+      _deployCreditVaultWithAncillaries(factory, underlying, address(keyring));
 
     IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
     IdleCreditVault strategy = IdleCreditVault(deployment.strategy);
@@ -194,40 +201,384 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultWriteOffEscrow writeOffEscrow = IdleCreditVaultWriteOffEscrow(deployment.writeOffEscrow);
 
     assertEq(cv.owner(), owner, "cdo owner");
+    assertEq(cv.governanceRecoveryFund(), owner, "cdo governance fund");
+    assertEq(cv.guardian(), creator, "cdo guardian");
+    assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
+    assertEq(deployment.programmableBorrower, address(0), "programmable borrower unsupported");
     assertEq(strategy.owner(), owner, "strategy owner");
+    _assertProxyAdmin(deployment.cv);
+    _assertProxyAdmin(deployment.strategy);
+    _assertProxyAdmin(deployment.queue);
+    _assertProxyAdmin(deployment.writeOffEscrow);
     assertEq(strategy.manager(), manager, "strategy manager");
     assertEq(queue.owner(), owner, "queue owner");
     assertEq(writeOffEscrow.owner(), owner, "write-off owner");
     assertEq(cv.keyring(), deployment.keyringWhitelist, "deployed keyring");
-    assertEq(keyringWhitelist.keyring(), address(keyringContract), "keyring contract");
-    assertEq(keyringWhitelist.admin(), owner, "keyring admin");
+    assertEq(keyringWhitelist.keyring(), address(keyring), "keyring contract");
+    assertEq(keyringWhitelist.admin(), manager, "keyring admin");
     assertTrue(keyringWhitelist.whitelist(deployment.queue), "queue whitelisted");
     assertEq(IdleCDOEpochVariantPrefunded(deployment.cv).epochQueue(), deployment.queue, "prefunded queue");
     assertEq(queue.prefundedDepositWindow(), 2 days, "prefunded window");
     assertEq(writeOffEscrow.idleCDOEpoch(), deployment.cv, "write-off cdo");
     assertEq(writeOffEscrow.strategy(), deployment.strategy, "write-off strategy");
-    assertEq(cv.feeReceiver(), owner, "fee receiver");
+    assertEq(writeOffEscrow.feeReceiver(), owner, "write-off fee receiver");
+    assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.fee(), 10000, "performance fee");
-    assertEq(cv.feeSplit(), 500, "management fee");
+    assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split");
+    assertEq(cv.managementFee(), 500, "management fee");
     assertEq(cv.isDepositDuringEpochDisabled(), false, "deposit during epoch should be enabled");
+
+    vm.expectRevert(AMOUNT_TOO_HIGH);
+    vm.prank(owner);
+    cv.setFeeParams(creatorFeeReceiver, 10000, 80000, 2001);
   }
 
-  function _findProxy(Vm.Log[] memory entries, bytes32 eventSignature) internal pure returns (address deployed) {
+  function testDeployCreditVaultWithoutOptionalContractsAndFeeReceiver() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams =
+      _makeCreditVaultParams(address(0));
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      cvParams,
+      ancillaryParams
+    );
+    IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
+
+    assertEq(deployment.queue, address(0), "queue");
+    assertEq(deployment.programmableBorrower, address(0), "programmable borrower");
+    assertEq(deployment.keyringWhitelist, address(0), "keyring whitelist");
+    assertEq(deployment.writeOffEscrow, address(0), "write-off escrow");
+    assertEq(cv.owner(), owner, "cdo owner");
+    assertEq(cv.keyring(), address(0), "keyring");
+    assertEq(cv.feeReceiver(), address(0), "fee receiver");
+    assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split retained");
+    _assertProxyAdmin(deployment.cv);
+    _assertProxyAdmin(deployment.strategy);
+  }
+
+  function testDeployCreditVaultRevertsWhenFeesAreBelowMinimums() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams =
+      _makeCreditVaultParams(creatorFeeReceiver);
+    cvParams.fees = 9999;
+    cvParams.managementFee = 499;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    IdleCreditVault strategyImplementation = new IdleCreditVault();
+
+    vm.prank(creator);
+    vm.expectRevert(FEES_TOO_LOW);
+    cvParams.implementation = address(cdoImplementation);
+    cvParams.underlying = address(underlying);
+    factory.deployCreditVault(
+      cvParams,
+      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Standard", 12e18),
+      ancillaryParams
+    );
+  }
+
+  function testDeployCreditVaultAllowsManagementFeeMinimumWithoutPerformanceFee() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams =
+      _makeCreditVaultParams(creatorFeeReceiver);
+    cvParams.fees = 0;
+    cvParams.managementFee = 500;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      cvParams,
+      ancillaryParams
+    );
+
+    IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
+    assertEq(cv.fee(), 0, "performance fee");
+    assertEq(cv.managementFee(), 500, "management fee");
+  }
+
+  function testTreasuryCanUpdateFactoryFeeSplit() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    assertEq(factory.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "default fee split");
+
+    vm.prank(creator);
+    vm.expectRevert(ONLY_TREASURY);
+    factory.setFeeSplit(70000);
+
+    vm.prank(owner);
+    vm.expectRevert(AMOUNT_TOO_HIGH);
+    factory.setFeeSplit(100001);
+
+    vm.prank(owner);
+    factory.setFeeSplit(70000);
+    assertEq(factory.feeSplit(), 70000, "updated fee split");
+
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      _makeCreditVaultParams(creatorFeeReceiver),
+      ancillaryParams
+    );
+
+    assertEq(IdleCDOEpochVariant(deployment.cv).feeSplit(), 70000, "factory fee split");
+  }
+
+  function testDeployCreditVaultDeploysKeyringWithNormalQueue() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryKeyring keyring = new MockFactoryKeyring();
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCDOEpochQueue queueImplementation = new IdleCDOEpochQueue();
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams =
+      _makeCreditVaultParams(creatorFeeReceiver);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(keyring),
+      queueImplementation: address(queueImplementation),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      cvParams,
+      ancillaryParams
+    );
+    IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
+    IdleCDOEpochQueue queue = IdleCDOEpochQueue(deployment.queue);
+    KeyringIdleWhitelist keyringWhitelist = KeyringIdleWhitelist(deployment.keyringWhitelist);
+
+    assertTrue(deployment.keyringWhitelist != address(0), "deployed keyring");
+    assertEq(deployment.writeOffEscrow, address(0), "write-off disabled");
+    assertEq(cv.keyring(), deployment.keyringWhitelist, "credit vault keyring");
+    assertEq(keyringWhitelist.keyring(), address(keyring), "keyring contract");
+    assertEq(keyringWhitelist.admin(), manager, "keyring admin");
+    assertEq(queue.owner(), owner, "queue owner");
+    assertEq(queue.prefundedDepositWindow(), 0, "normal queue");
+    assertTrue(keyringWhitelist.whitelist(deployment.queue), "queue whitelisted");
+  }
+
+  function testDeployCreditVaultSetsOwnerAsWriteOffFeeReceiver() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultWriteOffEscrow writeOffImplementation = new IdleCreditVaultWriteOffEscrow();
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(writeOffImplementation)
+    });
+
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      _makeCreditVaultParams(creatorFeeReceiver),
+      ancillaryParams
+    );
+    IdleCreditVaultWriteOffEscrow writeOffEscrow = IdleCreditVaultWriteOffEscrow(deployment.writeOffEscrow);
+
+    assertEq(writeOffEscrow.owner(), owner, "write-off owner");
+    assertEq(writeOffEscrow.feeReceiver(), owner, "write-off fee receiver");
+  }
+
+  function testDeployRevolvingCreditVaultCanDeployQueueWithoutWriteOffEscrow() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryVault vault = new MockFactoryVault(address(underlying));
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochQueue queueImplementation = new IdleCDOEpochQueue();
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(queueImplementation),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+
+    AncillaryDeployment memory deployment =
+      _deployRevolvingCreditVaultWithAncillary(factory, underlying, vault, ancillaryParams);
+
+    assertTrue(deployment.queue != address(0), "queue deployed");
+    assertTrue(deployment.programmableBorrower != address(0), "programmable borrower deployed");
+    assertEq(deployment.writeOffEscrow, address(0), "write-off unsupported");
+    assertEq(IdleCDOEpochQueue(deployment.queue).owner(), owner, "queue owner");
+    _assertProxyAdmin(deployment.queue);
+  }
+
+  function testDeployRevolvingCreditVaultRevertsWhenFeesAreBelowMinimums() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryVault vault = new MockFactoryVault(address(underlying));
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeRevolvingCreditVaultParams();
+    cvParams.fees = 9999;
+    cvParams.managementFee = 499;
+
+    address strategyImplementation = address(new IdleCreditVault());
+    address cdoImplementation = address(new IdleCDOEpochVariant());
+    address programmableBorrowerImplementation = address(new ProgrammableBorrower());
+
+    vm.prank(creator);
+    vm.expectRevert(FEES_TOO_LOW);
+    cvParams.implementation = cdoImplementation;
+    cvParams.underlying = address(underlying);
+    factory.deployRevolvingCreditVault(
+      cvParams,
+      _makeStrategyData(strategyImplementation, address(underlying), address(factory), "Revolver", 12e18),
+      IdleCreditVaultFactory.ProgrammableBorrowerParams({
+        implementation: programmableBorrowerImplementation,
+        vault: address(vault),
+        borrower: realBorrower,
+        borrowerApr: 365e18
+      }),
+      ancillaryParams
+    );
+  }
+
+  function testDeployRevolvingCreditVaultRevertsWithWriteOffEscrow() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryVault vault = new MockFactoryVault(address(underlying));
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(new IdleCreditVaultWriteOffEscrow())
+    });
+    address strategyImplementation = address(new IdleCreditVault());
+    address cdoImplementation = address(new IdleCDOEpochVariant());
+    address programmableBorrowerImplementation = address(new ProgrammableBorrower());
+
+    vm.prank(creator);
+    vm.expectRevert(WRITE_OFF_UNSUPPORTED);
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeRevolvingCreditVaultParams();
+    cvParams.implementation = cdoImplementation;
+    cvParams.underlying = address(underlying);
+    factory.deployRevolvingCreditVault(
+      cvParams,
+      _makeStrategyData(strategyImplementation, address(underlying), address(factory), "Revolver", 12e18),
+      IdleCreditVaultFactory.ProgrammableBorrowerParams({
+        implementation: programmableBorrowerImplementation,
+        vault: address(vault),
+        borrower: realBorrower,
+        borrowerApr: 365e18
+      }),
+      ancillaryParams
+    );
+  }
+
+  function testWriteOffEscrowFeeReceiverCanBeUpdatedByOwner() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    MockFactoryKeyring keyring = new MockFactoryKeyring();
+    IdleCreditVaultFactory factory = _deployFactory();
+    AncillaryDeployment memory deployment =
+      _deployCreditVaultWithAncillaries(factory, underlying, address(keyring));
+    IdleCreditVaultWriteOffEscrow writeOffEscrow = IdleCreditVaultWriteOffEscrow(deployment.writeOffEscrow);
+    address newFeeReceiver = makeAddr("newWriteOffFeeReceiver");
+
+    vm.prank(creator);
+    vm.expectRevert(NOT_ALLOWED);
+    writeOffEscrow.setFeeReceiver(newFeeReceiver);
+
+    vm.prank(owner);
+    vm.expectRevert(IS_0);
+    writeOffEscrow.setFeeReceiver(address(0));
+
+    vm.prank(owner);
+    writeOffEscrow.setFeeReceiver(newFeeReceiver);
+
+    assertEq(writeOffEscrow.feeReceiver(), newFeeReceiver, "write-off fee receiver");
+  }
+
+  function _findDeployment(Vm.Log[] memory entries) internal pure returns (AncillaryDeployment memory deployment) {
     for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].topics[0] == eventSignature) {
-        return abi.decode(entries[i].data, (address));
+      if (entries[i].topics[0] == CREDIT_VAULT_DEPLOYED) {
+        (
+          deployment.cv,
+          deployment.strategy,
+          deployment.queue,
+          deployment.programmableBorrower,
+          deployment.keyringWhitelist,
+          deployment.writeOffEscrow
+        ) = abi.decode(entries[i].data, (address, address, address, address, address, address));
+        return deployment;
       }
     }
     revert("deployment event not found");
   }
 
-  function _hasEvent(Vm.Log[] memory entries, bytes32 eventSignature) internal pure returns (bool found) {
+  function _countEvent(Vm.Log[] memory entries, bytes32 eventSignature) internal pure returns (uint256 count) {
     for (uint256 i = 0; i < entries.length; i++) {
       if (entries[i].topics[0] == eventSignature) {
-        return true;
+        count += 1;
       }
     }
-    return false;
+  }
+
+  function _assertProxyAdmin(address proxy) internal view {
+    assertEq(address(uint160(uint256(vm.load(proxy, EIP1967_ADMIN_SLOT)))), proxyAdmin, "proxy admin");
   }
 
   function _deployFactory() internal returns (IdleCreditVaultFactory factory) {
@@ -235,8 +586,9 @@ contract IdleCreditVaultFactoryTest is Test {
     factory = IdleCreditVaultFactory(address(new TransparentUpgradeableProxy(
       address(factoryImplementation),
       factoryProxyAdmin,
-      abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector, owner)
+      abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector, owner, proxyAdmin)
     )));
+    assertEq(factory.proxyAdmin(), proxyAdmin, "factory proxy admin");
   }
 
   function _deployRevolvingCreditVault(
@@ -244,152 +596,173 @@ contract IdleCreditVaultFactoryTest is Test {
     MockFactoryERC20 underlying,
     MockFactoryVault vault
   ) internal returns (address cvProxy, address strategyProxy, address programmableBorrowerProxy) {
-    IdleCreditVault strategyImplementation = new IdleCreditVault();
-    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
-    ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
-
-    IdleCreditVaultFactory.TransparentProxyData memory cvData = _makeCVData(address(cdoImplementation), address(underlying));
-    IdleCreditVaultFactory.TransparentProxyData memory strategyData =
-      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Revolver", 12e18);
-    IdleCreditVaultFactory.CreditVaultParams memory cvParams = IdleCreditVaultFactory.CreditVaultParams({
-      apr: 12e18,
-      epochDuration: 7 days,
-      bufferPeriod: 1 days,
-      instantWithdrawDelay: 1 hours,
-      instantWithdrawAprDelta: 1e18,
-      disableInstantWithdraw: false,
-      keyring: address(0),
-      keyringPolicy: 0,
-      fees: 10000,
-      managementFee: 0,
-      isInterestMinted: false,
-      isDepositDuringEpochDisabled: true
-    });
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
-      keyringContract: address(0),
+      keyring: address(0),
       queueImplementation: address(0),
-      whitelistQueue: false,
-      prefundedDepositWindow: 0
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
     });
-    IdleCreditVaultFactory.ProgrammableBorrowerProxyData memory programmableBorrowerData =
-      IdleCreditVaultFactory.ProgrammableBorrowerProxyData({
-        implementation: address(programmableBorrowerImplementation),
-        proxyAdmin: proxyAdmin
-      });
-    IdleCreditVaultFactory.ProgrammableBorrowerParams memory programmableBorrowerParams =
-      IdleCreditVaultFactory.ProgrammableBorrowerParams({
-        vault: address(vault),
-        borrower: realBorrower,
-        borrowerApr: 365e18
-      });
+    AncillaryDeployment memory deployment =
+      _deployRevolvingCreditVaultWithAncillary(factory, underlying, vault, ancillaryParams);
+    cvProxy = deployment.cv;
+    strategyProxy = deployment.strategy;
+    programmableBorrowerProxy = deployment.programmableBorrower;
+  }
+
+  function _deployRevolvingCreditVaultWithAncillary(
+    IdleCreditVaultFactory factory,
+    MockFactoryERC20 underlying,
+    MockFactoryVault vault,
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams
+  ) internal returns (AncillaryDeployment memory deployment) {
+    address strategyImplementation = address(new IdleCreditVault());
+    address cdoImplementation = address(new IdleCDOEpochVariant());
+    address programmableBorrowerImplementation = address(new ProgrammableBorrower());
 
     vm.recordLogs();
     vm.prank(creator);
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeRevolvingCreditVaultParams();
+    cvParams.implementation = cdoImplementation;
+    cvParams.underlying = address(underlying);
     factory.deployRevolvingCreditVault(
-      cvData,
-      strategyData,
       cvParams,
-      programmableBorrowerData,
-      programmableBorrowerParams,
+      _makeStrategyData(strategyImplementation, address(underlying), address(factory), "Revolver", 12e18),
+      IdleCreditVaultFactory.ProgrammableBorrowerParams({
+        implementation: programmableBorrowerImplementation,
+        vault: address(vault),
+        borrower: realBorrower,
+        borrowerApr: 365e18
+      }),
       ancillaryParams
     );
     Vm.Log[] memory entries = vm.getRecordedLogs();
-    cvProxy = _findProxy(entries, keccak256("CreditVaultDeployed(address)"));
-    strategyProxy = _findProxy(entries, keccak256("StrategyDeployed(address)"));
-    programmableBorrowerProxy = _findProxy(entries, keccak256("ProgrammableBorrowerDeployed(address)"));
-    assertFalse(_hasEvent(entries, keccak256("WriteOffEscrowDeployed(address)")), "revolving write-off unsupported");
+    deployment = _findDeployment(entries);
+    assertEq(_countEvent(entries, CREDIT_VAULT_DEPLOYED), 1, "single deployment event");
+    assertEq(deployment.writeOffEscrow, address(0), "revolving write-off unsupported");
   }
 
   function _deployCreditVaultWithAncillaries(
     IdleCreditVaultFactory factory,
     MockFactoryERC20 underlying,
-    address keyringContract
+    address keyring
   ) internal returns (AncillaryDeployment memory deployment) {
-    IdleCreditVault strategyImplementation = new IdleCreditVault();
     IdleCDOEpochVariantPrefunded cdoImplementation = new IdleCDOEpochVariantPrefunded();
     IdleCDOEpochQueue queueImplementation = new IdleCDOEpochQueue();
     IdleCreditVaultWriteOffEscrow writeOffImplementation = new IdleCreditVaultWriteOffEscrow();
 
-    IdleCreditVaultFactory.TransparentProxyData memory cvData = _makeCVData(address(cdoImplementation), address(underlying));
-    IdleCreditVaultFactory.TransparentProxyData memory strategyData =
-      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Standard", 12e18);
     IdleCreditVaultFactory.CreditVaultParams memory cvParams = IdleCreditVaultFactory.CreditVaultParams({
+      implementation: address(cdoImplementation),
+      limit: 0,
+      underlying: address(underlying),
       apr: 12e18,
       epochDuration: 7 days,
       bufferPeriod: 1 days,
       instantWithdrawDelay: 1 hours,
       instantWithdrawAprDelta: 1e18,
       disableInstantWithdraw: true,
-      keyring: address(0),
       keyringPolicy: 42,
+      feeReceiver: creatorFeeReceiver,
       fees: 10000,
       managementFee: 500,
       isInterestMinted: false,
       isDepositDuringEpochDisabled: false
     });
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
-      keyringContract: keyringContract,
+      keyring: keyring,
       queueImplementation: address(queueImplementation),
-      whitelistQueue: true,
-      prefundedDepositWindow: 2 days
+      prefundedDepositWindow: 2 days,
+      writeOffImplementation: address(writeOffImplementation)
     });
+
+    deployment = _deployCreditVaultWithConfig(
+      factory,
+      underlying,
+      address(cdoImplementation),
+      cvParams,
+      ancillaryParams
+    );
+  }
+
+  function _deployCreditVaultWithConfig(
+    IdleCreditVaultFactory factory,
+    MockFactoryERC20 underlying,
+    address cdoImplementation,
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams,
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams
+  ) internal returns (AncillaryDeployment memory deployment) {
+    IdleCreditVault strategyImplementation = new IdleCreditVault();
+    cvParams.implementation = cdoImplementation;
+    cvParams.limit = 0;
+    cvParams.underlying = address(underlying);
+    IdleCreditVaultFactory.StrategyData memory strategyData =
+      _makeStrategyData(address(strategyImplementation), address(underlying), address(factory), "Standard", 12e18);
 
     vm.recordLogs();
     vm.prank(creator);
     factory.deployCreditVault(
-      cvData,
-      strategyData,
       cvParams,
-      ancillaryParams,
-      address(writeOffImplementation)
+      strategyData,
+      ancillaryParams
     );
     Vm.Log[] memory entries = vm.getRecordedLogs();
-    deployment.cv = _findProxy(entries, keccak256("CreditVaultDeployed(address)"));
-    deployment.strategy = _findProxy(entries, keccak256("StrategyDeployed(address)"));
-    deployment.queue = _findProxy(entries, keccak256("QueueDeployed(address)"));
-    deployment.keyringWhitelist = _findProxy(entries, keccak256("KeyringWhitelistDeployed(address)"));
-    deployment.writeOffEscrow = _findProxy(entries, keccak256("WriteOffEscrowDeployed(address)"));
+    deployment = _findDeployment(entries);
+    assertEq(_countEvent(entries, CREDIT_VAULT_DEPLOYED), 1, "single deployment event");
   }
 
-  function _makeCVData(
-    address implementation,
-    address underlying
-  ) internal view returns (IdleCreditVaultFactory.TransparentProxyData memory) {
-    return IdleCreditVaultFactory.TransparentProxyData({
-      implementation: implementation,
-      proxyAdmin: proxyAdmin,
-      initializeData: abi.encodeWithSelector(
-        CDO_INITIALIZE_SELECTOR,
-        0,
-        underlying,
-        governanceFund,
-        guardian,
-        rebalancer,
-        address(0),
-        100000
-      )
+  function _makeCreditVaultParams(
+    address feeReceiver
+  ) internal pure returns (IdleCreditVaultFactory.CreditVaultParams memory) {
+    return IdleCreditVaultFactory.CreditVaultParams({
+      implementation: address(0),
+      limit: 0,
+      underlying: address(0),
+      apr: 12e18,
+      epochDuration: 7 days,
+      bufferPeriod: 1 days,
+      instantWithdrawDelay: 1 hours,
+      instantWithdrawAprDelta: 1e18,
+      disableInstantWithdraw: true,
+      keyringPolicy: 42,
+      feeReceiver: feeReceiver,
+      fees: 10000,
+      managementFee: 500,
+      isInterestMinted: false,
+      isDepositDuringEpochDisabled: false
+    });
+  }
+
+  function _makeRevolvingCreditVaultParams() internal view returns (IdleCreditVaultFactory.CreditVaultParams memory) {
+    return IdleCreditVaultFactory.CreditVaultParams({
+      implementation: address(0),
+      limit: 0,
+      underlying: address(0),
+      apr: 12e18,
+      epochDuration: 7 days,
+      bufferPeriod: 1 days,
+      instantWithdrawDelay: 1 hours,
+      instantWithdrawAprDelta: 1e18,
+      disableInstantWithdraw: false,
+      keyringPolicy: 0,
+      feeReceiver: creatorFeeReceiver,
+      fees: 10000,
+      managementFee: 0,
+      isInterestMinted: false,
+      isDepositDuringEpochDisabled: true
     });
   }
 
   function _makeStrategyData(
     address implementation,
-    address underlying,
+    address,
     address,
     string memory borrowerName,
-    uint256 apr
-  ) internal view returns (IdleCreditVaultFactory.TransparentProxyData memory) {
-    return IdleCreditVaultFactory.TransparentProxyData({
+    uint256
+  ) internal view returns (IdleCreditVaultFactory.StrategyData memory) {
+    return IdleCreditVaultFactory.StrategyData({
       implementation: implementation,
-      proxyAdmin: proxyAdmin,
-      initializeData: abi.encodeWithSelector(
-        IdleCreditVault.initialize.selector,
-        underlying,
-        address(0x123456),
-        manager,
-        realBorrower,
-        borrowerName,
-        apr
-      )
+      manager: manager,
+      borrower: realBorrower,
+      borrowerName: borrowerName
     });
   }
 
@@ -407,6 +780,9 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.owner(), owner, "cdo owner");
     assertEq(strategy.owner(), owner, "strategy owner");
     assertEq(programmableBorrower.owner(), owner, "programmable borrower owner");
+    _assertProxyAdmin(cvProxy);
+    _assertProxyAdmin(strategyProxy);
+    _assertProxyAdmin(programmableBorrowerProxy);
     assertEq(strategy.manager(), manager, "strategy manager");
     assertEq(strategy.idleCDO(), cvProxy, "strategy cdo");
     assertEq(strategy.borrower(), programmableBorrowerProxy, "strategy borrower");
@@ -415,9 +791,14 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.isInterestMinted(), true, "minted interest should be forced on");
     assertEq(cv.isProgrammableBorrower(), true, "programmable mode should be enabled");
     assertEq(cv.disableInstantWithdraw(), true, "instant withdraw should be disabled");
-    assertEq(cv.guardian(), guardian, "guardian");
-    assertEq(cv.feeReceiver(), owner, "fee receiver");
+    assertEq(cv.isDepositDuringEpochDisabled(), true, "deposit during epoch should be disabled");
+    assertEq(cv.governanceRecoveryFund(), owner, "governance fund");
+    assertEq(cv.guardian(), creator, "guardian");
+    assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
+    assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.fee(), 10000, "fee value");
+    assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split");
+    assertEq(cv.managementFee(), 0, "management fee");
     assertEq(address(programmableBorrower.underlyingToken()), underlying, "underlying token");
     assertEq(address(programmableBorrower.vault()), vault, "vault");
     assertEq(programmableBorrower.idleCDO(), cvProxy, "programmable borrower cdo");
