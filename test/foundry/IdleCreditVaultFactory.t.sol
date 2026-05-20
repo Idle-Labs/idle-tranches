@@ -223,7 +223,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(writeOffEscrow.strategy(), deployment.strategy, "write-off strategy");
     assertEq(writeOffEscrow.feeReceiver(), owner, "write-off fee receiver");
     assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
-    assertEq(cv.fee(), 10000, "performance fee");
+    assertEq(cv.fee(), 5000, "performance fee");
     assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split");
     assertEq(cv.managementFee(), 500, "management fee");
     assertEq(cv.isDepositDuringEpochDisabled(), false, "deposit during epoch should be enabled");
@@ -277,7 +277,7 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
     IdleCreditVaultFactory.CreditVaultParams memory cvParams =
       _makeCreditVaultParams(creatorFeeReceiver);
-    cvParams.fees = 9999;
+    cvParams.fees = 4999;
     cvParams.managementFee = 499;
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
       keyring: address(0),
@@ -469,7 +469,7 @@ contract IdleCreditVaultFactoryTest is Test {
       writeOffImplementation: address(0)
     });
     IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeRevolvingCreditVaultParams();
-    cvParams.fees = 9999;
+    cvParams.fees = 4999;
     cvParams.managementFee = 499;
 
     address strategyImplementation = address(new IdleCreditVault());
@@ -662,7 +662,7 @@ contract IdleCreditVaultFactoryTest is Test {
       disableInstantWithdraw: true,
       keyringPolicy: 42,
       feeReceiver: creatorFeeReceiver,
-      fees: 10000,
+      fees: 5000,
       managementFee: 500,
       isInterestMinted: false,
       isDepositDuringEpochDisabled: false
@@ -724,7 +724,7 @@ contract IdleCreditVaultFactoryTest is Test {
       disableInstantWithdraw: true,
       keyringPolicy: 42,
       feeReceiver: feeReceiver,
-      fees: 10000,
+      fees: 5000,
       managementFee: 500,
       isInterestMinted: false,
       isDepositDuringEpochDisabled: false
@@ -744,7 +744,7 @@ contract IdleCreditVaultFactoryTest is Test {
       disableInstantWithdraw: false,
       keyringPolicy: 0,
       feeReceiver: creatorFeeReceiver,
-      fees: 10000,
+      fees: 5000,
       managementFee: 0,
       isInterestMinted: false,
       isDepositDuringEpochDisabled: true
@@ -796,7 +796,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.guardian(), manager, "guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
     assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
-    assertEq(cv.fee(), 10000, "fee value");
+    assertEq(cv.fee(), 5000, "fee value");
     assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split");
     assertEq(cv.managementFee(), 0, "management fee");
     assertEq(address(programmableBorrower.underlyingToken()), underlying, "underlying token");

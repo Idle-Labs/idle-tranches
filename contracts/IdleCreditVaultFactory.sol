@@ -15,7 +15,7 @@ import {ProgrammableBorrower} from "./strategies/idle/ProgrammableBorrower.sol";
 contract IdleCreditVaultFactory is Initializable {
   uint256 public constant FULL_ALLOC = 100_000;
   uint256 public constant DEFAULT_FEE_SPLIT = 50_000;
-  uint256 public constant MIN_PERFORMANCE_FEE = 10_000;
+  uint256 public constant MIN_PERFORMANCE_FEE = 5_000;
   uint256 public constant MIN_MANAGEMENT_FEE = 500;
 
   address public treasury;

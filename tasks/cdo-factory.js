@@ -9,7 +9,7 @@ const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const FULL_ALLOC = '100000';
-const MIN_CREDIT_VAULT_PERFORMANCE_FEE = '10000';
+const MIN_CREDIT_VAULT_PERFORMANCE_FEE = '5000';
 const MIN_CREDIT_VAULT_MANAGEMENT_FEE = '500';
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
