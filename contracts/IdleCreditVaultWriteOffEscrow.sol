@@ -15,9 +15,9 @@ error WrongRequest();
 error Is0();
 
 /// @title IdleCreditVaultWriteOffEscrow
-/// @dev Contract that collects write off requests of a credit vault deposit from a lender and underlyings from a borrower 
-/// and allow them to trustlessly exchange debt between borrower and lender. Borrower will then be able to write off the debt
-/// by burning tranches tokens (via IdleCDOEpochVariant writeOffDebt method)
+/// @dev Contract that collects write off requests of a credit vault deposit from a lender and underlyings from a fulfiller
+/// and allow them to trustlessly exchange debt between lender and buyer. If the borrower fulfills the request, the borrower
+/// will then be able to write off the debt by burning tranche tokens (via IdleCDOEpochVariant writeOffDeposit method)
 contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
   using SafeERC20Upgradeable for IERC20Detailed;
 
@@ -119,15 +119,14 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     IERC20Detailed(tranche).safeTransfer(msg.sender, currentRequest.tranches);
   }
 
-  /// @notice fulfill the write-off request by the borrower
+  /// @notice fulfill the write-off request by buying the escrowed tranche tokens
   /// @param _user address of the user that made the write-off request
   /// @param _tranches amount of tranche tokens to transfer
   /// @param _underlyings amount of underlyings to transfer
-  /// @dev this function can only be called by the borrower
+  /// @dev this function can be called by any allowed wallet
   function fullfillWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) external nonReentrant {
-    address _borrower = IdleCreditVault(strategy).borrower();
-    // Only borrower can call this function
-    if (msg.sender != _borrower) revert NotAllowed();
+    // Check if the fulfiller is allowed to buy tranche tokens
+    _checkAllowed(msg.sender);
 
     // get current write-off request
     WriteOffRequest memory currentRequest = userRequests[_user];
@@ -143,8 +142,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);
-    // transfer underlyings requested from the borrower to this contract
-    underlyingToken.safeTransferFrom(_borrower, address(this), _underlyings);
+    // transfer underlyings requested from the fulfiller to this contract
+    underlyingToken.safeTransferFrom(msg.sender, address(this), _underlyings);
     // check if the exit fee is set and if so, apply it
     uint256 _exitFee = exitFee;
     uint256 _totFee;
@@ -155,11 +154,11 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     }
     // transfer the remaining underlyings to the user
     underlyingToken.safeTransfer(_user, _underlyings - _totFee);
-    // transfer tranche tokens to borrower
-    IERC20Detailed(tranche).safeTransfer(_borrower, _tranches);
+    // transfer tranche tokens to fulfiller
+    IERC20Detailed(tranche).safeTransfer(msg.sender, _tranches);
 
-    // borrower can then choose to either keep the tranche tokens or write it off via 
-    // IdleCDOEpochVariant.writeOffDebt method
+    // If the fulfiller is the borrower, they can then choose to either keep the tranche tokens or write them off via
+    // IdleCDOEpochVariant.writeOffDeposit method.
   }
 
   function setExitFee(uint256 _exitFee) external {
