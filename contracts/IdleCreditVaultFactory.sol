@@ -102,7 +102,7 @@ contract IdleCreditVaultFactory is Initializable {
       _deployBaseCreditVault(strategyData, cvParams);
 
     address keyringWhitelist = _deployKeyring(ancillaryParams);
-    _configureCreditVault(cv, strategy, cvParams, keyringWhitelist);
+    _configureCreditVault(cv, strategy, cvParams, keyringWhitelist, manager);
 
     IdleCDOEpochQueue queue = _deployQueue(ancillaryParams, cv, keyringWhitelist);
     IdleCreditVaultWriteOffEscrow writeOffEscrow =
@@ -140,7 +140,7 @@ contract IdleCreditVaultFactory is Initializable {
     cvParams.isDepositDuringEpochDisabled = true;
     (IdleCDOEpochVariant cv, IdleCreditVault strategy) = _deployBaseCreditVault(strategyData, cvParams);
     address keyringWhitelist = _deployKeyring(ancillaryParams);
-    _configureCreditVault(cv, strategy, cvParams, keyringWhitelist);
+    _configureCreditVault(cv, strategy, cvParams, keyringWhitelist, manager);
 
     ProgrammableBorrower programmableBorrower = _deployProgrammableBorrower(
       programmableBorrowerParams,
@@ -289,7 +289,8 @@ contract IdleCreditVaultFactory is Initializable {
     IdleCDOEpochVariant cv,
     IdleCreditVault strategy,
     CreditVaultParams memory par,
-    address keyringWhitelist
+    address keyringWhitelist,
+    address manager
   ) internal {
     cv.setEpochParams(par.epochDuration, par.bufferPeriod);
     cv.setInstantWithdrawParams(par.instantWithdrawDelay, par.instantWithdrawAprDelta, par.disableInstantWithdraw);
@@ -299,7 +300,7 @@ contract IdleCreditVaultFactory is Initializable {
     }
     cv.setIsDepositDuringEpochDisabled(par.isDepositDuringEpochDisabled);
     cv.setFeeParams(par.feeReceiver, par.fees, feeSplit, par.managementFee);
-    cv.setGuardian(msg.sender);
+    cv.setGuardian(manager);
     // setAprs should be done before setWhitelistedCDO
     strategy.setAprs(par.apr, par.apr * (par.epochDuration + par.bufferPeriod) / par.epochDuration);
     strategy.setWhitelistedCDO(address(cv));

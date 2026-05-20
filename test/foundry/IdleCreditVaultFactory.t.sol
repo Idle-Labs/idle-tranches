@@ -202,7 +202,7 @@ contract IdleCreditVaultFactoryTest is Test {
 
     assertEq(cv.owner(), owner, "cdo owner");
     assertEq(cv.governanceRecoveryFund(), owner, "cdo governance fund");
-    assertEq(cv.guardian(), creator, "cdo guardian");
+    assertEq(cv.guardian(), manager, "cdo guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
     assertEq(deployment.programmableBorrower, address(0), "programmable borrower unsupported");
     assertEq(strategy.owner(), owner, "strategy owner");
@@ -793,7 +793,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.disableInstantWithdraw(), true, "instant withdraw should be disabled");
     assertEq(cv.isDepositDuringEpochDisabled(), true, "deposit during epoch should be disabled");
     assertEq(cv.governanceRecoveryFund(), owner, "governance fund");
-    assertEq(cv.guardian(), creator, "guardian");
+    assertEq(cv.guardian(), manager, "guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
     assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.fee(), 10000, "fee value");
