@@ -149,6 +149,8 @@ const mainnetContracts = {
   cdoFactory: '0x3C9916BB9498f637e2Fa86C2028e26275Dc9A631',
   creditVaultFactory: '0x59AaBdAD8FdABd227cc71543B128765F93906626',
   creditVaultFactoryV2: '0xA8da4580dC0F1BB5b6761677184B58E611736CD5',
+  creditVaultFactoryV3: '0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff',
+  creditVaultFactoryKeyringId: 15027016,
   snxStakingRewards: '0x4A07723BB06BF9307E4E1998834832728e6cDb49',
   snxStakingRewardsLido: '0xd7c1b48877a7dfa7d51cf1144c89c0a3f134f935',
   minimalInitializableProxyFactory: '0x91baced76e3e327ba7850ef82a7a8251f6e43fb8',

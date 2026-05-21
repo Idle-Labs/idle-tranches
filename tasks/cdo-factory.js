@@ -1924,6 +1924,8 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
 
     const networkContracts = getNetworkContracts(hre);
     const proxyAdmin = networkContracts.proxyAdminWithTimelock || networkContracts.proxyAdmin;
+    console.log(`Using proxy admin at ${proxyAdmin} for IdleCreditVaultFactory deployment`);
+    console.log(`Setting treasury multisig ${networkContracts.treasuryMultisig} as owner of IdleCreditVaultFactory`);
     const creditVaultFactory = await helpers.deployUpgradableContract(
       'IdleCreditVaultFactory',
       [networkContracts.treasuryMultisig, proxyAdmin],
