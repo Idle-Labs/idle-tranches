@@ -1191,7 +1191,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log(`Deploying with ${addr}`);
     console.log()
 
-    const factoryAddr = networkContracts.creditVaultFactoryV2;
+    const factoryAddr = networkContracts.creditVaultFactoryV3;
 
     console.log("Copy CDO:                ", copyToken.cdoAddr);
     console.log("Copy Strategy:           ", copyToken.strategy);
@@ -1354,7 +1354,7 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     console.log(`Deploying with ${addr}`);
     console.log()
 
-    const factoryAddr = networkContracts.creditVaultFactoryV2;
+    const factoryAddr = networkContracts.creditVaultFactoryV3;
     console.log("Copy CDO:                ", copyToken.cdoAddr);
     console.log("Copy Strategy:           ", copyToken.strategy);
     console.log("Factory:                 ", factoryAddr);
