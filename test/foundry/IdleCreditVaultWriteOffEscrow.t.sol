@@ -79,7 +79,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     escrow.initialize(address(cdoEpoch), address(this), true);
   }
 
-  function testOnlyKeyringUsersCanInteract() external {
+  function testNonKeyringUsersCanCreateDeleteAndFulfillRequests() external {
     address keyring = address(1);
 
     vm.prank(cdoEpoch.owner());
@@ -91,26 +91,17 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
       abi.encode(false)
     );
 
-    // try with this contract
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.createWriteOffRequest(1e18, 1e6);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.deleteWriteOffRequest();
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.fullfillWriteOffRequest(LP, 1e18, 1e6);
-    vm.clearMockedCalls();
-
-    vm.mockCall(
-      keyring,
-      abi.encodeWithSelector(IKeyring.checkCredential.selector),
-      abi.encode(true)
-    );
-
-    // epoch is already running at specified block
+    uint256 sellerTrancheBalPre = tranche.balanceOf(LP);
     vm.startPrank(LP);
     escrow.createWriteOffRequest(1e18, 1e6);
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 1e18, 'write-off request tranches is wrong after non-keyring create');
+    assertEq(underlyings, 1e6, 'write-off request underlyings is wrong after non-keyring create');
+    assertEq(escrow.pendingUnderlyings(), 1e6, 'pending underlyings is wrong after non-keyring create');
     escrow.deleteWriteOffRequest();
     vm.stopPrank();
+    assertEq(tranche.balanceOf(LP), sellerTrancheBalPre, 'seller tranche balance is wrong after non-keyring delete');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is wrong after non-keyring delete');
 
     address buyer = makeAddr("buyer");
     vm.prank(LP);
@@ -121,7 +112,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     underlying.approve(address(escrow), 1e6);
     escrow.fullfillWriteOffRequest(LP, 1e18, 1e6);
     vm.stopPrank();
-    assertEq(tranche.balanceOf(buyer) - buyerTrancheBalPre, 1e18, 'buyer tranche balance is wrong after allowed fulfill');
+    assertEq(tranche.balanceOf(buyer) - buyerTrancheBalPre, 1e18, 'buyer tranche balance is wrong after non-keyring fulfill');
 
     vm.clearMockedCalls();
   }
@@ -253,7 +244,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterestPre, 'expected interest should not change after secondary sale');
   }
 
-  function testUnauthorizedBuyerCannotFulfillExistingRequest() external {
+  function testNonKeyringBuyerCanFulfillExistingRequestButCannotWithdraw() external {
     uint256 requestedTranches = 10000e18;
     uint256 requestedUnderlyings = 10000e6;
     address buyer = makeAddr("buyer");
@@ -274,21 +265,30 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     deal(address(underlying), buyer, requestedUnderlyings);
     uint256 balPreBuyer = underlying.balanceOf(buyer);
     uint256 balPreLP = underlying.balanceOf(LP);
-    uint256 balPreEscrowTranche = tranche.balanceOf(address(escrow));
+    uint256 balPreBuyerTranche = tranche.balanceOf(buyer);
+    uint256 balPreFeeReceiver = underlying.balanceOf(TL_MULTISIG);
 
     vm.startPrank(buyer);
     underlying.approve(address(escrow), requestedUnderlyings);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
     vm.stopPrank();
 
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
-    assertEq(tranches, requestedTranches, 'write-off request tranches changed after unauthorized fulfill');
-    assertEq(underlyings, requestedUnderlyings, 'write-off request underlyings changed after unauthorized fulfill');
-    assertEq(escrow.pendingUnderlyings(), requestedUnderlyings, 'pending underlyings changed after unauthorized fulfill');
-    assertEq(underlying.balanceOf(buyer), balPreBuyer, 'buyer balance changed after unauthorized fulfill');
-    assertEq(underlying.balanceOf(LP), balPreLP, 'LP balance changed after unauthorized fulfill');
-    assertEq(tranche.balanceOf(address(escrow)), balPreEscrowTranche, 'escrow tranche balance changed after unauthorized fulfill');
+    assertEq(tranches, 0, 'write-off request tranches is not 0 after non-keyring fulfill');
+    assertEq(underlyings, 0, 'write-off request underlyings is not 0 after non-keyring fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after non-keyring fulfill');
+
+    uint256 fee = requestedUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
+    assertEq(balPreBuyer - underlying.balanceOf(buyer), requestedUnderlyings, 'buyer balance is wrong after non-keyring fulfill');
+    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after non-keyring fulfill');
+    assertEq(tranche.balanceOf(buyer) - balPreBuyerTranche, requestedTranches, 'buyer tranche balance is wrong after non-keyring fulfill');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after non-keyring fulfill');
+
+    _stopCurrentEpoch();
+    assertEq(cdoEpoch.isWalletAllowed(buyer), false, 'buyer should not be wallet allowed');
+    vm.prank(buyer);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(requestedTranches, address(tranche));
 
     vm.clearMockedCalls();
   }

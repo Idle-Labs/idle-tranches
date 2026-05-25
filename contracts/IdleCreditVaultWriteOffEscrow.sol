@@ -89,8 +89,6 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     // cannot request write off with 0 tranche tokens
     if (amount == 0) revert NotAllowed();
 
-    // check if the wallet is allowed to deposit (ie epoch is running and keyring KYC completed)
-    _checkAllowed(msg.sender);
     // get tranche tokens from user
     IERC20Detailed(tranche).safeTransferFrom(msg.sender, address(this), amount);
     // get current write-off request
@@ -105,8 +103,6 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
 
   /// @notice delete the write-off request and transfer tranche tokens back to the user
   function deleteWriteOffRequest() external nonReentrant {
-    // check if the wallet is allowed to deposit (ie epoch is running and keyring KYC completed)
-    _checkAllowed(msg.sender);
     // get current write-off request
     WriteOffRequest memory currentRequest = userRequests[msg.sender];
     // check if the user has a write-off request
@@ -123,11 +119,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
   /// @param _user address of the user that made the write-off request
   /// @param _tranches amount of tranche tokens to transfer
   /// @param _underlyings amount of underlyings to transfer
-  /// @dev this function can be called by any allowed wallet
+  /// @dev this function can be called by any wallet
   function fullfillWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) external nonReentrant {
-    // Check if the fulfiller is allowed to buy tranche tokens
-    _checkAllowed(msg.sender);
-
     // get current write-off request
     WriteOffRequest memory currentRequest = userRequests[_user];
     // check if the user has a write-off request
@@ -184,12 +177,6 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     if (_to == address(0)) revert Is0();
 
     IERC20Detailed(_token).safeTransfer(_to, _amount);
-  }
-
-  /// @notice check if the wallet is allowed to deposit
-  /// @param wallet address to check
-  function _checkAllowed(address wallet) internal view {
-    if (!IdleCDOEpochVariant(idleCDOEpoch).isWalletAllowed(wallet)) revert NotAllowed();
   }
 
   /// @notice check if msg.sender is the owner
