@@ -618,6 +618,24 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testMaxWithdrawableIncludesElapsedManagementFee() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFeeRate = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
+    _setManagementFee(mgmtFeeRate);
+
+    uint256 trancheAmount = idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    vm.warp(block.timestamp + 365 days);
+
+    uint256 previewed = cdoEpoch.maxWithdrawable(address(this), address(AAtranche));
+    uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
+
+    assertEq(previewed, requested, "maxWithdrawable should include elapsed management fee");
+  }
+
   function testManagementFeeAccruesOnLiveNav() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 mgmtFee = 1_000; // 1%

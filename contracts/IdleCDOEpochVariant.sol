@@ -810,6 +810,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256 currentUnderlyings) {
     currentUnderlyings = _trancheToUnderlyings(_userTrancheBal(_user, _tranche), _tranche);
+    currentUnderlyings -= _calculateManagementFee(currentUnderlyings, block.timestamp - latestHarvestBlock);
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // remove perf fee from projected interest and upfront management fee from principal only
@@ -822,12 +823,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// next epoch settles. Requests made during the buffer also pay for the remaining
   /// buffer time before that next epoch can start.
   /// @return _duration One epoch plus any remaining buffer before the next epoch.
-  function _withdrawRequestManagementFeeDuration() internal view returns (uint256 _duration) {
+  function _withdrawRequestManagementFeeDuration() private view returns (uint256 _duration) {
+    uint256 bufferEnd = epochEndDate + bufferPeriod;
     _duration = epochDuration;
-    uint256 _epochEndDate = epochEndDate;
-    if (_duration == 0 || _epochEndDate == 0) return _duration;
-
-    uint256 bufferEnd = _epochEndDate + bufferPeriod;
     if (block.timestamp < bufferEnd) {
       _duration += bufferEnd - block.timestamp;
     }
