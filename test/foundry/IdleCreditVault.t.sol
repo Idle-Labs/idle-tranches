@@ -793,7 +793,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
     (uint256 netInterest, ) = _calcInterestForTranche(address(AAtranche), trancheAmount);
     uint256 claimAmountPreFee = principal + netInterest;
-    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, cdoEpoch.epochDuration());
+    uint256 expectedMgmtFee = _calcManagementFee(
+      principal,
+      mgmtFeeRate,
+      _withdrawRequestManagementFeeDuration()
+    );
     uint256 expectedClaimAmount = claimAmountPreFee - expectedMgmtFee;
 
     uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
@@ -822,6 +826,35 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(underlying.balanceOf(address(this)) - balPre, expectedClaimAmount, "claim amount should stay net of management fee");
   }
 
+  function testRequestWithdrawDuringBufferChargesRemainingBufferManagementFee() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mgmtFeeRate = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
+
+    uint256 trancheAmount = idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    _setManagementFee(mgmtFeeRate);
+
+    uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
+    (uint256 netInterest, ) = _calcInterestForTranche(address(AAtranche), trancheAmount);
+    uint256 expectedMgmtFee = _calcManagementFee(
+      principal,
+      mgmtFeeRate,
+      _withdrawRequestManagementFeeDuration()
+    );
+    uint256 expectedClaimAmount = principal + netInterest - expectedMgmtFee;
+
+    uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
+
+    assertEq(requested, expectedClaimAmount, "withdraw receipt should include remaining-buffer management fee");
+    assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee, "pending fees should include remaining-buffer management fee");
+  }
+
   function testApr0RequestChargesManagementFeeUpfront() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 poolInterest = 1_000 * ONE_SCALE;
@@ -847,7 +880,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 trancheReq = IERC20(AAtranche).balanceOf(address(this)) / 2;
     uint256 principal = trancheReq * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
-    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, cdoEpoch.epochDuration());
+    uint256 expectedMgmtFee = _calcManagementFee(
+      principal,
+      mgmtFeeRate,
+      _withdrawRequestManagementFeeDuration()
+    );
     uint256 expectedPrincipal = principal - expectedMgmtFee;
     uint256 requested = cdoEpoch.requestWithdraw(trancheReq, address(AAtranche));
     uint256 poolPrincipal = cdoEpoch.getContractValue();
@@ -3154,6 +3191,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function _calcManagementFee(uint256 _nav, uint256 _rate, uint256 _duration) internal pure returns (uint256) {
     return _nav * _rate * _duration / FULL_ALLOC / 365 days;
+  }
+
+  function _withdrawRequestManagementFeeDuration() internal view returns (uint256 duration) {
+    duration = cdoEpoch.epochDuration();
+    if (duration == 0 || cdoEpoch.epochEndDate() == 0) {
+      return duration;
+    }
+
+    uint256 bufferEnd = cdoEpoch.epochEndDate() + cdoEpoch.bufferPeriod();
+    if (block.timestamp < bufferEnd) {
+      duration += bufferEnd - block.timestamp;
+    }
   }
 
   function _setManagementFee(uint256 _managementFee) internal {

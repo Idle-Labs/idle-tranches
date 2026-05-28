@@ -694,8 +694,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // calculate performance fee
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
     uint256 fees = interest * fee / FULL_ALLOC;
-    // Charge one epoch of management fee only on the principal that is leaving live NAV.
-    uint256 upfrontManagementFee = _calculateManagementFee(principal, epochDuration);
+    uint256 upfrontManagementFee = _calculateManagementFee(principal, _withdrawRequestManagementFeeDuration());
     uint256 totalFees = fees + upfrontManagementFee;
     // user is requesting principal + interest of next epoch minus fees and upfront management fee
     _underlyings = principal + interest - totalFees;
@@ -708,8 +707,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
     interestForOverUnderPerformance += diff;
 
-    // Charge the management fee upfront on the withdraw receipt for one epoch (buffer excluded).
-    // This keeps pending receipts outside the live-NAV accrual path while still making the withdrawer pay.
+    // The receipt is fixed now and leaves live NAV. Charge management fees upfront
+    // for the time it waits outside live NAV: remaining buffer plus the next epoch.
     creditVault.requestWithdraw(_underlyings, msg.sender, principal);
     // burn tranche tokens and decrease NAV without interest for the next epoch as it was not yet counted in NAV
     _withdrawOps(_amount, principal, _tranche);
@@ -815,7 +814,23 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
     // remove perf fee from projected interest and upfront management fee from principal only
     currentUnderlyings = currentUnderlyings + interest - (interest * fee / FULL_ALLOC) -
-      _calculateManagementFee(currentUnderlyings, epochDuration);
+      _calculateManagementFee(currentUnderlyings, _withdrawRequestManagementFeeDuration());
+  }
+
+  /// @notice Get the duration used for upfront management fees on withdrawal receipts.
+  /// @dev Receipts leave live NAV at request time but can be claimed only after the
+  /// next epoch settles. Requests made during the buffer also pay for the remaining
+  /// buffer time before that next epoch can start.
+  /// @return _duration One epoch plus any remaining buffer before the next epoch.
+  function _withdrawRequestManagementFeeDuration() internal view returns (uint256 _duration) {
+    _duration = epochDuration;
+    uint256 _epochEndDate = epochEndDate;
+    if (_duration == 0 || _epochEndDate == 0) return _duration;
+
+    uint256 bufferEnd = _epochEndDate + bufferPeriod;
+    if (block.timestamp < bufferEnd) {
+      _duration += bufferEnd - block.timestamp;
+    }
   }
 
   /// @notice Write off the deposit, this will be used if the borrower and a lender comes to an off-chain agreement
