@@ -11,7 +11,6 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/se
 error NotAllowed();
 error InvalidAddress();
 error InvalidAmount();
-error AlreadyInitialized();
 error InsufficientBorrowable();
 error StopEpochVaultLiquidityUnavailable();
 
@@ -92,9 +91,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    // Mark the implementation as already initialized in its own storage. A proxy starts from
-    // zeroed storage, so `initialize` remains available only through the proxy instance.
-    underlyingToken = IERC20Detailed(address(1));
+    _disableInitializers();
   }
 
   /// @notice initialize the contract
@@ -108,7 +105,6 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     address _vault, address _idleCDO, address _owner,
     address _manager, address _borrower, uint256 _borrowerApr
   ) external initializer {
-    if (address(underlyingToken) != address(0)) revert AlreadyInitialized();
     if (
       _vault == address(0) || _owner == address(0) || _manager == address(0) ||
       _borrower == address(0) || _idleCDO == address(0)

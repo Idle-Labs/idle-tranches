@@ -185,6 +185,20 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(programmableBorrower.borrowerApr(), 365e18, "borrower apr");
   }
 
+  function testProgrammableBorrowerImplementationInitializerIsDisabled() external {
+    ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
+
+    vm.expectRevert(bytes("Initializable: contract is already initialized"));
+    programmableBorrowerImplementation.initialize(
+      address(0),
+      address(0),
+      address(0),
+      address(0),
+      address(0),
+      0
+    );
+  }
+
   function testDeployCreditVaultWiresAncillaryContracts() external {
     vm.warp(100 days);
 

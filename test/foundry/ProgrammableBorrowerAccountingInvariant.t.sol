@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "forge-std/StdInvariant.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {ProgrammableBorrower} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
 
@@ -429,7 +430,6 @@ contract ProgrammableBorrowerAccountingHandler is Test {
 /// @dev The harness intentionally avoids full IdleCDO orchestration so the invariants stay focused
 /// on the borrower ledger, vault PnL tracking, and repayment classification rules.
 contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
-  using stdStorage for StdStorage;
   MockInvariantERC20 internal underlying;
   MockInvariantVault internal vault;
   ProgrammableBorrower internal borrowerContract;
@@ -443,12 +443,20 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
     vault = new MockInvariantVault(address(underlying));
     idleCDO = address(new MockInvariantCDO(address(underlying)));
 
-    borrowerContract = new ProgrammableBorrower();
-    stdstore
-      .target(address(borrowerContract))
-      .sig(borrowerContract.underlyingToken.selector)
-      .checked_write(address(0));
-    borrowerContract.initialize(address(vault), idleCDO, address(this), address(this), borrower, 365e18);
+    ProgrammableBorrower borrowerImplementation = new ProgrammableBorrower();
+    borrowerContract = ProgrammableBorrower(address(new TransparentUpgradeableProxy(
+      address(borrowerImplementation),
+      makeAddr("programmableBorrowerProxyAdmin"),
+      abi.encodeWithSelector(
+        ProgrammableBorrower.initialize.selector,
+        address(vault),
+        idleCDO,
+        address(this),
+        address(this),
+        borrower,
+        365e18
+      )
+    )));
 
     // Prefund the borrower contract with idle capital and the real borrower with ample repayment liquidity.
     underlying.mint(address(borrowerContract), 1_000_000e18);
@@ -557,12 +565,20 @@ contract ProgrammableBorrowerIdleCashRegressionTest is Test {
     vault = new MockInvariantVault(address(underlying));
     idleCDO = address(new MockInvariantCDO(address(underlying)));
 
-    borrowerContract = new ProgrammableBorrower();
-    stdstore
-      .target(address(borrowerContract))
-      .sig(borrowerContract.underlyingToken.selector)
-      .checked_write(address(0));
-    borrowerContract.initialize(address(vault), idleCDO, address(this), address(this), realBorrower, 0);
+    ProgrammableBorrower borrowerImplementation = new ProgrammableBorrower();
+    borrowerContract = ProgrammableBorrower(address(new TransparentUpgradeableProxy(
+      address(borrowerImplementation),
+      makeAddr("programmableBorrowerRegressionProxyAdmin"),
+      abi.encodeWithSelector(
+        ProgrammableBorrower.initialize.selector,
+        address(vault),
+        idleCDO,
+        address(this),
+        address(this),
+        realBorrower,
+        0
+      )
+    )));
 
     vm.prank(realBorrower);
     underlying.approve(address(borrowerContract), type(uint256).max);

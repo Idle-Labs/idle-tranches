@@ -4,6 +4,7 @@ pragma solidity 0.8.10;
 import "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {IdleCDO} from "../../contracts/IdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
@@ -152,12 +153,20 @@ contract TestProgrammableBorrowerCreditVault is Test {
     deal(USDC, address(this), 1_000_000 * oneScale, true);
     underlying.approve(address(cdoEpoch), type(uint256).max);
 
-    programmableBorrower = new ProgrammableBorrower();
-    stdstore
-      .target(address(programmableBorrower))
-      .sig(programmableBorrower.underlyingToken.selector)
-      .checked_write(address(0));
-    programmableBorrower.initialize(vaultAddress, address(cdoEpoch), address(this), manager, revolvingBorrower, 365e18);
+    ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
+    programmableBorrower = ProgrammableBorrower(address(new TransparentUpgradeableProxy(
+      address(programmableBorrowerImplementation),
+      makeAddr("programmableBorrowerProxyAdmin"),
+      abi.encodeWithSelector(
+        ProgrammableBorrower.initialize.selector,
+        vaultAddress,
+        address(cdoEpoch),
+        address(this),
+        manager,
+        revolvingBorrower,
+        365e18
+      )
+    )));
     morphoVault = IMMVault(vaultAddress);
 
     vm.prank(owner);

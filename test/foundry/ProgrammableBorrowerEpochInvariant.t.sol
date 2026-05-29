@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "forge-std/StdInvariant.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
@@ -400,19 +401,20 @@ contract ProgrammableBorrowerEpochInvariant is StdInvariant, Test {
     cdoEpoch.setIsInterestMinted(true);
     vm.stopPrank();
 
-    programmableBorrower = new ProgrammableBorrower();
-    stdstore
-      .target(address(programmableBorrower))
-      .sig(programmableBorrower.underlyingToken.selector)
-      .checked_write(address(0));
-    programmableBorrower.initialize(
-      address(vault),
-      address(cdoEpoch),
-      address(this),
-      manager,
-      revolvingBorrower,
-      365e18
-    );
+    ProgrammableBorrower programmableBorrowerImplementation = new ProgrammableBorrower();
+    programmableBorrower = ProgrammableBorrower(address(new TransparentUpgradeableProxy(
+      address(programmableBorrowerImplementation),
+      makeAddr("programmableBorrowerProxyAdmin"),
+      abi.encodeWithSelector(
+        ProgrammableBorrower.initialize.selector,
+        address(vault),
+        address(cdoEpoch),
+        address(this),
+        manager,
+        revolvingBorrower,
+        365e18
+      )
+    )));
 
     vm.prank(owner);
     strategy.setBorrower(address(programmableBorrower));
