@@ -480,15 +480,16 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   /// @param _feeReceiver fee receiver address. It gets the portion of fees specified by `_feeSplit`.
   /// The remaining fee portion goes to `owner()`.
+  /// @dev Reverts if `_feeReceiver` is address(0). Use `_feeSplit = 0` to route all fees to `owner()`.
   /// @param _fee new performance fee value (in % with 100000 = 100%)
   /// @param _feeSplit portion of collected fees sent to `_feeReceiver` (100000 = 100%)
   /// @param _managementFee annualized management fee (in % with 100000 = 100%)
   function setFeeParams(address _feeReceiver, uint256 _fee, uint256 _feeSplit, uint256 _managementFee) external {
     _checkOnlyOwner();
     _checkAmountTooHigh(_fee > MAX_FEE || _feeSplit > FULL_ALLOC || _managementFee > MAX_FEE / 10);
+    _checkIs0((feeReceiver = _feeReceiver) == address(0));
 
     _accrueManagementFee();
-    feeReceiver = _feeReceiver;
     fee = _fee;
     feeSplit = _feeSplit;
     managementFee = _managementFee;

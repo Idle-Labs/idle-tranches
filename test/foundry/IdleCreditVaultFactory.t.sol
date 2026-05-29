@@ -233,14 +233,14 @@ contract IdleCreditVaultFactoryTest is Test {
     cv.setFeeParams(creatorFeeReceiver, 10000, 80000, 2001);
   }
 
-  function testDeployCreditVaultWithoutOptionalContractsAndFeeReceiver() external {
+  function testDeployCreditVaultWithoutOptionalContracts() external {
     vm.warp(100 days);
 
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
     IdleCreditVaultFactory factory = _deployFactory();
     IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
     IdleCreditVaultFactory.CreditVaultParams memory cvParams =
-      _makeCreditVaultParams(address(0));
+      _makeCreditVaultParams(creatorFeeReceiver);
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
       keyring: address(0),
       queueImplementation: address(0),
@@ -263,10 +263,42 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(deployment.writeOffEscrow, address(0), "write-off escrow");
     assertEq(cv.owner(), owner, "cdo owner");
     assertEq(cv.keyring(), address(0), "keyring");
-    assertEq(cv.feeReceiver(), address(0), "fee receiver");
+    assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split retained");
     _assertProxyAdmin(deployment.cv);
     _assertProxyAdmin(deployment.strategy);
+  }
+
+  function testDeployCreditVaultRevertsWhenFeeReceiverIsZero() external {
+    vm.warp(100 days);
+
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory factory = _deployFactory();
+    IdleCDOEpochVariant cdoImplementation = new IdleCDOEpochVariant();
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams =
+      _makeCreditVaultParams(address(0));
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
+      keyring: address(0),
+      queueImplementation: address(0),
+      prefundedDepositWindow: 0,
+      writeOffImplementation: address(0)
+    });
+    IdleCreditVault strategyImplementation = new IdleCreditVault();
+    cvParams.implementation = address(cdoImplementation);
+    cvParams.limit = 0;
+    cvParams.underlying = address(underlying);
+    IdleCreditVaultFactory.StrategyData memory strategyData =
+      _makeStrategyData(
+        address(strategyImplementation),
+        address(underlying),
+        address(factory),
+        "Standard",
+        12e18
+      );
+
+    vm.prank(creator);
+    vm.expectRevert(IS_0);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
   }
 
   function testDeployCreditVaultRevertsWhenFeesAreBelowMinimums() external {

@@ -14,6 +14,7 @@ import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
 error NotAllowed();
 error NotAuthorized();
 error Default();
+error Is0();
 
 contract NonProgrammableBorrower {}
 
@@ -839,14 +840,30 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
-  function testStopEpochSendsAllFeesToOwnerWhenFeeReceiverIsZero() external {
+  function testSetFeeParamsRevertsWhenFeeReceiverIsZero() external {
+    address currentFeeReceiver = cdoEpoch.feeReceiver();
+    uint256 currentFee = cdoEpoch.fee();
+    uint256 currentFeeSplit = cdoEpoch.feeSplit();
+    uint256 currentManagementFee = cdoEpoch.managementFee();
+
+    vm.prank(owner);
+    vm.expectRevert(Is0.selector);
+    cdoEpoch.setFeeParams(address(0), 1, 80_000, 1);
+
+    assertEq(cdoEpoch.feeReceiver(), currentFeeReceiver, "fee receiver changed");
+    assertEq(cdoEpoch.fee(), currentFee, "fee changed");
+    assertEq(cdoEpoch.feeSplit(), currentFeeSplit, "fee split changed");
+    assertEq(cdoEpoch.managementFee(), currentManagementFee, "management fee changed");
+  }
+
+  function testStopEpochSendsAllFeesToOwnerWhenFeeSplitIsZero() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 mgmtFee = 1_000; // 1%
 
     idleCDO.depositAA(amount);
     _transferBurnedTrancheTokens(address(this), true);
 
-    _setFeeParams(address(0), 0, 80_000, mgmtFee);
+    _setFeeParams(TL_MULTISIG, 0, 0, mgmtFee);
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
@@ -856,6 +873,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
     uint256 ownerBalPre = IERC20Detailed(defaultUnderlying).balanceOf(owner);
+    uint256 feeReceiverBalPre = IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG);
 
     deal(defaultUnderlying, borrower, expectedInterest);
     vm.warp(cdoEpoch.epochEndDate());
@@ -863,7 +881,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialProvidedApr, 0);
 
-    assertEq(cdoEpoch.feeReceiver(), address(0), "fee receiver should be unset");
+    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, "fee receiver should stay set");
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG),
+      feeReceiverBalPre,
+      "fee receiver should get no fees"
+    );
     assertEq(
       IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre,
       _calcManagementFee(amount, mgmtFee, 365 days),
@@ -2005,8 +2028,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
-  function testStopEpochMintInterestSendsAllFeesToOwnerWhenFeeReceiverIsZero() external {
-    _setFeeParams(address(0), 10000, 80_000, cdoEpoch.managementFee()); // 10%
+  function testStopEpochMintInterestSendsAllFeesToOwnerWhenFeeSplitIsZero() external {
+    _setFeeParams(TL_MULTISIG, 10000, 0, cdoEpoch.managementFee()); // 10%
     vm.prank(owner);
     IdleCreditVault(address(strategy)).setMaxApr(0);
     vm.prank(owner);
@@ -2023,6 +2046,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _startEpochAndCheckPrices(0);
 
     uint256 ownerAAPre = IERC20(address(AAtranche)).balanceOf(owner);
+    uint256 feeReceiverAAPre = IERC20(address(AAtranche)).balanceOf(TL_MULTISIG);
     uint256 overrideInterest = 1000 * ONE_SCALE;
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
@@ -2030,8 +2054,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpoch(0, overrideInterest);
 
     uint256 feeExpected = overrideInterest * cdoEpoch.fee() / FULL_ALLOC;
-    uint256 expectedFeeShares = feeExpected * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche));
-    assertEq(cdoEpoch.feeReceiver(), address(0), "fee receiver should be unset");
+    uint256 expectedFeeShares =
+      feeExpected * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche));
+    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, "fee receiver should stay set");
+    assertEq(
+      IERC20(address(AAtranche)).balanceOf(TL_MULTISIG),
+      feeReceiverAAPre,
+      "fee receiver should get no fee shares"
+    );
     assertApproxEqAbs(
       IERC20(address(AAtranche)).balanceOf(owner) - ownerAAPre,
       expectedFeeShares,
