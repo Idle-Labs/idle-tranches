@@ -691,12 +691,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     }
 
     uint256 principal = _underlyings;
-    // calculate performance fee
     (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
-    uint256 fees = interest * fee / FULL_ALLOC;
-    uint256 upfrontManagementFee = _calculateManagementFee(principal, _withdrawRequestManagementFeeDuration());
-    uint256 totalFees = fees + upfrontManagementFee;
-    // user is requesting principal + interest of next epoch minus fees and upfront management fee
+    uint256 totalFees = _totalWithdrawFees(principal, interest);
+    // user is requesting principal + interest minus upfront management fee and net performance fee
     _underlyings = principal + interest - totalFees;
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += totalFees;
@@ -805,6 +802,18 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     return _gain - _gain * fee / FULL_ALLOC;
   }
 
+  /// @notice Calculate total fees charged on a withdrawal request.
+  /// @param _principal Principal leaving live NAV.
+  /// @param _interest Projected interest for the requested principal.
+  /// @return Total management and performance fees to subtract from principal plus projected interest.
+  function _totalWithdrawFees(uint256 _principal, uint256 _interest) private view returns (uint256) {
+    uint256 _mgmtFee = _calculateManagementFee(_principal, _withdrawRequestManagementFeeDuration());
+    // When interest covers management fees, interest - netGain equals management fee plus performance fee.
+    return _mgmtFee >= _interest ?
+      _mgmtFee :
+      _interest - _netGainAfterFees(_interest, _mgmtFee);
+  }
+
   /// @notice Get the max amount of underlyings that can be withdrawn by user
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
@@ -813,9 +822,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     currentUnderlyings -= _calculateManagementFee(currentUnderlyings, block.timestamp - latestHarvestBlock);
     // add interest for one epoch
     (uint256 interest, ) = _calcInterestWithdrawRequest(currentUnderlyings, _tranche);
-    // remove perf fee from projected interest and upfront management fee from principal only
-    currentUnderlyings = currentUnderlyings + interest - (interest * fee / FULL_ALLOC) -
-      _calculateManagementFee(currentUnderlyings, _withdrawRequestManagementFeeDuration());
+    // remove upfront management fee and performance fee on the remaining projected interest
+    currentUnderlyings = currentUnderlyings + interest - _totalWithdrawFees(currentUnderlyings, interest);
   }
 
   /// @notice Get the duration used for upfront management fees on withdrawal receipts.
@@ -907,5 +915,4 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
     _resolvedInterest = _interest;
   }
-
 }

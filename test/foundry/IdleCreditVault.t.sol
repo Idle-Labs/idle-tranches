@@ -611,9 +611,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _setManagementFee(1_000); // 1%
     uint256 managementFee = _calcManagementFee(amount, 1_000, cdoEpoch.epochDuration());
+    uint256 performanceFee = (interest - managementFee) / 10;
     assertEq(
       cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche()),
-      amount + interest - (interest / 10) - managementFee,
+      amount + interest - performanceFee - managementFee,
       'maxWithdrawable with management fee is wrong'
     );
   }
@@ -842,6 +843,34 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 balPre = underlying.balanceOf(address(this));
     cdoEpoch.claimWithdrawRequest();
     assertEq(underlying.balanceOf(address(this)) - balPre, expectedClaimAmount, "claim amount should stay net of management fee");
+  }
+
+  function testRequestWithdrawChargesPerformanceFeeAfterManagementFee() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 perfFeeRate = 10_000; // 10%
+    uint256 mgmtFeeRate = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, perfFeeRate, FULL_ALLOC, cdoEpoch.managementFee());
+    _setManagementFee(mgmtFeeRate);
+
+    uint256 trancheAmount = idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
+    uint256 interest = _calcInterestWithdrawRequest(principal, address(AAtranche));
+    uint256 expectedMgmtFee = _calcManagementFee(
+      principal,
+      mgmtFeeRate,
+      _withdrawRequestManagementFeeDuration()
+    );
+    uint256 expectedPerfFee = (interest - expectedMgmtFee) * perfFeeRate / FULL_ALLOC;
+    uint256 expectedClaimAmount = principal + interest - expectedMgmtFee - expectedPerfFee;
+
+    uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
+
+    assertEq(requested, expectedClaimAmount, "withdraw perf fee should be charged after management fee");
+    assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee + expectedPerfFee, "pending fees should include net performance fee");
+    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), expectedClaimAmount, "pending withdraws should be net of all fees");
   }
 
   function testRequestWithdrawDuringBufferChargesRemainingBufferManagementFee() external {
