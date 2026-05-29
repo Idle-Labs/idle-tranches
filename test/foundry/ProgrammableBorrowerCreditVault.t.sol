@@ -7,6 +7,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IdleCDO} from "../../contracts/IdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
+import {IdleCreditVaultImpliedPrice} from "../../contracts/IdleCreditVaultImpliedPrice.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IERC4626} from "../../contracts/interfaces/IERC4626.sol";
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
@@ -91,6 +92,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
   uint256 internal constant FORK_BLOCK = 19225935;
   uint256 internal constant GAUNTLET_FORK_BLOCK = 24850150;
   string internal constant BORROWER_NAME = "testBorrower";
+  uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
 
   address internal owner = address(0xdeadbad);
   address internal rebalancer = address(0xbaddead);
@@ -216,6 +218,39 @@ contract TestProgrammableBorrowerCreditVault is Test {
     );
     assertApproxEqAbs(programmableBorrower.borrowerInterestAccruedNow(), 0, 2, "current borrower interest not cleared");
     assertEq(strategy.unscaledApr(), 0, "strategy apr should stay zero");
+  }
+
+  function testImpliedVirtualPriceUsesProgrammableBorrowerInterestDuringEpoch() external {
+    IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 5_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(block.timestamp + 30 days);
+    _accrueMorphoVaultInterest();
+
+    uint256 totalInterest = programmableBorrower.totalInterestDueNow();
+    uint256 basePrice = cdoEpoch.virtualPrice(address(aaTranche));
+    uint256 trancheSupply = aaTranche.totalSupply();
+    uint256 expectedPrice = ((trancheSupply * basePrice / ONE_TRANCHE_TOKEN) + totalInterest) *
+      ONE_TRANCHE_TOKEN /
+      trancheSupply;
+
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, "test setup should use APR0 expected interest");
+    assertGt(totalInterest, 0, "programmable borrower interest should accrue");
+    assertEq(
+      impliedPrice.impliedVirtualPrice(address(aaTranche)),
+      expectedPrice,
+      "AA implied price should use programmable borrower interest"
+    );
   }
 
   function testProgrammableBorrowerVaultLossDoesNotReduceSettledBorrowerDebt() external {

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
+import {IProgrammableBorrower} from "./interfaces/IProgrammableBorrower.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOTranche} from "./IdleCDOTranche.sol";
+import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 
 error InvalidTranche();
 
@@ -12,7 +14,7 @@ contract IdleCreditVaultImpliedPrice {
   uint256 private constant ONE_TRANCHE_TOKEN = 1e18;
 
   /// @notice Current implied virtual price for a Credit Vault tranche token.
-  /// @dev During an epoch this linearly accrues expected net epoch interest up to epochEndDate.
+  /// @dev During an epoch this linearly accrues expected epoch interest net of fees up to epochEndDate.
   /// Outside running epochs it returns the vault virtualPrice.
   /// @param _tranche AA or BB tranche token address.
   /// @return price Current implied tranche price, scaled like IdleCDO.virtualPrice.
@@ -49,12 +51,28 @@ contract IdleCreditVaultImpliedPrice {
     if (duration == 0 || block.timestamp <= startDate) return 0;
 
     uint256 elapsed = block.timestamp >= endDate ? duration : block.timestamp - startDate;
-    uint256 expectedInterest = cdo.expectedEpochInterest();
+    bool isProgrammable = cdo.isProgrammableBorrower();
+    uint256 expectedInterest = isProgrammable ? _programmableBorrowerInterest(cdo) : cdo.expectedEpochInterest();
     uint256 pendingFees = cdo.pendingWithdrawFees();
     if (elapsed == 0 || expectedInterest <= pendingFees) return 0;
 
-    accruedGain = (expectedInterest - pendingFees) * elapsed / duration;
+    accruedGain = expectedInterest - pendingFees;
+    if (!isProgrammable) accruedGain = accruedGain * elapsed / duration;
+    uint256 mgmtFee = cdo.managementFee();
+    if (mgmtFee != 0) {
+      // Match stop accounting: management fees reduce gains before performance fees.
+      uint256 accruedManagementFee = cdo.getContractValue() * mgmtFee * elapsed / (FULL_ALLOC * 365 days);
+      if (accruedManagementFee >= accruedGain) return 0;
+      accruedGain -= accruedManagementFee;
+    }
     accruedGain -= accruedGain * cdo.fee() / FULL_ALLOC;
+  }
+
+  /// @notice Current net epoch interest due from a programmable borrower.
+  /// @dev The borrower returns interest accrued to now, so callers must not prorate it again.
+  function _programmableBorrowerInterest(IdleCDOEpochVariant cdo) private view returns (uint256) {
+    address borrower = IdleCreditVault(cdo.strategy()).borrower();
+    return IProgrammableBorrower(borrower).totalInterestDueNow();
   }
 
   function _trancheGain(

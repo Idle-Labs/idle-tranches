@@ -277,6 +277,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 basePrice = cdoEpoch.virtualPrice(_tranche);
     uint256 expectedGain = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
     uint256 accruedGain = expectedGain * elapsed / duration;
+    uint256 accruedManagementFee = _calcManagementFee(cdoEpoch.getContractValue(), cdoEpoch.managementFee(), elapsed);
+    if (accruedManagementFee >= accruedGain) {
+      return basePrice;
+    }
+    accruedGain -= accruedManagementFee;
     accruedGain -= accruedGain * cdoEpoch.fee() / FULL_ALLOC;
 
     uint256 trancheGain;
@@ -389,6 +394,34 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), aaImpliedEnd, 1, 'AA implied price should match stopped price');
     assertApproxEqAbs(cdoEpoch.virtualPrice(address(BBtranche)), bbImpliedEnd, 1, 'BB implied price should match stopped price');
+  }
+
+  function testImpliedVirtualPriceAccruesExpectedInterestNetOfManagementFeesDuringEpoch() external {
+    IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
+    uint256 amountWei = 10000 * ONE_SCALE;
+    uint256 managementFee = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFee);
+
+    idleCDO.depositAA(amountWei);
+    idleCDO.depositBB(amountWei);
+
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 elapsed = duration / 2;
+    vm.warp(cdoEpoch.epochEndDate() - (duration - elapsed));
+
+    assertEq(
+      impliedPrice.impliedVirtualPrice(address(AAtranche)),
+      _expectedImpliedVirtualPrice(address(AAtranche), elapsed, duration),
+      'AA half epoch implied price should include management fee'
+    );
+    assertEq(
+      impliedPrice.impliedVirtualPrice(address(BBtranche)),
+      _expectedImpliedVirtualPrice(address(BBtranche), elapsed, duration),
+      'BB half epoch implied price should include management fee'
+    );
   }
 
   /// @notice test init values for both cdo and strategy
