@@ -108,8 +108,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
     // check if the user has a write-off request
     if (currentRequest.tranches == 0) revert Is0();
 
-    // delete user request
-    pendingUnderlyings -= currentRequest.underlyings;
+    // Existing upgraded escrows can have legacy requests that were never added to pendingUnderlyings.
+    pendingUnderlyings -= pendingUnderlyings >= currentRequest.underlyings ? currentRequest.underlyings : pendingUnderlyings;
     delete userRequests[msg.sender];
     // transfer tranche tokens back to the user
     IERC20Detailed(tranche).safeTransfer(msg.sender, currentRequest.tranches);
@@ -130,8 +130,8 @@ contract IdleCreditVaultWriteOffEscrow is Initializable, OwnableUpgradeable, Ree
       revert WrongRequest();
     }
 
-    // delete user request
-    pendingUnderlyings -= currentRequest.underlyings;
+    // Existing upgraded escrows can have legacy requests that were never added to pendingUnderlyings.
+    pendingUnderlyings -= pendingUnderlyings >= currentRequest.underlyings ? currentRequest.underlyings : pendingUnderlyings;
     delete userRequests[_user];
 
     IERC20Detailed underlyingToken = IERC20Detailed(underlying);
