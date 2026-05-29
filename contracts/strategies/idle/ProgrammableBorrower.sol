@@ -213,7 +213,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     // exact pre-deposit amount instead of a post-deposit share-conversion round-down.
     uint256 startAssets = underlyingToken.balanceOf(address(this)) + currentVaultAssets;
     // Any idle balance left on the contract between epochs is parked immediately into the vault.
-    _depositAllToVaultInternal(0);
+    _depositToVault(underlyingToken.balanceOf(address(this)), 0);
     // Reset the epoch accounting baseline from the exact pre-start total assets so the new epoch
     // does not treat the just-deposited idle balance as fresh vault profit or loss.
     epochStartVaultAssets = startAssets;
@@ -366,17 +366,17 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     emit RedeemedFromVault(_shares, assets, address(this));
   }
 
-  /// @notice Move the contract's full idle underlying balance into the vault.
+  /// @notice Move a specific amount of idle underlying into the vault.
+  /// @param _assetAmount Amount of underlying to deposit
   /// @param _principalAssets Portion of the deposited assets that should extend the epoch principal
   /// baseline instead of being recognized as current-epoch profit.
-  function _depositAllToVaultInternal(uint256 _principalAssets) internal {
-    uint256 assets = underlyingToken.balanceOf(address(this));
-    if (assets == 0) return;
-    uint256 shares = vault.deposit(assets, address(this));
+  function _depositToVault(uint256 _assetAmount, uint256 _principalAssets) internal {
+    if (_assetAmount == 0) return;
+    uint256 shares = vault.deposit(_assetAmount, address(this));
     if (epochAccountingActive && _principalAssets != 0) {
       epochDepositedToVault += _principalAssets;
     }
-    emit DepositedIntoVault(assets, shares);
+    emit DepositedIntoVault(_assetAmount, shares);
   }
 
   /// @notice Draw funds from the revolving-credit facility.
@@ -491,7 +491,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
         if (epochAccountingActive) {
           // While an epoch is active, even partial repayments are parked back into the vault immediately.
           // This repayment only clears previously-fronted debt, so it should not count as new epoch profit.
-          _depositAllToVaultInternal(assets);
+          _depositToVault(assets, assets);
         }
         return (assets, 0);
       }
@@ -519,7 +519,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     if (epochAccountingActive) {
       // Current-epoch borrower interest must remain visible as profit at stopEpoch, while principal,
       // previously-fronted debt, and any excess repayment should only extend the epoch principal baseline.
-      _depositAllToVaultInternal(totalRepaidAssets - currentEpochInterestPaid);
+      _depositToVault(totalRepaidAssets, totalRepaidAssets - currentEpochInterestPaid);
     }
   }
 

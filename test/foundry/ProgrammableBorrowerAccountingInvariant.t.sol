@@ -540,3 +540,105 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
     );
   }
 }
+
+/// @notice Focused regressions for active-epoch idle-cash sweep accounting.
+contract ProgrammableBorrowerIdleCashRegressionTest is Test {
+  using stdStorage for StdStorage;
+
+  MockInvariantERC20 internal underlying;
+  MockInvariantVault internal vault;
+  ProgrammableBorrower internal borrowerContract;
+  address internal idleCDO;
+  address internal realBorrower = makeAddr("realBorrower");
+
+  /// @notice Deploy a direct programmable-borrower harness with zero borrower APR.
+  function setUp() public {
+    underlying = new MockInvariantERC20();
+    vault = new MockInvariantVault(address(underlying));
+    idleCDO = address(new MockInvariantCDO(address(underlying)));
+
+    borrowerContract = new ProgrammableBorrower();
+    stdstore
+      .target(address(borrowerContract))
+      .sig(borrowerContract.underlyingToken.selector)
+      .checked_write(address(0));
+    borrowerContract.initialize(address(vault), idleCDO, address(this), address(this), realBorrower, 0);
+
+    vm.prank(realBorrower);
+    underlying.approve(address(borrowerContract), type(uint256).max);
+  }
+
+  /// @notice Repay must not classify emergency-exited idle principal as vault profit.
+  function testRepayAfterEmergencyExitDoesNotCountIdleCashAsProfit() external {
+    uint256 startAssets = 14_000e18;
+    uint256 borrowAmount = 4_000e18;
+
+    _startEpoch(startAssets);
+
+    vm.prank(realBorrower);
+    borrowerContract.borrow(borrowAmount);
+
+    borrowerContract.emergencyExitVault(0);
+    assertEq(borrowerContract.totalInterestDueNow(), 0, "pre-repay interest");
+
+    vm.prank(realBorrower);
+    borrowerContract.repay(borrowAmount);
+
+    assertEq(borrowerContract.totalInterestDueNow(), 0, "idle cash should stay principal");
+  }
+
+  /// @notice Repay must not classify active-epoch inbound idle cash as vault profit.
+  function testRepayDoesNotCountActiveEpochInboundCashAsProfit() external {
+    uint256 startAssets = 14_000e18;
+    uint256 borrowAmount = 4_000e18;
+    uint256 inboundIdleAssets = 5_000e18;
+
+    _startEpoch(startAssets);
+
+    vm.prank(realBorrower);
+    borrowerContract.borrow(borrowAmount);
+
+    underlying.mint(address(borrowerContract), inboundIdleAssets);
+    assertEq(borrowerContract.totalInterestDueNow(), 0, "pre-repay interest");
+
+    vm.prank(realBorrower);
+    borrowerContract.repay(borrowAmount);
+
+    assertEq(borrowerContract.totalInterestDueNow(), 0, "inbound cash should stay principal");
+  }
+
+  /// @notice Partial fronted-interest repayments must not sweep old idle cash into vault profit.
+  function testPartialFrontedDebtRepayDoesNotCountIdleCashAsProfit() external {
+    uint256 startAssets = 10_000e18;
+    uint256 frontedDebt = 4_000e18;
+    uint256 partialRepayment = 2_000e18;
+
+    _startEpoch(startAssets);
+    borrowerContract.emergencyExitVault(0);
+    _writeBorrowerInterestDebt(frontedDebt);
+    underlying.mint(realBorrower, partialRepayment);
+
+    vm.prank(realBorrower);
+    borrowerContract.repay(partialRepayment);
+
+    assertEq(borrowerContract.totalInterestDueNow(), 0, "old idle cash should stay principal");
+  }
+
+  /// @notice Start active epoch accounting with all assets initially deposited into the vault.
+  /// @param _startAssets initial underlying balance for the programmable borrower
+  function _startEpoch(uint256 _startAssets) internal {
+    underlying.mint(address(borrowerContract), _startAssets);
+
+    vm.prank(idleCDO);
+    borrowerContract.onStartEpoch(0);
+  }
+
+  /// @notice Write fronted borrower-interest debt for the direct repayment branch under test.
+  /// @param _frontedDebt borrower interest debt amount to store
+  function _writeBorrowerInterestDebt(uint256 _frontedDebt) internal {
+    stdstore
+      .target(address(borrowerContract))
+      .sig(borrowerContract.borrowerInterestDebt.selector)
+      .checked_write(_frontedDebt);
+  }
+}
