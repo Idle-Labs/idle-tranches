@@ -4,6 +4,7 @@ pragma solidity 0.8.10;
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
+import {IdleCDOEpochQueue} from "./IdleCDOEpochQueue.sol";
 import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 
 /// @title IdleCreditVaultManagerOrchestrator
@@ -130,11 +131,42 @@ contract IdleCreditVaultManagerOrchestrator is Initializable, OwnableUpgradeable
     IdleCreditVault(_creditVault(_cdo).strategy()).setCanTransfer(_canTransfer);
   }
 
+  /// @notice Forward `processDeposits` to a queue linked to a registered CDO.
+  /// @param _epochQueue queue address whose CDO must be registered
+  function processDeposits(address _epochQueue) external {
+    _checkOnlyOperator();
+    _creditVaultQueue(_epochQueue).processDeposits();
+  }
+
+  /// @notice Forward `processWithdrawRequests` to a queue linked to a registered CDO.
+  /// @param _epochQueue queue address whose CDO must be registered
+  function processWithdrawRequests(address _epochQueue) external {
+    _checkOnlyOperator();
+    _creditVaultQueue(_epochQueue).processWithdrawRequests();
+  }
+
+  /// @notice Forward `processWithdrawalClaims` to a queue linked to a registered CDO.
+  /// @param _epochQueue queue address whose CDO must be registered
+  /// @param _claimEpoch epoch whose withdrawal claims should be processed
+  function processWithdrawalClaims(address _epochQueue, uint256 _claimEpoch) external {
+    _checkOnlyOperator();
+    _creditVaultQueue(_epochQueue).processWithdrawalClaims(_claimEpoch);
+  }
+
   /// @param _cdo credit vault address
   /// @return cdo typed credit vault
   function _creditVault(address _cdo) internal view returns (IdleCDOEpochVariant cdo) {
     if (!isCreditVaultAllowed[_cdo]) revert OrchestratorNotAllowed();
     cdo = IdleCDOEpochVariant(_cdo);
+  }
+
+  /// @notice Validate and return a queue linked to a registered credit vault.
+  /// @param _epochQueue queue address to validate
+  /// @return epochQueue typed epoch queue
+  function _creditVaultQueue(address _epochQueue) internal view returns (IdleCDOEpochQueue epochQueue) {
+    _checkAddress(_epochQueue);
+    epochQueue = IdleCDOEpochQueue(_epochQueue);
+    if (!isCreditVaultAllowed[epochQueue.idleCDOEpoch()]) revert OrchestratorNotAllowed();
   }
 
   function _checkOnlyOwner() internal view {

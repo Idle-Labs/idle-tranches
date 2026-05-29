@@ -5,6 +5,12 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IdleCreditVaultManagerOrchestrator} from "../../contracts/IdleCreditVaultManagerOrchestrator.sol";
 
+interface IOrchestratorQueueForwarder {
+  function processDeposits(address _epochQueue) external;
+  function processWithdrawRequests(address _epochQueue) external;
+  function processWithdrawalClaims(address _epochQueue, uint256 _claimEpoch) external;
+}
+
 contract MockOrchestratedCreditStrategy {
   address public manager;
   uint256 public unscaledApr;
@@ -108,12 +114,57 @@ contract MockOrchestratedCreditVault {
   }
 }
 
+contract MockOrchestratedEpochQueue {
+  address public idleCDOEpoch;
+  address public manager;
+  uint256 public prefundedDepositWindow;
+  uint256 public processDepositsToBorrowerCalls;
+  uint256 public processDepositsCalls;
+  uint256 public processWithdrawRequestsCalls;
+  uint256 public processWithdrawalClaimsCalls;
+  uint256 public lastClaimEpoch;
+
+  constructor(address _idleCDOEpoch, address _manager) {
+    idleCDOEpoch = _idleCDOEpoch;
+    manager = _manager;
+  }
+
+  modifier onlyManager() {
+    require(msg.sender == manager, "not manager");
+    _;
+  }
+
+  function setPrefundedDepositWindow(uint256 _prefundedDepositWindow) external onlyManager {
+    prefundedDepositWindow = _prefundedDepositWindow;
+  }
+
+  function processDepositsToBorrower() external onlyManager {
+    processDepositsToBorrowerCalls += 1;
+  }
+
+  function processDeposits() external onlyManager {
+    processDepositsCalls += 1;
+  }
+
+  function processWithdrawRequests() external onlyManager {
+    processWithdrawRequestsCalls += 1;
+  }
+
+  function processWithdrawalClaims(uint256 _claimEpoch) external onlyManager {
+    processWithdrawalClaimsCalls += 1;
+    lastClaimEpoch = _claimEpoch;
+  }
+}
+
 contract TestIdleCreditVaultManagerOrchestrator is Test {
   IdleCreditVaultManagerOrchestrator internal orchestrator;
   MockOrchestratedCreditVault internal cdoA;
   MockOrchestratedCreditVault internal cdoB;
   MockOrchestratedCreditStrategy internal strategyA;
   MockOrchestratedCreditStrategy internal strategyB;
+  MockOrchestratedEpochQueue internal queueA;
+  MockOrchestratedEpochQueue internal queueB;
+  MockOrchestratedEpochQueue internal queueUnregistered;
 
   address internal operator = makeAddr("operator");
   address internal user = makeAddr("user");
@@ -124,6 +175,9 @@ contract TestIdleCreditVaultManagerOrchestrator is Test {
     strategyB = new MockOrchestratedCreditStrategy(address(orchestrator));
     cdoA = new MockOrchestratedCreditVault(address(strategyA), address(orchestrator));
     cdoB = new MockOrchestratedCreditVault(address(strategyB), address(orchestrator));
+    queueA = new MockOrchestratedEpochQueue(address(cdoA), address(orchestrator));
+    queueB = new MockOrchestratedEpochQueue(address(cdoB), address(orchestrator));
+    queueUnregistered = new MockOrchestratedEpochQueue(user, address(orchestrator));
 
     orchestrator.setCreditVaultAllowed(address(cdoA), true);
     orchestrator.setCreditVaultAllowed(address(cdoB), true);
@@ -243,6 +297,32 @@ contract TestIdleCreditVaultManagerOrchestrator is Test {
     assertFalse(strategyB.canTransfer(), "other transfer flag untouched");
   }
 
+  function testQueueForwardsUseQueueLinkedToRegisteredCdo() external {
+    IOrchestratorQueueForwarder queueForwarder = IOrchestratorQueueForwarder(address(orchestrator));
+
+    vm.startPrank(operator);
+    queueForwarder.processDeposits(address(queueA));
+    queueForwarder.processWithdrawRequests(address(queueA));
+    queueForwarder.processWithdrawalClaims(address(queueA), 7);
+    vm.stopPrank();
+
+    assertEq(queueA.processDepositsCalls(), 1, "deposit processing calls");
+    assertEq(queueA.processWithdrawRequestsCalls(), 1, "withdraw request processing calls");
+    assertEq(queueA.processWithdrawalClaimsCalls(), 1, "withdraw claim processing calls");
+    assertEq(queueA.lastClaimEpoch(), 7, "claim epoch");
+
+    assertEq(queueB.processDepositsCalls(), 0, "other queue untouched");
+    assertEq(queueB.processWithdrawRequestsCalls(), 0, "other withdraw requests untouched");
+  }
+
+  function testQueueForwardsRejectQueueWithUnregisteredCdo() external {
+    IOrchestratorQueueForwarder queueForwarder = IOrchestratorQueueForwarder(address(orchestrator));
+
+    vm.expectRevert(IdleCreditVaultManagerOrchestrator.OrchestratorNotAllowed.selector);
+    vm.prank(operator);
+    queueForwarder.processDeposits(address(queueUnregistered));
+  }
+
   function testNonOperatorCannotOperate() external {
     address[] memory cdos = new address[](1);
     cdos[0] = address(cdoA);
@@ -250,6 +330,38 @@ contract TestIdleCreditVaultManagerOrchestrator is Test {
     vm.expectRevert(IdleCreditVaultManagerOrchestrator.OrchestratorNotOperator.selector);
     vm.prank(user);
     orchestrator.startEpoch(cdos);
+  }
+
+  function testNonOperatorCannotProcessQueues() external {
+    IOrchestratorQueueForwarder queueForwarder = IOrchestratorQueueForwarder(address(orchestrator));
+
+    vm.expectRevert(IdleCreditVaultManagerOrchestrator.OrchestratorNotOperator.selector);
+    vm.prank(user);
+    queueForwarder.processDeposits(address(queueA));
+  }
+
+  function testPrefundedQueueForwardersAreNotExposed() external {
+    bytes memory prefundedWindowCall = abi.encodeWithSignature(
+      "setQueuePrefundedDepositWindow(address,address,uint256)",
+      address(cdoA),
+      address(queueA),
+      3 days
+    );
+    bytes memory depositsToBorrowerCall = abi.encodeWithSignature(
+      "processDepositsToBorrower(address,address)",
+      address(cdoA),
+      address(queueA)
+    );
+
+    vm.startPrank(operator);
+    (bool prefundedWindowSuccess,) = address(orchestrator).call(prefundedWindowCall);
+    (bool depositsToBorrowerSuccess,) = address(orchestrator).call(depositsToBorrowerCall);
+    vm.stopPrank();
+
+    assertFalse(prefundedWindowSuccess, "prefunded window forwarder should not exist");
+    assertFalse(depositsToBorrowerSuccess, "deposits-to-borrower forwarder should not exist");
+    assertEq(queueA.prefundedDepositWindow(), 0, "prefunded window should be untouched");
+    assertEq(queueA.processDepositsToBorrowerCalls(), 0, "deposits to borrower should be untouched");
   }
 
   function testCannotReinitialize() external {
