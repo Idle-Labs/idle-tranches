@@ -381,13 +381,19 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
           _updateSplitRatio(_getAARatio(true));
         }
       } else {
+        // Cash-funded fees can only use gross interest not already owed to pending withdrawals.
+        uint256 _availableForFees = _grossInterest > _pendingWithdrawFees ? _grossInterest - _pendingWithdrawFees : 0;
+        if (_fees > _availableForFees) {
+          _fees = _availableForFees;
+        }
         _transferFeeUnderlyings(_fees);
       }
-      unclaimedFees = 0;
+      // Any fee that cannot be paid in cash remains accrued and continues reducing NAV.
+      unclaimedFees -= _fees;
 
       uint256 _totalFees = _fees + (_mintInterest ? 0 : _pendingWithdrawFees);
       // save net gain (this does not include interest gained for pending withdrawals)
-      uint256 netInterest = _grossInterest - _totalFees;
+      uint256 netInterest = _grossInterest > _totalFees ? _grossInterest - _totalFees : 0;
       lastEpochInterest = netInterest;
       // mint strategyTokens equal to interest and send underlying to strategy to avoid double counting for NAV
       _strategy.deposit(_mintInterest ? 0 : netInterest);

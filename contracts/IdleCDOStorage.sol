@@ -17,7 +17,7 @@ contract IdleCDOStorage {
   // WETH address
   address internal weth;
   // [DEPRECATED] tokens used to incentivize the idle tranche ideal ratio
-  address[] public incentiveTokens;
+  address[] internal incentiveTokens;
   // underlying token (eg DAI)
   address public token;
   // address that can only pause/unpause the contract in case of emergency
@@ -35,9 +35,9 @@ contract IdleCDOStorage {
   bool public allowBBWithdraw;
   // Flag for allowing to enable reverting in case the strategy gives back less
   // amount than the requested one
-  bool public revertIfTooLow;
+  bool internal revertIfTooLow;
   // Flag to enable the `Default Check` (related to the emergency shutdown)
-  bool public skipDefaultCheck;
+  bool internal skipDefaultCheck;
 
   // address of the strategy used to lend funds
   address public strategy;
@@ -67,7 +67,7 @@ contract IdleCDOStorage {
   // last saved net asset value (in `token`) for BB tranches
   uint256 public lastNAVBB;
   // last saved lending provider price
-  uint256 public lastStrategyPrice;
+  uint256 internal lastStrategyPrice;
   // Keeps track of unclaimed fees for fee receivers
   uint256 public unclaimedFees;
   // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
@@ -109,7 +109,7 @@ contract IdleCDOStorage {
   // Referral event
   event Referral(uint256 _amount, address _ref);
   // tolerance in underlyings when redeeming
-  uint256 public liquidationTolerance;
+  uint256 internal liquidationTolerance;
 
   // Add new variables here. For each storage slot
   // used, reduce the __gap length by 1. 

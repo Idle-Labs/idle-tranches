@@ -725,6 +725,45 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
   }
 
+  function testStopEpochCarriesManagementFeesAboveGrossInterest() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 managementFeeRate = 2_000; // 2%
+    uint256 lowGrossInterest = 100 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
+    _setManagementFee(managementFeeRate);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    uint256 feeReceiverBalanceBefore = IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG);
+
+    deal(defaultUnderlying, borrower, lowGrossInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, lowGrossInterest);
+
+    uint256 accruedManagementFee = _calcManagementFee(amount, managementFeeRate, 365 days);
+    uint256 carriedFee = accruedManagementFee - lowGrossInterest;
+
+    assertGt(accruedManagementFee, lowGrossInterest, "test setup should exceed gross interest");
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalanceBefore,
+      lowGrossInterest,
+      "only fundable fees should be paid"
+    );
+    assertEq(cdoEpoch.unclaimedFees(), carriedFee, "unfunded management fees should remain accrued");
+    assertEq(cdoEpoch.lastEpochInterest(), 0, "net epoch interest should be zero");
+    assertEq(cdoEpoch.getContractValue(), amount + lowGrossInterest - accruedManagementFee, "NAV should include unpaid fees");
+  }
+
   function testStopEpochSplitsManagementFeeBetweenFeeReceiverAndOwner() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 mgmtFee = 1_000; // 1%
