@@ -13,7 +13,7 @@ contract IdleCDOStorage {
   // variable used to save the last tx.origin and block.number
   bytes32 internal _lastCallerBlock;
   // variable used to save the block of the latest harvest
-  uint256 internal latestHarvestBlock;
+  uint256 public latestHarvestBlock;
   // WETH address
   address internal weth;
   // [DEPRECATED] tokens used to incentivize the idle tranche ideal ratio

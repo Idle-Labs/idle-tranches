@@ -61,7 +61,10 @@ contract IdleCreditVaultImpliedPrice {
     uint256 mgmtFee = cdo.managementFee();
     if (mgmtFee != 0) {
       // Match stop accounting: management fees reduce gains before performance fees.
-      uint256 accruedManagementFee = cdo.getContractValue() * mgmtFee * elapsed / (FULL_ALLOC * 365 days);
+      uint256 accruedManagementFee = cdo.getContractValue() *
+        mgmtFee *
+        (block.timestamp - cdo.latestHarvestBlock()) /
+        (FULL_ALLOC * 365 days);
       if (accruedManagementFee >= accruedGain) return 0;
       accruedGain -= accruedManagementFee;
     }

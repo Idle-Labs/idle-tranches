@@ -274,11 +274,25 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _expectedImpliedVirtualPrice(address _tranche, uint256 elapsed, uint256 duration) internal view returns (uint256) {
+    return _expectedImpliedVirtualPrice(
+      _tranche,
+      elapsed,
+      duration,
+      block.timestamp - cdoEpoch.latestHarvestBlock()
+    );
+  }
+
+  function _expectedImpliedVirtualPrice(
+    address _tranche,
+    uint256 elapsed,
+    uint256 duration,
+    uint256 managementFeeElapsed
+  ) internal view returns (uint256) {
     uint256 trancheSupply = IERC20(_tranche).totalSupply();
     uint256 basePrice = cdoEpoch.virtualPrice(_tranche);
     uint256 expectedGain = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
     uint256 accruedGain = expectedGain * elapsed / duration;
-    uint256 accruedManagementFee = _calcManagementFee(cdoEpoch.getContractValue(), cdoEpoch.managementFee(), elapsed);
+    uint256 accruedManagementFee = _calcManagementFee(cdoEpoch.getContractValue(), cdoEpoch.managementFee(), managementFeeElapsed);
     if (accruedManagementFee >= accruedGain) {
       return basePrice;
     }
@@ -422,6 +436,48 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       impliedPrice.impliedVirtualPrice(address(BBtranche)),
       _expectedImpliedVirtualPrice(address(BBtranche), elapsed, duration),
       'BB half epoch implied price should include management fee'
+    );
+  }
+
+  function testImpliedVirtualPriceUsesUncheckpointedManagementFeeElapsed() external {
+    IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
+    uint256 managementFee = 1_000; // 1%
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+
+    idleCDO.depositAA(1000 * ONE_SCALE);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+
+    _startEpochAndCheckPrices(0);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFee);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 firstElapsed = duration / 2;
+    vm.warp(cdoEpoch.epochEndDate() - (duration - firstElapsed));
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    address user = makeAddr('impliedMidEpochMgmtFee');
+    uint256 depositAmount = 1000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+
+    uint256 secondElapsed = duration / 4;
+    vm.warp(block.timestamp + secondElapsed);
+
+    assertEq(
+      impliedPrice.impliedVirtualPrice(address(AAtranche)),
+      _expectedImpliedVirtualPrice(address(AAtranche), firstElapsed + secondElapsed, duration, secondElapsed),
+      'AA implied price should only subtract uncheckpointed management fee'
     );
   }
 
