@@ -56,7 +56,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
     // allow everyone to deposit
     vm.prank(cdoEpoch.owner());
-    cdoEpoch.setKeyringParams(address(0), 1, false);
+    cdoEpoch.setKeyringParams(address(0), 1);
 
     vm.prank(LP);
     tranche.approve(address(escrow), type(uint256).max);
@@ -71,6 +71,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     assertEq(escrow.borrower(), borrower);
     assertEq(escrow.exitFee(), 100);
     assertEq(escrow.feeReceiver(), TL_MULTISIG);
+    assertEq(escrow.pendingUnderlyings(), 0);
   }
 
   function testCantReinitialize() public {
@@ -78,11 +79,11 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     escrow.initialize(address(cdoEpoch), address(this), true);
   }
 
-  function testOnlyKeyringUsersCanInteract() external {
+  function testNonKeyringUsersCanCreateDeleteAndFulfillRequests() external {
     address keyring = address(1);
 
     vm.prank(cdoEpoch.owner());
-    cdoEpoch.setKeyringParams(keyring, 1, false);
+    cdoEpoch.setKeyringParams(keyring, 1);
 
     vm.mockCall(
       keyring,
@@ -90,24 +91,28 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
       abi.encode(false)
     );
 
-    // try with this contract
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.createWriteOffRequest(1e18, 1e6);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.deleteWriteOffRequest();
-    vm.clearMockedCalls();
-
-    vm.mockCall(
-      keyring,
-      abi.encodeWithSelector(IKeyring.checkCredential.selector),
-      abi.encode(true)
-    );
-
-    // epoch is already running at specified block
+    uint256 sellerTrancheBalPre = tranche.balanceOf(LP);
     vm.startPrank(LP);
     escrow.createWriteOffRequest(1e18, 1e6);
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 1e18, 'write-off request tranches is wrong after non-keyring create');
+    assertEq(underlyings, 1e6, 'write-off request underlyings is wrong after non-keyring create');
+    assertEq(escrow.pendingUnderlyings(), 1e6, 'pending underlyings is wrong after non-keyring create');
     escrow.deleteWriteOffRequest();
     vm.stopPrank();
+    assertEq(tranche.balanceOf(LP), sellerTrancheBalPre, 'seller tranche balance is wrong after non-keyring delete');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is wrong after non-keyring delete');
+
+    address buyer = makeAddr("buyer");
+    vm.prank(LP);
+    escrow.createWriteOffRequest(1e18, 1e6);
+    deal(address(underlying), buyer, 1e6);
+    uint256 buyerTrancheBalPre = tranche.balanceOf(buyer);
+    vm.startPrank(buyer);
+    underlying.approve(address(escrow), 1e6);
+    escrow.fullfillWriteOffRequest(LP, 1e18, 1e6);
+    vm.stopPrank();
+    assertEq(tranche.balanceOf(buyer) - buyerTrancheBalPre, 1e18, 'buyer tranche balance is wrong after non-keyring fulfill');
 
     vm.clearMockedCalls();
   }
@@ -124,6 +129,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
     assertEq(tranches, 10000e18, 'write-off request tranches is wrong');
     assertEq(underlyings, 10000e6, 'write-off request underlyings is wrong');
+    assertEq(escrow.pendingUnderlyings(), 10000e6, 'pending underlyings is wrong after first request');
 
     // create another request
     vm.prank(LP);
@@ -131,6 +137,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (tranches, underlyings) = escrow.userRequests(LP);
     assertEq(tranches, 20000e18, 'write-off request tranches is wrong after second request');
     assertEq(underlyings, 20000e6, 'write-off request underlyings is wrong after second request');
+    assertEq(escrow.pendingUnderlyings(), 20000e6, 'pending underlyings is wrong after second request');
 
     _stopCurrentEpoch();
     vm.expectRevert(abi.encodeWithSelector(EpochNotRunning.selector));
@@ -151,20 +158,16 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
     assertEq(tranches, 0, 'write-off request tranches is not 0 after delete');
     assertEq(underlyings, 0, 'write-off request underlyings is not 0 after delete');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after delete');
 
     assertEq(trancheBalancePost, trancheBalancePre + 10000e18, 'tranche balance of LP is wrong after delete request');
   }
 
   function testFullfillWriteOffRequest() external {
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.expectRevert(abi.encodeWithSelector(Is0.selector));
     escrow.fullfillWriteOffRequest(LP, 1, 1);
 
     deal(address(underlying), borrower, 10000e6);
-
-    vm.startPrank(borrower);
-    vm.expectRevert(abi.encodeWithSelector(Is0.selector));
-    escrow.fullfillWriteOffRequest(LP, 1, 1);
-    vm.stopPrank();
 
     vm.prank(LP);
     escrow.createWriteOffRequest(10000e18, 10000e6);
@@ -190,6 +193,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
     assertEq(tranches, 0, 'write-off request tranches is not 0 after fulfill');
     assertEq(underlyings, 0, 'write-off request underlyings is not 0 after fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after fulfill');
 
     uint256 fee = 10e6;
     assertEq(balPreBorrower - underlying.balanceOf(borrower), 10000e6, 'borrower balance is wrong after fulfill');
@@ -198,45 +202,95 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after fulfill');
   }
 
-  function testFullfillWriteOffRequestUsesLatestBorrower() external {
+  function testFullfillWriteOffRequestAllowsThirdPartyBuyer() external {
     uint256 requestedTranches = 10000e18;
     uint256 requestedUnderlyings = 10000e6;
     address newBorrower = makeAddr("newBorrower");
+    address buyer = makeAddr("buyer");
 
     vm.prank(LP);
     escrow.createWriteOffRequest(requestedTranches, requestedUnderlyings);
 
-    // rotate borrower in the strategy after escrow initialization
+    // rotate borrower after escrow initialization to prove fulfillment is independent from the borrower slot
     vm.prank(strategy.owner());
     strategy.setBorrower(newBorrower);
 
-    // old borrower is not allowed anymore
-    vm.startPrank(borrower);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
-    vm.stopPrank();
-
-    // new borrower can fulfill
-    deal(address(underlying), newBorrower, requestedUnderlyings);
-    uint256 balPreBorrower = underlying.balanceOf(newBorrower);
-    uint256 balPreBorrowerTranche = tranche.balanceOf(newBorrower);
+    deal(address(underlying), buyer, requestedUnderlyings);
+    uint256 balPreBuyer = underlying.balanceOf(buyer);
+    uint256 balPreBuyerTranche = tranche.balanceOf(buyer);
     uint256 balPreLP = underlying.balanceOf(LP);
     uint256 balPreFeeReceiver = underlying.balanceOf(TL_MULTISIG);
+    uint256 contractValuePre = cdoEpoch.getContractValue();
+    uint256 expectedEpochInterestPre = cdoEpoch.expectedEpochInterest();
 
-    vm.startPrank(newBorrower);
+    vm.startPrank(buyer);
+    underlying.approve(address(escrow), requestedUnderlyings);
+    escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.writeOffDeposit(requestedTranches, address(tranche));
+    vm.stopPrank();
+
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 0, 'write-off request tranches is not 0 after third-party fulfill');
+    assertEq(underlyings, 0, 'write-off request underlyings is not 0 after third-party fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after third-party fulfill');
+
+    uint256 fee = requestedUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
+    assertEq(balPreBuyer - underlying.balanceOf(buyer), requestedUnderlyings, 'buyer balance is wrong');
+    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after third-party fulfill');
+    assertEq(tranche.balanceOf(buyer) - balPreBuyerTranche, requestedTranches, 'buyer tranche balance is wrong');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after third-party fulfill');
+    assertEq(cdoEpoch.getContractValue(), contractValuePre, 'contract value should not change after secondary sale');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedEpochInterestPre, 'expected interest should not change after secondary sale');
+  }
+
+  function testNonKeyringBuyerCanFulfillExistingRequestButCannotWithdraw() external {
+    uint256 requestedTranches = 10000e18;
+    uint256 requestedUnderlyings = 10000e6;
+    address buyer = makeAddr("buyer");
+    address keyring = address(1);
+
+    vm.prank(LP);
+    escrow.createWriteOffRequest(requestedTranches, requestedUnderlyings);
+
+    vm.prank(cdoEpoch.owner());
+    cdoEpoch.setKeyringParams(keyring, 1);
+
+    vm.mockCall(
+      keyring,
+      abi.encodeWithSelector(IKeyring.checkCredential.selector),
+      abi.encode(false)
+    );
+
+    deal(address(underlying), buyer, requestedUnderlyings);
+    uint256 balPreBuyer = underlying.balanceOf(buyer);
+    uint256 balPreLP = underlying.balanceOf(LP);
+    uint256 balPreBuyerTranche = tranche.balanceOf(buyer);
+    uint256 balPreFeeReceiver = underlying.balanceOf(TL_MULTISIG);
+
+    vm.startPrank(buyer);
     underlying.approve(address(escrow), requestedUnderlyings);
     escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
     vm.stopPrank();
 
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
-    assertEq(tranches, 0, 'write-off request tranches is not 0 after borrower update fulfill');
-    assertEq(underlyings, 0, 'write-off request underlyings is not 0 after borrower update fulfill');
+    assertEq(tranches, 0, 'write-off request tranches is not 0 after non-keyring fulfill');
+    assertEq(underlyings, 0, 'write-off request underlyings is not 0 after non-keyring fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after non-keyring fulfill');
 
     uint256 fee = requestedUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
-    assertEq(balPreBorrower - underlying.balanceOf(newBorrower), requestedUnderlyings, 'new borrower balance is wrong');
-    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after borrower update fulfill');
-    assertEq(tranche.balanceOf(newBorrower) - balPreBorrowerTranche, requestedTranches, 'new borrower tranche balance is wrong');
-    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after borrower update fulfill');
+    assertEq(balPreBuyer - underlying.balanceOf(buyer), requestedUnderlyings, 'buyer balance is wrong after non-keyring fulfill');
+    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after non-keyring fulfill');
+    assertEq(tranche.balanceOf(buyer) - balPreBuyerTranche, requestedTranches, 'buyer tranche balance is wrong after non-keyring fulfill');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after non-keyring fulfill');
+
+    _stopCurrentEpoch();
+    assertEq(cdoEpoch.isWalletAllowed(buyer), false, 'buyer should not be wallet allowed');
+    vm.prank(buyer);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(requestedTranches, address(tranche));
+
+    vm.clearMockedCalls();
   }
 
   function testFullfillWriteOffRequestWithUnderlyingOverpay() external {
@@ -246,6 +300,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
     vm.prank(LP);
     escrow.createWriteOffRequest(requestedTranches, requestedUnderlyings);
+    assertEq(escrow.pendingUnderlyings(), requestedUnderlyings, 'pending underlyings is wrong after overpay request');
 
     deal(address(underlying), borrower, overpayUnderlyings);
 
@@ -262,6 +317,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
     assertEq(tranches, 0, 'write-off request tranches is not 0 after overpay fulfill');
     assertEq(underlyings, 0, 'write-off request underlyings is not 0 after overpay fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after overpay fulfill');
 
     uint256 fee = overpayUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
     assertEq(balPreBorrower - underlying.balanceOf(borrower), overpayUnderlyings, 'borrower balance is wrong after overpay fulfill');
@@ -277,6 +333,7 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
     vm.prank(LP);
     escrow.createWriteOffRequest(requestedTranches, requestedUnderlyings);
+    assertEq(escrow.pendingUnderlyings(), requestedUnderlyings, 'pending underlyings is wrong after underpay request');
 
     deal(address(underlying), borrower, requestedUnderlyings);
 
@@ -289,6 +346,84 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
     assertEq(tranches, requestedTranches, 'write-off request tranches changed after underpay revert');
     assertEq(underlyings, requestedUnderlyings, 'write-off request underlyings changed after underpay revert');
+    assertEq(escrow.pendingUnderlyings(), requestedUnderlyings, 'pending underlyings changed after underpay revert');
+  }
+
+  function testPendingUnderlyingsTracksAggregateAcrossUsers() external {
+    address secondLp = makeAddr("secondLp");
+    uint256 firstRequestedUnderlyings = 10000e6;
+    uint256 secondRequestedUnderlyings = 6000e6;
+    uint256 overpayUnderlyings = 12000e6;
+
+    deal(address(tranche), secondLp, 5000e18);
+    vm.prank(secondLp);
+    tranche.approve(address(escrow), type(uint256).max);
+
+    vm.prank(LP);
+    escrow.createWriteOffRequest(10000e18, firstRequestedUnderlyings);
+    vm.prank(secondLp);
+    escrow.createWriteOffRequest(5000e18, secondRequestedUnderlyings);
+
+    assertEq(
+      escrow.pendingUnderlyings(),
+      firstRequestedUnderlyings + secondRequestedUnderlyings,
+      'pending underlyings is wrong after two users request'
+    );
+
+    vm.prank(secondLp);
+    escrow.deleteWriteOffRequest();
+    assertEq(escrow.pendingUnderlyings(), firstRequestedUnderlyings, 'pending underlyings is wrong after deleting one request');
+
+    deal(address(underlying), borrower, overpayUnderlyings);
+    vm.startPrank(borrower);
+    underlying.approve(address(escrow), overpayUnderlyings);
+    escrow.fullfillWriteOffRequest(LP, 10000e18, overpayUnderlyings);
+    vm.stopPrank();
+
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings is not 0 after remaining request fulfill');
+  }
+
+  function testDeleteLegacyWriteOffRequestWithZeroPendingUnderlyings() external {
+    uint256 requestedTranches = 10000e18;
+    uint256 requestedUnderlyings = 10000e6;
+    uint256 trancheBalancePre = tranche.balanceOf(LP);
+
+    _setLegacyWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+
+    vm.prank(LP);
+    escrow.deleteWriteOffRequest();
+
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 0, 'legacy write-off request tranches is not 0 after delete');
+    assertEq(underlyings, 0, 'legacy write-off request underlyings is not 0 after delete');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings changed after legacy delete');
+    assertEq(tranche.balanceOf(LP), trancheBalancePre + requestedTranches, 'seller tranche balance is wrong after legacy delete');
+  }
+
+  function testFulfillLegacyWriteOffRequestWithZeroPendingUnderlyings() external {
+    uint256 requestedTranches = 10000e18;
+    uint256 requestedUnderlyings = 10000e6;
+    uint256 fee = requestedUnderlyings * escrow.exitFee() / escrow.FULL_VALUE();
+
+    _setLegacyWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+
+    deal(address(underlying), borrower, requestedUnderlyings);
+    uint256 balPreLP = underlying.balanceOf(LP);
+    uint256 balPreBorrowerTranche = tranche.balanceOf(borrower);
+    uint256 balPreFeeReceiver = underlying.balanceOf(TL_MULTISIG);
+
+    vm.startPrank(borrower);
+    underlying.approve(address(escrow), requestedUnderlyings);
+    escrow.fullfillWriteOffRequest(LP, requestedTranches, requestedUnderlyings);
+    vm.stopPrank();
+
+    (uint256 tranches, uint256 underlyings) = escrow.userRequests(LP);
+    assertEq(tranches, 0, 'legacy write-off request tranches is not 0 after fulfill');
+    assertEq(underlyings, 0, 'legacy write-off request underlyings is not 0 after fulfill');
+    assertEq(escrow.pendingUnderlyings(), 0, 'pending underlyings changed after legacy fulfill');
+    assertEq(underlying.balanceOf(LP) - balPreLP, requestedUnderlyings - fee, 'LP balance is wrong after legacy fulfill');
+    assertEq(tranche.balanceOf(borrower) - balPreBorrowerTranche, requestedTranches, 'borrower tranche balance is wrong after legacy fulfill');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - balPreFeeReceiver, fee, 'fee receiver balance is wrong after legacy fulfill');
   }
 
   function testSetExitFee() external {
@@ -300,6 +435,34 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
     vm.stopPrank();
 
     assertEq(escrow.exitFee(), 1000, 'exit fee is not 1000');
+  }
+
+  function testSetFeeReceiver() external {
+    address newFeeReceiver = makeAddr("newFeeReceiver");
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    escrow.setFeeReceiver(newFeeReceiver);
+
+    vm.startPrank(TL_MULTISIG);
+    vm.expectRevert(abi.encodeWithSelector(Is0.selector));
+    escrow.setFeeReceiver(address(0));
+    escrow.setFeeReceiver(newFeeReceiver);
+    vm.stopPrank();
+
+    assertEq(escrow.feeReceiver(), newFeeReceiver, 'fee receiver is wrong');
+
+    vm.prank(LP);
+    escrow.createWriteOffRequest(10000e18, 10000e6);
+    deal(address(underlying), borrower, 10000e6);
+
+    uint256 balPreFeeReceiver = underlying.balanceOf(newFeeReceiver);
+    vm.startPrank(borrower);
+    underlying.approve(address(escrow), 10000e6);
+    escrow.fullfillWriteOffRequest(LP, 10000e18, 10000e6);
+    vm.stopPrank();
+
+    uint256 fee = 10000e6 * escrow.exitFee() / escrow.FULL_VALUE();
+    assertEq(underlying.balanceOf(newFeeReceiver) - balPreFeeReceiver, fee, 'fee receiver balance is wrong');
   }
 
   function testEmergencyWithdraw() external {
@@ -344,5 +507,22 @@ contract TestIdleCreditVaultWriteOffEscrow is Test {
 
   function _expectedFundsEndEpoch() internal view returns (uint256 expected) {
     expected = cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws();
+  }
+
+  function _setLegacyWriteOffRequest(address _user, uint256 _tranches, uint256 _underlyings) internal {
+    stdstore
+      .target(address(escrow))
+      .sig(escrow.userRequests.selector)
+      .with_key(_user)
+      .depth(0)
+      .checked_write(_tranches);
+    stdstore
+      .target(address(escrow))
+      .sig(escrow.userRequests.selector)
+      .with_key(_user)
+      .depth(1)
+      .checked_write(_underlyings);
+    deal(address(tranche), address(escrow), tranche.balanceOf(address(escrow)) + _tranches);
+    assertEq(escrow.pendingUnderlyings(), 0, 'legacy request should not update pending underlyings');
   }
 }

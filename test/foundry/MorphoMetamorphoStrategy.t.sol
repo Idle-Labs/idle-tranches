@@ -91,7 +91,7 @@ contract TestMorphoMetamorphoStrategy is TestIdleCDOBase {
     extraDataSell = abi.encode(_extraPath);
 
     // uniswap addresses are the same on all networks but we need to change WETH
-    stdstore.target(address(idleCDO)).sig(idleCDO.weth.selector).checked_write(WETH);
+    // stdstore.target(address(idleCDO)).sig(idleCDO.weth.selector).checked_write(WETH);
   }
 
   function _fundTokens() internal override {

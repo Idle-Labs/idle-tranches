@@ -6,6 +6,7 @@ const { LedgerSigner } = require("@ethersproject/hardware-wallets");
 const Safe = require('@gnosis.pm/safe-core-sdk').default;
 const EthersAdapter = require('@gnosis.pm/safe-ethers-lib').default;
 const { SafeEthersSigner, SafeService } = require("@gnosis.pm/safe-ethers-adapters");
+const TransparentUpgradeableProxy = require("@openzeppelin/upgrades-core/artifacts/@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol/TransparentUpgradeableProxy.json");
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
@@ -174,9 +175,25 @@ const deployContract = async (contractName, params, signer) => {
   log();
   return contract;
 };
-const deployUpgradableContract = async (contractName, params, signer) => {
+const deployUpgradableContract = async (contractName, params, signer, proxyAdminAddress) => {
   log(`Deploying ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
+  if (proxyAdminAddress) {
+    proxyAdminAddress = ethers.utils.getAddress(proxyAdminAddress);
+    await hre.upgrades.validateImplementation(contractFactory, { kind: 'transparent' });
+    const implementation = await contractFactory.deploy();
+    await implementation.deployed();
+    const implementationReceipt = await implementation.deployTransaction.wait();
+    log(`📤 ${contractName} implementation created: ${implementation.address} @tx: ${implementationReceipt.transactionHash}, (gas ${implementationReceipt.cumulativeGasUsed.toString()})`);
+
+    const initializeData = contractFactory.interface.encodeFunctionData("initialize", params);
+    const proxyFactory = await ethers.getContractFactory(TransparentUpgradeableProxy.abi, TransparentUpgradeableProxy.bytecode, signer);
+    const proxy = await proxyFactory.deploy(implementation.address, proxyAdminAddress, initializeData);
+    await proxy.deployed();
+    const proxyReceipt = await proxy.deployTransaction.wait();
+    log(`📤 ${contractName} created (proxy with admin ${proxyAdminAddress}): ${proxy.address} @tx: ${proxyReceipt.transactionHash}, (gas ${proxyReceipt.cumulativeGasUsed.toString()})`);
+    return contractFactory.attach(proxy.address).connect(signer);
+  }
   // do not use spread (...) operator here
   let contract = await hre.upgrades.deployProxy(contractFactory, params);
   await contract.deployed();
