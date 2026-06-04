@@ -2,7 +2,7 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../utils/addresses");
-const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
+const { getAdminAddress, getImplementationAddress } = require("@openzeppelin/upgrades-core");
 const { task } = require("hardhat/config");
 const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 
@@ -216,6 +216,34 @@ const getTrackedCreditVault = (_hre, cdoAddress) => {
   ) || null;
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
+const getCreditVaultBlueprintUpgradeTargets = (trackedCdo) => ([
+  {
+    label: 'Credit vault',
+    proxy: trackedCdo.cdoAddr,
+    contractName: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+  },
+  {
+    label: 'Strategy',
+    proxy: trackedCdo.strategy,
+    contractName: 'contracts/strategies/idle/IdleCreditVault.sol:IdleCreditVault',
+  },
+  {
+    label: 'Queue',
+    proxy: trackedCdo.queue,
+    contractName: 'contracts/IdleCDOEpochQueue.sol:IdleCDOEpochQueue',
+  },
+  {
+    label: 'Programmable borrower',
+    proxy: trackedCdo.programmableBorrower,
+    contractName: 'contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower',
+  },
+  {
+    label: 'Write-off escrow',
+    proxy: getTrackedWriteOff(trackedCdo),
+    contractName: 'contracts/IdleCreditVaultWriteOffEscrow.sol:IdleCreditVaultWriteOffEscrow',
+  },
+]).filter(({ proxy }) => hasAddress(proxy));
 const getWriteOffEscrowContractName = (chainId) => ({
   1: 'IdleCreditVaultWriteOffEscrow',
   10: null,
@@ -1526,6 +1554,93 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     }
 
     await hre.run("print-contracts-info", { cdo: cv, strategy, queue: hasAddress(queue) ? queue : undefined });
+  });
+
+/**
+ * @name upgrade-credit-vault-blueprint
+ * task to upgrade all proxies used as the credit vault factory blueprint
+ */
+task("upgrade-credit-vault-blueprint", "Upgrade all credit vault blueprint implementations")
+  .addOptionalParam('cdoname', 'Blueprint CDO key from utils/addresses.js', DEFAULT_CREDIT_VAULT_BLUEPRINT)
+  .setAction(async (args, _hre) => {
+    await _hre.run("compile");
+
+    const networkCDOs = getNetworkCDOs(_hre);
+    const blueprint = networkCDOs[args.cdoname];
+    if (!blueprint) {
+      throw new Error(`Blueprint ${args.cdoname} not found for network ${_hre.network.name}`);
+    }
+
+    const targets = getCreditVaultBlueprintUpgradeTargets(blueprint);
+    if (targets.length === 0) {
+      throw new Error(`Blueprint ${args.cdoname} has no upgradeable proxies configured`);
+    }
+
+    const signer = await helpers.getSigner();
+    const signerAddress = await signer.getAddress();
+    const signerCode = await _hre.ethers.provider.getCode(signerAddress);
+    if (signerCode !== '0x') {
+      throw new Error(`Signer ${signerAddress} is not an EOA`);
+    }
+
+    const proxyAdminAddress = blueprint.proxyAdmin;
+    if (!hasAddress(proxyAdminAddress)) {
+      throw new Error(`Blueprint ${args.cdoname} must define proxyAdmin in utils/addresses.js`);
+    }
+
+    const proxyAdminCode = await _hre.ethers.provider.getCode(proxyAdminAddress);
+    if (proxyAdminCode === '0x') {
+      throw new Error(`No ProxyAdmin contract found at ${proxyAdminAddress}`);
+    }
+
+    const proxyAdmin = await _hre.ethers.getContractAt("ProxyAdmin", proxyAdminAddress, signer);
+    const proxyAdminOwner = await proxyAdmin.owner();
+    if (!sameAddress(proxyAdminOwner, signerAddress)) {
+      throw new Error(`Signer ${signerAddress} is not ProxyAdmin owner ${proxyAdminOwner}`);
+    }
+
+    console.log(`Upgrading blueprint ${args.cdoname} with ${signerAddress}`);
+    console.log(`ProxyAdmin: ${proxyAdminAddress}`);
+    console.log();
+
+    for (const target of targets) {
+      const currentAdmin = await getAdminAddress(_hre.ethers.provider, target.proxy);
+      if (!sameAddress(currentAdmin, proxyAdminAddress)) {
+        throw new Error(`${target.label} proxy admin ${currentAdmin} does not match ${proxyAdminAddress}`);
+      }
+
+      const currentImplementation = await getImplementationAddress(_hre.ethers.provider, target.proxy);
+      const contractFactory = await _hre.ethers.getContractFactory(target.contractName, signer);
+
+      // Register only the implementation layout. Importing the blueprint proxy would warn
+      // because it intentionally uses an EOA ProxyAdmin instead of the main manifest admin.
+      await _hre.upgrades.forceImport(currentImplementation, contractFactory);
+      const newImplementation = await _hre.upgrades.prepareUpgrade(target.proxy, contractFactory, {
+        kind: 'transparent',
+        redeployImplementation: 'always',
+      });
+
+      console.log(`${target.label}`);
+      console.log(`  Proxy:          ${target.proxy}`);
+      console.log(`  Current impl:   ${currentImplementation}`);
+      console.log(`  New impl:       ${newImplementation}`);
+
+      const tx = await proxyAdmin.upgrade(target.proxy, newImplementation);
+      const receipt = await tx.wait();
+      console.log(`  Upgrade tx:     ${receipt.transactionHash}`);
+
+      try {
+        await _hre.run("verify:verify", {
+          constructorArguments: [],
+          address: newImplementation,
+          contract: target.contractName
+        });
+        console.log(`  Verified:       ${newImplementation}`);
+      } catch (error) {
+        console.log(`  Verification failed for ${newImplementation}: ${error.message}`);
+      }
+      console.log();
+    }
   });
 
 task("print-contracts-info", "Prints deployed contracts info")
