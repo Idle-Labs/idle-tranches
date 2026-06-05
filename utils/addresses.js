@@ -174,6 +174,8 @@ const mainnetContracts = {
   sealSafeHarbor: '0xeca050F53ee4eCBc039DD07CB4FB785641521707',
   cdoImplWriteOff: '0x6De6ea8659C8cEa1f2aaf29758E40Ff4C8a1A53F',
   strategyImplWriteOff: '0xc499925d7991FF8204967Ac58455293f2Db3855A',
+  oldImpliedPriceOracle: '0xB05CfF1491e9670b4a04ea6BfFb3B2ede4f4C477',
+  impliedPriceOracle: '0x55bdb81026f9a6e9308f7ee727a9124a92ae383e'
 }
 
 // Polygon
