@@ -1,9 +1,11 @@
 require("hardhat/config");
 
 const fs = require("fs");
+const Module = require("module");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const vm = require("vm");
 const { expect } = require("chai");
 const { ethers } = require("ethers");
 const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
@@ -62,6 +64,38 @@ const decodeUpgrades = (plan) => {
       newImplementation: normalizeAddress(newImplementation),
     };
   });
+};
+
+const loadTaskInternals = () => {
+  const taskPath = path.join(REPO_ROOT, "tasks", "tranches-utils.js");
+  const source = `${fs.readFileSync(taskPath, "utf8")}
+module.exports = {
+  CV_DEFAULT_BLUEPRINT_CDO_NAME,
+  getCreditVaultUpgradeBlueprintTarget,
+  getCreditVaultUpgradeTarget,
+  getRequestedCvUpgradeComponents,
+};
+`;
+  const taskRequire = Module.createRequire(taskPath);
+  const chain = {
+    addParam: () => chain,
+    addOptionalParam: () => chain,
+    setAction: () => chain,
+  };
+  const sandbox = {
+    __dirname: path.dirname(taskPath),
+    __filename: taskPath,
+    console,
+    ethers,
+    module: { exports: {} },
+    process,
+    require: (id) => id === "hardhat/config" ? {} : taskRequire(id),
+    task: () => chain,
+    subtask: () => chain,
+  };
+
+  vm.runInNewContext(source, sandbox, { filename: taskPath });
+  return sandbox.module.exports;
 };
 
 const runScheduleTask = ({ cdoNames, components, planPath, expectFailure = false }) => {
@@ -132,6 +166,89 @@ const stopProcess = async (child) => {
     child.kill("SIGTERM");
   });
 };
+
+describe("credit vault upgrade task helpers", function () {
+  const hreLike = {
+    network: {
+      name: "mainnet",
+      config: {
+        chainId: 1,
+      },
+    },
+  };
+
+  it("accepts revolving as the programmable borrower component key", function () {
+    const { getRequestedCvUpgradeComponents } = loadTaskInternals();
+
+    expect(getRequestedCvUpgradeComponents("strategy,revolving,cdo")).to.deep.equal([
+      "cdo",
+      "strategy",
+      "revolving",
+    ]);
+  });
+
+  it("resolves revolving to the programmable borrower proxy", function () {
+    const { getCreditVaultUpgradeTarget } = loadTaskInternals();
+
+    const target = getCreditVaultUpgradeTarget(
+      hreLike,
+      addresses.deployTokens,
+      addresses.CDOs,
+      "creditrevolvingearnifiusdc",
+      "revolving"
+    );
+
+    expect(target).to.include({
+      cdoName: "creditrevolvingearnifiusdc",
+      component: "revolving",
+      contractName: "contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower",
+    });
+    expect(normalizeAddress(target.proxyAddress)).to.equal(
+      normalizeAddress(addresses.CDOs.creditrevolvingearnifiusdc.programmableBorrower)
+    );
+  });
+
+  it("uses the revolving credit vault blueprint as the default implementation source", function () {
+    const { CV_DEFAULT_BLUEPRINT_CDO_NAME } = loadTaskInternals();
+
+    expect(CV_DEFAULT_BLUEPRINT_CDO_NAME).to.equal("creditrevolvingblueprintusdc");
+  });
+
+  it("resolves implementation source proxies from the selected blueprint", function () {
+    const { getCreditVaultUpgradeBlueprintTarget } = loadTaskInternals();
+
+    const target = getCreditVaultUpgradeBlueprintTarget(
+      hreLike,
+      addresses.deployTokens,
+      addresses.CDOs,
+      "creditrevolvingblueprintusdc",
+      "revolving"
+    );
+
+    expect(target).to.include({
+      cdoName: "creditrevolvingblueprintusdc",
+      component: "revolving",
+      contractName: "contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower",
+    });
+    expect(normalizeAddress(target.proxyAddress)).to.equal(
+      normalizeAddress(addresses.CDOs.creditrevolvingblueprintusdc.programmableBorrower)
+    );
+  });
+
+  it("returns null for missing optional components so the caller can skip them", function () {
+    const { getCreditVaultUpgradeTarget } = loadTaskInternals();
+
+    const target = getCreditVaultUpgradeTarget(
+      hreLike,
+      addresses.deployTokens,
+      addresses.CDOs,
+      "creditgauntlettestusdc",
+      "revolving"
+    );
+
+    expect(target).to.equal(null);
+  });
+});
 
 describe("schedule-cv-upgrades-timelock integration", function () {
   this.timeout(0);
@@ -220,6 +337,11 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(plan.values).to.deep.equal([0, 0]);
 
     const decodedUpgrades = decodeUpgrades(plan);
+    const blueprintConfig = addresses.CDOs.creditrevolvingblueprintusdc;
+    const blueprintImplementations = [
+      await getImplementationAddress(provider, blueprintConfig.cdoAddr),
+      await getImplementationAddress(provider, blueprintConfig.strategy),
+    ].map(normalizeAddress);
     expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
       cdoConfig.cdoAddr,
       cdoConfig.strategy,
@@ -242,6 +364,7 @@ describe("schedule-cv-upgrades-timelock integration", function () {
       expect(upgrade.newImplementation).to.not.equal(currentImplementation);
       expect(await provider.getCode(upgrade.newImplementation)).to.not.equal("0x");
     }
+    expect(decodedUpgrades.map((item) => item.newImplementation)).to.deep.equal(blueprintImplementations);
   });
 
   it("reuses one new implementation per component when scheduling multiple stale vaults", async function () {
@@ -280,17 +403,60 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(await timelock.isOperationPending(expectedOperationId)).to.equal(true);
   });
 
-  it("rejects scheduling a component that is not configured on the selected vault", async function () {
+  it("schedules programmable borrower upgrades with the revolving component", async function () {
+    planPath = getPlanPath();
+
+    runScheduleTask({
+      cdoNames: "creditrevolvingearnifiusdc",
+      components: "revolving",
+      planPath,
+    });
+
+    const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
+    const cdoConfig = addresses.CDOs.creditrevolvingearnifiusdc;
+    const decodedUpgrades = decodeUpgrades(plan);
+    const blueprintConfig = addresses.CDOs.creditrevolvingblueprintusdc;
+    const blueprintImplementation = normalizeAddress(await getImplementationAddress(provider, blueprintConfig.programmableBorrower));
+
+    expect(plan.targets).to.have.length(1);
+    expect(plan.values).to.deep.equal([0]);
+    expect(plan.targets.map(normalizeAddress)).to.deep.equal([
+      cdoConfig.proxyAdmin,
+    ].map(normalizeAddress));
+    expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
+      cdoConfig.programmableBorrower,
+    ].map(normalizeAddress));
+    expect(decodedUpgrades.map((item) => item.newImplementation)).to.deep.equal([
+      blueprintImplementation,
+    ]);
+  });
+
+  it("logs and skips selected components that are not configured on a vault", async function () {
     planPath = getPlanPath();
 
     const output = runScheduleTask({
-      cdoNames: "creditfasanarausdc",
-      components: "writeoff",
+      cdoNames: "creditgauntlettestusdc,creditrevolvingearnifiusdc",
+      components: "cdo,strategy,queue,revolving,writeoff",
       planPath,
-      expectFailure: true,
     });
 
-    expect(output).to.include("creditfasanarausdc does not have a valid writeoff proxy configured");
-    expect(fs.existsSync(planPath)).to.equal(false);
+    expect(output).to.include("Skipping creditgauntlettestusdc / revolving: component not configured");
+    expect(output).to.include("Skipping creditgauntlettestusdc / writeoff: component not configured");
+    expect(output).to.include("Skipping creditrevolvingearnifiusdc / writeoff: component not configured");
+
+    const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
+    const decodedUpgrades = decodeUpgrades(plan);
+
+    expect(plan.targets).to.have.length(7);
+    expect(plan.values).to.deep.equal([0, 0, 0, 0, 0, 0, 0]);
+    expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
+      addresses.CDOs.creditgauntlettestusdc.cdoAddr,
+      addresses.CDOs.creditgauntlettestusdc.strategy,
+      addresses.CDOs.creditgauntlettestusdc.queue,
+      addresses.CDOs.creditrevolvingearnifiusdc.cdoAddr,
+      addresses.CDOs.creditrevolvingearnifiusdc.strategy,
+      addresses.CDOs.creditrevolvingearnifiusdc.queue,
+      addresses.CDOs.creditrevolvingearnifiusdc.programmableBorrower,
+    ].map(normalizeAddress));
   });
 });
