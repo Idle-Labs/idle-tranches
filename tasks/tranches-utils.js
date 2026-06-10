@@ -27,7 +27,8 @@ const ICurveRegistryAbi = require("../abi/ICurveRegistry.json")
 const CV_UPGRADE_PLAN_KIND = "credit-vault-upgrade-batch";
 const CV_UPGRADE_PLAN_VERSION = 1;
 const CV_UPGRADE_DIR = ".timelock-upgrades";
-const CV_COMPONENT_ORDER = ["cdo", "strategy", "queue", "writeoff"];
+const CV_COMPONENT_ORDER = ["cdo", "strategy", "queue", "revolving", "writeoff"];
+const CV_DEFAULT_BLUEPRINT_CDO_NAME = "creditrevolvingblueprintusdc";
 const PROXY_ADMIN_UPGRADE_IFACE = new etherslib.utils.Interface([
   "function upgrade(address proxy, address implementation)",
 ]);
@@ -119,7 +120,7 @@ const normalizeCvUpgradeComponent = (value) => {
   if (component === "writeoff" || component === "writeoffescrow" || component === "escrow") {
     return "writeoff";
   }
-  if (component === "cdo" || component === "strategy" || component === "queue") {
+  if (component === "cdo" || component === "strategy" || component === "queue" || component === "revolving") {
     return component;
   }
   throw new Error(`Unsupported component "${value}". Allowed values: ${CV_COMPONENT_ORDER.join(", ")}`);
@@ -188,15 +189,19 @@ const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, 
       contractName: 'IdleCDOEpochQueue',
       proxyAddress: networkCdo.queue,
     },
+    revolving: {
+      contractName: 'contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower',
+      proxyAddress: networkCdo.programmableBorrower,
+    },
     writeoff: {
       contractName: 'IdleCreditVaultWriteOffEscrow',
-      proxyAddress: networkCdo.writeOff,
+      proxyAddress: networkCdo.writeOff || networkCdo.writeoff,
     },
   };
 
   const target = targetByComponent[component];
   if (!target || !target.contractName || !target.proxyAddress || target.proxyAddress === ethers.constants.AddressZero) {
-    throw new Error(`${cdoName} does not have a valid ${component} proxy configured`);
+    return null;
   }
 
   return {
@@ -205,6 +210,14 @@ const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, 
     contractName: target.contractName,
     proxyAddress: ethers.utils.getAddress(target.proxyAddress),
   };
+}
+
+const getCreditVaultUpgradeBlueprintTarget = (_hre, networkTokens, networkCDOs, blueprintName, component) => {
+  const target = getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, blueprintName, component);
+  if (!target) {
+    throw new Error(`Blueprint ${blueprintName} does not have a valid ${component} proxy configured`);
+  }
+  return target;
 }
 
 const getDefaultCvUpgradePlanPath = (_hre) => {
@@ -278,6 +291,9 @@ const logCvUpgradePlanSummary = (plan, summaryRows = []) => {
       console.log(`${index + 1}. ${row.cdoName} / ${row.component}`);
       console.log(`   proxy:        ${row.proxyAddress}`);
       console.log(`   contract:     ${formatCvUpgradeContractName(row.contractName)}`);
+      if (row.blueprintProxyAddress) {
+        console.log(`   blueprint:    ${row.blueprintProxyAddress}`);
+      }
       console.log(`   current impl: ${row.currentImplementation}`);
       console.log(`   new impl:     ${row.newImplementation}`);
     }
@@ -297,7 +313,7 @@ const logCvUpgradePlanSummary = (plan, summaryRows = []) => {
   }
 }
 
-const buildCvUpgradePlan = async (_hre, { cdoNames, components, signer, timelock }) => {
+const buildCvUpgradePlan = async (_hre, { cdoNames, components, timelock, blueprintName }) => {
   const networkTokens = getDeployTokens(_hre);
   const networkCDOs = getNetworkCDOs(_hre);
   const chainId = await getProviderChainId(_hre);
@@ -306,8 +322,17 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, signer, timelock
 
   for (const cdoName of cdoNames) {
     for (const component of components) {
-      targets.push(getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component));
+      const target = getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component);
+      if (!target) {
+        console.log(`Skipping ${cdoName} / ${component}: component not configured`);
+        continue;
+      }
+      targets.push(target);
     }
+  }
+
+  if (targets.length === 0) {
+    throw new Error("No valid credit vault upgrade targets selected");
   }
 
   targets.sort((a, b) => {
@@ -332,31 +357,43 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, signer, timelock
     }
   }
 
-  const groups = new Map();
+  const blueprintTargets = new Map();
   for (const target of targets) {
-    const key = `${target.contractName}:${target.currentImplementation}`;
-    if (!groups.has(key)) {
-      groups.set(key, []);
+    if (!blueprintTargets.has(target.component)) {
+      const blueprintTarget = getCreditVaultUpgradeBlueprintTarget(_hre, networkTokens, networkCDOs, blueprintName, target.component);
+      blueprintTarget.currentImplementation = ethers.utils.getAddress(
+        await getImplementationAddress(ethers.provider, blueprintTarget.proxyAddress)
+      );
+      blueprintTargets.set(target.component, blueprintTarget);
     }
-    groups.get(key).push(target);
+
+    const blueprintTarget = blueprintTargets.get(target.component);
+    if (target.contractName !== blueprintTarget.contractName) {
+      throw new Error(
+        `Blueprint ${blueprintName}/${target.component} contract ${blueprintTarget.contractName} does not match ${target.cdoName}/${target.component} contract ${target.contractName}`
+      );
+    }
+    target.blueprintProxyAddress = blueprintTarget.proxyAddress;
+    target.newImplementation = blueprintTarget.currentImplementation;
   }
 
-  for (const groupTargets of groups.values()) {
-    const sample = groupTargets[0];
-    let newImplementation = await helpers.prepareContractUpgrade(sample.proxyAddress, sample.contractName, signer);
-    newImplementation = ethers.utils.getAddress(newImplementation);
-    if (newImplementation === sample.currentImplementation) {
-      throw new Error(`Prepared implementation for ${sample.contractName} matches current implementation ${sample.currentImplementation}`);
+  const upgradeTargets = [];
+  for (const target of targets) {
+    if (target.newImplementation === target.currentImplementation) {
+      console.log(`Skipping ${target.cdoName} / ${target.component}: already using blueprint implementation ${target.newImplementation}`);
+      continue;
     }
-    for (const target of groupTargets) {
-      target.newImplementation = newImplementation;
-    }
+    upgradeTargets.push(target);
+  }
+
+  if (upgradeTargets.length === 0) {
+    throw new Error("No credit vault upgrade targets need changes");
   }
 
   const batchTargets = [];
   const batchValues = [];
   const batchPayloads = [];
-  for (const target of targets) {
+  for (const target of upgradeTargets) {
     const proxyAdmin = proxyAdmins.get(target.proxyAdmin);
     batchTargets.push(target.proxyAdmin);
     batchValues.push(0);
@@ -378,11 +415,12 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, signer, timelock
 
   return {
     delay,
-    summaryRows: targets.map(target => ({
+    summaryRows: upgradeTargets.map(target => ({
       cdoName: target.cdoName,
       component: target.component,
       contractName: target.contractName,
       proxyAddress: target.proxyAddress,
+      blueprintProxyAddress: target.blueprintProxyAddress,
       currentImplementation: target.currentImplementation,
       newImplementation: target.newImplementation,
     })),
@@ -1152,7 +1190,8 @@ task("upgrade-all-cv-multisig-timelock", "Upgrade all credit vaults with multisi
 */
 task("schedule-cv-upgrades-timelock", "Schedule a timelock batch to upgrade selected credit vault components")
   .addParam("cdonames", "Comma-separated credit vault names")
-  .addParam("components", "Comma-separated components: cdo,strategy,queue,writeoff")
+  .addParam("components", "Comma-separated components: cdo,strategy,queue,revolving,writeoff")
+  .addOptionalParam("blueprint", "Blueprint credit vault key to source implementations from", CV_DEFAULT_BLUEPRINT_CDO_NAME)
   .addOptionalParam("out", "Optional output path for the generated plan file")
   .setAction(async (args) => {
     await run("compile");
@@ -1173,16 +1212,16 @@ task("schedule-cv-upgrades-timelock", "Schedule a timelock batch to upgrade sele
     console.log(`Network:        ${hre.network.name} (${chainId})`);
     console.log(`Credit vaults:  ${cdoNames.join(", ")}`);
     console.log(`Components:     ${components.join(", ")}`);
+    console.log(`Blueprint:      ${args.blueprint}`);
     console.log(`Plan path:      ${planPath}`);
-    await helpers.prompt("deploy implementations and build the plan? [y/n]", true);
+    await helpers.prompt("resolve blueprint implementations and build the plan? [y/n]", true);
 
     let timelock = await ethers.getContractAt("Timelock", networkContracts.timelock);
-    const signer = await run("get-signer-or-fake");
     const { plan, delay, summaryRows } = await buildCvUpgradePlan(hre, {
       cdoNames,
       components,
-      signer,
       timelock,
+      blueprintName: args.blueprint,
     });
 
     logCvUpgradePlanSummary(plan, summaryRows);

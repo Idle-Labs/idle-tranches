@@ -28,6 +28,9 @@ const avaxCDOs = addresses.avaxCDOs;
 const addr0 = '0x0000000000000000000000000000000000000000';
 
 const DEFAULT_HYPERNATIVE_TAG_LIST_ID = '4ad4b133-2c72-42d4-9f79-a74c9f3ba20a';
+const HYPERNATIVE_API_BASE_URL = 'https://api.hypernative.xyz';
+const HYPERNATIVE_CONTRACT_VALUE_TEMPLATE_AGENT_ID = '59712';
+const HYPERNATIVE_AA_VIRTUAL_PRICE_TEMPLATE_AGENT_ID = '59713';
 const HYPERNATIVE_GLOBAL_WATCHLISTS = [
   { id: '12849', description: 'cross chain auto pause' },
 ];
@@ -101,6 +104,69 @@ const hypernativeChainConfigs = {
       { id: '226569', description: 'avax auto pause' },
     ],
   },
+};
+
+const hypernativeFetch = async ({ clientId, clientSecret, method = 'GET', path, body }) => {
+  const res = await fetch(`${HYPERNATIVE_API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'accept': 'application/json',
+      'x-client-id': clientId,
+      'x-client-secret': clientSecret,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const responseBody = await res.text();
+  if (!res.ok) {
+    throw new Error(`${method} ${path}: ${res.status} ${res.statusText} ${responseBody}`);
+  }
+
+  const parsedBody = responseBody ? JSON.parse(responseBody) : {};
+  if (parsedBody.success === false) {
+    throw new Error(`${method} ${path}: ${parsedBody.error || 'Hypernative request failed'}`);
+  }
+  return parsedBody.data;
+};
+
+const buildHypernativeCustomAgentPayload = ({ agentName, cdoAddress, chainConfig, input, template, underlyingDecimals }) => {
+  const payload = JSON.parse(JSON.stringify(template));
+  ['id', 'createdAt', 'updatedAt', 'createdBy', 'createdByUserId', 'alertPolicies', 'alertsTagsStats', 'securitySuits', 'lastTriggered']
+    .forEach((field) => delete payload[field]);
+
+  const rule = payload.rule;
+  const contractAlias = `${cdoAddress.slice(0, 4).toLowerCase()}..${cdoAddress.slice(-4).toLowerCase()}`;
+  const previousInput = rule.input?.[0];
+  const previousAlias = rule.contractAddressAlias;
+  const previousOperand = rule.operands?.[0];
+
+  payload.agentName = agentName;
+  payload.channelsConfigurations = (template.alertPolicies || [])
+    .flatMap(({ channelsConfigurations }) => channelsConfigurations || [])
+    .map(({ id, name }) => ({ id, name }));
+  payload.remindersConfigurations = [];
+  payload.endAlertsConfigurations = [];
+  payload.securitySuitIds = [];
+
+  rule.chain = chainConfig?.chain || 'ethereum';
+  rule.contractAddress = cdoAddress.toLowerCase();
+  rule.contractAddressAlias = contractAlias;
+  rule.input = input;
+  rule.ruleString = (rule.ruleString || '')
+    .replace('On Ethereum', `On ${chainConfig?.label || 'Ethereum'}`)
+    .replace(previousAlias, contractAlias);
+  if (previousInput && input[0]) {
+    rule.ruleString = rule.ruleString.replace(previousInput, input[0]);
+  }
+  if (rule.funcSig === 'getContractValue()' && underlyingDecimals !== undefined) {
+    const tvlChangeThreshold = BN('10000').mul(ONE_TOKEN(underlyingDecimals)).toString();
+    rule.operands = [tvlChangeThreshold];
+    rule.operandsExponent = [underlyingDecimals];
+    rule.ruleString = rule.ruleString.replace(previousOperand, tvlChangeThreshold);
+    rule.customDescription = rule.customDescription.replace(/dev_decimals\(\d+\)/g, `dev_decimals(${underlyingDecimals})`);
+  }
+
+  return payload;
 };
 
 const getHypernativeChainConfig = (chainId) => hypernativeChainConfigs[chainId];
@@ -1013,6 +1079,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
     const chainSlug = chainConfig?.chain || 'ethereum';
     const notePrefix = chainConfig?.notePrefix || `[${chainLabel.toUpperCase()}] credit `;
     const tagListId = chainConfig?.tagListId || DEFAULT_HYPERNATIVE_TAG_LIST_ID;
+    const effectiveChainConfig = chainConfig || { label: chainLabel, chain: chainSlug, notePrefix };
     const watchlistsFromConfig = chainConfig
       ? [...(chainConfig.watchlists || []), ...HYPERNATIVE_GLOBAL_WATCHLISTS]
       : [];
@@ -1046,51 +1113,61 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
 
     try {
       for (const { id, description } of watchlists) {
-        const res = await fetch(`https://api.hypernative.xyz/watchlists/${id}`, {
+        await hypernativeFetch({
+          clientId,
+          clientSecret,
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'accept': 'application/json',
-            'x-client-id': clientId,
-            'x-client-secret': clientSecret,
-          },
-          body: JSON.stringify({
+          path: `/watchlists/${id}`,
+          body: {
             assets: [{ chain: chainSlug, type: "Contract", address: args.cdo }],
             mode: 'add'
-          })
+          }
         });
-        if (!res.ok) {
-          const responseBody = await res.text();
-          throw new Error(`Error adding CDO to watchlist ${id}: ${res.status} ${res.statusText} ${responseBody}`);
-        }
         console.log(`Added CDO to watchlist ${id}${description ? ` (${description})` : ''}`);
       }
 
       // Update hypernative tag for the cdo
-      const res2 = await fetch(`https://api.hypernative.xyz/lists/${tagListId}`, {
+      await hypernativeFetch({
+        clientId,
+        clientSecret,
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'accept': 'application/json',
-          'x-client-id': clientId,
-          'x-client-secret': clientSecret,
-        },
-        body: JSON.stringify({
+        path: `/lists/${tagListId}`,
+        body: {
           assets: [{
             chain: chainSlug,
             note: `${notePrefix}${args.name}`,
             address: args.cdo,
           }],
           mode: 'add'
-        })
+        }
       });
-      if (!res2.ok) {
-        const responseBody = await res2.text();
-        throw new Error(`Error adding tag to CDO: ${res2.status} ${res2.statusText} ${responseBody}`);
-      }
       console.log(`Updated Hypernative tag ${notePrefix}${args.name}`);
+
+      const trackedCdo = getTrackedCreditVault(hre, args.cdo);
+      const aaTranche = hasAddress(trackedCdo?.AATranche) ? trackedCdo.AATranche : null;
+      const agentPrefix = notePrefix.replace(/ credit $/, '');
+      const customAgents = [
+        { templateId: HYPERNATIVE_CONTRACT_VALUE_TEMPLATE_AGENT_ID, agentName: `${agentPrefix} TVL change credit ${args.name}`, input: [] },
+        ...(aaTranche ? [{ templateId: HYPERNATIVE_AA_VIRTUAL_PRICE_TEMPLATE_AGENT_ID, agentName: `${agentPrefix} Price alert Credit ${args.name} AA`, input: [aaTranche] }] : []),
+      ];
+      if (!aaTranche) {
+        console.log('⚠️ AA tranche not found; skipping Hypernative AA virtualPrice custom agent');
+      }
+      for (const agent of customAgents) {
+        const template = await hypernativeFetch({ clientId, clientSecret, path: `/custom-agents/${agent.templateId}` });
+        const payload = buildHypernativeCustomAgentPayload({
+          agentName: agent.agentName,
+          cdoAddress: args.cdo,
+          chainConfig: effectiveChainConfig,
+          input: agent.input,
+          template,
+          underlyingDecimals: trackedCdo?.decimals,
+        });
+        const createdAgent = await hypernativeFetch({ clientId, clientSecret, method: 'POST', path: '/custom-agents', body: payload });
+        console.log(`Created Hypernative custom agent ${payload.agentName}${createdAgent?.id ? ` (${createdAgent.id})` : ''}`);
+      }
     } catch (error) {
-      console.log('Error adding CDO to watchlist', error.message);
+      console.log('Error adding CDO to Hypernative', error.message);
     }
   });
 
