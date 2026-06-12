@@ -14,9 +14,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-// One line change is needed for solidity 0.8.X to make it compile check here 
-// https://ethereum.stackexchange.com/questions/96642/unary-operator-minus-cannot-be-applied-to-type-uint256
-import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract IdleClearpoolStrategyPolygonZK is
     Initializable,
@@ -194,10 +192,10 @@ contract IdleClearpoolStrategyPolygonZK is
         uint256 _scaledPrice = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
         if (tokenOut == pool.token0()) {
             // token1Price -> ratio of token0 over token1
-            _price = FullMath.mulDiv(2**192, EXP_SCALE, _scaledPrice);
+            _price = Math.mulDiv(2**192, EXP_SCALE, _scaledPrice);
         } else {
             // token0Price -> ratio of token1 over token0 
-            _price = FullMath.mulDiv(EXP_SCALE, _scaledPrice, 2**192);
+            _price = Math.mulDiv(EXP_SCALE, _scaledPrice, 2**192);
         }
     }
 

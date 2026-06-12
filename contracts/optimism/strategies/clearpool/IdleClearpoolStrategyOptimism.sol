@@ -14,9 +14,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-// One line change is needed for solidity 0.8.X to make it compile check here 
-// https://ethereum.stackexchange.com/questions/96642/unary-operator-minus-cannot-be-applied-to-type-uint256
-import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
 
 /// @dev there are no CPOOL rewards here so all apr calculations have been simplified
 contract IdleClearpoolStrategyOptimism is
