@@ -41557,6 +41557,270 @@
         "0x1c89dF6c8b1aB81EF90855120fafB93d7fCa3254",
         "0xe6584f3484494D7014E420080f50b69E5E071507"
       ]
+    },
+    "3a5cde5ec030f258727493672840a8db1994f26b6ba3f7e0a2bfd8de63918750": {
+      "address": "0x01d0799a2F740120dACBfEc33C5374B9086d069B",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "underlyingToken",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_contract(IERC20Detailed)10294",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:36"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_contract(IERC4626)10462",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:38"
+          },
+          {
+            "label": "idleCDO",
+            "offset": 0,
+            "slot": "153",
+            "type": "t_address",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:40"
+          },
+          {
+            "label": "borrower",
+            "offset": 0,
+            "slot": "154",
+            "type": "t_address",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:42"
+          },
+          {
+            "label": "borrowerApr",
+            "offset": 0,
+            "slot": "155",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:45"
+          },
+          {
+            "label": "borrowerPrincipal",
+            "offset": 0,
+            "slot": "156",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:47"
+          },
+          {
+            "label": "borrowerInterestAccrued",
+            "offset": 0,
+            "slot": "157",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:51"
+          },
+          {
+            "label": "borrowerInterestDebt",
+            "offset": 0,
+            "slot": "158",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:55"
+          },
+          {
+            "label": "lastBorrowerAccrual",
+            "offset": 0,
+            "slot": "159",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:57"
+          },
+          {
+            "label": "epochStartVaultAssets",
+            "offset": 0,
+            "slot": "160",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:59"
+          },
+          {
+            "label": "epochDepositedToVault",
+            "offset": 0,
+            "slot": "161",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:61"
+          },
+          {
+            "label": "epochWithdrawnFromVault",
+            "offset": 0,
+            "slot": "162",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:63"
+          },
+          {
+            "label": "epochAccountingActive",
+            "offset": 0,
+            "slot": "163",
+            "type": "t_bool",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:65"
+          },
+          {
+            "label": "epochPendingWithdraws",
+            "offset": 0,
+            "slot": "164",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:67"
+          },
+          {
+            "label": "manager",
+            "offset": 0,
+            "slot": "165",
+            "type": "t_address",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:69"
+          },
+          {
+            "label": "bufferStartVaultAssets",
+            "offset": 0,
+            "slot": "166",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:72"
+          },
+          {
+            "label": "bufferedVaultDelta",
+            "offset": 0,
+            "slot": "167",
+            "type": "t_int256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:75"
+          },
+          {
+            "label": "authorizedExecutors",
+            "offset": 0,
+            "slot": "168",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:77"
+          },
+          {
+            "label": "bufferInterest",
+            "offset": 0,
+            "slot": "169",
+            "type": "t_uint256",
+            "contract": "ProgrammableBorrower",
+            "src": "contracts/strategies/idle/ProgrammableBorrower.sol:81"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20Detailed)10294": {
+            "label": "contract IERC20Detailed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IERC4626)10462": {
+            "label": "contract IERC4626",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      },
+      "allAddresses": [
+        "0x01d0799a2F740120dACBfEc33C5374B9086d069B",
+        "0xB13d293B72e84df89881F6d8BCfCEf8568fbceE6"
+      ]
     }
   }
 }

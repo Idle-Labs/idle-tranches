@@ -283,33 +283,55 @@ const getTrackedCreditVault = (_hre, cdoAddress) => {
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
 const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
-const getCreditVaultBlueprintUpgradeTargets = (trackedCdo) => ([
+const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['cdo', 'strategy', 'queue', 'revolving', 'writeoff'];
+const getCreditVaultBlueprintUpgradeComponents = (rawComponents = CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.join(',')) => {
+  const components = rawComponents.toString().split(',').map((component) => component.trim().toLowerCase()).filter(Boolean);
+  if (components.length === 0) {
+    throw new Error('components must be provided');
+  }
+
+  for (const component of components) {
+    if (!CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.includes(component)) {
+      throw new Error(`Unsupported blueprint component ${component}`);
+    }
+  }
+
+  return [...new Set(components)].sort(
+    (left, right) => CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.indexOf(left) - CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.indexOf(right)
+  );
+};
+const getCreditVaultBlueprintUpgradeTargets = (trackedCdo, components = CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER) => ([
   {
+    component: 'cdo',
     label: 'Credit vault',
     proxy: trackedCdo.cdoAddr,
     contractName: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
   },
   {
+    component: 'strategy',
     label: 'Strategy',
     proxy: trackedCdo.strategy,
     contractName: 'contracts/strategies/idle/IdleCreditVault.sol:IdleCreditVault',
   },
   {
+    component: 'queue',
     label: 'Queue',
     proxy: trackedCdo.queue,
     contractName: 'contracts/IdleCDOEpochQueue.sol:IdleCDOEpochQueue',
   },
   {
+    component: 'revolving',
     label: 'Programmable borrower',
     proxy: trackedCdo.programmableBorrower,
     contractName: 'contracts/strategies/idle/ProgrammableBorrower.sol:ProgrammableBorrower',
   },
   {
+    component: 'writeoff',
     label: 'Write-off escrow',
     proxy: getTrackedWriteOff(trackedCdo),
     contractName: 'contracts/IdleCreditVaultWriteOffEscrow.sol:IdleCreditVaultWriteOffEscrow',
   },
-]).filter(({ proxy }) => hasAddress(proxy));
+]).filter(({ component, proxy }) => components.includes(component) && hasAddress(proxy));
 const getWriteOffEscrowContractName = (chainId) => ({
   1: 'IdleCreditVaultWriteOffEscrow',
   10: null,
@@ -1635,10 +1657,11 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
 
 /**
  * @name upgrade-credit-vault-blueprint
- * task to upgrade all proxies used as the credit vault factory blueprint
+ * task to upgrade selected proxies used as the credit vault factory blueprint
  */
-task("upgrade-credit-vault-blueprint", "Upgrade all credit vault blueprint implementations")
+task("upgrade-credit-vault-blueprint", "Upgrade selected credit vault blueprint implementations")
   .addOptionalParam('cdoname', 'Blueprint CDO key from utils/addresses.js', DEFAULT_CREDIT_VAULT_BLUEPRINT)
+  .addOptionalParam('components', 'Comma-separated components: cdo,strategy,queue,revolving,writeoff', CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.join(','))
   .setAction(async (args, _hre) => {
     await _hre.run("compile");
 
@@ -1648,9 +1671,10 @@ task("upgrade-credit-vault-blueprint", "Upgrade all credit vault blueprint imple
       throw new Error(`Blueprint ${args.cdoname} not found for network ${_hre.network.name}`);
     }
 
-    const targets = getCreditVaultBlueprintUpgradeTargets(blueprint);
+    const components = getCreditVaultBlueprintUpgradeComponents(args.components);
+    const targets = getCreditVaultBlueprintUpgradeTargets(blueprint, components);
     if (targets.length === 0) {
-      throw new Error(`Blueprint ${args.cdoname} has no upgradeable proxies configured`);
+      throw new Error(`Blueprint ${args.cdoname} has no upgradeable proxies configured for components ${components.join(',')}`);
     }
 
     const signer = await helpers.getSigner();
@@ -1678,6 +1702,7 @@ task("upgrade-credit-vault-blueprint", "Upgrade all credit vault blueprint imple
 
     console.log(`Upgrading blueprint ${args.cdoname} with ${signerAddress}`);
     console.log(`ProxyAdmin: ${proxyAdminAddress}`);
+    console.log(`Components: ${components.join(', ')}`);
     console.log();
 
     for (const target of targets) {
