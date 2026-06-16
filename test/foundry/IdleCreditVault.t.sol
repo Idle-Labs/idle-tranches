@@ -4479,6 +4479,197 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_vault.defaulted(), false, 'borrower defaulted');
   }
 
+  function testDonatedUnderlyingDoesNotChangeVirtualPrice() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 contractValuePre = cdoEpoch.getContractValue();
+
+    _donateToken(address(this), donation + ONE_SCALE);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    assertEq(cdoEpoch.getContractValue(), contractValuePre + donation, "raw donation should still be visible in NAV");
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), priceAAPre, "AA virtual price should ignore raw donations");
+
+    vm.roll(block.number + 1);
+    idleCDO.depositAA(ONE_SCALE);
+
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), priceAAPre, 1, "AA virtual price should not dump after skim");
+  }
+
+  function testDonatedUnderlyingDoesNotChangeMaxWithdrawable() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    uint256 maxWithdrawablePre = cdoEpoch.maxWithdrawable(address(this), address(AAtranche));
+
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    assertEq(
+      cdoEpoch.maxWithdrawable(address(this), address(AAtranche)),
+      maxWithdrawablePre,
+      "maxWithdrawable should ignore raw donations"
+    );
+
+    vm.roll(block.number + 1);
+    uint256 requested = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    assertEq(requested, maxWithdrawablePre, "requestWithdraw should match donation-free preview");
+  }
+
+  function testDonatedUnderlyingDoesNotChangeImpliedVirtualPrice() external {
+    IdleCreditVaultImpliedPrice impliedPrice = new IdleCreditVaultImpliedPrice();
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+    uint256 managementFeeRate = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFeeRate);
+    idleCDO.depositAA(amount);
+
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.warp(cdoEpoch.epochEndDate() - (duration / 2));
+
+    uint256 impliedPricePre = impliedPrice.impliedVirtualPrice(address(AAtranche));
+
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    assertEq(
+      impliedPrice.impliedVirtualPrice(address(AAtranche)),
+      impliedPricePre,
+      "implied virtual price should ignore raw donations"
+    );
+  }
+
+  function testSetFeeParamsIgnoresDonationWhenCheckpointingManagementFee() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+    uint256 managementFeeRate = 1_000; // 1%
+
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFeeRate);
+    idleCDO.depositAA(amount);
+
+    uint256 elapsed = 365 days;
+    vm.warp(block.timestamp + elapsed);
+
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    _setFeeParams(TL_MULTISIG, cdoEpoch.fee(), cdoEpoch.feeSplit(), managementFeeRate);
+
+    assertEq(
+      cdoEpoch.unclaimedFees(),
+      _calcManagementFee(amount, managementFeeRate, elapsed),
+      "management fee checkpoint should ignore raw donations"
+    );
+  }
+
+  function testDepositDuringEpochSkimsDonationBeforeLimitCheck() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 depositAmount = 1_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch._setLimit(cdoEpoch.getContractValue() + depositAmount);
+    vm.stopPrank();
+
+    _startEpochAndCheckPrices(0);
+    vm.warp(cdoEpoch.epochEndDate() - (cdoEpoch.epochDuration() / 2));
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    uint256 feeReceiverBalPre = underlying.balanceOf(cdoEpoch.feeReceiver());
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    address user = makeAddr("midEpochDonationLimit");
+    deal(defaultUnderlying, user, depositAmount);
+
+    vm.startPrank(user);
+    IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
+    uint256 minted = cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+
+    assertGt(minted, 0, "mid-epoch deposit should succeed");
+    assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBalPre, donation, "donation should be skimmed");
+  }
+
+  function testStartEpochSkimsDonationBeforeExpectedInterest() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    uint256 expectedInterest = _calcInterest(cdoEpoch.getContractValue());
+    uint256 feeReceiverBalPre = underlying.balanceOf(cdoEpoch.feeReceiver());
+
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterest, "donation should not increase expected interest");
+    assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBalPre, donation, "donation should be skimmed");
+  }
+
+  function testStartEpochFailedBorrowerSendDoesNotLeaveUnderlyingOnCDO() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    uint256 strategyUnderlyingPre = underlying.balanceOf(address(strategy));
+    uint256 feeReceiverBalPre = underlying.balanceOf(cdoEpoch.feeReceiver());
+
+    vm.mockCallRevert(
+      address(underlying),
+      abi.encodeWithSelector(bytes4(keccak256("transfer(address,uint256)")), borrower, amount),
+      bytes("borrower transfer failed")
+    );
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    vm.clearMockedCalls();
+
+    assertEq(cdoEpoch.defaulted(), true, "pool should default");
+    assertEq(underlying.balanceOf(address(cdoEpoch)), 0, "raw underlyings should not remain on CDO");
+    assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, "funds should return to strategy");
+    assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()), feeReceiverBalPre, "fee receiver should not get borrower funds");
+  }
+
+  function testUpdateAccountingSkimsDonationBeforeAccounting() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 donation = 1_000 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+
+    uint256 priceAAPre = cdoEpoch.priceAA();
+    uint256 lastNAVAAPre = cdoEpoch.lastNAVAA();
+    uint256 feeReceiverBalPre = underlying.balanceOf(cdoEpoch.feeReceiver());
+
+    _donateToken(address(this), donation);
+    underlying.transfer(address(cdoEpoch), donation);
+
+    vm.prank(owner);
+    IdleCDO(address(cdoEpoch)).updateAccounting();
+
+    assertEq(cdoEpoch.priceAA(), priceAAPre, "saved AA price should not account raw donations");
+    assertEq(cdoEpoch.lastNAVAA(), lastNAVAAPre, "saved AA NAV should not account raw donations");
+    assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBalPre, donation, "donation should be skimmed");
+  }
+
   function testStopEpochWithDuration() external {
     vm.startPrank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%

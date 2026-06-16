@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.10;
 
+import {IERC20Detailed} from "./interfaces/IERC20Detailed.sol";
 import {IProgrammableBorrower} from "./interfaces/IProgrammableBorrower.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOTranche} from "./IdleCDOTranche.sol";
@@ -61,7 +62,11 @@ contract IdleCreditVaultImpliedPrice {
     uint256 mgmtFee = cdo.managementFee();
     if (mgmtFee != 0) {
       // Match stop accounting: management fees reduce gains before performance fees.
-      uint256 accruedManagementFee = cdo.getContractValue() *
+      // strategyTokenBalance - unclaimedFees is the equivalent of _managedContractValue() in IdleCDOEpochVariant.sol
+      uint256 strategyTokenBalance = IERC20Detailed(cdo.strategyToken()).balanceOf(address(cdo));
+      uint256 fees = cdo.unclaimedFees();
+      uint256 feeBase = strategyTokenBalance > fees ? strategyTokenBalance - fees : 0;
+      uint256 accruedManagementFee = feeBase *
         mgmtFee *
         (block.timestamp - cdo.latestHarvestBlock()) /
         (FULL_ALLOC * 365 days);

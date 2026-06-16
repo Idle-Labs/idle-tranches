@@ -127,6 +127,15 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     return _contractTokenBalance(strategyToken) + _contractTokenBalance(token) - unclaimedFees;
   }
 
+  /// @notice Calculates the current managed net TVL.
+  /// @dev Raw underlyings held by the CDO are excluded because unsolicited transfers are skimmed on interactions.
+  /// @return Strategy-token-backed TVL net of accrued fees.
+  function _managedContractValue() internal virtual view returns (uint256) {
+    uint256 strategyTokenBalance = _contractTokenBalance(strategyToken);
+    uint256 fees = unclaimedFees;
+    return strategyTokenBalance > fees ? strategyTokenBalance - fees : 0;
+  }
+
   /// @param _tranche tranche address
   /// @return actual apr given current ratio between AA and BB tranches
   function getApr(address _tranche) external view returns (uint256) {
@@ -163,7 +172,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   function virtualPrice(address _tranche) public virtual view returns (uint256 _virtualPrice) {
     (_virtualPrice, ) = _virtualPriceAux(
       _tranche,
-      getContractValue(), // nav
+      _managedContractValue(), // nav
       lastNAVAA + lastNAVBB, // lastNAV
       _lastSavedNAV(_tranche), // lastTrancheNAV
       trancheAPRSplitRatio
@@ -517,7 +526,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// AA and BB tranches. This can be called at any time as is called automatically on each deposit/redeem. It's here
   /// just to be called when a default happened, as deposits/redeems are paused, but we need to update
   /// the loss for junior holders
-  function updateAccounting() external {
+  function updateAccounting() external virtual {
     _checkOnlyOwnerOrGuardian();
     _forceUpdateAccounting();
   }
@@ -574,9 +583,10 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     return IERC20Detailed(_token).balanceOf(address(this));
   }
 
-  /// @notice checkpoint accrued management fees into `unclaimedFees`
+  /// @notice Checkpoint accrued management fees into `unclaimedFees`.
+  /// @dev Raw underlyings are excluded because unsolicited transfers are skimmed instead of managed.
   function _accrueManagementFee() internal {
-    unclaimedFees += _calculateManagementFee(getContractValue(), block.timestamp - latestHarvestBlock);
+    unclaimedFees += _calculateManagementFee(_managedContractValue(), block.timestamp - latestHarvestBlock);
     latestHarvestBlock = block.timestamp;
   }
 

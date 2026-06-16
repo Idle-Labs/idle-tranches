@@ -159,6 +159,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     isDepositDuringEpochDisabled = _isDisabled;
   }
 
+  /// @notice Skim raw donated underlyings before forcing accounting.
+  /// @dev Prevents unsolicited transfers from being crystallized as tranche gains by manual accounting.
+  function updateAccounting() external override {
+    _checkOnlyOwnerOrGuardian();
+    _skimDonatedAssets();
+    _forceUpdateAccounting();
+  }
+
   /// @notice set flag to mint interest as strategy tokens without moving underlyings
   /// @dev Programmable borrowers always require minted-interest accounting.
   /// @param _isMinted true to mint interest instead of transferring underlyings
@@ -192,6 +200,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 _epochDuration = epochDuration; 
     _checkNotAllowed(block.timestamp < (epochEndDate + bufferPeriod) || _epochDuration == 0);
     _checkProgrammableBorrowerMode();
+    // Remove raw donated underlyings before calculating epoch interest or borrower transfer amounts.
+    _skimDonatedAssets();
 
     isEpochRunning = true;
     // prevent deposits
@@ -245,11 +255,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // allow instant withdraws right away without waiting for the deadline
     allowInstantWithdraw = true;
     // and transfer the surplus to the borrower
-    try this.sendFundsToBorrower(totUnderlyings - pendingInstant) {
+    uint256 _toBorrower = totUnderlyings - pendingInstant;
+    try this.sendFundsToBorrower(_toBorrower) {
       // funds transferred correctly
       _startEpochProgrammableBorrower(_pendingWithdraws);
     } catch {
-      _handleBorrowerDefault(totUnderlyings - pendingInstant);
+      // The borrower did not receive the funds, so keep the strategy-token backing in the strategy.
+      _transferUnderlyings(address(_strategy), _toBorrower);
+      _handleBorrowerDefault(_toBorrower);
     }
   }
 
@@ -603,9 +616,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Avoid pricing discontinuities for the first mid-epoch deposit in a tranche
     _checkNotAllowed(_trancheTotSupply == 0);
 
-    // Check that limit is not exceeded
-    _guarded(_amount);
     _skimDonatedAssets();
+    // Check that limit is not exceeded after removing skimmable raw donations.
+    _guarded(_amount);
     _updateAccounting();
 
     // Get underlyings from user
@@ -777,7 +790,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 _buffer = bufferPeriod;
     // calculate total vault interest (they don't get the interest for the buffer period for withdraw requests so 
     // we scale it back since _calcInterest is scaling the interest with tht buffer period),
-    uint256 totInterest = _calcInterest(getContractValue()) * _duration / (_duration + _buffer);
+    uint256 totInterest = _calcInterest(_managedContractValue()) * _duration / (_duration + _buffer);
     // calculate total tranche interest for the whole tranche supply
     uint256 totTrancheInterest = _calcTrancheInterestShare(totInterest, _tranche);
     // calculate interest for the given tranche and given amount
@@ -851,6 +864,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function writeOffDeposit(uint256 _amount, address _tranche) external {
     // only borrower can call this method and only during an epoch, otherwise one should follow the traditional flow
     _checkNotAllowed(_borrower() != msg.sender || !isEpochRunning);
+    // Remove raw donations so write-off interest math only sees accounted vault value.
+    _skimDonatedAssets();
 
     // we don't check the _tranche address to be AATranche or BBTranche as this method can be called only by the borrower
     // and borrower is trusted
