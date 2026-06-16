@@ -321,9 +321,9 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @notice Total net epoch interest due to the pool at stop.
   /// @dev This is the single value read by IdleCDO to price the epoch: borrower contractual
-  /// interest plus positive vault PnL minus vault losses. It is a pool-facing value, so it can
-  /// be lower than `borrowerInterestDebt` when the borrower still owes full contractual interest
-  /// but the vault sleeve suffered a loss.
+  /// interest plus paid buffer interest plus positive vault PnL minus vault losses. It is a
+  /// pool-facing value, so it can be lower than `borrowerInterestDebt` when the borrower still
+  /// owes full contractual interest but the vault sleeve suffered a loss.
   function totalInterestDueNow() external view returns (uint256) {
     (uint256 vaultInterest, uint256 loss) = _vaultNetInterest();
     uint256 totalGain = vaultInterest + borrowerInterestAccruedNow() + bufferInterest;
