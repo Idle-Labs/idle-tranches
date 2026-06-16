@@ -169,6 +169,7 @@ contract ProgrammableBorrowerAccountingHandler is Test {
   uint256 public modelEpochStartVaultAssets;
   uint256 public modelEpochPrincipalDeposits;
   uint256 public modelEpochWithdrawnFromVault;
+  uint256 public modelBufferInterest;
 
   /// @param _borrowerContract programmable borrower under test
   /// @param _underlying underlying token
@@ -289,6 +290,8 @@ contract ProgrammableBorrowerAccountingHandler is Test {
 
     if (modelEpochAccountingActive) {
       modelEpochPrincipalDeposits += amount - currentEpochInterestPaid;
+    } else {
+      modelBufferInterest += currentEpochInterestPaid;
     }
   }
 
@@ -342,6 +345,7 @@ contract ProgrammableBorrowerAccountingHandler is Test {
 
     modelEpochAccountingActive = false;
     modelEpochPendingWithdraws = 0;
+    modelBufferInterest = 0;
 
     if (!settle) {
       return;
@@ -375,11 +379,8 @@ contract ProgrammableBorrowerAccountingHandler is Test {
   /// @notice Expected total pool-facing interest in the deterministic invariant harness.
   function modelTotalInterestDueNow() external view returns (uint256) {
     (uint256 vaultInterest, uint256 loss) = modelVaultNetInterest();
-    if (modelEpochAccountingActive) {
-      uint256 totalGain = vaultInterest + modelBorrowerInterestAccruedNow();
-      return totalGain > loss ? totalGain - loss : 0;
-    }
-    return modelBorrowerInterestAccruedNow();
+    uint256 totalGain = vaultInterest + modelBorrowerInterestAccruedNow() + modelBufferInterest;
+    return totalGain > loss ? totalGain - loss : 0;
   }
 
   /// @notice Expected borrower interest still owed in the invariant harness.
@@ -499,6 +500,7 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
       handler.modelBorrowerInterestOwedNow(),
       "total borrower interest owed mismatch"
     );
+    assertEq(borrowerContract.bufferInterest(), handler.modelBufferInterest(), "buffer interest mismatch");
   }
 
   /// @notice The pool-facing interest number should match the deterministic reference model.
@@ -640,6 +642,45 @@ contract ProgrammableBorrowerIdleCashRegressionTest is Test {
     assertEq(borrowerContract.totalInterestDueNow(), 0, "old idle cash should stay principal");
   }
 
+  /// @notice Buffer-accrued borrower interest repaid while inactive must remain pool-facing yield.
+  function testInactiveRepayOfBufferInterestCarriesIntoNextEpochResult() external {
+    uint256 startAssets = 10_000e18;
+    uint256 borrowAmount = 4_000e18;
+
+    _writeBorrowerApr(365e18);
+    _startEpoch(startAssets);
+
+    vm.prank(realBorrower);
+    borrowerContract.borrow(borrowAmount);
+
+    vm.warp(block.timestamp + 30 days);
+    vm.prank(idleCDO);
+    borrowerContract.onStopEpoch(0, false);
+    vm.prank(idleCDO);
+    borrowerContract.settleBorrowerInterest();
+
+    vm.warp(block.timestamp + 5 days);
+    uint256 bufferAccruedInterest = borrowerContract.borrowerInterestAccruedNow();
+    uint256 repayAmount = borrowerContract.borrowerInterestDebt() + bufferAccruedInterest;
+    assertGt(bufferAccruedInterest, 0, "expected borrower interest during buffer");
+
+    underlying.mint(realBorrower, repayAmount);
+    vm.prank(realBorrower);
+    borrowerContract.repay(repayAmount);
+
+    assertEq(borrowerContract.borrowerInterestOwedNow(), 0, "repaid interest should not remain borrower debt");
+
+    vm.prank(idleCDO);
+    borrowerContract.onStartEpoch(0);
+
+    assertApproxEqAbs(
+      borrowerContract.totalInterestDueNow(),
+      bufferAccruedInterest,
+      2,
+      "buffer-paid borrower interest should remain pool-facing yield"
+    );
+  }
+
   /// @notice Start active epoch accounting with all assets initially deposited into the vault.
   /// @param _startAssets initial underlying balance for the programmable borrower
   function _startEpoch(uint256 _startAssets) internal {
@@ -656,5 +697,14 @@ contract ProgrammableBorrowerIdleCashRegressionTest is Test {
       .target(address(borrowerContract))
       .sig(borrowerContract.borrowerInterestDebt.selector)
       .checked_write(_frontedDebt);
+  }
+
+  /// @notice Write borrower APR for direct accrual tests.
+  /// @param _apr borrower APR expressed as a percentage scaled by 1e18
+  function _writeBorrowerApr(uint256 _apr) internal {
+    stdstore
+      .target(address(borrowerContract))
+      .sig(borrowerContract.borrowerApr.selector)
+      .checked_write(_apr);
   }
 }

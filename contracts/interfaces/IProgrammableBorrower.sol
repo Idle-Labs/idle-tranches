@@ -14,8 +14,8 @@ interface IProgrammableBorrower {
   function onStopEpoch(uint256 _amountRequired, bool _isRequestingAllFunds) external returns (bool success);
 
   /// @notice Return the total net interest currently due for the running epoch.
-  /// @dev This is the pool-facing stop-epoch value: borrower contractual interest plus positive
-  /// vault PnL minus vault losses.
+  /// @dev This is the pool-facing stop-epoch value: borrower contractual interest plus paid
+  /// buffer interest plus positive vault PnL minus vault losses.
   /// @return Interest amount owed right now.
   function totalInterestDueNow() external view returns (uint256);
 

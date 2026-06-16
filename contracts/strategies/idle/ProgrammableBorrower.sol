@@ -75,6 +75,10 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   int256 public bufferedVaultDelta;
   /// @notice keepers allowed to trigger borrow and repay on behalf of the borrower
   mapping(address => bool) public authorizedExecutors;
+  /// @notice borrower interest paid during the buffer and not yet realized by IdleCDO
+  /// @dev This interest is no longer borrower debt, but must stay pool-facing yield until
+  /// the next successful stop consumes `totalInterestDueNow()`.
+  uint256 public bufferInterest;
 
   event DepositedIntoVault(uint256 assets, uint256 shares);
   event WithdrawnFromVault(uint256 assets, uint256 shares, address indexed receiver);
@@ -253,6 +257,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     // stop flow begins we can clear the previous carry and snapshot the remaining vault sleeve
     // as the baseline for measuring buffer-period vault PnL before the next epoch starts.
     bufferedVaultDelta = 0;
+    bufferInterest = 0;
     bufferStartVaultAssets = _currentVaultAssets();
 
     // Stop reserving epoch-end withdraw liquidity once IdleCDO has started the stop flow.
@@ -285,6 +290,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     if (!epochAccountingActive) return;
 
     bufferedVaultDelta = 0;
+    bufferInterest = 0;
     bufferStartVaultAssets = _currentVaultAssets();
     epochPendingWithdraws = 0;
     epochAccountingActive = false;
@@ -320,7 +326,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   /// but the vault sleeve suffered a loss.
   function totalInterestDueNow() external view returns (uint256) {
     (uint256 vaultInterest, uint256 loss) = _vaultNetInterest();
-    uint256 totalGain = vaultInterest + borrowerInterestAccruedNow();
+    uint256 totalGain = vaultInterest + borrowerInterestAccruedNow() + bufferInterest;
     return totalGain > loss ? totalGain - loss : 0;
   }
 
@@ -516,6 +522,10 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
       // Current-epoch borrower interest must remain visible as profit at stopEpoch, while principal,
       // previously-fronted debt, and any excess repayment should only extend the epoch principal baseline.
       _depositToVault(totalRepaidAssets, totalRepaidAssets - currentEpochInterestPaid);
+    } else if (currentEpochInterestPaid != 0) {
+      // Buffer-period borrower interest was paid, so it is no longer debt, but it still belongs in
+      // the next pool-facing stop result instead of the next epoch's principal baseline.
+      bufferInterest += currentEpochInterestPaid;
     }
   }
 
