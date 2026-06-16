@@ -1030,6 +1030,7 @@ const CDOs = {
 
     writeOff: '0xcFaa789aF38Ff91EB0124Cd27B3D53094177CC48'
   },
+  // defunct
   creditbastion2usdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1143,7 +1144,7 @@ const CDOs = {
     BBTranche: '0x9704B7b30775Bc5712b5Fc186dE6e224853dED4D',
     keyringWhitelist: '0x42e64544E71E8d2ad6590f78a07B1A81133d7CbD',
   },
-  creditrevolvingearnifitestusdc: {
+  creditrevolvingearnifiusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
     strategyToken: '0x40dfe8a2C8B95746b1F36f921Fb4E812A1A6725a',
@@ -1171,6 +1172,19 @@ const CDOs = {
     queue: '0xF06DC60E2f7aCe741620c11963f470318c34BA7d',
     programmableBorrower: '0x36569d9AfAfC8bFD6bb844EE371F401c695F1bf6',
     writeOff: '0x8A00A03465277d96F4996f397550259aC6D0DEAe',
+  },
+  creditgamiusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x6f9f571fe577e8e1abba64a1e6cfdd77532cce67',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
+    AATranche: '0xedd10db19864724cb6bf82c6a9f16c57d9270722',
+    BBTranche: '0xc8161d771fabe79ffd45e9fbbd1536210db09344',
+    keyringWhitelist: '0xd4bd983953b20dd9989c7d609cf15003cfdc4d4a',
+    queue: '0xe6b37838f5aa077b6ce301139ef27102fb0fa685'
   },
   creditgauntlettestusdc: {
     decimals: 6,
@@ -1203,20 +1217,6 @@ const CDOs = {
     morphoOracle: '0x4bAff53CEEb99640447864A1605966D02fDFB661',
     writeOff: '0xB08aFCF83ed084DD7E4df0D83F4f4a2be9109944'
   },
-  // creditflowdeskusdc: {
-  //   decimals: 6,
-  //   // strategyToken it's the strategy itself here
-  //   strategyToken: '',
-  //   underlying: mainnetContracts.USDC,
-  //   cdoAddr: '',
-  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-  //   strategy: '',
-  //   AArewards: '0x0000000000000000000000000000000000000000',
-  //   BBrewards: '0x0000000000000000000000000000000000000000',
-  //   AATranche: '',
-  //   BBTranche: '',
-  //   queue: ''
-  // },
   // creditabraxasusdc: {
   //   decimals: 6,
   //   // strategyToken it's the strategy itself here
@@ -1231,6 +1231,7 @@ const CDOs = {
   //   BBTranche: '0x625fa7f7127181a55ca62e9A247374e6a8845151',
   //   queue: '0x75a878869F6920C5bB815205cD08F85480791A19'
   // },
+  // defunct
   creditabraxasv2usdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1245,6 +1246,7 @@ const CDOs = {
     BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
     queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
   },
+  // defunct
   creditpsalionweth: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -1257,6 +1259,7 @@ const CDOs = {
     BBTranche: '0x73080845253A2c5C0ecC8ED4E8135C898b2143f9',
     queue: '0x5a19D4154aEE4FC4a9756581297758400e70bEb0'
   },
+  // defunct
   creditpsalionwbtc: {
     decimals: 8,
     // strategyToken it's the strategy itself here
@@ -1269,6 +1272,7 @@ const CDOs = {
     BBTranche: '0xfF592ABfF0b4b31b8317B960565Da1fB697f11C1',
     queue: '0x894B22c8E6AdB3e9Ecca6b004BB0f14839D706a2'
   },
+  // defunct
   creditpsalionusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1282,6 +1286,7 @@ const CDOs = {
     AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
     BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
   },
+  // defunct
   creditpsaliontestusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1293,6 +1298,7 @@ const CDOs = {
     AATranche: '0xf1DD13D0E471e365c8177d07327445284912b26c',
     BBTranche: '0xF01a9964b209Eed143483Fbe4C2eCB0BBfD0eA39',
   },
+  // defunct
   creditcarpathianweth: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -1305,6 +1311,7 @@ const CDOs = {
     BBTranche: '0x7F97740d7253ed0AA765b195b247C3d0Af0Bd502',
     queue: '0x070b87c221aF6Cd77D0052b27a62Ac9D71f021d2'
   },
+  // defunct
   creditl1testusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1318,6 +1325,7 @@ const CDOs = {
     AATranche: '0x61a9D031E2C89b48C883ffF46a87Ea37DB16FbC7',
     BBTranche: '0x32F28ebbEB58676153485C74aac609E209b73BeD',
   },
+  // defunct
   usualusd0pptest: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -1331,6 +1339,7 @@ const CDOs = {
     AATranche: '0x3A34157DF5F07fF757B599716F41E8DC7829b090',
     BBTranche: '0x228d530C7b3570E5eb7c7D049bFEC45D28e611Fa'
   },
+  // defunct
   usualusd0pp: {
     decimals: 18,
     // strategyToken it's the strategy itself here
@@ -3651,7 +3660,7 @@ exports.deployTokens = {
     prefundedDepositsWindows: '0',
     proxyCdoAddress: CDOs.creditfalconxusdc.cdoAddr,
   },
-  creditrevolvingearnifitestusdc: {
+  creditrevolvingearnifiusdc: {
     decimals: 6,
     underlying: mainnetContracts.USDC,
     strategyName: 'IdleCreditVault',
@@ -3663,7 +3672,7 @@ exports.deployTokens = {
       'Earnifi_USDC', // borrower name
       '0', // intialApr
     ],
-    cdo: CDOs.creditrevolvingearnifitestusdc,
+    cdo: CDOs.creditrevolvingearnifiusdc,
     cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
@@ -4486,5 +4495,6 @@ exports.polygonCDOs = polygonCDOs;
 exports.polygonZKCDOs = polygonZKCDOs;
 exports.optimismCDOs = optimismCDOs;
 exports.arbitrumCDOs = arbitrumCDOs;
+exports.baseCDOs = baseCDOs;
 exports.avaxCDOs = avaxCDOs;
 exports.mainnetContracts = mainnetContracts;
