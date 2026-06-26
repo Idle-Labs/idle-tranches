@@ -281,7 +281,192 @@ const getTrackedCreditVault = (_hre, cdoAddress) => {
     ({ cdoAddr }) => normalizeAddress(cdoAddr) === normalizeAddress(cdoAddress)
   ) || null;
 }
+const getTrackedCreditVaultByName = (_hre, cdoName) => {
+  if (helpers.isEmptyString(cdoName)) {
+    return null;
+  }
+
+  const creditVaultName = cdoName.toString().trim().toLowerCase();
+  const trackedCdo = getNetworkCDOs(_hre)[creditVaultName];
+  if (!trackedCdo) {
+    throw new Error(`Unknown credit vault name ${creditVaultName}`);
+  }
+  return trackedCdo;
+}
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const getNetworkContractsReferenceName = (_hre) => {
+  const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
+  const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
+  const isOptimism = _hre.network.name == 'optimism' || _hre.network.config.chainId == 10;
+  const isArbitrum = _hre.network.name == 'arbitrum' || _hre.network.config.chainId == 42161;
+  const isBase = _hre.network.name == 'base' || _hre.network.config.chainId == 8453;
+  const isAvax = _hre.network.name == 'avax' || _hre.network.config.chainId == 43114;
+  if (isMatic) {
+    return 'polygonContracts';
+  } else if (isPolygonZK) {
+    return 'polygonZKContracts';
+  } else if (isOptimism) {
+    return 'optimismContracts';
+  } else if (isArbitrum) {
+    return 'arbitrumContracts';
+  } else if (isBase) {
+    return 'baseContracts';
+  } else if (isAvax) {
+    return 'avaxContracts';
+  }
+  return 'mainnetContracts';
+}
+const checksumAddress = (address) => ethers.utils.getAddress(address);
+const formatAddressValue = (address) => hasAddress(address) ? `'${checksumAddress(address)}'` : "''";
+const sanitizeCreditVaultEntryNamePart = (value) => value.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+const getCreditVaultAddressesEntryName = (strategyTokenName, underlyingSymbol) => {
+  const borrowerName = strategyTokenName.toString().replace(/^Pareto Credit Vault\s+/i, '');
+  return `credit${sanitizeCreditVaultEntryNamePart(borrowerName)}${sanitizeCreditVaultEntryNamePart(underlyingSymbol)}`;
+}
+const formatKnownNetworkContractReference = (_hre, address, preferredKeys = []) => {
+  if (!hasAddress(address)) {
+    return "''";
+  }
+
+  const networkContracts = getNetworkContracts(_hre);
+  const referenceName = getNetworkContractsReferenceName(_hre);
+  const contractKeys = [...preferredKeys, ...Object.keys(networkContracts)];
+  const seenKeys = new Set();
+
+  for (const key of contractKeys) {
+    if (seenKeys.has(key)) {
+      continue;
+    }
+    seenKeys.add(key);
+    if (hasAddress(networkContracts[key]) && sameAddress(networkContracts[key], address)) {
+      return `${referenceName}.${key}`;
+    }
+  }
+
+  return formatAddressValue(address);
+}
+const getCreditVaultDeploymentInterface = () => new ethers.utils.Interface([
+  'event CreditVaultDeployed(address creditVault,address strategy,address queue,address programmableBorrower,address keyringWhitelist,address writeOffEscrow)',
+]);
+const parseCreditVaultDeploymentArgs = (factoryAddress, eventArgs) => ({
+  factory: checksumAddress(factoryAddress),
+  creditVault: checksumAddress(eventArgs.creditVault || eventArgs[0]),
+  strategy: checksumAddress(eventArgs.strategy || eventArgs[1]),
+  queue: checksumAddress(eventArgs.queue || eventArgs[2]),
+  programmableBorrower: checksumAddress(eventArgs.programmableBorrower || eventArgs[3]),
+  keyringWhitelist: checksumAddress(eventArgs.keyringWhitelist || eventArgs[4]),
+  writeOffEscrow: checksumAddress(eventArgs.writeOffEscrow || eventArgs[5]),
+});
+const parseCreditVaultDeploymentReceipt = (receipt) => {
+  const deploymentEvent = (receipt.events || []).find(e => e.event === 'CreditVaultDeployed' && e.args);
+  if (deploymentEvent) {
+    return parseCreditVaultDeploymentArgs(deploymentEvent.address, deploymentEvent.args);
+  }
+
+  const deploymentInterface = getCreditVaultDeploymentInterface();
+  for (const log of receipt.logs || []) {
+    try {
+      const parsedLog = deploymentInterface.parseLog(log);
+      if (parsedLog.name === 'CreditVaultDeployed') {
+        return parseCreditVaultDeploymentArgs(log.address, parsedLog.args);
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  throw new Error('CreditVaultDeployed event not found in transaction receipt');
+}
+const formatCreditVaultAddressesEntry = (_hre, entry) => {
+  const hasEntryName = !helpers.isEmptyString(entry.name);
+  return [
+    hasEntryName ? `${entry.name}: {` : "{",
+    `  decimals: ${entry.decimals},`,
+    "  // strategyToken it's the strategy itself here",
+    `  strategyToken: ${formatAddressValue(entry.strategyToken)},`,
+    `  underlying: ${formatKnownNetworkContractReference(_hre, entry.underlying)},`,
+    `  cdoAddr: ${formatAddressValue(entry.cdoAddr)},`,
+    `  proxyAdmin: ${formatKnownNetworkContractReference(_hre, entry.proxyAdmin, ['proxyAdminWithTimelock', 'proxyAdminEOA', 'proxyAdmin'])},`,
+    `  strategy: ${formatAddressValue(entry.strategy)},`,
+    `  AATranche: ${formatAddressValue(entry.AATranche)},`,
+    `  BBTranche: ${formatAddressValue(entry.BBTranche)},`,
+    `  keyringWhitelist: ${formatAddressValue(entry.keyringWhitelist)},`,
+    `  queue: ${formatAddressValue(entry.queue)},`,
+    `  programmableBorrower: ${formatAddressValue(entry.programmableBorrower)},`,
+    `  writeOff: ${formatAddressValue(entry.writeOff)},`,
+    hasEntryName ? "}," : "}",
+  ].join("\n");
+}
+const getCreditVaultDeploymentProxyAdmin = async (_hre, deployment) => {
+  try {
+    return await getAdminAddress(_hre.ethers.provider, deployment.creditVault);
+  } catch (error) {
+    const factory = await _hre.ethers.getContractAt("IdleCreditVaultFactory", deployment.factory);
+    return factory.proxyAdmin();
+  }
+}
+const buildCreditVaultAddressesEntryFromDeployment = async (_hre, deployment) => {
+  const cdo = await _hre.ethers.getContractAt(
+    'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
+    deployment.creditVault
+  );
+  const [underlying, AATranche, BBTranche, proxyAdmin] = await Promise.all([
+    cdo.token(),
+    cdo.AATranche(),
+    cdo.BBTranche(),
+    getCreditVaultDeploymentProxyAdmin(_hre, deployment),
+  ]);
+  const underlyingToken = await _hre.ethers.getContractAt("IERC20Detailed", underlying);
+  const strategyToken = await _hre.ethers.getContractAt("IERC20Detailed", deployment.strategy);
+  const [decimals, underlyingSymbol, strategyTokenName] = await Promise.all([
+    underlyingToken.decimals(),
+    underlyingToken.symbol(),
+    strategyToken.name(),
+  ]);
+
+  return {
+    name: getCreditVaultAddressesEntryName(strategyTokenName, underlyingSymbol),
+    decimals: decimals.toString(),
+    strategyToken: deployment.strategy,
+    underlying,
+    cdoAddr: deployment.creditVault,
+    proxyAdmin,
+    strategy: deployment.strategy,
+    AATranche,
+    BBTranche,
+    keyringWhitelist: deployment.keyringWhitelist,
+    queue: deployment.queue,
+    programmableBorrower: deployment.programmableBorrower,
+    writeOff: deployment.writeOffEscrow,
+  };
+}
+const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
+  const trackedByName = getTrackedCreditVaultByName(_hre, args.name);
+  const cdoAddress = helpers.isEmptyString(args.cdo) ? trackedByName?.cdoAddr : args.cdo;
+  const trackedCdo = trackedByName || getTrackedCreditVault(_hre, cdoAddress);
+  const strategyAddress = helpers.isEmptyString(args.strategy) ? trackedCdo?.strategy : args.strategy;
+  const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
+  const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
+
+  return {
+    trackedCdo,
+    cdo: helpers.isEmptyString(cdoAddress) ? undefined : cdoAddress,
+    strategy: helpers.isEmptyString(strategyAddress) ? undefined : strategyAddress,
+    queue: hasAddress(queueAddress) ? queueAddress : undefined,
+    writeoff: hasAddress(writeOffAddress) ? writeOffAddress : undefined,
+  };
+}
+const getPrintContractsInfoCdoFlags = async (cdo) => {
+  const [isInterestMinted, isDepositDuringEpochDisabled] = await Promise.all([
+    cdo.isInterestMinted(),
+    cdo.isDepositDuringEpochDisabled(),
+  ]);
+  return { isInterestMinted, isDepositDuringEpochDisabled };
+}
+const getPrintContractsInfoStrategyState = async (strategy) => {
+  const maxApr = await strategy.maxApr();
+  return { maxApr };
+}
 const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
 const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['cdo', 'strategy', 'queue', 'revolving', 'writeoff'];
 const getCreditVaultBlueprintUpgradeComponents = (rawComponents = CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.join(',')) => {
@@ -1745,18 +1930,32 @@ task("upgrade-credit-vault-blueprint", "Upgrade selected credit vault blueprint 
     }
   });
 
+task("print-cv-addresses-from-tx", "Print addresses.js CDO entry from a credit vault factory deployment transaction")
+  .addParam('txhash', 'Credit vault factory deployment transaction hash')
+  .setAction(async (args, _hre) => {
+    const receipt = await _hre.ethers.provider.getTransactionReceipt(args.txhash);
+    if (!receipt) {
+      throw new Error(`Transaction receipt not found for ${args.txhash}`);
+    }
+
+    const deployment = parseCreditVaultDeploymentReceipt(receipt);
+    const entry = await buildCreditVaultAddressesEntryFromDeployment(_hre, deployment);
+    console.log(formatCreditVaultAddressesEntry(_hre, entry));
+  });
+
 task("print-contracts-info", "Prints deployed contracts info")
+  .addOptionalParam('name', 'Credit vault name from utils/addresses.js')
   .addOptionalParam('cdo', 'Cdo address')
   .addOptionalParam('strategy', 'Strategy address')
   .addOptionalParam('queue', 'Queue address')
   .addOptionalParam('writeoff', 'Write-off escrow address')
   .setAction(async (args) => {
     console.log('Printing contracts info');
-    const trackedCdo = getTrackedCreditVault(hre, args.cdo);
-    const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
-    const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
-    const cdo = args.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", args.cdo) : null;
-    const strategy = args.strategy ? await ethers.getContractAt("IdleCreditVault", args.strategy) : null;
+    const resolvedAddresses = resolvePrintContractsInfoAddresses(hre, args);
+    const queueAddress = resolvedAddresses.queue;
+    const writeOffAddress = resolvedAddresses.writeoff;
+    const cdo = resolvedAddresses.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", resolvedAddresses.cdo) : null;
+    const strategy = resolvedAddresses.strategy ? await ethers.getContractAt("IdleCreditVault", resolvedAddresses.strategy) : null;
     const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
     const writeOffEscrow = writeOffAddress ? await ethers.getContractAt("IdleCreditVaultWriteOffEscrow", writeOffAddress) : null;
     let cdoPrefundedQueue = null;
@@ -1779,6 +1978,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         aprDelta,
         instantDelay,
         keyringPolicy,
+        cdoFlags,
         prefundedQueue,
       ] = await Promise.all([
         cdo.owner(),
@@ -1813,6 +2013,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         cdo.instantWithdrawAprDelta(),
         cdo.instantWithdrawDelay(),
         cdo.keyringPolicyId(),
+        getPrintContractsInfoCdoFlags(cdo),
         (async () => {
           try {
             const prefundedCdo = await ethers.getContractAt(
@@ -1848,6 +2049,8 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  APR Delta:      ${aprDelta}`);
       console.log(`  Instant Delay:  ${instantDelay}`);
       console.log(`  Keyring Policy: ${keyringPolicy}`);
+      console.log(`  isInterestMinted: ${cdoFlags.isInterestMinted}`);
+      console.log(`  isDepositDuringEpochDisabled: ${cdoFlags.isDepositDuringEpochDisabled}`);
       if (cdoPrefundedQueue !== null) {
         console.log(`  Prefunded Queue:${cdoPrefundedQueue}`);
       }
@@ -1864,6 +2067,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         whitelistedCdo,
         apr,
         unscaledApr,
+        strategyState,
       ] = await Promise.all([
         strategy.owner(),
         (async () => {
@@ -1878,6 +2082,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         strategy.idleCDO(),
         strategy.getApr(),
         strategy.unscaledApr(),
+        getPrintContractsInfoStrategyState(strategy),
       ]);
       console.log(`Strategy at ${strategy.address}`);
       console.log(`  Owner:          ${owner}`);
@@ -1888,6 +2093,7 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  Whitelisted CDO:${whitelistedCdo}`);
       console.log(`  APR:            ${apr}`);
       console.log(`  Unscaled APR:   ${unscaledApr}`);
+      console.log(`  Max APR:        ${strategyState.maxApr}`);
       console.log(``);
     }
     if (queue) {

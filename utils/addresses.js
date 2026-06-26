@@ -1217,6 +1217,36 @@ const CDOs = {
     morphoOracle: '0x4bAff53CEEb99640447864A1605966D02fDFB661',
     writeOff: '0xB08aFCF83ed084DD7E4df0D83F4f4a2be9109944'
   },
+  creditbedrockstrategiesusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x90BBABcE4d3bF3eD65714d51d9F42241ab0eAb88',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x918A134607105de3bDf70f7b7460aCf630Abf4b9',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x90BBABcE4d3bF3eD65714d51d9F42241ab0eAb88',
+    AATranche: '0x20Ae600f955073Fc28B25D88d6a77599047e9cd8',
+    BBTranche: '0x23160d07E4A92333b0aA39bB6f2B2bC5C4010FC3',
+    keyringWhitelist: '',
+    queue: '',
+    programmableBorrower: '',
+    writeOff: '',
+  },
+  creditglasgowcosmicusdc: {
+    decimals: 6,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x7138121eAB9222FF431DeD712E587e297E128800',
+    underlying: mainnetContracts.USDC,
+    cdoAddr: '0x8Eb547423f652BDD20Cc5a32802812d89509180c',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x7138121eAB9222FF431DeD712E587e297E128800',
+    AATranche: '0xDa7E999327d99d3E2C5396ab8865f9264E0b850F',
+    BBTranche: '0xB8FDb43EfF65797c7eBb15FA49c57ec2d99e5F2E',
+    keyringWhitelist: '',
+    queue: '0x4D6745973c3A677528cB58eB594374F24AF0C770',
+    programmableBorrower: '',
+    writeOff: '',
+  },
   // creditabraxasusdc: {
   //   decimals: 6,
   //   // strategyToken it's the strategy itself here
