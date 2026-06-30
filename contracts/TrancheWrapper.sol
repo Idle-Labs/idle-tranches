@@ -203,14 +203,10 @@ contract TrancheWrapper is ReentrancyGuardUpgradeable, ERC20Upgradeable, IERC462
     }
 
     function maxWithdraw(address owner) external view returns (uint256) {
-        bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
-        if (!withdrawable) return 0;
         return convertToAssets(balanceOf(owner));
     }
 
     function maxRedeem(address owner) external view returns (uint256) {
-        bool withdrawable = isAATranche ? idleCDO.allowAAWithdraw() : idleCDO.allowBBWithdraw();
-        if (!withdrawable) return 0;
         return balanceOf(owner);
     }
 

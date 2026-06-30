@@ -132,6 +132,8 @@ contract IdleCreditVaultFactoryTest is Test {
   bytes32 internal constant EIP1967_ADMIN_SLOT =
     0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
   uint256 internal constant DEFAULT_FACTORY_FEE_SPLIT = 50000;
+  uint256 internal constant CDO_SLOT_GOVERNANCE_RECOVERY_FUND = 202;
+  uint256 internal constant CDO_SLOT_GUARDIAN = 208;
 
   struct AncillaryDeployment {
     address cv;
@@ -149,6 +151,12 @@ contract IdleCreditVaultFactoryTest is Test {
   address internal realBorrower = makeAddr("realBorrower");
   address internal proxyAdmin = makeAddr("proxyAdmin");
   address internal factoryProxyAdmin = makeAddr("factoryProxyAdmin");
+
+  /// @notice Reads an address from a CDO storage slot whose generated getter was removed.
+  function _cdoAddress(address _cdo, uint256 _slot) internal view returns (address) {
+    return address(uint160(uint256(vm.load(_cdo, bytes32(_slot)))));
+  }
+
   function testDeployRevolvingCreditVaultWiresProgrammableBorrower() external {
     vm.warp(100 days);
 
@@ -215,8 +223,8 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultWriteOffEscrow writeOffEscrow = IdleCreditVaultWriteOffEscrow(deployment.writeOffEscrow);
 
     assertEq(cv.owner(), owner, "cdo owner");
-    assertEq(cv.governanceRecoveryFund(), owner, "cdo governance fund");
-    assertEq(cv.guardian(), manager, "cdo guardian");
+    assertEq(_cdoAddress(address(cv), CDO_SLOT_GOVERNANCE_RECOVERY_FUND), owner, "cdo governance fund");
+    assertEq(_cdoAddress(address(cv), CDO_SLOT_GUARDIAN), manager, "cdo guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
     assertEq(deployment.programmableBorrower, address(0), "programmable borrower unsupported");
     assertEq(strategy.owner(), owner, "strategy owner");
@@ -838,8 +846,8 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(cv.isProgrammableBorrower(), true, "programmable mode should be enabled");
     assertEq(cv.disableInstantWithdraw(), true, "instant withdraw should be disabled");
     assertEq(cv.isDepositDuringEpochDisabled(), true, "deposit during epoch should be disabled");
-    assertEq(cv.governanceRecoveryFund(), owner, "governance fund");
-    assertEq(cv.guardian(), manager, "guardian");
+    assertEq(_cdoAddress(address(cv), CDO_SLOT_GOVERNANCE_RECOVERY_FUND), owner, "governance fund");
+    assertEq(_cdoAddress(address(cv), CDO_SLOT_GUARDIAN), manager, "guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
     assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.fee(), 5000, "fee value");

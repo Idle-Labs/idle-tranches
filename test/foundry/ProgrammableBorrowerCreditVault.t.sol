@@ -835,6 +835,32 @@ contract TestProgrammableBorrowerCreditVault is Test {
     );
   }
 
+  function testProgrammableBorrowerDefaultCheckpointsPositiveStopInterest() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 1_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    _accrueMorphoVaultInterest();
+
+    uint256 expectedInterest = programmableBorrower.totalInterestDueNow();
+    assertGt(expectedInterest, 0, "expected positive pool-facing interest before default");
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(cdoEpoch.defaulted(), true, "pool should default");
+    assertApproxEqAbs(cdoEpoch.expectedEpochInterest(), expectedInterest, 5, "default interest basis not checkpointed");
+  }
+
   function testProgrammableBorrowerRequiresMintedInterest() external {
     idleCDO.depositAA(10_000 * oneScale);
 

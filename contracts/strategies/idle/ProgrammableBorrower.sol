@@ -284,14 +284,17 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   /// @notice Abort active epoch accounting after IdleCDO defaulted the facility.
   /// @dev This keeps borrower-side epoch state aligned with IdleCDO's stopped/defaulted state
-  /// when the stop hook could not complete successfully.
+  /// without depending on a live ERC4626 valuation. A hard default is terminal for the normal
+  /// epoch flow, so there is no next buffer period that needs a `bufferStartVaultAssets` baseline.
   function onDefault() external nonReentrant {
     _checkOnlyIdleCDO();
     if (!epochAccountingActive) return;
 
     bufferedVaultDelta = 0;
     bufferInterest = 0;
-    bufferStartVaultAssets = _currentVaultAssets();
+    // Do not call `convertToAssets` here. Even if the external vault's valuation view is
+    // unavailable during stress, CDO default handling must still be able to shut down borrowing.
+    bufferStartVaultAssets = 0;
     epochPendingWithdraws = 0;
     epochAccountingActive = false;
     emit EpochAccountingStopped();

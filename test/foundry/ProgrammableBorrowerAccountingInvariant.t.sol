@@ -36,6 +36,7 @@ contract MockInvariantCDO {
 contract MockInvariantVault is ERC20 {
   MockInvariantERC20 public immutable assetToken;
   uint256 public withdrawLimit = type(uint256).max;
+  bool public revertConvertToAssets;
 
   /// @param _asset underlying token address
   constructor(address _asset) ERC20("Invariant Vault Share", "IVS") {
@@ -54,6 +55,7 @@ contract MockInvariantVault is ERC20 {
 
   /// @notice Share-to-asset conversion used by the invariant harness.
   function convertToAssets(uint256 shares) public view returns (uint256) {
+    if (revertConvertToAssets) revert("convert-to-assets-revert");
     uint256 supply = totalSupply();
     if (supply == 0) {
       return shares;
@@ -91,6 +93,12 @@ contract MockInvariantVault is ERC20 {
   /// @notice Set the maximum assets that can be withdrawn by any owner.
   function setWithdrawLimit(uint256 assets) external {
     withdrawLimit = assets;
+  }
+
+  /// @notice Toggle a deterministic `convertToAssets` revert for default-path regressions.
+  /// @param shouldRevert true to make share-to-asset conversion revert
+  function setRevertConvertToAssets(bool shouldRevert) external {
+    revertConvertToAssets = shouldRevert;
   }
 
   /// @notice Deposit underlying and mint proportional shares.
@@ -679,6 +687,26 @@ contract ProgrammableBorrowerIdleCashRegressionTest is Test {
       2,
       "buffer-paid borrower interest should remain pool-facing yield"
     );
+  }
+
+  /// @notice Default shutdown must not depend on live vault share valuation.
+  function testOnDefaultStopsAccountingWhenVaultConversionReverts() external {
+    uint256 startAssets = 10_000e18;
+
+    _startEpoch(startAssets);
+    assertTrue(borrowerContract.epochAccountingActive(), "pre-default accounting should be active");
+    assertGt(borrowerContract.vaultSharesBalance(), 0, "pre-default vault shares");
+
+    vault.setRevertConvertToAssets(true);
+
+    vm.prank(idleCDO);
+    borrowerContract.onDefault();
+
+    assertFalse(borrowerContract.epochAccountingActive(), "default should stop accounting");
+    assertEq(borrowerContract.epochPendingWithdraws(), 0, "default should clear withdraw reserve");
+    assertEq(borrowerContract.bufferStartVaultAssets(), 0, "default should not snapshot vault assets");
+    assertEq(borrowerContract.bufferedVaultDelta(), 0, "default should clear buffered vault delta");
+    assertEq(borrowerContract.bufferInterest(), 0, "default should clear buffer interest");
   }
 
   /// @notice Start active epoch accounting with all assets initially deposited into the vault.

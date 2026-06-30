@@ -7,7 +7,7 @@ contract IdleCDOStorage {
   // constant to represent 100%
   uint256 public constant FULL_ALLOC = 100000;
   // max fee, relative to FULL_ALLOC
-  uint256 public constant MAX_FEE = 20000;
+  uint256 internal constant MAX_FEE = 20000;
   // one token
   uint256 public constant ONE_TRANCHE_TOKEN = 10**18;
   // variable used to save the last tx.origin and block.number
@@ -21,18 +21,18 @@ contract IdleCDOStorage {
   // underlying token (eg DAI)
   address public token;
   // address that can only pause/unpause the contract in case of emergency
-  address public guardian;
+  address internal guardian;
   // one `token` (eg for DAI 10**18)
   uint256 public oneToken;
   // address that can call the 'harvest' method and lend pool assets
-  address public rebalancer;
+  address internal rebalancer;
   // address of the uniswap v2 router
   IUniswapV2Router02 internal uniswapRouterV2;
 
   // Flag for allowing AA withdraws
-  bool public allowAAWithdraw;
+  bool internal allowAAWithdraw;
   // Flag for allowing BB withdraws
-  bool public allowBBWithdraw;
+  bool internal allowBBWithdraw;
   // Flag for allowing to enable reverting in case the strategy gives back less
   // amount than the requested one
   bool internal revertIfTooLow;
@@ -71,7 +71,7 @@ contract IdleCDOStorage {
   // Keeps track of unclaimed fees for fee receivers
   uint256 public unclaimedFees;
   // Keeps an unlent balance both for cheap redeem and as 'insurance of last resort'
-  uint256 public unlentPerc;
+  uint256 internal unlentPerc;
 
   // Fee amount (relative to FULL_ALLOC)
   uint256 public fee;
@@ -81,7 +81,7 @@ contract IdleCDOStorage {
   // [DEPRECATED] trancheIdealWeightRatio ± idealRanges, used in updateIncentives
   uint256 internal idealRange;
   // period, in blocks, for progressively releasing harvested rewards to users
-  uint256 public releaseBlocksPeriod;
+  uint256 internal releaseBlocksPeriod;
   // amount of rewards sold in the last harvest (in `token`)
   uint256 internal harvestedRewards;
   // stkAave address
@@ -89,14 +89,14 @@ contract IdleCDOStorage {
   // aave address
   address internal constant AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
   // if deposits will be put directly in the strategy
-  bool public directDeposit;
+  bool internal directDeposit;
   // referral address of the strategy developer
-  address public referral;
+  address internal referral;
   // portion of collected fees sent to feeReceiver. The rest goes to owner()
   uint256 public feeSplit;
 
   // if Adaptive Yield Split is active
-  bool public isAYSActive;
+  bool internal isAYSActive;
   // constant to represent 99% (for ADS AA ratio upper limit)
   uint256 internal constant AA_RATIO_LIM_UP = 99000;
   // constant to represent 50% (for ADS AA ratio lower limit)
@@ -115,11 +115,11 @@ contract IdleCDOStorage {
   // used, reduce the __gap length by 1. 
   // ####################### 
   // Min apr ratio for AA tranches when using AYS
-  uint256 public minAprSplitAYS;
+  uint256 internal minAprSplitAYS;
   // Max strategy price decrease before triggering a default
-  uint256 public maxDecreaseDefault;
+  uint256 internal maxDecreaseDefault;
   // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
-  uint256 public lossToleranceBps;
+  uint256 internal lossToleranceBps;
   // Amount of stkIDLE required to mint 1 underlying
   uint256 internal stkIDLEPerUnderlying;
   // Explicit flag for epoch variants using programmable borrower hooks.

@@ -564,8 +564,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @dev can be called by both the owner and the guardian
   function unpause() external {
     _checkOnlyOwnerOrGuardian();
+    _beforeUnpause();
     _unpause();
   }
+
+  /// @notice Hook executed before external unpause.
+  function _beforeUnpause() internal view virtual {}
 
   // ###################
   // Helpers

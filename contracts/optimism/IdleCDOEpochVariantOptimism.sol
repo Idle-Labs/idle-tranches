@@ -7,9 +7,9 @@ import "../IdleCDOEpochVariant.sol";
 contract IdleCDOEpochVariantOptimism is IdleCDOEpochVariant {
   /// @notice update optimism addresses
   function _additionalInit() internal override {
+    feeReceiver = 0xFDbB4d606C199F091143BD604C85c191a526fbd0;
     super._additionalInit();
     // no need to set weth address as harvest is disabled
     // weth = 0x4200000000000000000000000000000000000006;
-    feeReceiver = 0xFDbB4d606C199F091143BD604C85c191a526fbd0; // treasury multisig
   }
 }
