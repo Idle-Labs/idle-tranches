@@ -306,8 +306,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // here we receive strategyTokens for the queue contract, strategyTokens are 1:1 with underlyings
     // This call will set isEpochInstant to true in strategy if the epoch is an instant withdraw epoch
     uint256 _underlyingsRequested = _cdo.requestWithdraw(_pending, tranche);
-    // save if the epoch is an instant withdraw epoch by comparing value of pendingWithdraws which gets updated only for instant withdraws
-    isEpochInstant[_epoch] = _strategy.pendingWithdraws() == _pendingWithdraws;
+    // Post-default requests are recovery-reserve claims and do not increment pendingWithdraws.
+    // Do not misclassify them as instant requests based only on the unchanged counter.
+    isEpochInstant[_epoch] = !_cdo.defaulted() && _strategy.pendingWithdraws() == _pendingWithdraws;
     // save current implied tranche price for this epoch based on underlyings that will be received on claim
     uint256 _epochPrice = _underlyingsRequested * ONE_TRANCHE / _pending;
     if (_epochPrice == 0) {

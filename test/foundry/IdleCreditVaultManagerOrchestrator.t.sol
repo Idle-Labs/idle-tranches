@@ -33,7 +33,8 @@ contract MockOrchestratedCreditStrategy {
 
   function setCanTransfer(bool _canTransfer) external {
     require(msg.sender == manager, "not manager");
-    canTransfer = _canTransfer;
+    require(!_canTransfer, "transfers disabled");
+    canTransfer = false;
   }
 }
 
@@ -283,7 +284,7 @@ contract TestIdleCreditVaultManagerOrchestrator is Test {
     orchestrator.setEpochParams(address(cdoA), 30 days, 5 days);
     orchestrator.getInstantWithdrawFunds(address(cdoA));
     orchestrator.setStrategyAprsRaw(address(cdoA), 8e18, 9e18);
-    orchestrator.setCanTransfer(address(cdoA), true);
+    orchestrator.setCanTransfer(address(cdoA), false);
     vm.stopPrank();
 
     assertEq(cdoA.epochDuration(), 30 days, "epoch duration");
@@ -291,10 +292,14 @@ contract TestIdleCreditVaultManagerOrchestrator is Test {
     assertEq(cdoA.instantWithdrawFundCalls(), 1, "instant withdraw calls");
     assertEq(strategyA.unscaledApr(), 8e18, "unscaled APR");
     assertEq(strategyA.apr(), 9e18, "raw APR");
-    assertTrue(strategyA.canTransfer(), "can transfer");
+    assertFalse(strategyA.canTransfer(), "receipt transfers should stay disabled");
 
     assertEq(strategyB.unscaledApr(), 0, "other strategy untouched");
     assertFalse(strategyB.canTransfer(), "other transfer flag untouched");
+
+    vm.expectRevert("transfers disabled");
+    vm.prank(operator);
+    orchestrator.setCanTransfer(address(cdoA), true);
   }
 
   function testQueueForwardsUseQueueLinkedToRegisteredCdo() external {

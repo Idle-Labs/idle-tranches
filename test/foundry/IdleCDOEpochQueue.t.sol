@@ -43,6 +43,10 @@ contract TestIdleCDOEpochQueue is Test {
     queue.initialize(address(cdoEpoch), address(this), true);
     underlying = IERC20Detailed(cdoEpoch.token());
     strategy = IdleCreditVault(cdoEpoch.strategy());
+    // The fork strategy was initialized by an older implementation. Complete the new
+    // recovery-accounting migration after etching the upgraded implementation bytecode.
+    vm.prank(strategy.owner());
+    strategy.initializeDefaultRecovery();
     manager = strategy.manager();
     tranche = IERC20Detailed(cdoEpoch.AATranche());
 
@@ -783,6 +787,47 @@ contract TestIdleCDOEpochQueue is Test {
       500,
       'final withdraw price is wrong'
     );
+  }
+
+  function testProcessPostDefaultWithdrawalAsNormalClaim() external {
+    uint256 trancheAmount = ONE_TRANCHE;
+    uint256 claimEpoch = strategy.epochNumber() + 1;
+    _requestWithdrawWithUser(FASA, trancheAmount);
+
+    // Move the queued request into the current strategy epoch without processing it.
+    _stopCurrentEpochWithApr(10e18);
+    assertEq(strategy.epochNumber(), claimEpoch, 'queued epoch did not become current');
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    deal(address(underlying), strategy.borrower(), 0, true);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(cdoEpoch.owner());
+    cdoEpoch.stopEpoch(0, 0);
+    assertEq(cdoEpoch.defaulted(), true, 'pool should be defaulted');
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    uint256 activeInterest = expectedInterest > pendingFees ? expectedInterest - pendingFees : 0;
+    activeInterest = activeInterest * (100_000 - cdoEpoch.fee()) / 100_000;
+    uint256 recovered = strategy.balanceOf(address(cdoEpoch)) + activeInterest;
+    deal(address(underlying), manager, recovered, true);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    queue.processWithdrawRequests();
+    vm.stopPrank();
+
+    assertEq(queue.isEpochInstant(claimEpoch), false, 'post-default request was classified as instant');
+    uint256 queueBalancePre = underlying.balanceOf(address(queue));
+    queue.processWithdrawalClaims(claimEpoch);
+    assertGt(underlying.balanceOf(address(queue)) - queueBalancePre, 0, 'queue did not receive recovery funds');
+    assertEq(queue.pendingClaims(), false, 'post-default queue claim remained pending');
+
+    uint256 userBalancePre = underlying.balanceOf(FASA);
+    vm.prank(FASA);
+    queue.claimWithdrawRequest(claimEpoch);
+    assertGt(underlying.balanceOf(FASA) - userBalancePre, 0, 'user did not receive post-default recovery');
   }
 
   function testProcessWithdrawalClaimsInstantEpoch() external {

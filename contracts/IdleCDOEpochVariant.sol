@@ -104,9 +104,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   }
 
   /// @notice Ensure programmable borrowers are only used with minted-interest accounting.
-  /// @dev Programmable borrower stop flows assume the CDO fronts interest by minting strategy tokens.
+  /// @dev Programmable borrower flows assume minted interest and do not support instant funding.
   function _checkProgrammableBorrowerMode() internal view {
-    _checkNotAllowed(isProgrammableBorrower && !isInterestMinted);
+    _checkNotAllowed(isProgrammableBorrower && (!isInterestMinted || _pendingInstant() != 0));
   }
 
   ///
@@ -133,7 +133,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _disable flag to disable instant withdraw
   function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) external {
     _checkOnlyOwnerOrManager();
-    _checkNotAllowed(isEpochRunning);
+    _checkNotAllowed(paused());
     instantWithdrawDelay = _delay;
     instantWithdrawAprDelta = _aprDelta;
     disableInstantWithdraw = _disable;
@@ -185,11 +185,16 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Finalize a hard-default recovery and crystallize the realized loss on tranche prices.
   /// @dev `_recoverySource` must approve the strategy for `_recoveredAmount`. Recovered funds are sent
   /// directly to the strategy recovery reserve so they do not inflate CDO NAV before finalization.
+  /// Finalization is one-time and cannot be topped up through this recovery path. Any raw underlying
+  /// held by the CDO is treated as a donation and sent to `feeReceiver` before recovery is calculated.
+  /// Recovery accounting is aggregate and does not retain tranche identity. Credit vaults are
+  /// single-tranche deployments; if both classes exist accidentally, terminal recovery is pro rata.
+  /// This terminal fallback does not preserve AA seniority.
   /// @param _recoveredAmount amount of underlying recovered for active LPs and defaulted receipts
   /// @param _recoverySource address that supplies the recovered underlying
   function finalizeDefault(uint256 _recoveredAmount, address _recoverySource) external {
     _checkOnlyOwnerOrManager();
-    // Remove any unrelated underlying from the CDO before the strategy computes recovery accounting.
+    // Send raw CDO underlying to feeReceiver as donated assets; recovery must enter through the strategy.
     _skimDonatedAssets();
     // Recovery math and reserve accounting live in the strategy where receipt claims are paid.
     IdleCreditVault(strategy).finalizeDefaultRecovery(_recoveredAmount, _recoverySource);
@@ -199,6 +204,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     managementFee = 0;
     unclaimedFees = 0;
     latestHarvestBlock = block.timestamp;
+
+    // Default receipts and active recovery basis are aggregate. Force terminal accounting to use
+    // the current NAV ratio for gains and pro-rata loss sharing, avoiding an inconsistent AA/BB
+    // waterfall if an unsupported multi-tranche credit vault was configured accidentally.
+    trancheAPRSplitRatio = _getAARatio(true);
+    lossToleranceBps = FULL_ALLOC;
 
     // Crystallize the strategy-token rebalance so virtualPrice/tranchePrice expose the realized loss.
     _forceUpdateAccounting();
@@ -313,6 +324,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// Programmable borrowers only support `_interest` values `0` and `1`.
   /// @dev Only owner or manager can call this function. Borrower MUST approve this contract
   function stopEpoch(uint256 _newApr, uint256 _interest) public {
+    _stopEpoch(_newApr, _interest, 0);
+  }
+
+  /// @notice Internal stop-epoch implementation with optional proportional pending-receipt loss.
+  /// @param _newApr New apr to set for the next epoch
+  /// @param _interest Interest gained in the epoch
+  /// @param _lossAmount Loss amount to split between active LPs and pending receipts
+  function _stopEpoch(uint256 _newApr, uint256 _interest, uint256 _lossAmount) private {
     _beforeStopEpoch();
     _checkOnlyOwnerOrManager();
     _checkProgrammableBorrowerMode();
@@ -362,34 +381,33 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _checkNotAllowed(_maxApr != 0 && _grossInterest > _calcInterestWithApr(getContractValue(), _maxApr) + _pendingWithdrawFees);
     }
 
-    uint256 _amountRequired = _amountToPullFromBorrower + _pendingWithdraws;
     // Checkpoint management fees before borrower funds are pulled in so the elapsed-period
     // accrual applies only to the pre-stop live NAV, not to newly received epoch interest.
     _accrueManagementFee();
 
-    // If the borrower pull or programmable recall fails, default finalization needs the
-    // adjusted borrower-owed interest basis. Non-programmable close-pool mode uses
-    // `_interest == 1` as a sentinel, not as real interest.
-    expectedEpochInterest = _isRequestingAllFunds && !isProgrammableBorrower ? 0 : _grossInterest;
+    // Persist only resolved epoch interest for recovery accounting. In close-pool mode `_interest == 1`
+    // is a sentinel: `_grossInterest` excludes the principal added to `_expectedInterest` above.
+    expectedEpochInterest = _grossInterest;
     pendingWithdrawFees = _pendingWithdrawFees;
+
+    (_pendingWithdraws, _lossAmount) = _strategy.previewLossAdjustedWithdrawFunds(_lossAmount, lossToleranceBps == FULL_ALLOC);
 
     if (isProgrammableBorrower) {
       // Ask the programmable borrower to recall ERC4626 liquidity before IdleCDO pulls funds.
       // Hook reverts bubble so transient ERC4626 liquidity failures can be retried.
-      if (!IProgrammableBorrower(_borrower()).onStopEpoch(_amountRequired, _isRequestingAllFunds)) {
-        allowInstantWithdraw = true;
-        _handleBorrowerDefault(_amountRequired);
+      if (!IProgrammableBorrower(_borrower()).onStopEpoch(_amountToPullFromBorrower + _pendingWithdraws, _isRequestingAllFunds)) {
+        // Emit the exact cash liability requested from the borrower, including recalled principal
+        // in close-pool mode and excluding interest fronted through minted accounting.
+        _handleBorrowerDefault(_amountToPullFromBorrower + _pendingWithdraws);
         return;
       }
     }
 
     // accrue interest to idleCDO, this will increase tranche prices.
     // Send also tot withdraw requests amount to the IdleCreditVault contract
-    try this.getFundsFromBorrower(_amountToPullFromBorrower, _pendingWithdraws, 0) {
+    try this.getFundsFromBorrower(_amountToPullFromBorrower + _pendingWithdraws) {
       // transfer in strategy and decrease pendingWithdraws
-      if (_pendingWithdraws != 0) {
         _strategy.collectWithdrawFunds(_pendingWithdraws);
-      }
       // Only settle borrower interest when CDO is fronting it (minted mode, not closing pool).
       // When requesting all funds (_interest == 1) the CDO pulls cash directly, no fronting.
       if (_mintInterest && isProgrammableBorrower) {
@@ -474,19 +492,27 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       }
 
       emit AccrueInterest(_expectedInterest - _totBorrowed, _totalFees);
+      if (_lossAmount != 0) {
+        _strategy.burnStrategyTokens(_lossAmount);
+        // Realize the active side of the loss right away so virtualPrice/tranchePrice
+        // match the same proportional haircut used for pending receipts.
+        _forceUpdateAccounting();
+      }
     } catch {
       // if borrower defaults, prev instant withdraw requests can still be withdrawn
       // as were already fullfilled prior to the default (all funds already sent to the strategy)
-      allowInstantWithdraw = true;
-      _handleBorrowerDefault(_expectedInterest + _pendingWithdraws);
+      _handleBorrowerDefault(_amountToPullFromBorrower + _pendingWithdraws);
     }
   }
 
   /// @notice Stop epoch and set new duration
   /// @dev see stopEpoch and setEpochParams for more details, bufferPeriod is not modified
   /// Loss accounting policy for `_lossAmount`:
-  /// - loss is applied only after `stopEpoch` finishes funding normal withdraw receipts
-  /// - as a consequence, already-minted pending withdraw receipts are not haircut by `_lossAmount`
+  /// - loss is split pro rata between active LP basis and pending withdraw receipt basis
+  /// - pending receipt basis includes any loss-epoch interest already promised to those receipts
+  /// - active basis includes net interest for cash mode and gross interest plus fee shares for minted mode
+  /// - pending receipts require the monotranche loss policy because they do not retain AA/BB identity
+  /// - with pending receipts, the loss must stay below combined basis and leave a non-zero recovery price
   /// - if `stopEpoch` defaults (`defaulted = true`), the post-stop loss burn and epoch updates are skipped,
   ///   but variant hooks still run so prefunded queues can settle deposits already sent to the borrower
   /// @param _newApr New apr to set for the next epoch
@@ -495,21 +521,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _lossAmount Amount of strategy tokens to burn as realized loss
   function stopEpochWithDuration(uint256 _newApr, uint256 _interest, uint256 _duration, uint256 _lossAmount) public {
     // stop epoch checks that msg.sender is allowed
-    stopEpoch(_newApr, _interest);
-    if (defaulted) {
-      _afterStopEpochWithDuration();
-      return;
+    _stopEpoch(_newApr, _interest, _lossAmount);
+    if (!defaulted) {
+      // buffer period is not changed
+      setEpochParams(_duration, bufferPeriod);
+      // scale the apr with the new duration and buffer
+      _setScaledApr(_newApr);
     }
-    if (_lossAmount != 0) {
-      IdleCreditVault(strategy).burnStrategyTokens(_lossAmount);
-      // realize the loss right away and update stored tranche prices/NAV
-      _forceUpdateAccounting();
-    }
-    // buffer period is not changed
-    setEpochParams(_duration, bufferPeriod);
-
-    // scale the apr with the new durantion and buffer
-    _setScaledApr(_newApr);
     _afterStopEpochWithDuration();
   }
 
@@ -525,14 +543,11 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault(strategy).setAprsWithBuffer(_newApr, epochDuration, bufferPeriod);
   }
 
-  /// @dev Get interest and funds for fullfill withdraw requests (normal and instant) from borrower,
-  /// method is external so it can be used in the try/catch blocks
-  /// @param _amount Amount of interest to transfer
-  /// @param _withdrawRequests Total withdraw requests
-  /// @param _instantWithdrawRequests Total instant withdraw requests
-  function getFundsFromBorrower(uint256 _amount, uint256 _withdrawRequests, uint256 _instantWithdrawRequests) external {
+  /// @dev Get funds from borrower through an external self-call so callers can use try/catch.
+  /// @param _amount Total amount to transfer
+  function getFundsFromBorrower(uint256 _amount) external {
     _checkNotAllowed(msg.sender != address(this));
-    _transferUnderlyingsFrom(_borrower(), address(this), _amount + _withdrawRequests + _instantWithdrawRequests);
+    _transferUnderlyingsFrom(_borrower(), address(this), _amount);
   }
 
   /// @notice Get funds from borrower to fullfill instant withdraw requests
@@ -546,7 +561,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault _strategy = IdleCreditVault(strategy);
     uint256 _instantWithdraws = _pendingInstant();
     // transfer funds for instant withdraw to this contract
-    try this.getFundsFromBorrower(0, 0, _instantWithdraws) {
+    try this.getFundsFromBorrower(_instantWithdraws) {
       // transfer funds to IdleCreditVault and decrease pendingInstantWithdraws
       if (_instantWithdraws != 0) {
         _strategy.collectInstantWithdrawFunds(_instantWithdraws);
@@ -561,6 +576,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Handle borrower default
   function _handleBorrowerDefault(uint256 funds) internal {
     defaulted = true;
+    // Do not reopen instant claims here. They remain disabled when funding is pending;
+    // successful full funding is the only path that enables them before finalization.
 
     if (isProgrammableBorrower) {
       IProgrammableBorrower(_borrower()).onDefault();
@@ -717,8 +734,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @return _underlyings Amount of underlyings requested
   function requestWithdraw(uint256 _amount, address _tranche) external returns (uint256 _underlyings) {
     // check if _tranche is valid and if withdraws for that tranche are allowed and if user is allowed
-    _checkNotAllowed((_tranche != AATranche && _tranche != BBTranche) || 
-      (!allowAAWithdrawRequest && _tranche == AATranche) || 
+    _checkNotAllowed((_tranche != AATranche && _tranche != BBTranche) ||
+      (!allowAAWithdrawRequest && _tranche == AATranche) ||
       (!allowBBWithdrawRequest && _tranche == BBTranche) ||
       !isWalletAllowed(msg.sender)
     );

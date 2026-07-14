@@ -84,6 +84,8 @@ contract MockStopEpochLiquidityVault is ERC20 {
 contract TestProgrammableBorrowerCreditVault is Test {
   using stdStorage for StdStorage;
 
+  event BorrowerDefault(uint256 funds);
+
   address internal constant TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814);
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
@@ -436,7 +438,12 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.borrow(drawAmount);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 expectedLiability =
+      (cdoEpoch.getContractValue() - underlying.balanceOf(address(cdoEpoch))
+        + programmableBorrower.totalInterestDueNow() + strategy.pendingWithdraws());
 
+    vm.expectEmit(address(cdoEpoch));
+    emit BorrowerDefault(expectedLiability);
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, 1);
 
