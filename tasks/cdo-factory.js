@@ -2305,6 +2305,45 @@ task("deploy-programmable-borrower", "Deploy and configure a ProgrammableBorrowe
   });
 
 /**
+ * @name deploy-cv-manager-orchestrator
+ * task to deploy IdleCreditVaultManagerOrchestrator
+ */
+task("deploy-cv-manager-orchestrator", "Deploy IdleCreditVaultManagerOrchestrator")
+  .addParam('operator', 'Account allowed to operate the credit vault cluster')
+  .addOptionalParam('proxyAdmin', 'ProxyAdmin address override', '', types.string)
+  .setAction(async (args) => {
+    await run("compile");
+
+    const signer = await helpers.getSigner();
+    const deployer = await signer.getAddress();
+    const networkContracts = getNetworkContracts(hre);
+    const proxyAdmin = args.proxyAdmin || networkContracts.proxyAdminWithTimelock || networkContracts.proxyAdmin;
+
+    console.log(`Deploying IdleCreditVaultManagerOrchestrator with ${deployer}`);
+    console.log(`Operator: ${args.operator}`);
+    console.log(`Owner: ${deployer}`);
+    console.log(`ProxyAdmin: ${proxyAdmin}`);
+    console.log();
+
+    const orchestrator = await helpers.deployUpgradableContract(
+      'IdleCreditVaultManagerOrchestrator',
+      [args.operator],
+      signer,
+      proxyAdmin
+    );
+
+    const implementation = await getImplementationAddress(hre.ethers.provider, orchestrator.address);
+    console.log(`IdleCreditVaultManagerOrchestrator proxy deployed at ${orchestrator.address}`);
+    console.log(`IdleCreditVaultManagerOrchestrator implementation deployed at ${implementation}`);
+    console.log();
+    console.log('Next steps for each credit vault:');
+    console.log(`1. Call setCreditVaultAllowed(cdo, true) on the orchestrator at ${orchestrator.address}`);
+    console.log(`2. Call setManager(${orchestrator.address}) on the credit vault strategy`);
+
+    return orchestrator;
+  });
+
+/**
  * @name deploy-proxy-admin
  * task to deploy ProxyAdmin
  */
