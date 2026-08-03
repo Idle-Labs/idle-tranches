@@ -523,7 +523,7 @@ const getWriteOffEscrowContractName = (chainId) => ({
   137: null,
   1101: null,
   42161: null,
-  8453: null,
+  8453: 'IdleCreditVaultWriteOffEscrow',
   43114: 'IdleCreditVaultWriteOffEscrow',
 })[chainId];
 
