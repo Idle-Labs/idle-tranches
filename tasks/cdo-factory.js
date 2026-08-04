@@ -294,6 +294,22 @@ const getTrackedCreditVaultByName = (_hre, cdoName) => {
   return trackedCdo;
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const resolveHypernativeCreditVaultMetadata = (trackedCdo, aaTranche, underlyingDecimals) => {
+  const resolvedAaTranche = hasAddress(aaTranche)
+    ? aaTranche
+    : (hasAddress(trackedCdo?.AATranche) ? trackedCdo.AATranche : null);
+  const decimals = underlyingDecimals === undefined || underlyingDecimals === null || underlyingDecimals === ''
+    ? trackedCdo?.decimals
+    : underlyingDecimals;
+  const resolvedUnderlyingDecimals = decimals === undefined ? undefined : Number(decimals);
+  if (
+    resolvedUnderlyingDecimals !== undefined &&
+    (!Number.isInteger(resolvedUnderlyingDecimals) || resolvedUnderlyingDecimals < 0)
+  ) {
+    throw new Error(`Invalid underlying decimals ${decimals}`);
+  }
+  return { aaTranche: resolvedAaTranche, underlyingDecimals: resolvedUnderlyingDecimals };
+};
 const getNetworkContractsReferenceName = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
@@ -1258,6 +1274,8 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
   .addParam('cdo')
   .addParam('name')
   .addOptionalParam('chainid', 'Chain id used to pick Hypernative watchlists and params')
+  .addOptionalParam('aaTranche', 'AA tranche address for a newly deployed, untracked credit vault')
+  .addOptionalParam('underlyingDecimals', 'Underlying decimals for a newly deployed, untracked credit vault')
   .setAction(async (args) => {
     const clientId = process.env.HYPERNATIVE_CLIENT_ID;
     const clientSecret = process.env.HYPERNATIVE_CLIENT_SECRET;
@@ -1351,7 +1369,11 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
       console.log(`Updated Hypernative tag ${notePrefix}${args.name}`);
 
       const trackedCdo = getTrackedCreditVault(hre, args.cdo);
-      const aaTranche = hasAddress(trackedCdo?.AATranche) ? trackedCdo.AATranche : null;
+      const { aaTranche, underlyingDecimals } = resolveHypernativeCreditVaultMetadata(
+        trackedCdo,
+        args.aaTranche,
+        args.underlyingDecimals
+      );
       const agentPrefix = notePrefix.replace(/ credit $/, '');
       const customAgents = [
         { templateId: HYPERNATIVE_CONTRACT_VALUE_TEMPLATE_AGENT_ID, agentName: `${agentPrefix} TVL change credit ${args.name}`, input: [] },
@@ -1368,7 +1390,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
           chainConfig: effectiveChainConfig,
           input: agent.input,
           template,
-          underlyingDecimals: trackedCdo?.decimals,
+          underlyingDecimals,
         });
         const createdAgent = await hypernativeFetch({ clientId, clientSecret, method: 'POST', path: '/custom-agents', body: payload });
         console.log(`Created Hypernative custom agent ${payload.agentName}${createdAgent?.id ? ` (${createdAgent.id})` : ''}`);
@@ -1613,9 +1635,16 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');
       const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const cdoContract = await ethers.getContractAt("IdleCDOEpochVariant", cv, signer);
       const name = await strategyContract.symbol();
+      const aaTranche = await cdoContract.AATranche();
       await hre.run("protect-cdo", { cdo: cv });
-      await hre.run("watch-cdo", { cdo: cv, name });
+      await hre.run("watch-cdo", {
+        cdo: cv,
+        name,
+        aaTranche,
+        underlyingDecimals: deployToken.decimals.toString(),
+      });
     }
 
     if (deployToken.writeoff && writeOffEscrow !== addr0) {
@@ -1832,9 +1861,16 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');
       const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const cdoContract = await ethers.getContractAt("IdleCDOEpochVariant", cv, signer);
       const name = await strategyContract.symbol();
+      const aaTranche = await cdoContract.AATranche();
       await hre.run("protect-cdo", { cdo: cv });
-      await hre.run("watch-cdo", { cdo: cv, name });
+      await hre.run("watch-cdo", {
+        cdo: cv,
+        name,
+        aaTranche,
+        underlyingDecimals: deployToken.decimals.toString(),
+      });
     }
 
     await hre.run("print-contracts-info", { cdo: cv, strategy, queue: hasAddress(queue) ? queue : undefined });
