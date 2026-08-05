@@ -294,6 +294,22 @@ const getTrackedCreditVaultByName = (_hre, cdoName) => {
   return trackedCdo;
 }
 const getTrackedWriteOff = (trackedCdo) => trackedCdo?.writeOff || trackedCdo?.writeoff || null;
+const resolveHypernativeCreditVaultMetadata = (trackedCdo, aaTranche, underlyingDecimals) => {
+  const resolvedAaTranche = hasAddress(aaTranche)
+    ? aaTranche
+    : (hasAddress(trackedCdo?.AATranche) ? trackedCdo.AATranche : null);
+  const decimals = underlyingDecimals === undefined || underlyingDecimals === null || underlyingDecimals === ''
+    ? trackedCdo?.decimals
+    : underlyingDecimals;
+  const resolvedUnderlyingDecimals = decimals === undefined ? undefined : Number(decimals);
+  if (
+    resolvedUnderlyingDecimals !== undefined &&
+    (!Number.isInteger(resolvedUnderlyingDecimals) || resolvedUnderlyingDecimals < 0)
+  ) {
+    throw new Error(`Invalid underlying decimals ${decimals}`);
+  }
+  return { aaTranche: resolvedAaTranche, underlyingDecimals: resolvedUnderlyingDecimals };
+};
 const getNetworkContractsReferenceName = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
   const isPolygonZK = _hre.network.name == 'polygonzk' || _hre.network.config.chainId == 1101;
@@ -447,6 +463,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
   const strategyAddress = helpers.isEmptyString(args.strategy) ? trackedCdo?.strategy : args.strategy;
   const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
   const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
+  const orchestratorAddress = hasAddress(args.orchestrator) ? args.orchestrator : trackedCdo?.orchestrator;
 
   return {
     trackedCdo,
@@ -454,6 +471,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
     strategy: helpers.isEmptyString(strategyAddress) ? undefined : strategyAddress,
     queue: hasAddress(queueAddress) ? queueAddress : undefined,
     writeoff: hasAddress(writeOffAddress) ? writeOffAddress : undefined,
+    orchestrator: hasAddress(orchestratorAddress) ? orchestratorAddress : undefined,
   };
 }
 const getPrintContractsInfoCdoFlags = async (cdo) => {
@@ -466,6 +484,30 @@ const getPrintContractsInfoCdoFlags = async (cdo) => {
 const getPrintContractsInfoStrategyState = async (strategy) => {
   const maxApr = await strategy.maxApr();
   return { maxApr };
+}
+const getPrintContractsInfoOrchestratorState = async (orchestrator, cdoAddress) => {
+  const [owner, operator, isCreditVaultAllowed] = await Promise.all([
+    orchestrator.owner(),
+    orchestrator.operator(),
+    hasAddress(cdoAddress) ? orchestrator.isCreditVaultAllowed(cdoAddress) : null,
+  ]);
+  return { owner, operator, isCreditVaultAllowed };
+}
+const formatCreditVaultPercentage = (value) => {
+  const scaledValue = BN(value);
+  const whole = scaledValue.div('1000').toString();
+  const fraction = scaledValue.mod('1000').toString().padStart(3, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}%` : `${whole}%`;
+}
+const getPrintContractsInfoFeeAllocation = (feeSplit) => {
+  const feeReceiverShare = BN(feeSplit);
+  const ownerShare = BN(FULL_ALLOC).sub(feeReceiverShare);
+  return {
+    feeReceiverShare: feeReceiverShare.toString(),
+    feeReceiverPercentage: formatCreditVaultPercentage(feeReceiverShare),
+    ownerShare: ownerShare.toString(),
+    ownerPercentage: formatCreditVaultPercentage(ownerShare),
+  };
 }
 const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
 const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['cdo', 'strategy', 'queue', 'revolving', 'writeoff'];
@@ -523,7 +565,7 @@ const getWriteOffEscrowContractName = (chainId) => ({
   137: null,
   1101: null,
   42161: null,
-  8453: null,
+  8453: 'IdleCreditVaultWriteOffEscrow',
   43114: 'IdleCreditVaultWriteOffEscrow',
 })[chainId];
 
@@ -1258,6 +1300,8 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
   .addParam('cdo')
   .addParam('name')
   .addOptionalParam('chainid', 'Chain id used to pick Hypernative watchlists and params')
+  .addOptionalParam('aaTranche', 'AA tranche address for a newly deployed, untracked credit vault')
+  .addOptionalParam('underlyingDecimals', 'Underlying decimals for a newly deployed, untracked credit vault')
   .setAction(async (args) => {
     const clientId = process.env.HYPERNATIVE_CLIENT_ID;
     const clientSecret = process.env.HYPERNATIVE_CLIENT_SECRET;
@@ -1351,7 +1395,11 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
       console.log(`Updated Hypernative tag ${notePrefix}${args.name}`);
 
       const trackedCdo = getTrackedCreditVault(hre, args.cdo);
-      const aaTranche = hasAddress(trackedCdo?.AATranche) ? trackedCdo.AATranche : null;
+      const { aaTranche, underlyingDecimals } = resolveHypernativeCreditVaultMetadata(
+        trackedCdo,
+        args.aaTranche,
+        args.underlyingDecimals
+      );
       const agentPrefix = notePrefix.replace(/ credit $/, '');
       const customAgents = [
         { templateId: HYPERNATIVE_CONTRACT_VALUE_TEMPLATE_AGENT_ID, agentName: `${agentPrefix} TVL change credit ${args.name}`, input: [] },
@@ -1368,7 +1416,7 @@ task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
           chainConfig: effectiveChainConfig,
           input: agent.input,
           template,
-          underlyingDecimals: trackedCdo?.decimals,
+          underlyingDecimals,
         });
         const createdAgent = await hypernativeFetch({ clientId, clientSecret, method: 'POST', path: '/custom-agents', body: payload });
         console.log(`Created Hypernative custom agent ${payload.agentName}${createdAgent?.id ? ` (${createdAgent.id})` : ''}`);
@@ -1613,9 +1661,16 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');
       const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const cdoContract = await ethers.getContractAt("IdleCDOEpochVariant", cv, signer);
       const name = await strategyContract.symbol();
+      const aaTranche = await cdoContract.AATranche();
       await hre.run("protect-cdo", { cdo: cv });
-      await hre.run("watch-cdo", { cdo: cv, name });
+      await hre.run("watch-cdo", {
+        cdo: cv,
+        name,
+        aaTranche,
+        underlyingDecimals: deployToken.decimals.toString(),
+      });
     }
 
     if (deployToken.writeoff && writeOffEscrow !== addr0) {
@@ -1832,9 +1887,16 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     if (hypernative) {
       console.log('Adding Credit Vault to hypernative pauser module');
       const strategyContract = await ethers.getContractAt("IdleCreditVault", strategy, signer);
+      const cdoContract = await ethers.getContractAt("IdleCDOEpochVariant", cv, signer);
       const name = await strategyContract.symbol();
+      const aaTranche = await cdoContract.AATranche();
       await hre.run("protect-cdo", { cdo: cv });
-      await hre.run("watch-cdo", { cdo: cv, name });
+      await hre.run("watch-cdo", {
+        cdo: cv,
+        name,
+        aaTranche,
+        underlyingDecimals: deployToken.decimals.toString(),
+      });
     }
 
     await hre.run("print-contracts-info", { cdo: cv, strategy, queue: hasAddress(queue) ? queue : undefined });
@@ -1949,15 +2011,18 @@ task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('strategy', 'Strategy address')
   .addOptionalParam('queue', 'Queue address')
   .addOptionalParam('writeoff', 'Write-off escrow address')
+  .addOptionalParam('orchestrator', 'Credit vault manager orchestrator address')
   .setAction(async (args) => {
     console.log('Printing contracts info');
     const resolvedAddresses = resolvePrintContractsInfoAddresses(hre, args);
     const queueAddress = resolvedAddresses.queue;
     const writeOffAddress = resolvedAddresses.writeoff;
+    const orchestratorAddress = resolvedAddresses.orchestrator;
     const cdo = resolvedAddresses.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", resolvedAddresses.cdo) : null;
     const strategy = resolvedAddresses.strategy ? await ethers.getContractAt("IdleCreditVault", resolvedAddresses.strategy) : null;
     const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
     const writeOffEscrow = writeOffAddress ? await ethers.getContractAt("IdleCreditVaultWriteOffEscrow", writeOffAddress) : null;
+    const orchestrator = orchestratorAddress ? await ethers.getContractAt("IdleCreditVaultManagerOrchestrator", orchestratorAddress) : null;
     let cdoPrefundedQueue = null;
     if (cdo) {
       const [
@@ -2027,6 +2092,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         })(),
       ]);
       cdoPrefundedQueue = prefundedQueue;
+      const feeAllocation = getPrintContractsInfoFeeAllocation(feeSplit);
       console.log(`CDO at ${cdo.address}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  Guardian:       ${guardian}`);
@@ -2044,6 +2110,8 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);
       console.log(`  FeeSplit:       ${feeSplit}`);
+      console.log(`    FeeReceiver:  ${feeAllocation.feeReceiverShare} (${feeAllocation.feeReceiverPercentage}) -> ${feeReceiver}`);
+      console.log(`    Owner:        ${feeAllocation.ownerShare} (${feeAllocation.ownerPercentage}) -> ${owner}`);
       console.log(`  ManagementFee:  ${managementFee}`);
       console.log(`  Instant disable:${instantDisabled}`);
       console.log(`  APR Delta:      ${aprDelta}`);
@@ -2094,6 +2162,19 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  APR:            ${apr}`);
       console.log(`  Unscaled APR:   ${unscaledApr}`);
       console.log(`  Max APR:        ${strategyState.maxApr}`);
+      console.log(``);
+    }
+    if (orchestrator) {
+      const orchestratorState = await getPrintContractsInfoOrchestratorState(
+        orchestrator,
+        cdo ? cdo.address : resolvedAddresses.cdo
+      );
+      console.log(`Orchestrator at ${orchestrator.address}`);
+      console.log(`  Owner:          ${orchestratorState.owner}`);
+      console.log(`  Operator:       ${orchestratorState.operator}`);
+      if (orchestratorState.isCreditVaultAllowed !== null) {
+        console.log(`  CDO allowed:    ${orchestratorState.isCreditVaultAllowed}`);
+      }
       console.log(``);
     }
     if (queue) {
