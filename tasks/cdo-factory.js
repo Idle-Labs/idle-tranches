@@ -463,6 +463,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
   const strategyAddress = helpers.isEmptyString(args.strategy) ? trackedCdo?.strategy : args.strategy;
   const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
   const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
+  const orchestratorAddress = hasAddress(args.orchestrator) ? args.orchestrator : trackedCdo?.orchestrator;
 
   return {
     trackedCdo,
@@ -470,6 +471,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
     strategy: helpers.isEmptyString(strategyAddress) ? undefined : strategyAddress,
     queue: hasAddress(queueAddress) ? queueAddress : undefined,
     writeoff: hasAddress(writeOffAddress) ? writeOffAddress : undefined,
+    orchestrator: hasAddress(orchestratorAddress) ? orchestratorAddress : undefined,
   };
 }
 const getPrintContractsInfoCdoFlags = async (cdo) => {
@@ -482,6 +484,30 @@ const getPrintContractsInfoCdoFlags = async (cdo) => {
 const getPrintContractsInfoStrategyState = async (strategy) => {
   const maxApr = await strategy.maxApr();
   return { maxApr };
+}
+const getPrintContractsInfoOrchestratorState = async (orchestrator, cdoAddress) => {
+  const [owner, operator, isCreditVaultAllowed] = await Promise.all([
+    orchestrator.owner(),
+    orchestrator.operator(),
+    hasAddress(cdoAddress) ? orchestrator.isCreditVaultAllowed(cdoAddress) : null,
+  ]);
+  return { owner, operator, isCreditVaultAllowed };
+}
+const formatCreditVaultPercentage = (value) => {
+  const scaledValue = BN(value);
+  const whole = scaledValue.div('1000').toString();
+  const fraction = scaledValue.mod('1000').toString().padStart(3, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}%` : `${whole}%`;
+}
+const getPrintContractsInfoFeeAllocation = (feeSplit) => {
+  const feeReceiverShare = BN(feeSplit);
+  const ownerShare = BN(FULL_ALLOC).sub(feeReceiverShare);
+  return {
+    feeReceiverShare: feeReceiverShare.toString(),
+    feeReceiverPercentage: formatCreditVaultPercentage(feeReceiverShare),
+    ownerShare: ownerShare.toString(),
+    ownerPercentage: formatCreditVaultPercentage(ownerShare),
+  };
 }
 const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
 const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['cdo', 'strategy', 'queue', 'revolving', 'writeoff'];
@@ -1985,15 +2011,18 @@ task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('strategy', 'Strategy address')
   .addOptionalParam('queue', 'Queue address')
   .addOptionalParam('writeoff', 'Write-off escrow address')
+  .addOptionalParam('orchestrator', 'Credit vault manager orchestrator address')
   .setAction(async (args) => {
     console.log('Printing contracts info');
     const resolvedAddresses = resolvePrintContractsInfoAddresses(hre, args);
     const queueAddress = resolvedAddresses.queue;
     const writeOffAddress = resolvedAddresses.writeoff;
+    const orchestratorAddress = resolvedAddresses.orchestrator;
     const cdo = resolvedAddresses.cdo ? await ethers.getContractAt("IdleCDOEpochVariant", resolvedAddresses.cdo) : null;
     const strategy = resolvedAddresses.strategy ? await ethers.getContractAt("IdleCreditVault", resolvedAddresses.strategy) : null;
     const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
     const writeOffEscrow = writeOffAddress ? await ethers.getContractAt("IdleCreditVaultWriteOffEscrow", writeOffAddress) : null;
+    const orchestrator = orchestratorAddress ? await ethers.getContractAt("IdleCreditVaultManagerOrchestrator", orchestratorAddress) : null;
     let cdoPrefundedQueue = null;
     if (cdo) {
       const [
@@ -2063,6 +2092,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         })(),
       ]);
       cdoPrefundedQueue = prefundedQueue;
+      const feeAllocation = getPrintContractsInfoFeeAllocation(feeSplit);
       console.log(`CDO at ${cdo.address}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  Guardian:       ${guardian}`);
@@ -2080,6 +2110,8 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);
       console.log(`  FeeSplit:       ${feeSplit}`);
+      console.log(`    FeeReceiver:  ${feeAllocation.feeReceiverShare} (${feeAllocation.feeReceiverPercentage}) -> ${feeReceiver}`);
+      console.log(`    Owner:        ${feeAllocation.ownerShare} (${feeAllocation.ownerPercentage}) -> ${owner}`);
       console.log(`  ManagementFee:  ${managementFee}`);
       console.log(`  Instant disable:${instantDisabled}`);
       console.log(`  APR Delta:      ${aprDelta}`);
@@ -2130,6 +2162,19 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  APR:            ${apr}`);
       console.log(`  Unscaled APR:   ${unscaledApr}`);
       console.log(`  Max APR:        ${strategyState.maxApr}`);
+      console.log(``);
+    }
+    if (orchestrator) {
+      const orchestratorState = await getPrintContractsInfoOrchestratorState(
+        orchestrator,
+        cdo ? cdo.address : resolvedAddresses.cdo
+      );
+      console.log(`Orchestrator at ${orchestrator.address}`);
+      console.log(`  Owner:          ${orchestratorState.owner}`);
+      console.log(`  Operator:       ${orchestratorState.operator}`);
+      if (orchestratorState.isCreditVaultAllowed !== null) {
+        console.log(`  CDO allowed:    ${orchestratorState.isCreditVaultAllowed}`);
+      }
       console.log(``);
     }
     if (queue) {

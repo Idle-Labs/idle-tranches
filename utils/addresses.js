@@ -1754,6 +1754,7 @@ const baseCDOs = {
     queue: '0x6C856d339DfD18eb16Bf868d30070cdf6789A321',
     programmableBorrower: '',
     writeOff: '0x2325e6A5DBDD0a7caCe251f63D5B5fC881a17a1a',
+    orchestrator: '0x77F0B2d4A916Bf0aaD0336A8B206B7E7E6f51293'
   },
 };
 
