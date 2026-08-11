@@ -55,6 +55,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   mapping(uint256 => uint256) public epochPrefundedDeposits;
   /// @notice cutoff window before epoch end during which prefunded queues block new deposits
   uint256 public prefundedDepositWindow;
+  /// @notice true when a processed withdrawal epoch settled to a zero per-tranche payout
+  /// @dev Distinguishes a realized zero-value claim from the zero "not processed" price sentinel.
+  mapping(uint256 => bool) public isEpochWithdrawZero;
 
   /// @notice initialize the implementation contract to avoid malicious initialization
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -106,8 +109,12 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     uint256 _prefundedWindow = prefundedDepositWindow;
     // Only the AA prefunded queue enforces a deposit cutoff for the next epoch.
     if (tranche == _cdo.AATranche() && _isPrefundedQueueEnabled()) {
+      IdleCDOEpochVariantPrefunded(idleCDOEpoch).checkPrefunding(
+        epochPendingDeposits[nextEpoch] + amount
+      );
       // Once funds are prefunded, or once the subscription window is reached, the next epoch is closed.
-      _checkNotAllowed(epochPrefundedDeposits[nextEpoch] != 0 || (
+      _checkNotAllowed(
+        epochPrefundedDeposits[nextEpoch] != 0 || (
         _prefundedWindow != 0 && block.timestamp + _prefundedWindow >= _cdo.epochEndDate()
       ));
     }
@@ -165,6 +172,8 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     if (_pending == 0) {
       return;
     }
+    // Recheck after the cutoff because emergency state or the TVL limit can change while queued.
+    IdleCDOEpochVariantPrefunded(idleCDOEpoch).checkPrefunding(_pending);
 
     // Switch the epoch from "queue-held" to "already at borrower" before transferring funds.
     epochPendingDeposits[_epoch] = 0;
@@ -196,7 +205,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   function deleteWithdrawRequest(uint256 _requestEpoch) external {
     // if the epoch withdraw price is already set, withdrawal requests were already processed so
     // the withdraw request can't be deleted. Withdraw requests can be deleted even if the epoch is running
-    _checkNotAllowed(epochWithdrawPrice[_requestEpoch] != 0);
+    _checkNotAllowed(epochWithdrawPrice[_requestEpoch] != 0 || isEpochWithdrawZero[_requestEpoch]);
 
     uint256 amount = userWithdrawalsEpochs[msg.sender][_requestEpoch];
     if (amount == 0) {
@@ -349,10 +358,12 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // Rebase the withdraw price to the realized amount so users claim the correct final value.
     if (_received != _pending) {
       uint256 _updatedPrice = epochWithdrawPrice[_epoch] * _received / _pending;
-      if (_updatedPrice == 0) {
-        revert Is0();
-      }
       epochWithdrawPrice[_epoch] = _updatedPrice;
+      // A valid aggregate recovery can still round this queue's small share to zero. Record that
+      // terminal outcome explicitly so users can clear claims and later epochs are not blocked.
+      if (_updatedPrice == 0) {
+        isEpochWithdrawZero[_epoch] = true;
+      }
     }
 
     // reset epoch pending claims
@@ -385,7 +396,11 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
   /// @param _epoch epoch when withdraw request were processed
   function claimWithdrawRequest(uint256 _epoch) external {
     // check if withdraw requests were processed and claimed for the epoch
-    _checkNotAllowed(epochWithdrawPrice[_epoch] == 0 || epochPendingClaims[_epoch] != 0);
+    uint256 _withdrawPrice = epochWithdrawPrice[_epoch];
+    _checkNotAllowed(
+      (_withdrawPrice == 0 && !isEpochWithdrawZero[_epoch]) ||
+      epochPendingClaims[_epoch] != 0
+    );
     // amount is in tranche tokens
     uint256 amount = userWithdrawalsEpochs[msg.sender][_epoch];
     if (amount == 0) {
@@ -394,7 +409,9 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     // reset user withdraw request counter for the epoch
     userWithdrawalsEpochs[msg.sender][_epoch] = 0;
     // transfer underlyings to user based on the withdraw price of that epoch
-    IERC20Detailed(underlying).safeTransfer(msg.sender, amount * epochWithdrawPrice[_epoch] / ONE_TRANCHE);
+    if (_withdrawPrice != 0) {
+      IERC20Detailed(underlying).safeTransfer(msg.sender, amount * _withdrawPrice / ONE_TRANCHE);
+    }
   }
 
   /// @notice check if the wallet is allowed to deposit

@@ -147,7 +147,6 @@ contract TestProgrammableBorrowerCreditVault is Test {
     cdoEpoch.setIsAYSActive(false);
     cdoEpoch.setFeeParams(TL_MULTISIG, 0, 100000, 0);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
-    cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(36.5 days, 5 days);
     cdoEpoch.setKeyringParams(address(0), 0);
     vm.stopPrank();
@@ -439,8 +438,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     uint256 expectedLiability =
-      (cdoEpoch.getContractValue() - underlying.balanceOf(address(cdoEpoch))
-        + programmableBorrower.totalInterestDueNow() + strategy.pendingWithdraws());
+      strategy.balanceOf(address(cdoEpoch)) + programmableBorrower.totalInterestDueNow() + strategy.pendingWithdraws();
 
     vm.expectEmit(address(cdoEpoch));
     emit BorrowerDefault(expectedLiability);

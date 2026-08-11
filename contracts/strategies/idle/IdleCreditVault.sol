@@ -20,6 +20,7 @@ interface IIdleCDOEpochVariant {
   function getContractValue() external view returns (uint256);
   function lastNAVAA() external view returns (uint256);
   function lastNAVBB() external view returns (uint256);
+  function trancheAPRSplitRatio() external view returns (uint256);
   function defaulted() external view returns (bool);
 }
 
@@ -156,19 +157,6 @@ contract IdleCreditVault is
     transferOwnership(_owner);
   }
 
-  /// @notice Initialize default-recovery accounting on a strategy proxy upgraded from an older implementation.
-  /// @dev Must be invoked through `ProxyAdmin.upgradeAndCall` so a failed clean-state check also
-  /// reverts the implementation change. The caller is intentionally unrestricted because that
-  /// delegatecall is made by ProxyAdmin; the appended flag makes this migration one-time. New
-  /// deployments are marked ready in `initialize`. Both borrower-facing pending counters must be
-  /// zero; already-funded historical receipts may remain open because they do not enter recovery.
-  function initializeDefaultRecovery() external {
-    if (defaultRecoveryInitialized || pendingWithdraws != 0 || pendingInstantWithdraws != 0) revert NotAllowed();
-    defaultRecoveryInitialized = true;
-    // Permanently clear the deprecated receipt-transfer flag during migration.
-    canTransfer = false;
-  }
-
   /// @notice strategy token decimals
   /// @dev equal to underlying token decimals
   /// @return number of decimals
@@ -255,7 +243,7 @@ contract IdleCreditVault is
   /// @param _principal principal amount backing the withdraw request
   function requestWithdraw(uint256 _amount, address _user, uint256 _principal) external {
     _onlyIdleCDO();
-    if (!defaultRecoveryInitialized) revert NotAllowed();
+    _ensureDefaultRecoveryInitialized();
     if (_amount == 0) return;
     if (defaultRecoveryFinalized) {
       // user should first claim old already-funded withdraw requests before requesting new ones after default
@@ -269,6 +257,7 @@ contract IdleCreditVault is
       postDefaultRequests[_user] = _amount;
       return;
     }
+    bool isClosed = IIdleCDOEpochVariant(idleCDO).epochEndDate() == 0;
     uint256 currentEpoch = epochNumber;
     uint256 lossEpoch = lastWithdrawRequest[_user];
     uint256 lossRecoveryPrice = lossRecoveryPriceByEpoch[lossEpoch];
@@ -285,13 +274,16 @@ contract IdleCreditVault is
     _burn(msg.sender, _principal);
     // mint equal amount of strategy tokens to the user as receipt (interest included), useful in case of default
     _mint(_user, _amount);
-    // Global amount that stopEpoch must source from borrower/strategy for all pending receipts.
-    pendingWithdraws += _amount;
+    // A successfully closed pool already recalled all funds and has no later stopEpoch.
+    if (!isClosed) {
+      // Global amount that stopEpoch must source from borrower/strategy for all pending receipts.
+      pendingWithdraws += _amount;
+    }
     // save the epoch of the last withdraw request (buffer + epochDuration is 1 epoch)
     lastWithdrawRequest[_user] = currentEpoch;
     // APR=0 requests keep separate accounting and settle interest at stopEpoch.
     // `_amount` here is the post-management-fee principal bucket for that flow.
-    if (unscaledApr == 0) {
+    if (unscaledApr == 0 && !isClosed) {
       _requestWithdrawApr0(_amount, _user);
     } else {
       // increase the withdraw requests for the user
@@ -364,7 +356,7 @@ contract IdleCreditVault is
   /// @param _user address of the user
   function requestInstantWithdraw(uint256 _amount, address _user) external {
     _onlyIdleCDO();
-    if (!defaultRecoveryInitialized) revert NotAllowed();
+    _ensureDefaultRecoveryInitialized();
     // burn strategy tokens from cdo
     _burn(msg.sender, _amount);
   
@@ -420,12 +412,16 @@ contract IdleCreditVault is
     _onlyIdleCDO();
     uint256 pendingBasis = pendingWithdraws;
     if (_amount < pendingBasis) {
+      // Legacy receipts do not have per-epoch ownership data, so they can only be fully funded.
+      if (!defaultRecoveryInitialized) revert NotAllowed();
       uint256 lossRecoveryPrice = _amount * RECOVERY_FULL / pendingBasis;
       // Avoid storing a zero price, which is indistinguishable from "no loss-adjusted epoch".
       if (lossRecoveryPrice == 0) revert NotAllowed();
       pendingWithdraws = 0;
       lossRecoveryPriceByEpoch[epochNumber] = lossRecoveryPrice;
     } else {
+      // A plain implementation upgrade may leave legacy normal receipts pending. Their next
+      // successful stop can fully fund the aggregate before lazy initialization occurs.
       pendingWithdraws = pendingBasis - _amount;
     }
     if (_amount != 0) {
@@ -434,27 +430,32 @@ contract IdleCreditVault is
   }
 
   /// @notice Preview how a realized stop-epoch loss is split between active LPs and pending receipts.
-  /// @dev When pending receipts exist, the loss requires monotranche accounting and must remain
-  /// below the combined active and pending basis.
+  /// @dev Without pending receipts, a loss cannot exceed its active basis. When pending receipts
+  /// exist, all pending receipts share their aggregate portion of the loss pro rata because the
+  /// pending bucket does not retain tranche identity. The remaining active loss is later applied
+  /// by the CDO through its ordinary BB-first waterfall.
   /// @param _lossAmount realized loss amount
-  /// @param _isMonotranche true when active AA and BB positions share losses pro rata
   /// @return pendingToFund amount of pending withdrawals that should be funded by the borrower
   /// @return activeLoss amount of loss that remains assigned to active LPs
-  function previewLossAdjustedWithdrawFunds(uint256 _lossAmount, bool _isMonotranche)
+  function previewLossAdjustedWithdrawFunds(uint256 _lossAmount)
     external
     view
     returns (uint256 pendingToFund, uint256 activeLoss)
   {
     uint256 pendingBasis = pendingWithdraws;
-    if (_lossAmount == 0 || pendingBasis == 0) {
+    if (_lossAmount == 0) {
+      // Full zero-loss funding is safe for legacy aggregate receipts and needs no migration call.
       return (pendingBasis, _lossAmount);
     }
-
     IIdleCDOEpochVariant cdo = IIdleCDOEpochVariant(idleCDO);
-    // Pending receipts do not retain tranche identity. They can only share a loss consistently
-    // when active AA and BB positions use the same pro-rata (monotranche) loss policy.
-    if (!_isMonotranche) revert NotAllowed();
     uint256 activeBasis = _lossActiveBasis(cdo);
+    if (pendingBasis == 0) {
+      if (_lossAmount > activeBasis) revert NotAllowed();
+      return (0, _lossAmount);
+    }
+
+    // Legacy pending receipts do not have the per-epoch ownership data needed to store a haircut.
+    if (!defaultRecoveryInitialized) revert NotAllowed();
     uint256 totalBasis = activeBasis + pendingBasis;
     if (_lossAmount >= totalBasis) revert NotAllowed();
 
@@ -644,8 +645,8 @@ contract IdleCreditVault is
   /// happen when startEpoch moved the CDO's available cash to the strategy but that cash covered
   /// only part of the instant queue. The full current-epoch instant claim is included as basis,
   /// while the already-funded part is added to the reserve by `_defaultPrefundedInstantReserve()`.
-  /// Receipt accounting is aggregate and does not retain AA/BB identity; IdleCDOEpochVariant
-  /// therefore applies a terminal pro-rata fallback if both tranche classes exist accidentally.
+  /// Receipt accounting is aggregate and does not retain AA/BB identity. IdleCDOEpochVariant
+  /// therefore applies one recovery multiplier to both tranche classes.
   /// @return basis amount of defaulted receipt claims in underlying units
   function defaultPendingClaimBasis() public view returns (uint256 basis) {
     basis = pendingWithdraws;
@@ -658,13 +659,15 @@ contract IdleCreditVault is
   /// @dev Called by the CDO. `_recoverySource` must approve this strategy for `_recoveredAmount`.
   /// `_recoveredAmount` is the exact external recovery to pull; already-held strategy funds
   /// are added separately because they should not be pulled from `_recoverySource` again.
-  /// Reverts when the total reserve would produce a zero recovery price because the CDO's generic
-  /// accounting treats zero saved NAV as its uninitialized/par-price sentinel.
+  /// A zero or subprecision aggregate recovery finalizes at price zero. Active tranche prices are
+  /// then zero and pending receipts can be cleared without a payout; any positive reserve too small
+  /// to represent at `RECOVERY_FULL` precision remains isolated as recovery dust.
   /// @param _recoveredAmount exact amount of recovered underlying supplied by `_recoverySource`
   /// @param _recoverySource address that supplies recovered underlying
-  function finalizeDefaultRecovery(uint256 _recoveredAmount, address _recoverySource) external {
+  /// @return defaultBBNav BB's final recovered active NAV
+  function finalizeDefaultRecovery(uint256 _recoveredAmount, address _recoverySource) external returns (uint256 defaultBBNav) {
     _onlyIdleCDO();
-    if (!defaultRecoveryInitialized) revert NotAllowed();
+    _ensureDefaultRecoveryInitialized();
 
     IIdleCDOEpochVariant cdo = IIdleCDOEpochVariant(idleCDO);
     if (defaultRecoveryFinalized || !cdo.defaulted()) revert NotAllowed();
@@ -673,10 +676,13 @@ contract IdleCreditVault is
 
     // Active holders are still represented by strategy tokens owned by the CDO. Add the
     // default-epoch net interest so they use the same claim basis as pending redeemers.
-    // IdleCDOEpochVariant uses terminal pro-rata accounting if both tranche classes exist accidentally.
+    // Split gross backing by saved NAV and default interest by the configured APR split.
     // The CDO strategy-token balance is its gross active value before `unclaimedFees`.
     // Using it directly restores those waived unpaid fees to active recovery basis.
-    uint256 activeBasis = balanceOf(idleCDO) + _defaultActiveInterestBasis(cdo);
+    uint256 activeBalance = balanceOf(idleCDO);
+    uint256 activeInterest = _defaultActiveInterestBasis(cdo);
+    uint256 activeBasis = activeBalance + activeInterest;
+    defaultBBNav = _defaultBBBasis(cdo, activeBalance, activeInterest);
     // Pending receipts have already left active CDO NAV, so they are added as a separate basis.
     uint256 pendingBasis = defaultPendingClaimBasis();
     uint256 totalBasis = activeBasis + pendingBasis;
@@ -688,7 +694,6 @@ contract IdleCreditVault is
     uint256 reserveAmount = _recoveredAmount + prefundedReserve + defaultRecoveryReserve;
     // Recovery can be above par if the recovered funds exceed the computed basis.
     uint256 recoveryPrice = reserveAmount * RECOVERY_FULL / totalBasis;
-    if (recoveryPrice == 0) revert NotAllowed();
 
     defaultRecoveryFinalized = true;
     defaultRecoveryReserve = reserveAmount;
@@ -700,7 +705,7 @@ contract IdleCreditVault is
     // Bring active CDO NAV to the same recovery ratio. IdleCDOEpochVariant then calls
     // _forceUpdateAccounting so tranche prices/virtualPrice expose the crystallized loss.
     uint256 activeFinalNAV = (activeBasis * recoveryPrice) / RECOVERY_FULL;
-    uint256 activeBalance = balanceOf(idleCDO);
+    defaultBBNav = defaultBBNav * recoveryPrice / RECOVERY_FULL;
     if (activeBalance > activeFinalNAV) {
       _burn(idleCDO, activeBalance - activeFinalNAV);
     } else if (activeFinalNAV > activeBalance) {
@@ -734,7 +739,31 @@ contract IdleCreditVault is
     if (expectedInterest <= pendingFees) return activeInterest;
     // Pending redeemers already include their net interest in pendingWithdraws; active LPs need
     // the same borrower-owed interest basis, net of performance fees, before applying recovery.
-    activeInterest = (expectedInterest - pendingFees) * (FULL_ALLOC - _cdo.fee()) / FULL_ALLOC;
+    activeInterest = expectedInterest - pendingFees;
+    activeInterest -= activeInterest * _cdo.fee() / FULL_ALLOC;
+  }
+
+  /// @notice Calculate BB's active claim basis before applying the default recovery multiplier.
+  /// @dev Gross active backing is split by saved NAV, while interest follows the configured APR split.
+  /// @param _cdo epoch CDO interface
+  /// @param _activeBalance gross active strategy-token backing
+  /// @param _activeInterest net active default-epoch interest
+  /// @return bbBasis BB's active claim basis before recovery
+  function _defaultBBBasis(
+    IIdleCDOEpochVariant _cdo,
+    uint256 _activeBalance,
+    uint256 _activeInterest
+  ) internal view returns (uint256 bbBasis) {
+    uint256 savedAA = _cdo.lastNAVAA();
+    uint256 savedBB = _cdo.lastNAVBB();
+    uint256 activeBasis = _activeBalance + _activeInterest;
+    if (savedBB == 0 || activeBasis == 0) return bbBasis;
+    if (savedAA == 0) return activeBasis;
+
+    uint256 savedNAV = savedAA + savedBB;
+    uint256 grossBBBasis = _activeBalance * savedBB / savedNAV;
+    uint256 bbInterest = _activeInterest * (FULL_ALLOC - _cdo.trancheAPRSplitRatio()) / FULL_ALLOC;
+    bbBasis = grossBBBasis + bbInterest;
   }
 
   /// @notice Claim an already-funded post-default withdraw request.
@@ -807,10 +836,10 @@ contract IdleCreditVault is
     Apr0UserData storage apr0User = apr0Users[_user];
     if (apr0User.principal != 0 && apr0User.principalEpoch == _claimEpoch) {
       if (_decreaseApr0TotalPrincipal) {
-      uint256 apr0Principal = apr0User.principal;
-      uint256 totalApr0Principal = apr0TotalPrincipal;
-      // prepareStopEpochWithApr0 may already close the global APR0 bucket before default finalization.
-      apr0TotalPrincipal = apr0Principal >= totalApr0Principal ? 0 : totalApr0Principal - apr0Principal;
+        uint256 apr0Principal = apr0User.principal;
+        uint256 totalApr0Principal = apr0TotalPrincipal;
+        // prepareStopEpochWithApr0 may already close the global APR0 bucket before default finalization.
+        apr0TotalPrincipal = apr0Principal >= totalApr0Principal ? 0 : totalApr0Principal - apr0Principal;
       }
       apr0User.principal = 0;
       apr0User.principalEpoch = 0;
@@ -904,6 +933,24 @@ contract IdleCreditVault is
     // Every defaulted or post-default claim consumes the isolated recovery reserve.
     defaultRecoveryReserve -= _amount;
     underlyingToken.safeTransfer(_user, _amount);
+  }
+
+  /// @notice Lazily initialize recovery accounting for an upgraded strategy.
+  /// @dev Legacy pending receipts must first be fully funded because their per-epoch ownership
+  /// cannot be reconstructed after an implementation upgrade. A successfully closed vault has
+  /// already recalled all funds, so stale normal/APR0 aggregate counters can be normalized there.
+  /// Pending instant withdrawals are never cleared automatically.
+  function _ensureDefaultRecoveryInitialized() internal {
+    if (defaultRecoveryInitialized) return;
+    if (pendingInstantWithdraws != 0) revert NotAllowed();
+    if (pendingWithdraws != 0) {
+      IIdleCDOEpochVariant cdo = IIdleCDOEpochVariant(idleCDO);
+      if (cdo.epochEndDate() != 0 || cdo.defaulted()) revert NotAllowed();
+      pendingWithdraws = 0;
+      apr0TotalPrincipal = 0;
+    }
+    defaultRecoveryInitialized = true;
+    canTransfer = false;
   }
 
   /// @inheritdoc ERC20Upgradeable

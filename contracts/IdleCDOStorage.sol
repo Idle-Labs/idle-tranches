@@ -118,7 +118,7 @@ contract IdleCDOStorage {
   uint256 internal minAprSplitAYS;
   // Max strategy price decrease before triggering a default
   uint256 internal maxDecreaseDefault;
-  // The tolerance for the loss socialized so equally distributed between junior and senior tranches.
+  // Legacy IdleCDO loss tolerance; unused by Credit Vaults and retained in their proxy layout.
   uint256 internal lossToleranceBps;
   // Amount of stkIDLE required to mint 1 underlying
   uint256 internal stkIDLEPerUnderlying;
