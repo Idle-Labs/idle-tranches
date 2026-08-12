@@ -216,8 +216,7 @@ contract IdleCreditVault is
   /// @param _buffer buffer duration
   function setAprsWithBuffer(uint256 _unscaledApr, uint256 _duration, uint256 _buffer) external {
     unscaledApr = _unscaledApr;
-    uint256 scaledApr = _duration == 0 ? _unscaledApr : _unscaledApr * (_duration + _buffer) / _duration;
-    setApr(scaledApr);
+    setApr(_duration == 0 ? _unscaledApr : _unscaledApr * (_duration + _buffer) / _duration);
   }
 
   /// @notice set the fixed apr
@@ -262,9 +261,9 @@ contract IdleCreditVault is
     uint256 lossEpoch = lastWithdrawRequest[_user];
     uint256 lossRecoveryPrice = lossRecoveryPriceByEpoch[lossEpoch];
     if (
-      lossRecoveryPrice != 0
-        && (withdrawsRequestsByEpoch[_user][lossEpoch] != 0
-          || (apr0Users[_user].principal != 0 && apr0Users[_user].principalEpoch == lossEpoch))
+      lossRecoveryPrice != 0 &&
+      (withdrawsRequestsByEpoch[_user][lossEpoch] != 0 ||
+      (apr0Users[_user].principal != 0 && apr0Users[_user].principalEpoch == lossEpoch))
     ) {
       // A loss-adjusted receipt must be claimed before opening a later request, otherwise
       // `lastWithdrawRequest` would stop pointing to the epoch that stores its haircut.
@@ -437,16 +436,11 @@ contract IdleCreditVault is
   /// @param _lossAmount realized loss amount
   /// @return pendingToFund amount of pending withdrawals that should be funded by the borrower
   /// @return activeLoss amount of loss that remains assigned to active LPs
-  function previewLossAdjustedWithdrawFunds(uint256 _lossAmount)
-    external
-    view
-    returns (uint256 pendingToFund, uint256 activeLoss)
-  {
+  function previewLossAdjustedWithdrawFunds(uint256 _lossAmount) external view returns (uint256 pendingToFund, uint256 activeLoss) {
     uint256 pendingBasis = pendingWithdraws;
-    if (_lossAmount == 0) {
-      // Full zero-loss funding is safe for legacy aggregate receipts and needs no migration call.
-      return (pendingBasis, _lossAmount);
-    }
+    // Full zero-loss funding is safe for legacy aggregate receipts and needs no migration call.
+    if (_lossAmount == 0) return (pendingBasis, _lossAmount);
+
     IIdleCDOEpochVariant cdo = IIdleCDOEpochVariant(idleCDO);
     uint256 activeBasis = _lossActiveBasis(cdo);
     if (pendingBasis == 0) {
@@ -476,19 +470,16 @@ contract IdleCreditVault is
       // balance plus gross minted interest participates on the active side.
       return balanceOf(idleCDO) + _cdo.expectedEpochInterest();
     }
-    uint256 activeBasisBeforePerformanceFee = _cdo.getContractValue();
+    uint256 activeBasisBeforePerfFee = _cdo.getContractValue();
     uint256 expectedInterest = _cdo.expectedEpochInterest();
     uint256 pendingFees = _cdo.pendingWithdrawFees();
     if (expectedInterest > pendingFees) {
-      activeBasisBeforePerformanceFee += expectedInterest - pendingFees;
+      activeBasisBeforePerfFee += expectedInterest - pendingFees;
     }
     uint256 savedNAV = _cdo.lastNAVAA() + _cdo.lastNAVBB();
-    if (activeBasisBeforePerformanceFee > savedNAV) {
-      activeBasis =
-        activeBasisBeforePerformanceFee - ((activeBasisBeforePerformanceFee - savedNAV) * _cdo.fee() / FULL_ALLOC);
-    } else {
-      activeBasis = activeBasisBeforePerformanceFee;
-    }
+    activeBasis = activeBasisBeforePerfFee > savedNAV ? 
+      activeBasisBeforePerfFee - ((activeBasisBeforePerfFee - savedNAV) * _cdo.fee() / FULL_ALLOC) : 
+      activeBasisBeforePerfFee;
   }
 
   /// @notice compute and apply APR=0 epoch deltas for stopEpoch
@@ -671,7 +662,6 @@ contract IdleCreditVault is
 
     IIdleCDOEpochVariant cdo = IIdleCDOEpochVariant(idleCDO);
     if (defaultRecoveryFinalized || !cdo.defaulted()) revert NotAllowed();
-
     if (_recoveredAmount != 0 && _recoverySource == address(0)) revert NotAllowed();
 
     // Active holders are still represented by strategy tokens owned by the CDO. Add the
@@ -749,11 +739,7 @@ contract IdleCreditVault is
   /// @param _activeBalance gross active strategy-token backing
   /// @param _activeInterest net active default-epoch interest
   /// @return bbBasis BB's active claim basis before recovery
-  function _defaultBBBasis(
-    IIdleCDOEpochVariant _cdo,
-    uint256 _activeBalance,
-    uint256 _activeInterest
-  ) internal view returns (uint256 bbBasis) {
+  function _defaultBBBasis(IIdleCDOEpochVariant _cdo, uint256 _activeBalance, uint256 _activeInterest) internal view returns (uint256 bbBasis) {
     uint256 savedAA = _cdo.lastNAVAA();
     uint256 savedBB = _cdo.lastNAVBB();
     uint256 activeBasis = _activeBalance + _activeInterest;
@@ -817,13 +803,10 @@ contract IdleCreditVault is
   /// `apr0TotalPrincipal`; loss-adjusted claims do not because stopEpoch already closed that bucket.
   /// @param _user address of the user
   /// @param _claimEpoch epoch whose receipt should be cleared
-  /// @param _decreaseApr0TotalPrincipal true when clearing an open APR0 default claim
+  /// @param _isClearingApr0 true when clearing an open APR0 default claim
   /// @return claimBasis claim amount before applying the recovery ratio
   /// @return burnAmount strategy-token receipt amount to burn
-  function _clearWithdrawClaimForEpoch(address _user, uint256 _claimEpoch, bool _decreaseApr0TotalPrincipal)
-    internal
-    returns (uint256 claimBasis, uint256 burnAmount)
-  {
+  function _clearWithdrawClaimForEpoch(address _user, uint256 _claimEpoch, bool _isClearingApr0) internal returns (uint256 claimBasis, uint256 burnAmount) {
     (claimBasis, burnAmount) = _withdrawClaimAmountsForEpoch(_user, _claimEpoch);
     if (claimBasis == 0) return (claimBasis, burnAmount);
 
@@ -835,7 +818,7 @@ contract IdleCreditVault is
     }
     Apr0UserData storage apr0User = apr0Users[_user];
     if (apr0User.principal != 0 && apr0User.principalEpoch == _claimEpoch) {
-      if (_decreaseApr0TotalPrincipal) {
+      if (_isClearingApr0) {
         uint256 apr0Principal = apr0User.principal;
         uint256 totalApr0Principal = apr0TotalPrincipal;
         // prepareStopEpochWithApr0 may already close the global APR0 bucket before default finalization.
@@ -874,11 +857,7 @@ contract IdleCreditVault is
   /// @param _user address of the user
   /// @return claimBasis claim amount before recovery haircut
   /// @return burnAmount strategy-token receipt amount to burn
-  function _withdrawClaimAmountsForEpoch(address _user, uint256 _claimEpoch)
-    internal
-    view
-    returns (uint256 claimBasis, uint256 burnAmount)
-  {
+  function _withdrawClaimAmountsForEpoch(address _user, uint256 _claimEpoch) internal view returns (uint256 claimBasis, uint256 burnAmount) {
     // We calculate what the user is owed in underlyings (claimBasis) and how many strategy tokens to burn (burnAmount).
     // the amount owned is the sum of the normal withdraw request and the APR0 principal and interest if any.
     uint256 normalAmount = withdrawsRequestsByEpoch[_user][_claimEpoch];

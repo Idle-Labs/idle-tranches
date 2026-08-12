@@ -536,10 +536,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// overrides this hook to guard direct stops and include principal already sent to the borrower.
   /// @param _isClosing true when this stop recalls all pool principal
   /// @return additionalPrincipal principal held outside the CDO strategy-token balance
-  function _beforeStopEpoch(bool _isClosing) internal view virtual returns (uint256) {
-    _isClosing;
-    return 0;
-  }
+  function _beforeStopEpoch(bool _isClosing) internal view virtual returns (uint256) {}
 
   /// @notice internal function called in stop epoch with duration after doing anything else
   function _afterStopEpochWithDuration() internal virtual {}

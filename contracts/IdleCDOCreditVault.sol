@@ -293,12 +293,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     // A zero supply identifies a tranche that was never initialized. A non-zero supply with
     // zero NAV is an economically wiped tranche and must keep its saved zero price.
     uint256 trancheSupply = _trancheSupply(_tranche);
-    if (trancheSupply == 0) {
-      return (oneToken, 0);
-    }
-    if (_lastNAV == 0 && _nav == 0) {
-      return (0, 0);
-    }
+    if (trancheSupply == 0) return (oneToken, 0);
+    if (_lastNAV == 0 && _nav == 0) return (0, 0);
 
     // In order to correctly split the interest generated between AA and BB tranche holders
     // (according to the trancheAPRSplitRatio) we need to know how much interest/loss we gained
@@ -309,11 +305,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     int256 totalGain = int256(_nav) - int256(_lastNAV);
     // Ordinary zero-delta interactions keep their saved price for compatibility. Forced
     // accounting recomputes NAV per share, which is required after discounted mid-epoch deposits.
-    if (totalGain == 0) {
-      if (!skipDefaultCheck) {
-        return (_tranchePrice(_tranche), 0);
-      }
-    }
+    if (totalGain == 0 && !skipDefaultCheck) return (_tranchePrice(_tranche), 0);
 
     // Remove performance fee for gains
     if (totalGain > 0) {

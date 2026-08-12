@@ -109,9 +109,7 @@ contract IdleCDOEpochQueue is Initializable, OwnableUpgradeable, ReentrancyGuard
     uint256 _prefundedWindow = prefundedDepositWindow;
     // Only the AA prefunded queue enforces a deposit cutoff for the next epoch.
     if (tranche == _cdo.AATranche() && _isPrefundedQueueEnabled()) {
-      IdleCDOEpochVariantPrefunded(idleCDOEpoch).checkPrefunding(
-        epochPendingDeposits[nextEpoch] + amount
-      );
+      IdleCDOEpochVariantPrefunded(idleCDOEpoch).checkPrefunding(epochPendingDeposits[nextEpoch] + amount);
       // Once funds are prefunded, or once the subscription window is reached, the next epoch is closed.
       _checkNotAllowed(
         epochPrefundedDeposits[nextEpoch] != 0 || (
