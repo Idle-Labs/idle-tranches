@@ -226,6 +226,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(_cdoAddress(address(cv), CDO_SLOT_GOVERNANCE_RECOVERY_FUND), owner, "cdo governance fund");
     assertEq(_cdoAddress(address(cv), CDO_SLOT_GUARDIAN), manager, "cdo guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
+    assertFalse(cv.isBBDepositEnabled(), "BB deposits enabled by default");
     assertEq(deployment.programmableBorrower, address(0), "programmable borrower unsupported");
     assertEq(strategy.owner(), owner, "strategy owner");
     _assertProxyAdmin(deployment.cv);
@@ -849,6 +850,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(_cdoAddress(address(cv), CDO_SLOT_GOVERNANCE_RECOVERY_FUND), owner, "governance fund");
     assertEq(_cdoAddress(address(cv), CDO_SLOT_GUARDIAN), manager, "guardian");
     assertEq(cv.trancheAPRSplitRatio(), 100000, "AA-only APR split");
+    assertFalse(cv.isBBDepositEnabled(), "BB deposits enabled by default");
     assertEq(cv.feeReceiver(), creatorFeeReceiver, "fee receiver");
     assertEq(cv.fee(), 5000, "fee value");
     assertEq(cv.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "fee split");

@@ -397,6 +397,7 @@ contract IdleCreditVault is
   /// @param _amount number of tokens to collect
   function collectInstantWithdrawFunds(uint256 _amount) external {
     _onlyIdleCDO();
+    if (_amount == 0) return;
     pendingInstantWithdraws -= _amount;
     underlyingToken.safeTransferFrom(idleCDO, address(this), _amount);
   }
@@ -579,6 +580,7 @@ contract IdleCreditVault is
   /// @param _amount number of underlyings to transfer
   function sendInterestAndDeposits(uint256 _amount) external {
     _onlyIdleCDO();
+    if (_amount == 0) return;
     IERC20Detailed(token).safeTransfer(idleCDO, _amount);
   }
 

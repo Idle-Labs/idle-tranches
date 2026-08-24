@@ -127,6 +127,8 @@ contract IdleCDOStorage {
   bool public isProgrammableBorrower;
   // annualized management fee. Max is MAX_FEE / 10
   uint256 public managementFee;
+  // Explicit owner-controlled opt-in for BB deposits. Disabled by default.
+  bool public isBBDepositEnabled;
   // uint256 public test;
 
 
@@ -140,8 +142,8 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[44] private __gap;
-  // uint256[43] private __gap; -> after adding `test`
+  uint256[43] private __gap;
+  // uint256[42] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`
 }

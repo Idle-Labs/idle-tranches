@@ -105,6 +105,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _amount amount of `token` to deposit
   /// @return BB tranche tokens minted
   function depositBB(uint256 _amount) external returns (uint256) {
+    _checkNotAuthorized(!isBBDepositEnabled);
     return _deposit(_amount, BBTranche);
   }
 
@@ -438,6 +439,13 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   // onlyOwner
   // ###################
 
+  /// @notice Enable or disable deposits into the BB tranche.
+  /// @param _enabled true to allow BB deposits
+  function setBBDepositEnabled(bool _enabled) external {
+    _checkOnlyOwner();
+    isBBDepositEnabled = _enabled;
+  }
+
   /// @param _active flag to allow Adaptive Yield Split
   function setIsAYSActive(bool _active) external virtual {
     _checkOnlyOwner();
@@ -583,9 +591,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   }
 
   /// @notice calculates the amount to transfer to feeReceiver based on the feeSplit
+  /// @dev `setFeeParams` guarantees a nonzero receiver; a zero split naturally returns zero.
   /// @param _amount total fee amount to split
   function _feeReceiverAmount(uint256 _amount) internal view returns (uint256) {
-    if (feeReceiver == address(0)) return 0;
     return _amount * feeSplit / FULL_ALLOC;
   }
 

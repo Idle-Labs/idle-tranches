@@ -102,6 +102,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 buffer = 5 days;
     // For testing let's support both tranches with AYS
     vm.startPrank(_owner);
+    cdoEpoch.setBBDepositEnabled(true);
     cdoEpoch.setIsAYSActive(true);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
     cdoEpoch.setEpochParams(epochDuration, buffer); // set this to have an epoch during 1/10 of the year
@@ -473,6 +474,46 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(false, initialApr, 1000);
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositAA(amount);
+  }
+
+  function testBBDepositsCanBeDisabledAndReenabledByOwner() external {
+    vm.prank(owner);
+    cdoEpoch.setBBDepositEnabled(false);
+
+    assertFalse(cdoEpoch.isBBDepositEnabled(), 'BB deposits should be disabled');
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    idleCDO.depositBB(ONE_SCALE);
+
+    uint256 mintedAA = idleCDO.depositAA(ONE_SCALE);
+    assertGt(mintedAA, 0, 'AA deposits should remain enabled');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    cdoEpoch.setBBDepositEnabled(true);
+
+    vm.prank(owner);
+    cdoEpoch.setBBDepositEnabled(true);
+
+    assertTrue(cdoEpoch.isBBDepositEnabled(), 'BB deposits should be enabled');
+    uint256 mintedBB = idleCDO.depositBB(ONE_SCALE);
+    assertGt(mintedBB, 0, 'BB deposit should succeed after opt-in');
+  }
+
+  function testBBDepositDuringEpochRespectsBBDepositFlag() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    idleCDO.depositBB(10_000 * ONE_SCALE);
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setBBDepositEnabled(false);
+    vm.stopPrank();
+
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(ONE_SCALE, address(BBtranche));
   }
 
   function testCannotRequestRedeemWhenEpochRunningOrDefault() external {

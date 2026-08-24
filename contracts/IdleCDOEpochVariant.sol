@@ -271,9 +271,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 _totEpochDeposits = _strategy.totEpochDeposits();
     // If interest is minted we do not transfer interest to the strategy
     uint256 _toSend = isInterestMinted ? _totEpochDeposits : lastEpochInterest + _totEpochDeposits;
-    if (_toSend != 0) {
-      _strategy.sendInterestAndDeposits(_toSend);
-    }
+    _strategy.sendInterestAndDeposits(_toSend);
 
     // we should first check if there are *instant* redeem requests pending 
     // and if yes we should send as much underlyings as possible to the IdleCreditVault contract
@@ -567,9 +565,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // transfer funds for instant withdraw to this contract
     try this.getFundsFromBorrower(_instantWithdraws) {
       // transfer funds to IdleCreditVault and decrease pendingInstantWithdraws
-      if (_instantWithdraws != 0) {
-        _strategy.collectInstantWithdrawFunds(_instantWithdraws);
-      }
+      _strategy.collectInstantWithdrawFunds(_instantWithdraws);
       // allow instant withdraws
       allowInstantWithdraw = true;
     } catch {
@@ -660,6 +656,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function depositDuringEpoch(uint256 _amount, address _tranche) external virtual returns (uint256 _minted) {
     _checkTranche(_tranche);
     _checkNotAllowed(
+      (_tranche == BBTranche && !isBBDepositEnabled) ||
       isDepositDuringEpochDisabled ||
       skipDefaultCheck ||
       // programmable borrowers use APR=0 so mid-epoch deposits would dilute existing depositors
