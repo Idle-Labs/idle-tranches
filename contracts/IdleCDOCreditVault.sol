@@ -82,7 +82,6 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     minAprSplitAYS = AA_RATIO_LIM_DOWN; // AA tranche will get min 50% of the yield
     // Credit vaults reuse this legacy slot as the management-fee checkpoint timestamp.
     latestHarvestBlock = block.timestamp;
-    maxDecreaseDefault = 5000; // 5% decrease for triggering a default
     _additionalInit();
   }
 
@@ -106,6 +105,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _amount amount of `token` to deposit
   /// @return BB tranche tokens minted
   function depositBB(uint256 _amount) external returns (uint256) {
+    _checkNotAuthorized(!isBBDepositEnabled);
     return _deposit(_amount, BBTranche);
   }
 
@@ -141,9 +141,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   function getApr(address _tranche) external view returns (uint256) {
     uint256 _AATrancheSplitRatio = _getAARatio(false);
     uint256 stratApr = _getStrategyApr();
-    if (_AATrancheSplitRatio == 0) {
-      // if there are no AA tranches, apr for AA is 0 (all apr to BB and it will be equal to stratApr)
-      return _tranche == AATranche ? 0 : stratApr;
+    if (_AATrancheSplitRatio == 0 || _AATrancheSplitRatio == FULL_ALLOC) {
+      // with only one initialized tranche, it receives all apr and the empty tranche receives zero
+      return (_tranche == AATranche) == (_AATrancheSplitRatio == 0) ? 0 : stratApr;
     }
     uint256 _trancheAPRSplitRatio = trancheAPRSplitRatio;
     if (_tranche != AATranche) {
@@ -218,7 +218,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// - update tranche prices (priceAA and priceBB)
   /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
   /// - update fee accounting (unclaimedFees)
-  function _updateAccounting() internal virtual {
+  /// @return shutdown true when a loss exhausted BB or fully wiped an AA-only vault
+  function _updateAccounting() internal virtual returns (bool shutdown) {
     _accrueManagementFee();
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
@@ -232,28 +233,16 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     (uint256 _priceAA, int256 _totalAAGain) = _virtualPriceAux(AATranche, nav, _lastNAV, _lastNAVAA, _aprSplitRatio);
     (uint256 _priceBB, int256 _totalBBGain) = _virtualPriceAux(BBTranche, nav, _lastNAV, _lastNAVBB, _aprSplitRatio);
     lastNAVAA = uint256(int256(_lastNAVAA) + _totalAAGain);
+    lastNAVBB = uint256(int256(_lastNAVBB) + _totalBBGain);
 
-    // if we have a loss and it's gte last junior NAV we trigger a default
-    if (_totalBBGain < 0 && -_totalBBGain >= int256(_lastNAVBB)) {
-      // revert with 'default' error (4) if skipDefaultCheck is false, as seniors will have a loss too not covered. 
-      // `updateAccounting` should be manually called to distribute loss
+    // Ordinary losses exhaust BB before reducing AA. Stop normal interactions once BB is wiped,
+    // or when an AA-only vault is fully wiped, so the loss must be crystallized explicitly.
+    if ((_totalBBGain < 0 && -_totalBBGain >= int256(_lastNAVBB)) || (_lastNAV != 0 && nav == 0)) {
+      shutdown = true;
       if (!skipDefaultCheck) revert Default();
-      // This path will be called when a default happens and guardian calls
-      // `updateAccounting` after setting skipDefaultCheck or when skipDefaultCheck is already set to true
-      lastNAVBB = 0;
-      // if skipDefaultCheck is set to true prior a default (eg because AA is used as collateral and needs to be liquid), 
-      // emergencyShutdown won't prevent the current deposit/redeem (the one that called this _updateAccounting) and is 
-      // still correct because:
-      // - depositBB will revert as priceBB is 0
-      // - depositAA won't revert (unless the loss is 100% of TVL) and user will get 
-      //   correct number of share at a priceAA already post junior default
-      // - withdrawBB will redeem 0 and burn BB tokens because priceBB is 0
-      // - withdrawAA will redeem the correct amount of underlyings post junior default
-      // We pass true as we still want AA to be redeemable in any case even after a junior default
+      // Keep a total wipe distinguishable from an uninitialized vault when no BB NAV existed.
+      if (nav == 0) _priceAA = 0;
       _emergencyShutdown(true);
-    } else {
-      // we add the gain to last saved NAV
-      lastNAVBB = uint256(int256(_lastNAVBB) + _totalBBGain);
     }
     priceAA = _priceAA;
     priceBB = _priceBB;
@@ -286,18 +275,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     return _tranche == AATranche ? lastNAVAA : lastNAVBB;
   }
 
-  /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted and the
-  /// total gain/loss for a specific tranche
-  /// @dev Main scenarios covered:
-  /// - if there is a loss on the lending protocol (ie strategy price decrease) up to maxDecreaseDefault (_checkDefault method), the loss is
-  ///     - totally absorbed by junior holders if they have enough TVL and deposits/redeems work as normal
-  ///     - otherwise a 'default' error (4) is raised and deposits/redeems are blocked
-  /// - if there is a loss on the lending protocol (ie strategy price decrease) more than maxDecreaseDefault all deposits and redeems
-  ///   are blocked and a 'default' error (4) is raised
-  /// - if there is a loss somewhere not in the lending protocol (ie in our contracts) and the TVL decreases then the same process as above
-  ///   applies, the only difference is that maxDecreaseDefault is not considered
-  /// In any case, once a loss happens, it only gets accounted when new deposits/redeems are made, but those are blocked.
-  /// For this reason a protected updateAccounting method has been added which should be used to distributed the loss after a default event
+  /// @notice Calculates the current tranche price and gain or loss since the last accounting update.
+  /// @dev Gains follow `trancheAPRSplitRatio`; ordinary losses exhaust BB before reducing AA.
   /// @param _tranche address of the requested tranche
   /// @param _nav current NAV
   /// @param _lastNAV last saved NAV
@@ -312,11 +291,11 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     uint256 _lastTrancheNAV,
     uint256 _trancheAPRSplitRatio
   ) internal virtual view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
-    // Check if there are tranche holders
+    // A zero supply identifies a tranche that was never initialized. A non-zero supply with
+    // zero NAV is an economically wiped tranche and must keep its saved zero price.
     uint256 trancheSupply = _trancheSupply(_tranche);
-    if (_lastNAV == 0 || trancheSupply == 0) {
-      return (oneToken, 0);
-    }
+    if (trancheSupply == 0) return (oneToken, 0);
+    if (_lastNAV == 0 && _nav == 0) return (0, 0);
 
     // In order to correctly split the interest generated between AA and BB tranche holders
     // (according to the trancheAPRSplitRatio) we need to know how much interest/loss we gained
@@ -325,53 +304,32 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     // and the last saved one (always during a depositXX/withdrawXX)
     // Calculate the total gain/loss
     int256 totalGain = int256(_nav) - int256(_lastNAV);
-    // If there is no gain/loss return the current price
-    if (totalGain == 0) {
-      return (_tranchePrice(_tranche), 0);
-    }
+    // Ordinary zero-delta interactions keep their saved price for compatibility. Forced
+    // accounting recomputes NAV per share, which is required after discounted mid-epoch deposits.
+    if (totalGain == 0 && !skipDefaultCheck) return (_tranchePrice(_tranche), 0);
 
     // Remove performance fee for gains
     if (totalGain > 0) {
       totalGain -= totalGain * int256(fee) / int256(FULL_ALLOC);
     }
 
-    address _AATranche = AATranche;
-    address _BBTranche = BBTranche;
-    bool _isAATranche = _tranche == _AATranche;
-    // Get the supply of the other tranche and
-    // if it's 0 then give all gain to the current `_tranche` holders
-    if (_trancheSupply(_isAATranche ? _BBTranche : _AATranche) == 0) {
+    bool _isAATranche = _tranche == AATranche;
+    // A class with no saved NAV cannot be revived by later gains. If only this class has saved
+    // NAV, it receives the full gain or loss; otherwise both classes participate.
+    if (_lastTrancheNAV == 0) {
+      _totalTrancheGain = 0;
+    } else if (_lastNAV == _lastTrancheNAV) {
       _totalTrancheGain = totalGain;
     } else {
-      // if we gained something or the loss is between 0 and lossToleranceBps then we socialize the gain/loss
       if (totalGain > 0) {
         // Split the net gain, according to _trancheAPRSplitRatio, with precision loss favoring the AA tranche.
         int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
         _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
-      } else if (uint256(-totalGain) <= (lossToleranceBps * _lastNAV) / FULL_ALLOC) {
-        // Split the loss, according to TVL ratio instead of _trancheAPRSplitRatio (loss socialized between all tranches)
-        uint256 _lastNAVBB = lastNAVBB;
-        int256 totalBBLoss = totalGain * int256(_lastNAVBB) / int256(lastNAVAA + _lastNAVBB);
-        // The new NAV for the tranche is old NAV - loss for the tranche
-        _totalTrancheGain = _isAATranche ? (totalGain - totalBBLoss) : totalBBLoss;
-      } else { // totalGain is negative here
-        // Redirect the whole loss (which should be < maxDecreaseDefault) to junior holders
-        int256 _juniorTVL = int256(_isAATranche ? _lastNAV - _lastTrancheNAV : _lastTrancheNAV);
-        int256 _newJuniorTVL = _juniorTVL + totalGain; 
-        // if junior holders have enough TVL to cover
-        if (_newJuniorTVL > 0) {
-          // then juniors get all loss (totalGain) and senior gets 0 loss
-          _totalTrancheGain = _isAATranche ? int256(0) : totalGain;
-        } else {
-          // otherwise all loss minus junior tvl to senior
-          if (!_isAATranche) {
-            // juniors have no more claims, price is set to 0, gain is set to -juniorTVL
-            return (0, -_juniorTVL);
-          }
-          // seniors get the loss - old junior TVL
-          _totalTrancheGain = _newJuniorTVL;
-        }
+      } else {
+        int256 maxBBLoss = -int256(lastNAVBB);
+        int256 totalBBLoss = totalGain > maxBBLoss ? totalGain : maxBBLoss;
+        _totalTrancheGain = _isAATranche ? totalGain - totalBBLoss : totalBBLoss;
       }
     }
     // Split the new NAV (_lastTrancheNAV + _totalTrancheGain) per tranche token
@@ -481,6 +439,13 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   // onlyOwner
   // ###################
 
+  /// @notice Enable or disable deposits into the BB tranche.
+  /// @param _enabled true to allow BB deposits
+  function setBBDepositEnabled(bool _enabled) external {
+    _checkOnlyOwner();
+    isBBDepositEnabled = _enabled;
+  }
+
   /// @param _active flag to allow Adaptive Yield Split
   function setIsAYSActive(bool _active) external virtual {
     _checkOnlyOwner();
@@ -516,16 +481,10 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     _checkAmountTooHigh((minAprSplitAYS = _aprSplit) > FULL_ALLOC);
   }
 
-  /// @param _diffBps tolerance in % (FULL_ALLOC = 100%) for socializing small losses 
-  function setLossToleranceBps(uint256 _diffBps) external {
-    _checkOnlyOwner();
-    lossToleranceBps = _diffBps;
-  }
-
   /// @notice this method updates the accounting of the contract and effectively splits the yield/loss between the
   /// AA and BB tranches. This can be called at any time as is called automatically on each deposit/redeem. It's here
-  /// just to be called when a default happened, as deposits/redeems are paused, but we need to update
-  /// the loss for junior holders
+  /// just to be called when a loss exhausted BB, as deposits/redeems are paused, but we need to
+  /// crystallize the BB-first loss.
   function updateAccounting() external virtual {
     _checkOnlyOwnerOrGuardian();
     _forceUpdateAccounting();
@@ -533,11 +492,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   /// @notice force accounting update without reverting on default path
   function _forceUpdateAccounting() internal {
+    bool wasSkippingDefaultCheck = skipDefaultCheck;
     skipDefaultCheck = true;
-    _updateAccounting();
-    // _updateAccounting can set `skipDefaultCheck` to true in case of default
-    // but this can be manually be reset to true if needed
-    skipDefaultCheck = false;
+    // Preserve an existing emergency shutdown and any wipe reported by accounting.
+    if (!_updateAccounting()) {
+      skipDefaultCheck = wasSkippingDefaultCheck;
+    }
   }
 
   /// @notice pause deposits and redeems for all classes of tranches
@@ -564,8 +524,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @dev can be called by both the owner and the guardian
   function unpause() external {
     _checkOnlyOwnerOrGuardian();
+    _beforeUnpause();
     _unpause();
   }
+
+  /// @notice Hook executed before external unpause.
+  function _beforeUnpause() internal view virtual {}
 
   // ###################
   // Helpers
@@ -627,9 +591,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   }
 
   /// @notice calculates the amount to transfer to feeReceiver based on the feeSplit
+  /// @dev `setFeeParams` guarantees a nonzero receiver; a zero split naturally returns zero.
   /// @param _amount total fee amount to split
   function _feeReceiverAmount(uint256 _amount) internal view returns (uint256) {
-    if (feeReceiver == address(0)) return 0;
     return _amount * feeSplit / FULL_ALLOC;
   }
 

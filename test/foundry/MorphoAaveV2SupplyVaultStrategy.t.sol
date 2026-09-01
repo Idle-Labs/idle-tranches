@@ -172,11 +172,11 @@ contract TestMorphoAaveV2SupplyVaultStrategy is TestIdleCDOBase {
         // skip fees distribution
         _skipFlags[3] = _skipRewards;
 
-        vm.prank(idleCDO.rebalancer());
+        vm.prank(_cdoRebalancer());
         idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
         // linearly release all sold rewards
-        vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1);
+        vm.roll(block.number + _cdoReleaseBlocksPeriod() + 1);
     }
 
     function _pokeMorpho() internal {

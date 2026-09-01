@@ -27,11 +27,77 @@ const ICurveRegistryAbi = require("../abi/ICurveRegistry.json")
 const CV_UPGRADE_PLAN_KIND = "credit-vault-upgrade-batch";
 const CV_UPGRADE_PLAN_VERSION = 1;
 const CV_UPGRADE_DIR = ".timelock-upgrades";
-const CV_COMPONENT_ORDER = ["cdo", "strategy", "queue", "revolving", "writeoff"];
+const CV_COMPONENT_ORDER = ["strategy", "cdo", "queue", "revolving", "writeoff"];
 const CV_DEFAULT_BLUEPRINT_CDO_NAME = "creditrevolvingblueprintusdc";
 const PROXY_ADMIN_UPGRADE_IFACE = new etherslib.utils.Interface([
   "function upgrade(address proxy, address implementation)",
 ]);
+const CV_UPGRADE_STRATEGY_ABI = [
+  "function defaultRecoveryInitialized() view returns (bool)",
+  "function pendingWithdraws() view returns (uint256)",
+  "function pendingInstantWithdraws() view returns (uint256)",
+];
+const CV_UPGRADE_CDO_ABI = [
+  "function defaulted() view returns (bool)",
+  "function epochEndDate() view returns (uint256)",
+];
+const CV_PREFUNDED_CDO_ABI = [
+  "function epochQueue() view returns (address)",
+];
+
+const assertCvUpgradeReady = async (_hre, trackedCdo, components, label) => {
+  const upgradingStrategy = components.includes("strategy");
+  const upgradingCdo = components.includes("cdo");
+  const upgradingQueue = components.includes("queue");
+  if (upgradingQueue && !upgradingCdo && etherslib.utils.isAddress(trackedCdo.queue || "")) {
+    let configuredQueue;
+    try {
+      const prefundedCdo = await _hre.ethers.getContractAt(CV_PREFUNDED_CDO_ABI, trackedCdo.cdoAddr);
+      configuredQueue = await prefundedCdo.epochQueue();
+    } catch {
+      configuredQueue = null;
+    }
+    if (
+      configuredQueue &&
+      etherslib.utils.isAddress(configuredQueue) &&
+      etherslib.utils.getAddress(configuredQueue) == etherslib.utils.getAddress(trackedCdo.queue)
+    ) {
+      throw new Error(`${label}: prefunded queue upgrade requires the CDO in the same batch`);
+    }
+  }
+  if (!upgradingStrategy && !upgradingCdo) return;
+  if (upgradingCdo && !upgradingStrategy) {
+    throw new Error(`${label}: select the strategy with the CDO so the strategy is upgraded first`);
+  }
+
+  const strategy = await _hre.ethers.getContractAt(CV_UPGRADE_STRATEGY_ABI, trackedCdo.strategy);
+  let recoveryInitialized = false;
+  try {
+    recoveryInitialized = await strategy.defaultRecoveryInitialized();
+  } catch {
+    // Older strategies do not expose this getter and are treated as uninitialized.
+  }
+  if (recoveryInitialized) return;
+
+  const pendingInstant = await strategy.pendingInstantWithdraws();
+  if (!pendingInstant.isZero()) {
+    throw new Error(`${label}: pendingInstantWithdraws must be zero before upgrade`);
+  }
+  const pending = await strategy.pendingWithdraws();
+  if (pending.isZero()) return;
+
+  const cdo = await _hre.ethers.getContractAt(CV_UPGRADE_CDO_ABI, trackedCdo.cdoAddr);
+  const endDate = await cdo.epochEndDate();
+  const isDefaulted = await cdo.defaulted();
+  if (isDefaulted) {
+    throw new Error(`${label}: cannot upgrade legacy pendingWithdraws after borrower default`);
+  }
+  if (endDate.isZero()) {
+    console.log(`${label}: stale closed-vault pending counters will normalize lazily`);
+    return;
+  }
+  console.log(`${label}: legacy pendingWithdraws must be fully funded by the next successful zero-loss stop`);
+};
 
 const getNetworkContracts = (_hre) => {
   const isMatic = _hre.network.name == 'matic' || _hre.network.config.chainId == 137;
@@ -278,6 +344,50 @@ const decodeCvUpgradePlanCalls = (plan) => {
   return rows;
 }
 
+const assertCvUpgradePlanReady = async (_hre, plan) => {
+  const decodedCalls = decodeCvUpgradePlanCalls(plan);
+  const plannedProxies = new Set(
+    decodedCalls
+      .filter(row => row.proxyAddress)
+      .map(row => row.proxyAddress.toLowerCase())
+  );
+  const networkCDOs = getNetworkCDOs(_hre);
+  const knownProxies = new Set();
+
+  for (const [cdoName, trackedCdo] of Object.entries(networkCDOs)) {
+    for (const proxy of [
+      trackedCdo.strategy,
+      trackedCdo.cdoAddr,
+      trackedCdo.queue,
+      trackedCdo.programmableBorrower,
+      trackedCdo.writeOff,
+      trackedCdo.writeoff,
+    ]) {
+      if (proxy && etherslib.utils.isAddress(proxy)) {
+        knownProxies.add(etherslib.utils.getAddress(proxy).toLowerCase());
+      }
+    }
+    const components = [];
+    if (trackedCdo.strategy && plannedProxies.has(etherslib.utils.getAddress(trackedCdo.strategy).toLowerCase())) {
+      components.push("strategy");
+    }
+    if (trackedCdo.cdoAddr && plannedProxies.has(etherslib.utils.getAddress(trackedCdo.cdoAddr).toLowerCase())) {
+      components.push("cdo");
+    }
+    if (trackedCdo.queue && plannedProxies.has(etherslib.utils.getAddress(trackedCdo.queue).toLowerCase())) {
+      components.push("queue");
+    }
+    if (components.length != 0) {
+      await assertCvUpgradeReady(_hre, trackedCdo, components, cdoName);
+    }
+  }
+  for (const plannedProxy of plannedProxies) {
+    if (!knownProxies.has(plannedProxy)) {
+      throw new Error(`Upgrade proxy ${plannedProxy} is missing from the current network config`);
+    }
+  }
+};
+
 const logCvUpgradePlanSummary = (plan, summaryRows = []) => {
   console.log(`Plan type:      ${plan.kind} v${plan.version}`);
   console.log(`Chain id:       ${plan.chainId}`);
@@ -321,6 +431,11 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, timelock, bluepr
   const targets = [];
 
   for (const cdoName of cdoNames) {
+    const trackedCdo = networkCDOs[cdoName];
+    if (!trackedCdo) {
+      throw new Error(`Missing config for ${cdoName}`);
+    }
+    await assertCvUpgradeReady(_hre, trackedCdo, components, cdoName);
     for (const component of components) {
       const target = getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component);
       if (!target) {
@@ -683,8 +798,6 @@ task("emergency-shutdown-cdo-multisig", "Upgrade IdleCDO instance")
     const multisig = await run('get-multisig-or-fake');
     await cdo.connect(multisig).emergencyShutdown();
     console.log('Is Paused ? ', await cdo.paused());
-    console.log('Allow AA withdraw ? ', await cdo.allowAAWithdraw());
-    console.log('Allow BB withdraw ? ', await cdo.allowBBWithdraw());
   });
 
 /**
@@ -1310,6 +1423,9 @@ task("execute-cv-upgrades-timelock", "Execute a previously scheduled credit vaul
 
     logCvUpgradePlanSummary(plan);
     await helpers.prompt("execute this timelock batch? [y/n]", true);
+    // State can change during the timelock delay. Re-run the migration preflight as close as
+    // possible to execution; operators should keep the selected vaults paused until execution.
+    await assertCvUpgradePlanReady(hre, plan);
 
     const executorSigner = await run("get-signer-or-fake");
     timelock = timelock.connect(executorSigner);

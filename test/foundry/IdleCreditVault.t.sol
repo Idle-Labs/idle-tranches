@@ -3,6 +3,12 @@ pragma solidity 0.8.10;
 
 import "./TestIdleCDOLossMgmt.sol";
 
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {
+  ITransparentUpgradeableProxy,
+  TransparentUpgradeableProxy
+} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+
 import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.sol";
 import {IdleCDOCreditVault} from "../../contracts/IdleCDOCreditVault.sol";
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
@@ -46,11 +52,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _cdo = IdleCDO(address(new IdleCDOEpochVariant()));
   }
 
-  function _deployStrategy(address _owner)
-    internal
-    override
-    returns (address _strategy, address _underlying)
-  {
+  function _deployStrategy(address _owner) internal override returns (address _strategy, address _underlying) {
     _underlying = defaultUnderlying;
     strategy = new IdleCreditVault();
     strategyToken = IERC20Detailed(address(strategy));
@@ -68,10 +70,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     
     // deploy idleCDO and tranches
     _cdo = _deployCDO();
-    stdstore
-      .target(address(_cdo))
-      .sig(_cdo.token.selector)
-      .checked_write(address(0));
+    stdstore.target(address(_cdo)).sig(_cdo.token.selector).checked_write(address(0));
     _cdo.initialize(
       0,
       _underlying,
@@ -103,9 +102,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 buffer = 5 days;
     // For testing let's support both tranches with AYS
     vm.startPrank(_owner);
+    cdoEpoch.setBBDepositEnabled(true);
     cdoEpoch.setIsAYSActive(true);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
-    cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(epochDuration, buffer); // set this to have an epoch during 1/10 of the year
     cdoEpoch.setKeyringParams(address(0), 0); // deactivate keyring
     vm.stopPrank();
@@ -141,6 +140,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     require(bal >= loss, "test: loss is too large");
     vm.prank(owner);
     cdoEpoch.transferToken(address(strategy), loss);
+  }
+
+  /// @notice Calculate tranche prices after assigning a loss to BB before AA.
+  /// @param loss realized active NAV loss
+  /// @return expectedAAPrice AA price after the waterfall
+  /// @return expectedBBPrice BB price after the waterfall
+  function _expectedBBFirstPrices(uint256 loss) internal view returns (uint256 expectedAAPrice, uint256 expectedBBPrice) {
+    uint256 aaNAV = cdoEpoch.lastNAVAA();
+    uint256 bbNAV = cdoEpoch.lastNAVBB();
+    uint256 bbLoss = loss < bbNAV ? loss : bbNAV;
+    aaNAV -= loss - bbLoss;
+    bbNAV -= bbLoss;
+    uint256 aaSupply = AAtranche.totalSupply();
+    uint256 bbSupply = BBtranche.totalSupply();
+    expectedAAPrice = aaSupply == 0 ? ONE_SCALE : aaNAV * ONE_TRANCHE / aaSupply;
+    expectedBBPrice = bbSupply == 0 ? ONE_SCALE : bbNAV * ONE_TRANCHE / bbSupply;
   }
 
   function _toggleEpoch(bool _start, uint256 newApr, uint256 funds) internal {
@@ -182,15 +197,110 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.getInstantWithdrawFunds();
   }
 
+  /// @notice Request and claim one active tranche after default finalization.
+  /// @param _user active tranche holder
+  /// @param _tranche tranche token to redeem
+  /// @return payout recovered underlying paid to the user
+  function _claimRecoveredTranche(address _user, address _tranche) internal returns (uint256 payout) {
+    uint256 balancePre = underlying.balanceOf(_user);
+    vm.startPrank(_user);
+    cdoEpoch.requestWithdraw(0, _tranche);
+    cdoEpoch.claimWithdrawRequest();
+    vm.stopPrank();
+    payout = underlying.balanceOf(_user) - balancePre;
+  }
+
+  /// @notice Compare finalized AA/BB active NAV against independent interest-inclusive bases.
+  /// @param _exp fuzz scenario values and finalized recovery price
+  function _assertActiveRecoveryModel(DefaultRecoveryFuzzState memory _exp) internal view {
+    uint256 activeFinalNAV = _exp.activeBasis * _exp.recoveryPrice / ONE_TRANCHE;
+    uint256 expectedBB = _exp.activeBBBasis * _exp.recoveryPrice / ONE_TRANCHE;
+    uint256 activeAABasis = _exp.activeBasis - _exp.activeBBBasis;
+    uint256 checkpointBB = _exp.activeBBBasis * _exp.savedAA / activeAABasis;
+    uint256 checkpointTotal = _exp.savedAA + checkpointBB;
+    uint256 splitPrecisionBound = 3;
+    if (activeFinalNAV > checkpointTotal) {
+      splitPrecisionBound += (activeFinalNAV - checkpointTotal) / FULL_ALLOC;
+    }
+
+    assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), activeFinalNAV, 'active recovery is not conserved');
+    assertApproxEqAbs(cdoEpoch.lastNAVBB(), expectedBB, splitPrecisionBound, 'BB recovery does not match the independent model');
+    assertApproxEqAbs(cdoEpoch.lastNAVAA(), activeFinalNAV - expectedBB, splitPrecisionBound, 'AA recovery does not match the independent model');
+  }
+
+  /// @notice Claim one pending receipt and compare it with the common finalized recovery ratio.
+  /// @param _user pending receipt holder
+  /// @param _basis request-time claim basis
+  /// @param _recoveryPrice finalized common recovery ratio
+  /// @return payout recovered underlying paid to the user
+  function _claimPendingRecovery(address _user, uint256 _basis, uint256 _recoveryPrice)
+    internal
+    returns (uint256 payout)
+  {
+    uint256 balancePre = underlying.balanceOf(_user);
+    vm.prank(_user);
+    cdoEpoch.claimWithdrawRequest();
+    payout = underlying.balanceOf(_user) - balancePre;
+    assertEq(
+      payout,
+      _basis * _recoveryPrice / ONE_TRANCHE,
+      'pending receipt does not use the common recovery ratio'
+    );
+  }
+
+  /// @notice Claim every fuzzed recovery position and assert reserve conservation.
+  /// @param _exp fuzz scenario values and finalized recovery price
+  /// @param _users active and pending recovery holders
+  /// @param _pendingFirst true to claim pending receipts before active positions
+  function _assertDefaultRecoveryClaims(
+    DefaultRecoveryFuzzState memory _exp,
+    DefaultRecoveryUsers memory _users,
+    bool _pendingFirst
+  ) internal {
+    DefaultRecoveryClaimState memory claims;
+    // Tranche prices use underlying-token precision. Rounding each price down can leave at most
+    // roughly one raw underlying unit per whole tranche token in the recovery reserve.
+    uint256 priceDustBound =
+      AAtranche.totalSupply() / ONE_TRANCHE +
+      BBtranche.totalSupply() / ONE_TRANCHE +
+      12;
+    claims.expectedAAPayout = AAtranche.totalSupply() * cdoEpoch.priceAA() / ONE_TRANCHE;
+    claims.expectedBBPayout = BBtranche.totalSupply() * cdoEpoch.priceBB() / ONE_TRANCHE;
+    if (_pendingFirst) {
+      claims.pendingAAPayout = _claimPendingRecovery(_users.pendingAA, _exp.pendingBasisAA, _exp.recoveryPrice);
+      claims.pendingBBPayout = _claimPendingRecovery(_users.pendingBB, _exp.pendingBasisBB, _exp.recoveryPrice);
+      claims.activeAAPayout = _claimRecoveredTranche(_users.activeAA, address(AAtranche));
+      claims.activeBBPayout = _claimRecoveredTranche(_users.activeBB, address(BBtranche));
+    } else {
+      claims.activeBBPayout = _claimRecoveredTranche(_users.activeBB, address(BBtranche));
+      claims.activeAAPayout = _claimRecoveredTranche(_users.activeAA, address(AAtranche));
+      claims.pendingBBPayout = _claimPendingRecovery(_users.pendingBB, _exp.pendingBasisBB, _exp.recoveryPrice);
+      claims.pendingAAPayout = _claimPendingRecovery(_users.pendingAA, _exp.pendingBasisAA, _exp.recoveryPrice);
+    }
+
+    assertEq(claims.activeAAPayout, claims.expectedAAPayout, 'active AA recovery payout is wrong');
+    assertEq(claims.activeBBPayout, claims.expectedBBPayout, 'active BB recovery payout is wrong');
+    uint256 totalPayout =
+      claims.pendingAAPayout +
+      claims.pendingBBPayout +
+      claims.activeAAPayout +
+      claims.activeBBPayout;
+    uint256 remainingReserve = IdleCreditVault(address(strategy)).defaultRecoveryReserve();
+    assertEq(totalPayout + remainingReserve, _exp.recovered, 'recovery cash is not conserved');
+    assertEq(
+      underlying.balanceOf(address(strategy)),
+      remainingReserve,
+      'strategy cash does not match the remaining recovery reserve'
+    );
+    assertLe(remainingReserve, priceDustBound, 'excess recovery dust is too large');
+  }
+
   function testContractSize() public view {
     bytes memory runtime0 = vm.getDeployedCode("out/IdleCDOCreditVault.sol/IdleCDOCreditVault.json");
     console2.log("base size", runtime0.length);
     bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariant.sol/IdleCDOEpochVariant.json");
     assertLe(runtime.length, 24_576, "IdleCDOEpochVariant deployed bytecode too large");
     console2.log('size ', runtime.length);
-    bytes memory runtime2 = vm.getDeployedCode("out/IdleCDOEpochVariantAvax.sol/IdleCDOEpochVariantAvax.json");
-    console2.log('size2', runtime2.length);
-    assertLe(runtime2.length, 24_576, "IdleCDOEpochVariantAvax deployed bytecode too large");
   }
 
   function testCantReinitialize() external override {
@@ -198,14 +308,157 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault(address(strategy)).initialize(defaultUnderlying, address(1), manager, borrower, borrowerName, 1e18);
   }
 
+  function testLazyInitializeDefaultRecoveryForUpgradedStrategy() external {
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    stdstore.target(address(creditVault)).sig(creditVault.defaultRecoveryInitialized.selector).checked_write(false);
+    stdstore.target(address(creditVault)).sig(creditVault.canTransfer.selector).checked_write(true);
+
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertTrue(creditVault.defaultRecoveryInitialized(), 'new request should initialize recovery lazily');
+    assertFalse(creditVault.canTransfer(), 'lazy initialization should clear the legacy transfer flag');
+  }
+
+  function testStrategyUpgradeDoesNotRequireUpgradeAndCall() external {
+    address strategyOwner = makeAddr('upgradeStrategyOwner');
+    IdleCreditVault oldImplementation = new IdleCreditVault();
+    ProxyAdmin proxyAdmin = new ProxyAdmin();
+    bytes memory initializeData = abi.encodeWithSelector(
+      IdleCreditVault.initialize.selector,
+      defaultUnderlying,
+      strategyOwner,
+      manager,
+      borrower,
+      borrowerName,
+      initialProvidedApr
+    );
+    ITransparentUpgradeableProxy proxy = ITransparentUpgradeableProxy(address(new TransparentUpgradeableProxy(
+      address(oldImplementation),
+      address(proxyAdmin),
+      initializeData
+    )));
+    IdleCreditVault proxiedStrategy = IdleCreditVault(address(proxy));
+    IdleCreditVault newImplementation = new IdleCreditVault();
+
+    vm.prank(strategyOwner);
+    proxiedStrategy.setWhitelistedCDO(address(cdoEpoch));
+
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.defaultRecoveryInitialized.selector).checked_write(false);
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.canTransfer.selector).checked_write(true);
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.pendingWithdraws.selector).checked_write(uint256(1));
+
+    proxyAdmin.upgrade(proxy, address(newImplementation));
+    assertEq(proxyAdmin.getProxyImplementation(proxy), address(newImplementation), 'implementation was not upgraded');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(address(cdoEpoch));
+    proxiedStrategy.requestWithdraw(0, address(this), 0);
+
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.pendingWithdraws.selector).checked_write(uint256(0));
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.pendingInstantWithdraws.selector).checked_write(uint256(1));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(address(cdoEpoch));
+    proxiedStrategy.requestWithdraw(0, address(this), 0);
+
+    stdstore.target(address(proxiedStrategy)).sig(proxiedStrategy.pendingInstantWithdraws.selector).checked_write(uint256(0));
+    vm.prank(address(cdoEpoch));
+    proxiedStrategy.requestWithdraw(0, address(this), 0);
+    assertTrue(proxiedStrategy.defaultRecoveryInitialized(), 'first clean request should initialize recovery');
+    assertFalse(proxiedStrategy.canTransfer(), 'lazy initialization should clear the legacy transfer flag');
+  }
+
+  /// @notice Legacy normal pending receipts can be fully funded after a plain implementation upgrade.
+  function testUpgradeWithLegacyPendingWithdrawNeedsNoUpgradeAndCall() external {
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    address legacyUser = makeAddr('legacyPendingUpgradeUser');
+    _depositWithUser(legacyUser, 10_000 * ONE_SCALE, true);
+
+    vm.prank(legacyUser);
+    uint256 claimBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertEq(creditVault.pendingWithdraws(), claimBasis, 'legacy pending basis was not recorded');
+
+    // Simulate a legacy receipt, which predates the appended per-epoch recovery mapping.
+    stdstore
+      .target(address(creditVault))
+      .sig(creditVault.withdrawsRequestsByEpoch.selector)
+      .with_key(legacyUser)
+      .with_key(creditVault.epochNumber())
+      .checked_write(uint256(0));
+    // Simulate the appended storage values immediately after a plain proxy implementation upgrade.
+    stdstore.target(address(creditVault)).sig(creditVault.defaultRecoveryInitialized.selector).checked_write(false);
+    stdstore.target(address(creditVault)).sig(creditVault.canTransfer.selector).checked_write(true);
+
+    _startEpochAndCheckPrices(0);
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertEq(creditVault.pendingWithdraws(), 0, 'successful stop did not fund legacy pending receipts');
+    assertFalse(creditVault.defaultRecoveryInitialized(), 'stop should not require migration initialization');
+
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    vm.roll(block.number + 1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertTrue(creditVault.defaultRecoveryInitialized(), 'next new request should initialize recovery lazily');
+    assertFalse(creditVault.canTransfer(), 'lazy initialization should clear the legacy transfer flag');
+
+    uint256 legacyBalancePre = underlying.balanceOf(legacyUser);
+    vm.prank(legacyUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(legacyUser) - legacyBalancePre, claimBasis, 'legacy funded claim is wrong');
+  }
+
+  function testLazyInitializeClearsOnlyStaleClosedCounters() external {
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    address user1 = makeAddr('closedMigrationUser');
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _depositWithUser(user1, 10_000 * ONE_SCALE, true);
+    _startEpochAndCheckPrices(0);
+
+    uint256 grossPrincipal = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    deal(defaultUnderlying, borrower, grossPrincipal + expectedInterest);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    vm.prank(user1);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    uint256 stalePending = 7 * ONE_SCALE;
+    stdstore.target(address(creditVault)).sig(creditVault.defaultRecoveryInitialized.selector).checked_write(false);
+    stdstore.target(address(creditVault)).sig(creditVault.canTransfer.selector).checked_write(true);
+    stdstore.target(address(creditVault)).sig(creditVault.pendingWithdraws.selector).checked_write(stalePending);
+    stdstore.target(address(creditVault)).sig(creditVault.apr0TotalPrincipal.selector).checked_write(stalePending);
+
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    assertTrue(creditVault.defaultRecoveryInitialized(), 'closed vault should initialize recovery lazily');
+    assertFalse(creditVault.canTransfer(), 'lazy initialization should clear the legacy transfer flag');
+    assertEq(creditVault.pendingWithdraws(), 0, 'closed request must not create borrower-facing pending debt');
+    assertEq(creditVault.apr0TotalPrincipal(), 0, 'closed request must not create an APR0 bucket');
+
+    uint256 userBalancePre = underlying.balanceOf(user1);
+    vm.prank(user1);
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(underlying.balanceOf(user1), userBalancePre, 'legacy closed receipt should remain payable');
+
+    uint256 balancePre = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(underlying.balanceOf(address(this)), balancePre, 'new closed receipt should remain payable');
+  }
+
   function testInitialize() public view override {
     assertEq(idleCDO.token(), address(underlying));
-    assertGe(strategy.price(), ONE_SCALE, "strategy price is wrong");
-    assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE, "AA price is wrong");
-    assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, "BB price is wrong");
-    assertEq(initialAAApr, 0, "AA apr");
-    assertEq(initialBBApr, initialApr, "BB apr");
-    assertEq(idleCDO.maxDecreaseDefault(), 5000);
+    assertGe(strategy.price(), ONE_SCALE, 'strategy price is wrong');
+    assertTrue(IdleCreditVault(address(strategy)).defaultRecoveryInitialized(), 'default recovery not initialized');
+    assertEq(idleCDO.tranchePrice(address(AAtranche)), ONE_SCALE, 'AA price is wrong');
+    assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, 'BB price is wrong');
+    assertEq(initialAAApr, 0, 'AA apr');
+    assertEq(initialBBApr, initialApr, 'BB apr');
+    assertEq(idleCDO.oneToken(), ONE_SCALE, 'oneToken');
+    assertEq(_cdoMaxDecreaseDefault(), 0, 'legacy max decrease slot should be unused');
   }
 
   function testCannotDepositWhenEpochRunningOrDefault() external {
@@ -221,6 +474,46 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(false, initialApr, 1000);
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositAA(amount);
+  }
+
+  function testBBDepositsCanBeDisabledAndReenabledByOwner() external {
+    vm.prank(owner);
+    cdoEpoch.setBBDepositEnabled(false);
+
+    assertFalse(cdoEpoch.isBBDepositEnabled(), 'BB deposits should be disabled');
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    idleCDO.depositBB(ONE_SCALE);
+
+    uint256 mintedAA = idleCDO.depositAA(ONE_SCALE);
+    assertGt(mintedAA, 0, 'AA deposits should remain enabled');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAuthorized.selector));
+    cdoEpoch.setBBDepositEnabled(true);
+
+    vm.prank(owner);
+    cdoEpoch.setBBDepositEnabled(true);
+
+    assertTrue(cdoEpoch.isBBDepositEnabled(), 'BB deposits should be enabled');
+    uint256 mintedBB = idleCDO.depositBB(ONE_SCALE);
+    assertGt(mintedBB, 0, 'BB deposit should succeed after opt-in');
+  }
+
+  function testBBDepositDuringEpochRespectsBBDepositFlag() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    idleCDO.depositBB(10_000 * ONE_SCALE);
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setBBDepositEnabled(false);
+    vm.stopPrank();
+
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(ONE_SCALE, address(BBtranche));
   }
 
   function testCannotRequestRedeemWhenEpochRunningOrDefault() external {
@@ -274,20 +567,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _expectedImpliedVirtualPrice(address _tranche, uint256 elapsed, uint256 duration) internal view returns (uint256) {
-    return _expectedImpliedVirtualPrice(
-      _tranche,
-      elapsed,
-      duration,
-      block.timestamp - cdoEpoch.latestHarvestBlock()
-    );
+    return _expectedImpliedVirtualPrice(_tranche, elapsed, duration, block.timestamp - cdoEpoch.latestHarvestBlock());
   }
 
-  function _expectedImpliedVirtualPrice(
-    address _tranche,
-    uint256 elapsed,
-    uint256 duration,
-    uint256 managementFeeElapsed
-  ) internal view returns (uint256) {
+  function _expectedImpliedVirtualPrice(address _tranche, uint256 elapsed, uint256 duration, uint256 managementFeeElapsed) internal view returns (uint256) {
     uint256 trancheSupply = IERC20(_tranche).totalSupply();
     uint256 basePrice = cdoEpoch.virtualPrice(_tranche);
     uint256 expectedGain = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
@@ -486,9 +769,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault _strategy = IdleCreditVault(address(strategy));
 
     // IdleCDOEpoch vars
-    assertEq(cdoEpoch.unlentPerc(), 0, "unlentPerc");
+    assertEq(_cdoUnlentPerc(), 0, "unlentPerc");
     // this is overidden in the test
-    // assertEq(cdoEpoch.lossToleranceBps(), FULL_ALLOC, 'lossTokenranceBps is wrong');
+    // assertEq(_cdoLossToleranceBps(), FULL_ALLOC, 'lossTokenranceBps is wrong');
     assertEq(cdoEpoch.trancheAPRSplitRatio(), FULL_ALLOC, 'trancheAPRSplitRatio is wrong');
     assertEq(cdoEpoch.epochDuration(), 36.5 days, 'epochDuration is wrong');
     assertEq(cdoEpoch.bufferPeriod(), 5 days, 'bufferPeriod is wrong');
@@ -496,7 +779,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'allowAAWithdrawRequest is wrong');
     assertEq(cdoEpoch.allowBBWithdrawRequest(), true, 'allowBBWithdrawRequest is wrong');
     assertEq(cdoEpoch.instantWithdrawAprDelta(), 1.5e18, 'instantWithdrawAprDelta is wrong');
-    // assertEq(cdoEpoch.directDeposit(), true, 'directDeposit is wrong');
+    // assertEq(_cdoDirectDeposit(), true, 'directDeposit is wrong');
     // assertEq(cdoEpoch.keyring() != address(0), true, 'keyring address is wrong');
     // assertEq(cdoEpoch.keyringPolicyId() != 0, true, 'keyring policy id is wrong');
 
@@ -559,6 +842,29 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.setIsProgrammableBorrower(true);
   }
 
+  function testStartEpochRevertsInProgrammableModeWithPendingInstantWithdraws() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertGt(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), 0, 'instant withdraw should be pending');
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+    cdoEpoch.setIsProgrammableBorrower(true);
+    vm.stopPrank();
+
+    vm.warp(cdoEpoch.epochEndDate() + cdoEpoch.bufferPeriod() + 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    assertEq(cdoEpoch.isEpochRunning(), false, 'failed start should not strand a live epoch');
+
+    vm.prank(owner);
+    cdoEpoch.setIsProgrammableBorrower(false);
+  }
+
   function testContractBorrowerWithCodeDoesNotRequireProgrammableMode() external {
     IdleCreditVault _strategy = IdleCreditVault(address(strategy));
     NonProgrammableBorrower safeLikeBorrower = new NonProgrammableBorrower();
@@ -575,11 +881,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertEq(cdoEpoch.isEpochRunning(), true, 'epoch should start');
     assertEq(cdoEpoch.isProgrammableBorrower(), false, 'contract borrower should not be auto-programmable');
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(address(safeLikeBorrower)),
-      amount,
-      'contract borrower did not receive funds'
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(safeLikeBorrower)), amount, 'contract borrower did not receive funds');
   }
 
   function testSetBorrowerAffectsEpochFlows() external {
@@ -602,11 +904,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(true, 0, 0);
 
     // epoch start sends deposits to the borrower currently configured in the strategy
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(newBorrower) - newBorrowerBal,
-      amount,
-      'new borrower did not receive funds'
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(newBorrower) - newBorrowerBal, amount, 'new borrower did not receive funds');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower), oldBorrowerBal, 'old borrower received funds');
 
     uint256 expected = _expectedFundsEndEpoch();
@@ -618,11 +916,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialApr, 0);
     assertEq(cdoEpoch.defaulted(), false, 'vault defaulted');
-    assertEq(
-      newBorrowerBalPreStop - IERC20Detailed(defaultUnderlying).balanceOf(newBorrower),
-      expected,
-      'funds not taken from new borrower'
-    );
+    assertEq(newBorrowerBalPreStop - IERC20Detailed(defaultUnderlying).balanceOf(newBorrower), expected, 'funds not taken from new borrower');
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(borrower), oldBorrowerBalPreStop, 'old borrower paid funds');
   }
 
@@ -767,12 +1061,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.updateAccounting();
     uint256 secondYearFee = _calcManagementFee(amount - firstYearFee, secondFeeRate, 365 days);
-    assertEq(
-      cdoEpoch.unclaimedFees(),
-      firstYearFee + secondYearFee,
-      "new management fee applied retroactively"
-    );
-    assertEq(cdoEpoch.getContractValue(), amount - firstYearFee - secondYearFee, "NAV wrong after second checkpoint");
+    assertEq(cdoEpoch.unclaimedFees(), firstYearFee + secondYearFee, 'new management fee applied retroactively');
+    assertEq(cdoEpoch.getContractValue(), amount - firstYearFee - secondYearFee, 'NAV wrong after second checkpoint');
   }
 
   function testStopEpochPaysManagementFee() external {
@@ -801,18 +1091,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpoch(initialProvidedApr, 0);
 
     uint256 expectedMgmtFee = _calcManagementFee(amount, mgmtFee, 365 days);
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalPre,
-      expectedMgmtFee,
-      "fee receiver got wrong management fee"
-    );
-    assertEq(cdoEpoch.unclaimedFees(), 0, "unclaimed fees should be cleared after stop");
-    assertEq(cdoEpoch.lastEpochInterest(), expectedInterest - expectedMgmtFee, "net epoch interest should include management fee");
-    assertEq(
-      cdoEpoch.getContractValue(),
-      amount + expectedInterest - expectedMgmtFee,
-      "vault NAV after stop does not include management fee"
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalPre, expectedMgmtFee, 'fee receiver got wrong management fee');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'unclaimed fees should be cleared after stop');
+    assertEq(cdoEpoch.lastEpochInterest(), expectedInterest - expectedMgmtFee, 'net epoch interest should include management fee');
+    assertEq(cdoEpoch.getContractValue(), amount + expectedInterest - expectedMgmtFee, 'vault NAV after stop does not include management fee');
   }
 
   function testStopEpochCarriesManagementFeesAboveGrossInterest() external {
@@ -843,15 +1125,51 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 accruedManagementFee = _calcManagementFee(amount, managementFeeRate, 365 days);
     uint256 carriedFee = accruedManagementFee - lowGrossInterest;
 
-    assertGt(accruedManagementFee, lowGrossInterest, "test setup should exceed gross interest");
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalanceBefore,
-      lowGrossInterest,
-      "only fundable fees should be paid"
-    );
-    assertEq(cdoEpoch.unclaimedFees(), carriedFee, "unfunded management fees should remain accrued");
-    assertEq(cdoEpoch.lastEpochInterest(), 0, "net epoch interest should be zero");
-    assertEq(cdoEpoch.getContractValue(), amount + lowGrossInterest - accruedManagementFee, "NAV should include unpaid fees");
+    assertGt(accruedManagementFee, lowGrossInterest, 'test setup should exceed gross interest');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG) - feeReceiverBalanceBefore, lowGrossInterest, 'only fundable fees should be paid');
+    assertEq(cdoEpoch.unclaimedFees(), carriedFee, 'unfunded management fees should remain accrued');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'net epoch interest should be zero');
+    assertEq(cdoEpoch.getContractValue(), amount + lowGrossInterest - accruedManagementFee, 'NAV should include unpaid fees');
+  }
+
+  function testClosePoolRecallsGrossPrincipalBackingCarriedFees() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 managementFeeRate = 2_000;
+    uint256 lowGrossInterest = 100 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFeeRate);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    deal(defaultUnderlying, borrower, lowGrossInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, lowGrossInterest);
+
+    uint256 carriedFee = cdoEpoch.unclaimedFees();
+    assertGt(carriedFee, 0, 'test requires a carried fee');
+    _setManagementFee(0);
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    uint256 grossPrincipal = strategyToken.balanceOf(address(cdoEpoch));
+    assertEq(grossPrincipal, cdoEpoch.getContractValue() + carriedFee, 'gross principal should include fee backing');
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'second epoch should have zero interest');
+
+    deal(defaultUnderlying, borrower, grossPrincipal);
+    uint256 borrowerBalancePre = underlying.balanceOf(borrower);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(borrowerBalancePre - underlying.balanceOf(borrower), grossPrincipal, 'close did not recall gross principal');
+    assertEq(cdoEpoch.unclaimedFees(), carriedFee, 'unfunded fee debt should remain backed');
+    assertFalse(cdoEpoch.defaulted(), 'grossly funded close should not default');
   }
 
   function testStopEpochSplitsManagementFeeBetweenFeeReceiverAndOwner() external {
@@ -884,16 +1202,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 expectedMgmtFee = _calcManagementFee(amount, mgmtFee, 365 days);
     uint256 expectedReceiverFee = expectedMgmtFee * feeSplit / FULL_ALLOC;
     uint256 expectedOwnerFee = expectedMgmtFee - expectedReceiverFee;
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(creatorFeeReceiver) - receiverBalPre,
-      expectedReceiverFee,
-      "fee receiver got wrong split"
-    );
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre,
-      expectedOwnerFee,
-      "owner got wrong split"
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(creatorFeeReceiver) - receiverBalPre, expectedReceiverFee, 'fee receiver got wrong split');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre, expectedOwnerFee, 'owner got wrong split');
   }
 
   function testSetFeeParamsRevertsWhenFeeReceiverIsZero() external {
@@ -937,17 +1247,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialProvidedApr, 0);
 
-    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, "fee receiver should stay set");
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG),
-      feeReceiverBalPre,
-      "fee receiver should get no fees"
-    );
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre,
-      _calcManagementFee(amount, mgmtFee, 365 days),
-      "owner should receive all fees"
-    );
+    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, 'fee receiver should stay set');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(TL_MULTISIG), feeReceiverBalPre, 'fee receiver should get no fees');
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(owner) - ownerBalPre, _calcManagementFee(amount, mgmtFee, 365 days), 'owner should receive all fees');
   }
 
   function testRequestWithdrawChargesManagementFeeUpfront() external {
@@ -963,11 +1265,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
     (uint256 netInterest, ) = _calcInterestForTranche(address(AAtranche), trancheAmount);
     uint256 claimAmountPreFee = principal + netInterest;
-    uint256 expectedMgmtFee = _calcManagementFee(
-      principal,
-      mgmtFeeRate,
-      _withdrawRequestManagementFeeDuration()
-    );
+    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, _withdrawRequestManagementFeeDuration());
     uint256 expectedClaimAmount = claimAmountPreFee - expectedMgmtFee;
 
     uint256 requested = cdoEpoch.requestWithdraw(trancheAmount, address(AAtranche));
@@ -980,11 +1278,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.startEpoch();
 
     uint256 feeReceiverBalPre = underlying.balanceOf(TL_MULTISIG);
-    deal(
-      defaultUnderlying,
-      borrower,
-      cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws()
-    );
+    deal(defaultUnderlying, borrower, cdoEpoch.expectedEpochInterest() + IdleCreditVault(address(strategy)).pendingWithdraws());
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, 0);
@@ -1009,11 +1303,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 principal = trancheAmount * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
     uint256 interest = _calcInterestWithdrawRequest(principal, address(AAtranche));
-    uint256 expectedMgmtFee = _calcManagementFee(
-      principal,
-      mgmtFeeRate,
-      _withdrawRequestManagementFeeDuration()
-    );
+    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, _withdrawRequestManagementFeeDuration());
     uint256 expectedPerfFee = (interest - expectedMgmtFee) * perfFeeRate / FULL_ALLOC;
     uint256 expectedClaimAmount = principal + interest - expectedMgmtFee - expectedPerfFee;
 
@@ -1078,19 +1368,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 trancheReq = IERC20(AAtranche).balanceOf(address(this)) / 2;
     uint256 principal = trancheReq * cdoEpoch.tranchePrice(address(AAtranche)) / ONE_TRANCHE_TOKEN;
-    uint256 expectedMgmtFee = _calcManagementFee(
-      principal,
-      mgmtFeeRate,
-      _withdrawRequestManagementFeeDuration()
-    );
+    uint256 expectedMgmtFee = _calcManagementFee(principal, mgmtFeeRate, _withdrawRequestManagementFeeDuration());
     uint256 expectedPrincipal = principal - expectedMgmtFee;
     uint256 requested = cdoEpoch.requestWithdraw(trancheReq, address(AAtranche));
     uint256 poolPrincipal = cdoEpoch.getContractValue();
-    uint256 expectedLiveMgmtFee = _calcManagementFee(
-      poolPrincipal,
-      mgmtFeeRate,
-      cdoEpoch.bufferPeriod() + cdoEpoch.epochDuration()
-    );
+    uint256 expectedLiveMgmtFee = _calcManagementFee(poolPrincipal, mgmtFeeRate, cdoEpoch.bufferPeriod() + cdoEpoch.epochDuration());
 
     assertEq(requested, expectedPrincipal, "apr0 receipt principal should be haircut by management fee");
     assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee, "apr0 management fee should be booked in pending withdraw fees");
@@ -1110,25 +1392,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     uint256 balAfter = underlying.balanceOf(address(this));
 
-    uint256 expectedWithdrawInterest = _calcApr0NetForPrincipal(
-      poolInterest,
-      poolPrincipal,
-      expectedPrincipal,
-      expectedPrincipal,
-      cdoEpoch.fee()
-    );
+    uint256 expectedWithdrawInterest = _calcApr0NetForPrincipal(poolInterest, poolPrincipal, expectedPrincipal, expectedPrincipal, cdoEpoch.fee());
     assertApproxEqAbs(
-      underlying.balanceOf(TL_MULTISIG) - feeReceiverBalPre,
-      expectedMgmtFee + expectedLiveMgmtFee,
-      5,
-      "fee receiver got wrong apr0 management fee"
+      underlying.balanceOf(TL_MULTISIG) - feeReceiverBalPre, expectedMgmtFee + expectedLiveMgmtFee, 5, 'fee receiver got wrong apr0 management fee'
     );
-    assertApproxEqAbs(
-      balAfter - balBefore,
-      expectedPrincipal + expectedWithdrawInterest,
-      5,
-      "apr0 claim should use post-fee principal"
-    );
+    assertApproxEqAbs(balAfter - balBefore, expectedPrincipal + expectedWithdrawInterest, 5, 'apr0 claim should use post-fee principal');
   }
 
   // function testMaxInstantWithdrawable() external {
@@ -1165,7 +1433,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.paused(), true, 'cdo is not paused');
     assertEq(cdoEpoch.allowAAWithdrawRequest(), false, 'allowAAWithdrawRequest is wrong');
     assertEq(cdoEpoch.allowBBWithdrawRequest(), false, 'allowBBWithdrawRequest is wrong');
-    assertEq(cdoEpoch.expectedEpochInterest(), _scaleAprWithBuffer(initialProvidedApr / 100) * totAmount * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN), 'expectedEpochInterest is wrong');
+    assertEq(
+      cdoEpoch.expectedEpochInterest(),
+      _scaleAprWithBuffer(initialProvidedApr / 100) * totAmount * cdoEpoch.epochDuration() / (365 days * ONE_TRANCHE_TOKEN),
+      'expectedEpochInterest is wrong'
+    );
     assertEq(cdoEpoch.epochEndDate(), time + cdoEpoch.epochDuration(), 'epochEndDate is wrong');
     assertEq(cdoEpoch.instantWithdrawDeadline(), time + cdoEpoch.instantWithdrawDelay(), 'instantWithdrawDeadline is wrong');
     assertEq(IERC20Detailed(strategyToken).balanceOf(address(idleCDO)), totAmount, 'strategyToken bal in cdo is wrong');
@@ -1246,6 +1518,37 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 poolGross;
     uint256 totalFees;
     uint256 netInterest;
+  }
+
+  struct DefaultRecoveryFuzzState {
+    uint256 amountAA;
+    uint256 amountBB;
+    uint256 pendingAmountAA;
+    uint256 pendingAmountBB;
+    uint256 pendingBasisAA;
+    uint256 pendingBasisBB;
+    uint256 savedAA;
+    uint256 savedBB;
+    uint256 activeBasis;
+    uint256 activeBBBasis;
+    uint256 recovered;
+    uint256 recoveryPrice;
+  }
+
+  struct DefaultRecoveryUsers {
+    address activeAA;
+    address activeBB;
+    address pendingAA;
+    address pendingBB;
+  }
+
+  struct DefaultRecoveryClaimState {
+    uint256 expectedAAPayout;
+    uint256 expectedBBPayout;
+    uint256 pendingAAPayout;
+    uint256 pendingBBPayout;
+    uint256 activeAAPayout;
+    uint256 activeBBPayout;
   }
 
   function testDepositDuringEpochMintsDiscountedShares() external {
@@ -1395,11 +1698,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 price = cdoEpoch.virtualPrice(address(AAtranche));
     assertEq(price, expectedPriceAfter, 'AA price after stop epoch is wrong');
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal,
-      expectedFee,
-      'feeReceiver fee is wrong'
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal, expectedFee, 'feeReceiver fee is wrong');
 
     // value for new user should be 1050 - 5 of fees = 1045
     uint256 userValue = expectedMinted * price / ONE_TRANCHE_TOKEN;
@@ -1438,13 +1737,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 depositAmount = 1000 * ONE_SCALE;
     deal(defaultUnderlying, user, depositAmount);
 
-    MidEpochFeeExpectations memory exp = _calcMidEpochFeeExpectations(
-      initialDeposit,
-      depositAmount,
-      mgmtFeeRate,
-      0,
-      remaining
-    );
+    MidEpochFeeExpectations memory exp = _calcMidEpochFeeExpectations(initialDeposit, depositAmount, mgmtFeeRate, 0, remaining);
 
     uint256 feeReceiverBal = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
 
@@ -1463,11 +1756,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(10e18, 0);
 
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal,
-      exp.expectedFees,
-      'feeReceiver fee is wrong'
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal, exp.expectedFees, 'feeReceiver fee is wrong');
     assertEq(cdoEpoch.lastEpochInterest(), exp.expectedInterest + exp.expectedDepositInterest - exp.expectedFees, 'lastEpochInterest is wrong');
     assertApproxEqAbs(cdoEpoch.getContractValue(), exp.expectedTotalFinal, 2, 'contract value is wrong');
 
@@ -1509,13 +1798,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 depositAmount = 1000 * ONE_SCALE;
     deal(defaultUnderlying, user, depositAmount);
 
-    MidEpochFeeExpectations memory exp = _calcMidEpochFeeExpectations(
-      initialDeposit,
-      depositAmount,
-      mgmtFeeRate,
-      perfFeeRate,
-      remaining
-    );
+    MidEpochFeeExpectations memory exp = _calcMidEpochFeeExpectations(initialDeposit, depositAmount, mgmtFeeRate, perfFeeRate, remaining);
 
     uint256 feeReceiverBal = IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver());
 
@@ -1534,11 +1817,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(10e18, 0);
 
-    assertEq(
-      IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal,
-      exp.expectedFees,
-      'feeReceiver fee is wrong'
-    );
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverBal, exp.expectedFees, 'feeReceiver fee is wrong');
     assertEq(cdoEpoch.lastEpochInterest(), exp.expectedInterest + exp.expectedDepositInterest - exp.expectedFees, 'lastEpochInterest is wrong');
     assertApproxEqAbs(cdoEpoch.getContractValue(), exp.expectedTotalFinal, 2, 'contract value is wrong');
 
@@ -1603,17 +1882,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(cdoEpoch.getContractValue(), 2350 * ONE_SCALE, 2, 'contract value is wrong');
   }
 
-  function _calcMidEpochFeeExpectations(
-    uint256 initialDeposit,
-    uint256 depositAmount,
-    uint256 mgmtFeeRate,
-    uint256 perfFeeRate,
-    uint256 remaining
-  ) internal view returns (MidEpochFeeExpectations memory exp) {
+  function _calcMidEpochFeeExpectations(uint256 initialDeposit, uint256 depositAmount, uint256 mgmtFeeRate, uint256 perfFeeRate, uint256 remaining)
+    internal
+    view
+    returns (MidEpochFeeExpectations memory exp)
+  {
     exp.expectedInterest = cdoEpoch.expectedEpochInterest();
-    exp.expectedDepositInterest = _calcInterest(depositAmount) *
-      (remaining + cdoEpoch.bufferPeriod()) /
-      (cdoEpoch.epochDuration() + cdoEpoch.bufferPeriod());
+    exp.expectedDepositInterest = _calcInterest(depositAmount) * (remaining + cdoEpoch.bufferPeriod()) / (cdoEpoch.epochDuration() + cdoEpoch.bufferPeriod());
     exp.accruedMgmtFee = _calcManagementFee(initialDeposit, mgmtFeeRate, remaining);
     exp.navAfterCheckpoint = initialDeposit - exp.accruedMgmtFee;
     uint256 existingFutureMgmtFee = _calcManagementFee(exp.navAfterCheckpoint, mgmtFeeRate, remaining);
@@ -1628,16 +1903,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     exp.expectedMinted = exp.expectedUserFinal * IERC20(address(AAtranche)).totalSupply() / exp.expectedExistingFinal;
   }
 
-  function _calcMidEpochDepositExpectations(address _tranche, uint256 _amount)
-    internal
-    view
-    returns (MidEpochDepositExpectations memory exp)
-  {
+  function _calcMidEpochDepositExpectations(address _tranche, uint256 _amount) internal view returns (MidEpochDepositExpectations memory exp) {
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
     uint256 buffer = cdoEpoch.bufferPeriod();
-    uint256 interest = _calcInterest(_amount) *
-      (cdoEpoch.epochEndDate() - block.timestamp + buffer) /
-      (cdoEpoch.epochDuration() + buffer);
+    uint256 interest = _calcInterest(_amount) * (cdoEpoch.epochEndDate() - block.timestamp + buffer) / (cdoEpoch.epochDuration() + buffer);
     uint256 feeComplement = FULL_ALLOC - cdoEpoch.fee();
     uint256 netExpected = expectedInterest;
     uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
@@ -1727,6 +1996,29 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
     vm.stopPrank();
+  }
+
+  function testInvalidTrancheRejectedByMidEpochDepositAndWriteOff() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    _startEpochAndCheckPrices(0);
+
+    uint256 expectedInterestPre = cdoEpoch.expectedEpochInterest();
+    uint256 strategyBalancePre = strategyToken.balanceOf(address(cdoEpoch));
+    address invalidTranche = address(strategy);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(ONE_SCALE, invalidTranche);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_SCALE, invalidTranche);
+
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterestPre, 'invalid tranche changed expected interest');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), strategyBalancePre, 'invalid tranche changed strategy balance');
   }
 
   function testSetIsDepositDuringEpochDisabled() external {
@@ -1854,11 +2146,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _startEpochAndCheckPrices(1);
     // expected interest is interest of the user still deposited (totTVLBase / 2 / 100, fees included) + the fee
     // of the user with a pending withdraw (we scale the interest with the buffer period as we do with the apr)
-    assertEq(
-      cdoEpoch.expectedEpochInterest(), 
-      _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees,
-      'expectedEpochInterest is wrong epoch 1'
-    );
+    assertEq(cdoEpoch.expectedEpochInterest(), _scaleAprWithBuffer(cdoEpoch.getContractValue() / 100) + withdrawFees, 'expectedEpochInterest is wrong epoch 1');
     // stop epoch.
 
     // gross interest
@@ -1868,7 +2156,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // borrower should pay for pending withdraw + interest + fees + interest of the other deposit (fee included)
     // we scale the interest with the buffer period as we do with the apr
-    _stopEpochAndCheckPrices(1, initialProvidedApr, uint256(int256(_strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100))));
+    _stopEpochAndCheckPrices(
+      1, initialProvidedApr, uint256(int256(_strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100)))
+    );
     // _stopEpochAndCheckPrices(1, initialProvidedApr, uint256(int256(_strategy.pendingWithdraws() + fees - withdrawFees + _scaleAprWithBuffer(totTVLBase / 2 / 100)) + cdoEpoch.interestForOverUnderPerformance()));
 
     assertApproxEqAbs(IERC20(defaultUnderlying).balanceOf(cdoEpoch.feeReceiver()) - feeBalPre, fees, 1, 'fee balance is wrong');
@@ -1898,12 +2188,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _toggleEpoch(true, 0, 0);
     uint256 AAPricePost = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePost = cdoEpoch.virtualPrice(address(BBtranche));
-    assertApproxEqAbs(AAPricePost, AAPricePre, 1, 
-      string(abi.encodePacked("AA price is not the same after starting epoch: ", epochNum))
-    );
-    assertApproxEqAbs(BBPricePost, BBPricePre, 1,
-      string(abi.encodePacked("BB price is not the same after starting epoch: ", epochNum))
-    );
+    assertApproxEqAbs(AAPricePost, AAPricePre, 1, string(abi.encodePacked('AA price is not the same after starting epoch: ', epochNum)));
+    assertApproxEqAbs(BBPricePost, BBPricePre, 1, string(abi.encodePacked('BB price is not the same after starting epoch: ', epochNum)));
   }
 
   function _stopEpochAndCheckPrices(uint256 epochNum, uint256 newApr, uint256 funds) internal {
@@ -1914,14 +2200,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 AAPricePost = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePost = cdoEpoch.virtualPrice(address(BBtranche));
     if (IERC20(address(AAtranche)).totalSupply() > 0 && funds != 0) {
-      assertGt(AAPricePost, AAPricePre,
-        string(abi.encodePacked("AA price is not increased after stopping epoch: ", epochNum))
-      );
+      assertGt(AAPricePost, AAPricePre, string(abi.encodePacked('AA price is not increased after stopping epoch: ', epochNum)));
     }
     if (IERC20(address(BBtranche)).totalSupply() > 0 && funds != 0) {
-      assertGt(BBPricePost, BBPricePre,
-        string(abi.encodePacked("BB price is not increased after stopping epoch: ", epochNum))
-      );
+      assertGt(BBPricePost, BBPricePre, string(abi.encodePacked('BB price is not increased after stopping epoch: ', epochNum)));
     }
   }
 
@@ -2008,7 +2290,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // interest minus fees are sent directly to the strategy
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(cdoEpoch)), 0, 'cdo got wrong amount of funds with pending withdraw');
     // interest minus fees are mint as strategyTokens in the cdo
-    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBalPre, expectedInterest - fees, 'cdo got wrong amount of strategyTokens in second epoch');
+    assertEq(
+      IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
+      expectedInterest - fees,
+      'cdo got wrong amount of strategyTokens in second epoch'
+    );
     // pending withdraw requests are in the strategy contract
     uint256 balPostStrategy = IERC20Detailed(defaultUnderlying).balanceOf(address(strategy));
     assertEq(balPostStrategy - balPreStrategy, pending + (expectedInterest - fees), 'strategy got wrong amount of funds with pending withdraw');
@@ -2050,37 +2336,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 feeExpected = overrideInterest * cdoEpoch.fee() / FULL_ALLOC;
     uint256 netExpected = overrideInterest - feeExpected;
-    assertEq(
-      priceAAPost,
-      _expectedPriceFromNav(aaNavPre, aaSupplyPre, netExpected, ratioPre),
-      'AA price not matching interest minted'
-    );
+    assertEq(priceAAPost, _expectedPriceFromNav(aaNavPre, aaSupplyPre, netExpected, ratioPre), 'AA price not matching interest minted');
 
     assertEq(IdleCreditVault(address(strategy)).epochNumber(), 1, 'epochNumber not incremented');
     assertEq(IdleCreditVault(address(strategy)).totEpochDeposits(), 0, 'totEpochDeposits not reset');
-    assertEq(
-      strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
-      overrideInterest,
-      'strategy tokens not minted'
-    );
-    assertEq(
-      underlying.balanceOf(address(strategy)),
-      strategyUnderlyingPre,
-      'strategy underlying changed'
-    );
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre, overrideInterest, 'strategy tokens not minted');
+    assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, 'strategy underlying changed');
     assertEq(cdoEpoch.lastEpochInterest(), netExpected, 'lastEpochInterest wrong');
-    assertEq(
-      underlying.balanceOf(cdoEpoch.feeReceiver()) - feeReceiverUnderlyingPre,
-      0,
-      'fee receiver got underlyings'
-    );
+    assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()) - feeReceiverUnderlyingPre, 0, 'fee receiver got underlyings');
     uint256 priceAA = cdoEpoch.tranchePrice(address(AAtranche));
     uint256 expectedFeeShares = feeExpected * ONE_TRANCHE_TOKEN / priceAA;
     assertApproxEqAbs(
-      IERC20(address(AAtranche)).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverAApre,
-      expectedFeeShares,
-      1,
-      'fee receiver tranche shares wrong'
+      IERC20(address(AAtranche)).balanceOf(cdoEpoch.feeReceiver()) - feeReceiverAApre, expectedFeeShares, 1, 'fee receiver tranche shares wrong'
     );
   }
 
@@ -2110,20 +2377,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpoch(0, overrideInterest);
 
     uint256 feeExpected = overrideInterest * cdoEpoch.fee() / FULL_ALLOC;
-    uint256 expectedFeeShares =
-      feeExpected * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche));
-    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, "fee receiver should stay set");
-    assertEq(
-      IERC20(address(AAtranche)).balanceOf(TL_MULTISIG),
-      feeReceiverAAPre,
-      "fee receiver should get no fee shares"
-    );
-    assertApproxEqAbs(
-      IERC20(address(AAtranche)).balanceOf(owner) - ownerAAPre,
-      expectedFeeShares,
-      1,
-      "owner should receive all minted fee shares"
-    );
+    uint256 expectedFeeShares = feeExpected * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche));
+    assertEq(cdoEpoch.feeReceiver(), TL_MULTISIG, 'fee receiver should stay set');
+    assertEq(IERC20(address(AAtranche)).balanceOf(TL_MULTISIG), feeReceiverAAPre, 'fee receiver should get no fee shares');
+    assertApproxEqAbs(IERC20(address(AAtranche)).balanceOf(owner) - ownerAAPre, expectedFeeShares, 1, 'owner should receive all minted fee shares');
   }
 
   function testStopEpochMintInterestOverrideCanExceedExpectedInterestUpToMaxAprCap() external {
@@ -2153,11 +2410,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, overrideInterest);
 
-    assertEq(
-      strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
-      overrideInterest,
-      'strategy tokens not minted up to cap'
-    );
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre, overrideInterest, 'strategy tokens not minted up to cap');
     assertEq(cdoEpoch.lastEpochInterest(), overrideInterest, 'lastEpochInterest is wrong');
   }
 
@@ -2221,12 +2474,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 apr0NetInterest;
     {
       uint256 interest2 = 500 * ONE_SCALE;
-      Apr0Calc memory calc = _calcApr0StopEpochVals(
-        interest2,
-        cdoEpoch.getContractValue(),
-        IdleCreditVault(address(strategy)).apr0TotalPrincipal(),
-        cdoEpoch.fee()
-      );
+      Apr0Calc memory calc =
+        _calcApr0StopEpochVals(interest2, cdoEpoch.getContractValue(), IdleCreditVault(address(strategy)).apr0TotalPrincipal(), cdoEpoch.fee());
       apr0NetInterest = calc.apr0Net;
 
       StopEpochMintPre memory pre;
@@ -2248,21 +2497,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       assertGt(priceAAPost, pre.priceAA, 'AA price not increased with pending withdraws');
 
       assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), 0, 'pending withdraws not cleared');
+      assertEq(strategyToken.balanceOf(address(cdoEpoch)) - pre.strategyTokenBal, interest2 - calc.apr0Net, 'strategy tokens not minted for interest');
       assertEq(
-        strategyToken.balanceOf(address(cdoEpoch)) - pre.strategyTokenBal,
-        interest2 - calc.apr0Net,
-        'strategy tokens not minted for interest'
+        underlying.balanceOf(address(strategy)) - pre.strategyUnderlying, pending + apr0NetInterest, 'strategy underlying not updated for pending withdraws'
       );
-      assertEq(
-        underlying.balanceOf(address(strategy)) - pre.strategyUnderlying,
-        pending + apr0NetInterest,
-        'strategy underlying not updated for pending withdraws'
-      );
-      assertEq(
-        underlying.balanceOf(cdoEpoch.feeReceiver()) - pre.feeReceiverUnderlying,
-        0,
-        'fee receiver got underlyings'
-      );
+      assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()) - pre.feeReceiverUnderlying, 0, 'fee receiver got underlyings');
       assertApproxEqAbs(
         IERC20(address(AAtranche)).balanceOf(cdoEpoch.feeReceiver()) - pre.feeReceiverAA,
         calc.totalFees * ONE_TRANCHE_TOKEN / cdoEpoch.tranchePrice(address(AAtranche)),
@@ -2276,12 +2515,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 userBalPre = underlying.balanceOf(address(this));
     cdoEpoch.claimWithdrawRequest();
     uint256 userBalPost = underlying.balanceOf(address(this));
-    assertApproxEqAbs(
-      userBalPost - userBalPre,
-      pending + apr0NetInterest,
-      1,
-      'claimed amount is wrong'
-    );
+    assertApproxEqAbs(userBalPost - userBalPre, pending + apr0NetInterest, 1, 'claimed amount is wrong');
   }
 
   function testStartEpochAfterMintInterestDoesNotPullInterest() external {
@@ -2303,25 +2537,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 interest = 100 * ONE_SCALE;
     cdoEpoch.stopEpoch(0, interest);
 
-    assertEq(
-      IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokensBalPre,
-      interest,
-      'strategy token bal of cdo did not increase'
-    );
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)) - strategyTokensBalPre, interest, 'strategy token bal of cdo did not increase');
 
     // interest is minted so we don't send underlyings to the borrower here
     _startEpochAndCheckPrices(1);
 
-    assertEq(
-      underlying.balanceOf(address(strategy)),
-      strategyUnderlyingPre,
-      'strategy underlying changed'
-    );
-    assertEq(
-      underlying.balanceOf(borrower),
-      borrowerBalPre,
-      'borrower got unexpected funds'
-    );
+    assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, 'strategy underlying changed');
+    assertEq(underlying.balanceOf(borrower), borrowerBalPre, 'borrower got unexpected funds');
   }
 
   function testStopEpochMintInterestWithAprNoOverride() external {
@@ -2339,20 +2561,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(newApr, 0);
 
-    assertEq(
-      IdleCreditVault(address(strategy)).getApr(),
-      _scaleAprWithBuffer(newApr),
-      'apr not scaled for next epoch'
-    );
+    assertEq(IdleCreditVault(address(strategy)).getApr(), _scaleAprWithBuffer(newApr), 'apr not scaled for next epoch');
 
     _startEpochAndCheckPrices(1);
     uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
     assertGt(expectedInterest, 0, 'expected interest should be > 0');
-    assertEq(
-      expectedInterest,
-      _calcInterest(cdoEpoch.getContractValue()),
-      'expected interest not based on apr'
-    );
+    assertEq(expectedInterest, _calcInterest(cdoEpoch.getContractValue()), 'expected interest not based on apr');
 
     uint256 strategyTokenBalPre = strategyToken.balanceOf(address(cdoEpoch));
     uint256 strategyUnderlyingPre = underlying.balanceOf(address(strategy));
@@ -2363,27 +2577,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(newAprSecond, 0);
 
-    assertEq(
-      IdleCreditVault(address(strategy)).getApr(),
-      _scaleAprWithBuffer(newAprSecond),
-      'apr not scaled for next epoch (second)'
-    );
+    assertEq(IdleCreditVault(address(strategy)).getApr(), _scaleAprWithBuffer(newAprSecond), 'apr not scaled for next epoch (second)');
 
-    assertEq(
-      strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre,
-      expectedInterest,
-      'strategy tokens not minted from apr'
-    );
-    assertEq(
-      underlying.balanceOf(address(strategy)),
-      strategyUnderlyingPre,
-      'strategy underlying changed'
-    );
-    assertEq(
-      underlying.balanceOf(borrower),
-      borrowerBalPre,
-      'borrower paid interest'
-    );
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)) - strategyTokenBalPre, expectedInterest, 'strategy tokens not minted from apr');
+    assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, 'strategy underlying changed');
+    assertEq(underlying.balanceOf(borrower), borrowerBalPre, 'borrower paid interest');
     assertEq(cdoEpoch.lastEpochInterest(), expectedInterest, 'lastEpochInterest wrong');
   }
 
@@ -2408,9 +2606,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 depositAmount = 1000 * ONE_SCALE;
     deal(defaultUnderlying, user, depositAmount);
 
-    uint256 expectedInterest = _calcInterest(depositAmount) *
-      (cdoEpoch.epochEndDate() - block.timestamp + cdoEpoch.bufferPeriod()) /
-      (cdoEpoch.epochDuration() + cdoEpoch.bufferPeriod());
+    uint256 expectedInterest = _calcInterest(depositAmount) * (cdoEpoch.epochEndDate() - block.timestamp + cdoEpoch.bufferPeriod())
+      / (cdoEpoch.epochDuration() + cdoEpoch.bufferPeriod());
 
     vm.startPrank(user);
     IERC20Detailed(defaultUnderlying).approve(address(cdoEpoch), depositAmount);
@@ -2498,6 +2695,56 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.isEpochRunning(), false, 'isEpochRunning is wrong');
   }
   
+  /// @notice A funded instant receipt remains claimable when the borrower later defaults at epoch stop.
+  function testFundedInstantWithdrawRemainsClaimableAfterStopEpochDefault() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 mintedAA = idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    uint256 requested = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
+    _startEpochAndCheckPrices(1);
+    vm.warp(cdoEpoch.instantWithdrawDeadline() + 1);
+    _getInstantFunds();
+
+    assertEq(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), 0, 'instant request should be fully funded');
+
+    _toggleEpoch(false, initialProvidedApr / 2, _expectedFundsEndEpoch() - 1);
+    _checkDefault();
+    assertEq(cdoEpoch.allowInstantWithdraw(), true, 'funded instant claims should remain enabled');
+
+    uint256 balPre = underlying.balanceOf(address(this));
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    assertEq(underlying.balanceOf(address(this)) - balPre, requested, 'funded instant claim amount is wrong');
+    assertEq(IdleCreditVault(address(strategy)).instantWithdrawsRequests(address(this)), 0, 'instant request was not cleared');
+  }
+
+  function testStopEpochDefaultWaivesAccruedManagementFees() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    _setManagementFee(1_000);
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    _toggleEpoch(false, initialProvidedApr, 0);
+
+    _checkDefault();
+    uint256 accruedFees = cdoEpoch.unclaimedFees();
+    assertGt(accruedFees, 0, 'default should checkpoint elapsed management fees');
+    uint256 fullRecovery = cdoEpoch.getContractValue() + accruedFees + cdoEpoch.expectedEpochInterest();
+    deal(defaultUnderlying, manager, fullRecovery);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), fullRecovery);
+    cdoEpoch.finalizeDefault(fullRecovery, manager);
+    vm.stopPrank();
+
+    assertEq(cdoEpoch.managementFee(), 0, 'management fee rate should be cleared');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'accrued management fees should be waived');
+    assertEq(IdleCreditVault(address(strategy)).defaultRecoveryPrice(), ONE_TRANCHE, 'fees reduced recovery basis');
+  }
+
   function _checkDefault() internal view {
     assertEq(cdoEpoch.defaulted(), true, 'pool is not defaulted');
     assertEq(cdoEpoch.allowAAWithdrawRequest(), false, 'allowAAWithdrawRequest is wrong');
@@ -2508,13 +2755,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testOnlyCDOCanGetFundsFromBorrower() external {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(address(222));
-    cdoEpoch.getFundsFromBorrower(1,1,1);
+    cdoEpoch.getFundsFromBorrower(3);
 
     deal(defaultUnderlying, borrower, 1000);
 
     // cdo can call this
     vm.prank(address(idleCDO));
-    cdoEpoch.getFundsFromBorrower(1,1,1);
+    cdoEpoch.getFundsFromBorrower(3);
   }
 
   function testGetInstantWithdrawFunds() external {
@@ -2625,8 +2872,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
     uint256 requestedAA1 = cdoEpoch.requestWithdraw(mintedAA / 2, address(AAtranche));
 
-    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedAA1, 'strategyTokens for user not minted properly on first request');
-    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedAA1 - netInterest, 'strategyTokens for cdo not burned properly on first request');
+    assertEq(
+      IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser,
+      requestedAA1,
+      'strategyTokens for user not minted properly on first request'
+    );
+    assertEq(
+      strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)),
+      requestedAA1 - netInterest,
+      'strategyTokens for cdo not burned properly on first request'
+    );
     assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), mintedAA / 2, 'AA tranches not burned after first request');
     assertApproxEqAbs(requestedAA1, maxAA / 2, 1, 'first requested amount for AA is wrong');
     assertEq(lastNAVAA - cdoEpoch.lastNAVAA(), requestedAA1 - netInterest, 'lastNAVAA is wrong after first request');
@@ -2644,8 +2899,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // approximated because of different decimals between tranche token and underlying
     assertApproxEqAbs(cdoEpoch.lastNAVAA(), 0, 10000, 'lastNAVAA should be 0');
     assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'AA tranches not burned');
-    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser, requestedAA2, 'strategyTokens for user not minted properly on second request');
-    assertEq(strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), requestedAA2 - netInterest, 'strategyTokens for cdo not burned properly on second request');
+    assertEq(
+      IERC20Detailed(address(strategy)).balanceOf(address(this)) - strategyTokenBalUser,
+      requestedAA2,
+      'strategyTokens for user not minted properly on second request'
+    );
+    assertEq(
+      strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)),
+      requestedAA2 - netInterest,
+      'strategyTokens for cdo not burned properly on second request'
+    );
     assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2, 'pendingWithdraws for AA is wrong');
     assertEq(_strategy.withdrawsRequests(address(this)), requestedAA1 + requestedAA2, 'withdrawsRequests for AA is wrong');
 
@@ -2658,8 +2921,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // approximated because of different decimals between tranche token and underlying
     assertApproxEqAbs(cdoEpoch.lastNAVBB(), 0, 10000, 'lastNAVBB should be 0');
     assertEq(IERC20Detailed(address(BBtranche)).balanceOf(address(this)), 0, 'AA tranches not burned');
-    assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)) - strategyTokenBalUser, requestedBB, 'strategyTokens for user not minted properly on BB request');
-    assertEq(strategyTokenBalCDO - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)), requestedBB - netInterest, 'strategyTokens for cdo not burned properly on BB request');
+    assertEq(
+      IERC20Detailed(strategyToken).balanceOf(address(this)) - strategyTokenBalUser, requestedBB, 'strategyTokens for user not minted properly on BB request'
+    );
+    assertEq(
+      strategyTokenBalCDO - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)),
+      requestedBB - netInterest,
+      'strategyTokens for cdo not burned properly on BB request'
+    );
     assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2 + requestedBB, 'pendingWithdraws for BB request is wrong');
     assertEq(_strategy.withdrawsRequests(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'withdrawsRequests for BB is wrong');
     assertEq(maxBB > 0, true, 'maxBB is wrong');
@@ -2798,14 +3067,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     uint256 balAfter = underlying.balanceOf(address(this));
 
-    uint256 expectedWithdrawInterest = _calcApr0NetForPrincipal(
-      poolInterest,
-      poolPrincipal,
-      principal,
-      principal,
-      cdoEpoch.fee()
-    );
-    assertApproxEqAbs(balAfter - balBefore, principal + expectedWithdrawInterest, 5, "apr0 net withdraw interest wrong");
+    uint256 expectedWithdrawInterest = _calcApr0NetForPrincipal(poolInterest, poolPrincipal, principal, principal, cdoEpoch.fee());
+    assertApproxEqAbs(balAfter - balBefore, principal + expectedWithdrawInterest, 5, 'apr0 net withdraw interest wrong');
   }
 
   function testApr0WithdrawMultiUserProRataSameEpoch() external {
@@ -2851,20 +3114,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
         uint256 poolPrincipal = cdoEpoch.getContractValue();
         uint256 apr0Principal = principalThis + principalUser1;
 
-        expectedThisInterest = _calcApr0NetForPrincipal(
-          1500 * ONE_SCALE,
-          poolPrincipal,
-          apr0Principal,
-          principalThis,
-          cdoEpoch.fee()
-        );
-        expectedUser1Interest = _calcApr0NetForPrincipal(
-          1500 * ONE_SCALE,
-          poolPrincipal,
-          apr0Principal,
-          principalUser1,
-          cdoEpoch.fee()
-        );
+        expectedThisInterest = _calcApr0NetForPrincipal(1500 * ONE_SCALE, poolPrincipal, apr0Principal, principalThis, cdoEpoch.fee());
+        expectedUser1Interest = _calcApr0NetForPrincipal(1500 * ONE_SCALE, poolPrincipal, apr0Principal, principalUser1, cdoEpoch.fee());
       }
 
       _startEpochAndCheckPrices(1);
@@ -2882,12 +3133,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
         uint256 balThisPre = underlying.balanceOf(address(this));
         cdoEpoch.claimWithdrawRequest();
         uint256 balThisPost = underlying.balanceOf(address(this));
-        assertApproxEqAbs(
-          balThisPost - balThisPre,
-          principalThis + expectedThisInterest,
-          5,
-          "apr0 pro-rata wrong for user this"
-        );
+        assertApproxEqAbs(balThisPost - balThisPre, principalThis + expectedThisInterest, 5, 'apr0 pro-rata wrong for user this');
       }
 
       {
@@ -2895,12 +3141,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
         vm.prank(user1);
         cdoEpoch.claimWithdrawRequest();
         uint256 balUser1Post = underlying.balanceOf(user1);
-        assertApproxEqAbs(
-          balUser1Post - balUser1Pre,
-          principalUser1 + expectedUser1Interest,
-          5,
-          "apr0 pro-rata wrong for user1"
-        );
+        assertApproxEqAbs(balUser1Post - balUser1Pre, principalUser1 + expectedUser1Interest, 5, 'apr0 pro-rata wrong for user1');
       }
     }
 
@@ -2953,20 +3194,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
       uint256 poolPrincipal = cdoEpoch.getContractValue();
       uint256 apr0Principal = principalAA + principalBB;
-      expectedAAInterest = _calcApr0NetForPrincipal(
-        900 * ONE_SCALE,
-        poolPrincipal,
-        apr0Principal,
-        principalAA,
-        cdoEpoch.fee()
-      );
-      expectedBBInterest = _calcApr0NetForPrincipal(
-        900 * ONE_SCALE,
-        poolPrincipal,
-        apr0Principal,
-        principalBB,
-        cdoEpoch.fee()
-      );
+      expectedAAInterest = _calcApr0NetForPrincipal(900 * ONE_SCALE, poolPrincipal, apr0Principal, principalAA, cdoEpoch.fee());
+      expectedBBInterest = _calcApr0NetForPrincipal(900 * ONE_SCALE, poolPrincipal, apr0Principal, principalBB, cdoEpoch.fee());
     }
 
     _startEpochAndCheckPrices(1);
@@ -3144,13 +3373,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       deal(defaultUnderlying, borrower, poolInterest1 + pendingWithdraws1 + amount);
       vm.prank(manager);
       cdoEpoch.stopEpoch(0, poolInterest1);
-      expectedClaim = principal1 + _calcApr0NetForPrincipal(
-        poolInterest1,
-        poolPrincipal1,
-        principal1,
-        principal1,
-        cdoEpoch.fee()
-      );
+      expectedClaim = principal1 + _calcApr0NetForPrincipal(poolInterest1, poolPrincipal1, principal1, principal1, cdoEpoch.fee());
     }
     {
       principal2 = cdoEpoch.requestWithdraw(IERC20(AAtranche).balanceOf(address(this)) / 4, address(AAtranche));
@@ -3164,24 +3387,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       deal(defaultUnderlying, borrower, poolInterest2 + pendingWithdraws2 + amount);
       vm.prank(manager);
       cdoEpoch.stopEpoch(0, poolInterest2);
-      expectedClaim += principal2 + _calcApr0NetForPrincipal(
-        poolInterest2,
-        poolPrincipal2,
-        principal2,
-        principal2,
-        cdoEpoch.fee()
-      );
+      expectedClaim += principal2 + _calcApr0NetForPrincipal(poolInterest2, poolPrincipal2, principal2, principal2, cdoEpoch.fee());
     }
 
     uint256 balBefore = underlying.balanceOf(address(this));
     cdoEpoch.claimWithdrawRequest();
     uint256 balAfter = underlying.balanceOf(address(this));
-    assertApproxEqAbs(
-      balAfter - balBefore,
-      expectedClaim,
-      8,
-      "apr0 rolling claim wrong"
-    );
+    assertApproxEqAbs(balAfter - balBefore, expectedClaim, 8, 'apr0 rolling claim wrong');
   }
 
   function testApr0WithdrawLateClaimDoesNotAccrueExtraEpochs() external {
@@ -3217,13 +3429,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, poolInterest1);
 
-    uint256 expectedClaim = principal + _calcApr0NetForPrincipal(
-      poolInterest1,
-      poolPrincipal,
-      principal,
-      principal,
-      cdoEpoch.fee()
-    );
+    uint256 expectedClaim = principal + _calcApr0NetForPrincipal(poolInterest1, poolPrincipal, principal, principal, cdoEpoch.fee());
 
     _startEpochAndCheckPrices(2);
     vm.warp(cdoEpoch.epochEndDate() + 1);
@@ -3245,12 +3451,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(balAfter - balBefore, expectedClaim, 5, "apr0 late claim changed");
   }
 
-  function _runApr0RemainingWithdrawRound(
-    address user1,
-    uint256 epochToStart,
-    uint256 poolInterest,
-    uint256 fundingBuffer
-  ) internal {
+  function _runApr0RemainingWithdrawRound(address user1, uint256 epochToStart, uint256 poolInterest, uint256 fundingBuffer) internal {
     // Helper used by multi-user APR0 test: withdraw full remaining balances and validate both claims.
     uint256 principalThis = cdoEpoch.requestWithdraw(0, address(AAtranche));
     vm.prank(user1);
@@ -3268,13 +3469,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     assertApproxEqAbs(
       underlying.balanceOf(address(this)) - balThisPre,
-      principalThis + _calcApr0NetForPrincipal(
-        poolInterest,
-        poolPrincipal,
-        principalThis + principalUser1,
-        principalThis,
-        cdoEpoch.fee()
-      ),
+      principalThis + _calcApr0NetForPrincipal(poolInterest, poolPrincipal, principalThis + principalUser1, principalThis, cdoEpoch.fee()),
       5,
       "apr0 second claim wrong for user this"
     );
@@ -3284,32 +3479,21 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimWithdrawRequest();
     assertApproxEqAbs(
       underlying.balanceOf(user1) - balUser1Pre,
-      principalUser1 + _calcApr0NetForPrincipal(
-        poolInterest,
-        poolPrincipal,
-        principalThis + principalUser1,
-        principalUser1,
-        cdoEpoch.fee()
-      ),
+      principalUser1 + _calcApr0NetForPrincipal(poolInterest, poolPrincipal, principalThis + principalUser1, principalUser1, cdoEpoch.fee()),
       5,
       "apr0 second claim wrong for user1"
     );
   }
 
   function _forceLastEpochAprToZero() internal {
-    stdstore
-      .target(address(cdoEpoch))
-      .sig(cdoEpoch.lastEpochApr.selector)
-      .checked_write(uint256(0));
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.lastEpochApr.selector).checked_write(uint256(0));
   }
 
-  function _calcApr0NetForPrincipal(
-    uint256 interest,
-    uint256 poolPrincipal,
-    uint256 apr0Principal,
-    uint256 principal,
-    uint256 feeBps
-  ) internal pure returns (uint256) {
+  function _calcApr0NetForPrincipal(uint256 interest, uint256 poolPrincipal, uint256 apr0Principal, uint256 principal, uint256 feeBps)
+    internal
+    pure
+    returns (uint256)
+  {
     uint256 totalPrincipal = poolPrincipal + apr0Principal;
     if (totalPrincipal == 0 || principal == 0) {
       return 0;
@@ -3319,12 +3503,41 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     return gross - fees;
   }
 
-  function _calcApr0StopEpochVals(
-    uint256 interest,
-    uint256 poolPrincipal,
-    uint256 apr0Principal,
-    uint256 feeBps
-  ) internal pure returns (Apr0Calc memory out) {
+  function _expectedLossAdjustedClaim(
+    uint256 activeNav,
+    uint256 expectedInterest,
+    uint256 pendingFees,
+    uint256 feeBps,
+    uint256 savedNAV,
+    uint256 pendingBasis,
+    uint256 lossAmount
+  ) internal pure returns (uint256 claimAmount) {
+    uint256 activeInterest = expectedInterest > pendingFees ? expectedInterest - pendingFees : 0;
+    uint256 activeBasis = activeNav + activeInterest;
+    if (activeBasis > savedNAV) {
+      activeBasis -= (activeBasis - savedNAV) * feeBps / FULL_ALLOC;
+    }
+    uint256 pendingLoss = lossAmount * pendingBasis / (activeBasis + pendingBasis);
+    claimAmount = pendingBasis - pendingLoss;
+  }
+
+  function _expectedApr0LossClaims(uint256 interest, uint256 poolPrincipal, uint256 principalA, uint256 principalB, uint256 feeBps, uint256 lossAmount)
+    internal
+    pure
+    returns (uint256 claimA, uint256 claimB)
+  {
+    uint256 apr0Principal = principalA + principalB;
+    uint256 interestA = _calcApr0NetForPrincipal(interest, poolPrincipal, apr0Principal, principalA, feeBps);
+    uint256 interestB = _calcApr0NetForPrincipal(interest, poolPrincipal, apr0Principal, principalB, feeBps);
+    uint256 totalPendingBasis = principalA + interestA + principalB + interestB;
+    uint256 activeBasis = poolPrincipal + interest - interestA - interestB;
+    uint256 pendingLoss = lossAmount * totalPendingBasis / (activeBasis + totalPendingBasis);
+    uint256 pendingRecoveryPrice = (totalPendingBasis - pendingLoss) * ONE_TRANCHE / totalPendingBasis;
+    claimA = (principalA + interestA) * pendingRecoveryPrice / ONE_TRANCHE;
+    claimB = (principalB + interestB) * pendingRecoveryPrice / ONE_TRANCHE;
+  }
+
+  function _calcApr0StopEpochVals(uint256 interest, uint256 poolPrincipal, uint256 apr0Principal, uint256 feeBps) internal pure returns (Apr0Calc memory out) {
     uint256 totalPrincipal = poolPrincipal + apr0Principal;
     // calc the share of the interest reserved for apr0
     uint256 apr0Gross = totalPrincipal == 0 ? 0 : interest * apr0Principal / totalPrincipal;
@@ -3361,12 +3574,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     return _instantBalance == 0 ? 0 : _amount * totTrancheinterest / _instantBalance;
   }
 
-  function _expectedPriceFromNav(
-    uint256 navPre,
-    uint256 supplyPre,
-    uint256 netInterest,
-    uint256 aaShare
-  ) internal view returns (uint256) {
+  function _expectedPriceFromNav(uint256 navPre, uint256 supplyPre, uint256 netInterest, uint256 aaShare) internal view returns (uint256) {
     if (supplyPre == 0) {
       return 0;
     }
@@ -3376,10 +3584,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _calcInterestForTranche(address _tranche, uint256 trancheAmount) internal view returns (uint256, uint256) {
-    uint256 interest = _calcInterestWithdrawRequest(
-      trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN,
-      _tranche
-    );
+    uint256 interest = _calcInterestWithdrawRequest(trancheAmount * cdoEpoch.tranchePrice(_tranche) / ONE_TRANCHE_TOKEN, _tranche);
     uint256 fees = interest * cdoEpoch.fee() / FULL_ALLOC;
     return (interest - fees, fees);
   }
@@ -3414,12 +3619,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _setFeeParams(cdoEpoch.feeReceiver(), cdoEpoch.fee(), cdoEpoch.feeSplit(), _managementFee);
   }
 
-  function _setFeeParams(
-    address _feeReceiver,
-    uint256 _fee,
-    uint256 _feeSplit,
-    uint256 _managementFee
-  ) internal {
+  function _setFeeParams(address _feeReceiver, uint256 _fee, uint256 _feeSplit, uint256 _managementFee) internal {
     vm.prank(owner);
     cdoEpoch.setFeeParams(_feeReceiver, _fee, _feeSplit, _managementFee);
   }
@@ -3535,7 +3735,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimWithdrawRequest is wrong');
     assertEq(IERC20Detailed(address(AAtranche)).balanceOf(address(this)), 0, 'trancheToken bal is wrong for user');
     assertEq(_strategy.withdrawsRequests(address(this)), 0, 'withdrawsRequests is wrong');
-    assertEq(strategyTokensPre - IERC20Detailed(strategyToken).balanceOf(address(this)), requestedAA1 + requestedAA2 + requestedBB, 'strategyToken bal is wrong for cdo');
+    assertEq(
+      strategyTokensPre - IERC20Detailed(strategyToken).balanceOf(address(this)),
+      requestedAA1 + requestedAA2 + requestedBB,
+      'strategyToken bal is wrong for cdo'
+    );
   }
 
   function testClaimWithdrawRequestEpochRunning() external {
@@ -3654,7 +3858,801 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertGt(underlying.balanceOf(user1), balUser1, 'User 1 bal did not increase');
   }
 
-  function testDefaultDoesNotAutomaticallyEnableReceiptTransfers() external {
+  function testClosePoolDefaultStoresResolvedInterestNotSentinel() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    _startEpochAndCheckPrices(0);
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    assertGt(expectedInterest, 1, 'expected interest was not resolved before close');
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(cdoEpoch.defaulted(), true, 'pool should default on close');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterest, 'resolved close interest was not persisted');
+    assertNotEq(cdoEpoch.expectedEpochInterest(), 1, 'close-pool sentinel counted as interest');
+  }
+
+  function testFinalizeDefaultIncludesStartEpochFailedSendReserve() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    uint256 strategyUnderlyingPre = underlying.balanceOf(address(strategy));
+    vm.mockCallRevert(
+      address(underlying), abi.encodeWithSelector(bytes4(keccak256('transfer(address,uint256)')), borrower, amount), bytes('borrower transfer failed')
+    );
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    vm.clearMockedCalls();
+
+    _checkDefault();
+    assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, "failed send not kept in strategy");
+
+    vm.prank(owner);
+    cdoEpoch.finalizeDefault(0, address(0));
+
+    assertApproxEqAbs(cdoEpoch.getContractValue(), amount, 2, 'returned strategy funds were not included in finalized active NAV');
+  }
+
+  /// @notice Zero recovery finalizes the default, exposes a zero price, and clears receipts at zero payout.
+  function testFinalizeDefaultWithZeroRecoveryPrice() external {
+    address pendingUser = makeAddr('zero-recovery-pending-user');
+    _depositWithUser(pendingUser, 10_000 * ONE_SCALE, true);
+
+    uint256 pendingUserShares = AAtranche.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.requestWithdraw(pendingUserShares / 2, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    vm.prank(owner);
+    cdoEpoch.finalizeDefault(0, address(0));
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    assertTrue(creditVault.defaultRecoveryFinalized(), 'zero recovery was not finalized');
+    assertEq(creditVault.defaultRecoveryPrice(), 0, 'zero recovery stored a nonzero price');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), 0, 'active AA price did not expose the full loss');
+
+    uint256 balancePre = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(pendingUser), balancePre, 'zero-price receipt paid underlying');
+    assertEq(creditVault.withdrawsRequests(pendingUser), 0, 'zero-price receipt was not cleared');
+  }
+
+  /// @notice Positive recovery below 1e18 price precision finalizes and remains isolated as dust.
+  function testFinalizeDefaultWithSubprecisionRecoveryPrice() external {
+    uint256 amount = 2 * ONE_TRANCHE;
+    deal(defaultUnderlying, address(this), amount, true);
+    idleCDO.depositAA(amount);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    deal(defaultUnderlying, manager, 1);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), 1);
+    cdoEpoch.finalizeDefault(1, manager);
+    vm.stopPrank();
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    assertTrue(creditVault.defaultRecoveryFinalized(), 'subprecision recovery was not finalized');
+    assertEq(creditVault.defaultRecoveryPrice(), 0, 'subprecision recovery stored a nonzero price');
+    assertEq(creditVault.defaultRecoveryReserve(), 1, 'subprecision recovery dust was not reserved');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), 0, 'subprecision recovery did not expose a zero AA price');
+  }
+
+  /// @notice Exact saved-NAV recovery checkpoints the price after a discounted mid-epoch deposit.
+  function testFinalizeDefaultRepricesWhenRecoveredNavEqualsSavedNav() external {
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    cdoEpoch.setIsAYSActive(false);
+    vm.stopPrank();
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+
+    uint256 initialDeposit = 100 * ONE_SCALE;
+    idleCDO.depositAA(initialDeposit);
+    _startEpochAndCheckPrices(0);
+
+    vm.warp(cdoEpoch.epochEndDate() - 182.5 days);
+    vm.prank(owner);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    uint256 midEpochDeposit = 100 * ONE_SCALE;
+    cdoEpoch.depositDuringEpoch(midEpochDeposit, address(AAtranche));
+
+    uint256 savedNAV = initialDeposit + midEpochDeposit;
+    uint256 trancheSupply = AAtranche.totalSupply();
+    assertEq(cdoEpoch.lastNAVAA(), savedNAV, 'unexpected saved NAV after mid-epoch deposit');
+    assertEq(cdoEpoch.priceAA(), ONE_SCALE, 'setup requires the pre-default stored price');
+
+    deal(defaultUnderlying, borrower, 0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    _checkDefault();
+
+    uint256 recovered = savedNAV + 1;
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 expectedPrice = savedNAV * ONE_TRANCHE / trancheSupply;
+    assertEq(cdoEpoch.lastNAVAA(), savedNAV, 'exact recovery changed active NAV');
+    assertEq(cdoEpoch.priceAA(), expectedPrice, 'exact recovery retained the stale stored price');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), expectedPrice, 'virtual and stored prices differ');
+    assertGt(expectedPrice, ONE_SCALE, 'setup did not create the material price correction');
+  }
+
+  function testFinalizeDefaultSupportsMultipleActiveTranches() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 aprSplit = 80_000;
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    cdoEpoch.setIsAYSActive(false);
+    vm.stopPrank();
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.trancheAPRSplitRatio.selector).checked_write(aprSplit);
+
+    _startEpochAndCheckPrices(0);
+    uint256 activeBalance = IdleCreditVault(address(strategy)).balanceOf(address(cdoEpoch));
+    uint256 activeInterest = cdoEpoch.expectedEpochInterest();
+    uint256 activeBasis = activeBalance + activeInterest;
+    uint256 savedAA = cdoEpoch.lastNAVAA();
+    uint256 savedBB = cdoEpoch.lastNAVBB();
+    uint256 activeBBBasis = activeBalance * savedBB / (savedAA + savedBB);
+    activeBBBasis += activeInterest * (FULL_ALLOC - aprSplit) / FULL_ALLOC;
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    uint256 recovered = activeBalance / 2;
+    deal(defaultUnderlying, manager, recovered, true);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 recoveryPrice = IdleCreditVault(address(strategy)).defaultRecoveryPrice();
+    uint256 activeFinalNAV = activeBasis * recoveryPrice / ONE_TRANCHE;
+    uint256 expectedBB = activeBBBasis * recoveryPrice / ONE_TRANCHE;
+    assertTrue(IdleCreditVault(address(strategy)).defaultRecoveryFinalized(), 'multi-tranche recovery was blocked');
+    assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), activeFinalNAV, 'multi-tranche active NAV is not conserved');
+    assertApproxEqAbs(cdoEpoch.lastNAVBB(), expectedBB, 5, 'multi-tranche BB recovery is wrong');
+    assertApproxEqAbs(cdoEpoch.lastNAVAA(), activeFinalNAV - expectedBB, 5, 'multi-tranche AA recovery is wrong');
+  }
+
+  function testFinalizeDefaultAppliesRecoveryToTrancheInterestInclusiveBases() external {
+    address pendingAAUser = makeAddr('mixed-default-pending-aa');
+    address pendingBBUser = makeAddr('mixed-default-pending-bb');
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 performanceFee = 10_000;
+
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, performanceFee, FULL_ALLOC, 0);
+    cdoEpoch.setIsAYSActive(false);
+    vm.stopPrank();
+
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+    _depositWithUser(pendingAAUser, amount, true);
+    _depositWithUser(pendingBBUser, amount, false);
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.trancheAPRSplitRatio.selector).checked_write(uint256(80_000));
+
+    vm.prank(pendingAAUser);
+    uint256 pendingAABasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.prank(pendingBBUser);
+    uint256 pendingBBBasis = cdoEpoch.requestWithdraw(0, address(BBtranche));
+    assertGt(pendingAABasis, amount, 'pending AA basis should retain request-time interest');
+    assertGt(pendingBBBasis, amount, 'pending BB basis should retain request-time interest');
+
+    uint256 recoveryPrice;
+    {
+      _startEpochAndCheckPrices(0);
+      uint256 activePrincipal = IdleCreditVault(address(strategy)).balanceOf(address(cdoEpoch));
+      uint256 activeInterest = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+      activeInterest -= activeInterest * performanceFee / FULL_ALLOC;
+      uint256 activeBasis = activePrincipal + activeInterest;
+      uint256 savedAA = cdoEpoch.lastNAVAA();
+      uint256 savedBB = cdoEpoch.lastNAVBB();
+      uint256 savedNAV = savedAA + savedBB;
+      uint256 grossBBBasis = activePrincipal * savedBB / savedNAV;
+      uint256 bbInterest = activeInterest * 20_000 / FULL_ALLOC;
+      uint256 activeBBBasis = grossBBBasis + bbInterest;
+      uint256 activeAABasis = activeBasis - activeBBBasis;
+      uint256 totalBasis = activeBasis + pendingAABasis + pendingBBBasis;
+
+      deal(defaultUnderlying, borrower, 0);
+      vm.warp(cdoEpoch.epochEndDate() + 1);
+      vm.prank(manager);
+      cdoEpoch.stopEpoch(0, 0);
+      _checkDefault();
+
+      uint256 recovered = totalBasis / 2;
+      deal(defaultUnderlying, manager, recovered);
+      vm.startPrank(manager);
+      underlying.approve(address(strategy), recovered);
+      cdoEpoch.finalizeDefault(recovered, manager);
+      vm.stopPrank();
+
+      recoveryPrice = IdleCreditVault(address(strategy)).defaultRecoveryPrice();
+      uint256 expectedRecoveredAA = activeAABasis * recoveryPrice / ONE_TRANCHE;
+      uint256 expectedRecoveredBB = activeBBBasis * recoveryPrice / ONE_TRANCHE;
+      assertEq(cdoEpoch.trancheAPRSplitRatio(), 80_000, 'hard default should not rewrite the configured APR split');
+      assertApproxEqAbs(cdoEpoch.lastNAVAA(), expectedRecoveredAA, 5, 'active AA recovery allocation is wrong');
+      assertApproxEqAbs(cdoEpoch.lastNAVBB(), expectedRecoveredBB, 5, 'active BB recovery allocation is wrong');
+      assertGt(cdoEpoch.lastNAVAA(), cdoEpoch.lastNAVBB(), 'configured AA interest share was not preserved');
+    }
+
+    uint256 balancePre = underlying.balanceOf(pendingAAUser);
+    vm.prank(pendingAAUser);
+    cdoEpoch.claimWithdrawRequest();
+    uint256 pendingAAPayout = underlying.balanceOf(pendingAAUser) - balancePre;
+    assertApproxEqAbs(
+      pendingAAPayout,
+      pendingAABasis * recoveryPrice / ONE_TRANCHE,
+      5,
+      'pending AA did not use the common recovery multiplier'
+    );
+    balancePre = underlying.balanceOf(pendingBBUser);
+    vm.prank(pendingBBUser);
+    cdoEpoch.claimWithdrawRequest();
+    uint256 pendingBBPayout = underlying.balanceOf(pendingBBUser) - balancePre;
+    assertApproxEqAbs(
+      pendingBBPayout,
+      pendingBBBasis * recoveryPrice / ONE_TRANCHE,
+      5,
+      'pending BB did not use the common recovery multiplier'
+    );
+  }
+
+  function testFuzzDefaultRecoveryConservesValueAcrossActiveAndPendingTranches(
+    uint32 _aaUnits,
+    uint32 _bbUnits,
+    uint32 _pendingAAUnits,
+    uint32 _pendingBBUnits,
+    uint32 _aprSplit,
+    uint16 _recoveryBps,
+    bool _pendingFirst
+  ) external {
+    DefaultRecoveryFuzzState memory exp;
+    exp.amountAA = bound(uint256(_aaUnits), 100, 10_000) * ONE_SCALE;
+    exp.amountBB = bound(uint256(_bbUnits), 100, 10_000) * ONE_SCALE;
+    exp.pendingAmountAA = bound(uint256(_pendingAAUnits), 100, 10_000) * ONE_SCALE;
+    exp.pendingAmountBB = bound(uint256(_pendingBBUnits), 100, 10_000) * ONE_SCALE;
+    uint256 aprSplit = bound(uint256(_aprSplit), 1, FULL_ALLOC - 1);
+    uint256 recoveryBps = bound(uint256(_recoveryBps), 1, 10_000);
+    DefaultRecoveryUsers memory users;
+    users.activeAA = makeAddr('fuzz-active-aa');
+    users.activeBB = makeAddr('fuzz-active-bb');
+    users.pendingAA = makeAddr('fuzz-pending-aa');
+    users.pendingBB = makeAddr('fuzz-pending-bb');
+
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    cdoEpoch.setIsAYSActive(false);
+    vm.stopPrank();
+    vm.startPrank(manager);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
+    cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, true);
+    vm.stopPrank();
+
+    _depositWithUser(users.activeAA, exp.amountAA, true);
+    _transferBurnedTrancheTokens(users.activeAA, true);
+    _depositWithUser(users.activeBB, exp.amountBB, false);
+    _transferBurnedTrancheTokens(users.activeBB, false);
+    _depositWithUser(users.pendingAA, exp.pendingAmountAA, true);
+    _depositWithUser(users.pendingBB, exp.pendingAmountBB, false);
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.trancheAPRSplitRatio.selector).checked_write(aprSplit);
+    vm.prank(users.pendingAA);
+    exp.pendingBasisAA = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.prank(users.pendingBB);
+    exp.pendingBasisBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
+
+    _startEpochAndCheckPrices(0);
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'fuzz model requires zero pending fees');
+    exp.savedAA = cdoEpoch.lastNAVAA();
+    exp.savedBB = cdoEpoch.lastNAVBB();
+    uint256 activeBalance = IdleCreditVault(address(strategy)).balanceOf(address(cdoEpoch));
+    uint256 activeInterest = cdoEpoch.expectedEpochInterest();
+    uint256 savedNAV = exp.savedAA + exp.savedBB;
+    uint256 grossBBBasis = activeBalance * exp.savedBB / savedNAV;
+    uint256 bbInterest = activeInterest * (FULL_ALLOC - aprSplit) / FULL_ALLOC;
+    exp.activeBasis = activeBalance + activeInterest;
+    exp.activeBBBasis = grossBBBasis + bbInterest;
+
+    deal(defaultUnderlying, borrower, 0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    _checkDefault();
+
+    uint256 totalBasis = exp.activeBasis + exp.pendingBasisAA + exp.pendingBasisBB;
+    exp.recovered = totalBasis * recoveryBps / 10_000;
+    deal(defaultUnderlying, manager, exp.recovered);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), exp.recovered);
+    cdoEpoch.finalizeDefault(exp.recovered, manager);
+    vm.stopPrank();
+
+    exp.recoveryPrice = IdleCreditVault(address(strategy)).defaultRecoveryPrice();
+    _assertActiveRecoveryModel(exp);
+    _assertDefaultRecoveryClaims(exp, users, _pendingFirst);
+  }
+
+  function testFinalizedDefaultCannotReenableInstantWithdraws() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    uint256 activeInterest = expectedInterest > pendingFees ? expectedInterest - pendingFees : 0;
+    activeInterest = activeInterest * (FULL_ALLOC - cdoEpoch.fee()) / FULL_ALLOC;
+    uint256 recovered = IdleCreditVault(address(strategy)).balanceOf(address(cdoEpoch)) + activeInterest;
+    deal(defaultUnderlying, manager, recovered, true);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.setInstantWithdrawParams(1, 0, false);
+    vm.stopPrank();
+  }
+
+  function testFinalizeDefaultHaircutsPendingRedeemsAndActiveLpsWithSameRecoveryRatio() external {
+    uint256 instantDelay = cdoEpoch.instantWithdrawDelay();
+    uint256 instantAprDelta = cdoEpoch.instantWithdrawAprDelta();
+    vm.prank(manager);
+    cdoEpoch.setInstantWithdrawParams(instantDelay, instantAprDelta, true);
+
+    address pendingUser = makeAddr('default-pending-user');
+    address activeUser = makeAddr('default-active-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+
+    _depositWithUser(pendingUser, amount, true);
+    _depositWithUser(activeUser, amount, true);
+
+    vm.prank(pendingUser);
+    uint256 pendingClaimBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 recovered = (activeBasis + pendingClaimBasis) * recoveryRatio / ONE_TRANCHE;
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    uint256 pricePreFinalize = cdoEpoch.virtualPrice(address(AAtranche));
+    deal(defaultUnderlying, manager, recovered);
+    vm.prank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    vm.startPrank(owner);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(manager), 0, 'recovery source was not pulled for the exact recovered amount');
+
+    uint256 pricePostFinalize = cdoEpoch.virtualPrice(address(AAtranche));
+    assertLt(pricePostFinalize, pricePreFinalize, 'virtual price should decrease after finalized default');
+    assertEq(IdleCreditVault(address(strategy)).defaultRecoveryFinalized(), true, 'default recovery not finalized');
+    assertApproxEqAbs(cdoEpoch.getContractValue(), activeBasis * recoveryRatio / ONE_TRANCHE, 5, 'active LP NAV not reduced by recovery ratio');
+
+    uint256 pendingBalPre = IERC20Detailed(defaultUnderlying).balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(
+      IERC20Detailed(defaultUnderlying).balanceOf(pendingUser) - pendingBalPre,
+      pendingClaimBasis * recoveryRatio / ONE_TRANCHE,
+      5,
+      'pending request was not haircut by recovery ratio'
+    );
+
+    uint256 pendingWithdrawsPre = IdleCreditVault(address(strategy)).pendingWithdraws();
+    uint256 activeBalPre = IERC20Detailed(defaultUnderlying).balanceOf(activeUser);
+    vm.startPrank(activeUser);
+    uint256 postDefaultReceipt = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), pendingWithdrawsPre, 'post-default request should not increase pendingWithdraws');
+    assertEq(IdleCreditVault(address(strategy)).postDefaultRequests(activeUser), postDefaultReceipt, 'post-default receipt not tracked');
+    cdoEpoch.claimWithdrawRequest();
+    vm.stopPrank();
+    assertApproxEqAbs(IERC20Detailed(defaultUnderlying).balanceOf(activeUser) - activeBalPre, postDefaultReceipt, 5, 'active LP did not receive recovered NAV');
+    assertLe(IdleCreditVault(address(strategy)).defaultRecoveryReserve(), 10_000, 'recovery reserve dust too high');
+  }
+
+  function testFinalizeDefaultDistributesOverRecoveryProRata() external {
+    address pendingUser = makeAddr('over-recovery-pending-user');
+    address activeUser = makeAddr('over-recovery-active-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    _depositWithUser(pendingUser, amount, true);
+    _depositWithUser(activeUser, amount, true);
+
+    vm.prank(pendingUser);
+    uint256 pendingClaimBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 recovered = (activeBasis + pendingClaimBasis) * 11 / 10;
+
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    assertGt(creditVault.defaultRecoveryPrice(), ONE_TRANCHE, 'recovery price should be above par');
+    assertGt(cdoEpoch.getContractValue(), activeBasis, 'active LP NAV did not receive surplus recovery');
+
+    uint256 pendingBalPre = IERC20Detailed(defaultUnderlying).balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(IERC20Detailed(defaultUnderlying).balanceOf(pendingUser) - pendingBalPre, pendingClaimBasis, 'pending receipt did not receive surplus recovery');
+  }
+
+  function testFinalizeDefaultAboveParKeepsActiveTrancheInterestBasis() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 aprSplit = 80_000;
+
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    cdoEpoch.setIsAYSActive(false);
+    vm.stopPrank();
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.trancheAPRSplitRatio.selector).checked_write(aprSplit);
+
+    _startEpochAndCheckPrices(0);
+    uint256 savedAA = cdoEpoch.lastNAVAA();
+    uint256 savedBB = cdoEpoch.lastNAVBB();
+    uint256 savedNAV = savedAA + savedBB;
+    uint256 activeBalance = IdleCreditVault(address(strategy)).balanceOf(address(cdoEpoch));
+    uint256 activeInterest = cdoEpoch.expectedEpochInterest();
+    uint256 activeBasis = activeBalance + activeInterest;
+    uint256 activeBBBasis = activeBalance * savedBB / savedNAV;
+    activeBBBasis += activeInterest * (FULL_ALLOC - aprSplit) / FULL_ALLOC;
+    savedNAV = savedAA + activeBBBasis * savedAA / (activeBasis - activeBBBasis);
+
+    deal(defaultUnderlying, borrower, 0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    _checkDefault();
+
+    uint256 recovered = activeBasis * 11 / 10;
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 recoveryPrice = IdleCreditVault(address(strategy)).defaultRecoveryPrice();
+    uint256 activeFinalNAV = activeBasis * recoveryPrice / ONE_TRANCHE;
+    uint256 expectedBB = activeBBBasis * recoveryPrice / ONE_TRANCHE;
+    uint256 splitPrecisionBound = (activeFinalNAV - savedNAV) / FULL_ALLOC + 5;
+    assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), activeFinalNAV, 'above-par active NAV is not conserved');
+    assertApproxEqAbs(cdoEpoch.lastNAVBB(), expectedBB, splitPrecisionBound, 'above-par BB basis is wrong');
+    assertApproxEqAbs(cdoEpoch.lastNAVAA(), activeFinalNAV - expectedBB, splitPrecisionBound, 'above-par AA basis is wrong');
+  }
+
+  function testFinalizeDefaultKeepsOldFundedReceiptAtPar() external {
+    address oldUser = makeAddr('old-funded-user');
+    address activeUser = makeAddr('new-default-active-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+
+    _depositWithUser(oldUser, amount, true);
+    vm.prank(oldUser);
+    uint256 oldClaim = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    _depositWithUser(activeUser, amount, true);
+    _startEpochAndCheckPrices(1);
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 recovered = activeBasis * recoveryRatio / ONE_TRANCHE;
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+    _checkDefault();
+
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 reservePre = IdleCreditVault(address(strategy)).defaultRecoveryReserve();
+    uint256 oldBalPre = IERC20Detailed(defaultUnderlying).balanceOf(oldUser);
+    vm.prank(oldUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(oldUser) - oldBalPre, oldClaim, 'old funded claim not paid at par');
+    assertEq(IdleCreditVault(address(strategy)).defaultRecoveryReserve(), reservePre, 'old claim consumed recovery reserve');
+  }
+
+  function testFinalizeDefaultClaimsOldFundedAndDefaultedRedeemsInOneCall() external {
+    address user = makeAddr('mixed-funded-default-user');
+    uint256 amount = 20_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+
+    _depositWithUser(user, amount, true);
+    uint256 halfTrancheBal = IERC20Detailed(address(AAtranche)).balanceOf(user) / 2;
+    vm.prank(user);
+    uint256 oldClaim = cdoEpoch.requestWithdraw(halfTrancheBal, address(AAtranche));
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    vm.prank(user);
+    uint256 defaultClaimBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    _startEpochAndCheckPrices(1);
+    uint256 totalDefaultBasis =
+      (cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees() + creditVault.defaultPendingClaimBasis());
+    uint256 recovered = totalDefaultBasis * recoveryRatio / ONE_TRANCHE;
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+    _checkDefault();
+
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 reservePre = creditVault.defaultRecoveryReserve();
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(user);
+    vm.prank(user);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(
+      IERC20Detailed(defaultUnderlying).balanceOf(user) - balPre,
+      oldClaim + (defaultClaimBasis * recoveryRatio / ONE_TRANCHE),
+      5,
+      'old funded and defaulted claims should be paid in one call'
+    );
+    assertApproxEqAbs(
+      reservePre - creditVault.defaultRecoveryReserve(),
+      defaultClaimBasis * recoveryRatio / ONE_TRANCHE,
+      5,
+      'old funded claim should not consume recovery reserve'
+    );
+  }
+
+  function testFinalizeDefaultHaircutsPendingInstantRedeems() external {
+    uint256 instantDelay = cdoEpoch.instantWithdrawDelay();
+    vm.prank(manager);
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 1000, false);
+
+    address instantUser = makeAddr('default-instant-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+
+    _depositWithUser(instantUser, amount, true);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    vm.prank(instantUser);
+    uint256 instantClaimBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    _startEpochAndCheckPrices(1);
+    uint256 pendingInstant = creditVault.pendingInstantWithdraws();
+    assertLt(pendingInstant, instantClaimBasis, 'instant request should be partially prefunded before default');
+    uint256 prefundedInstant = instantClaimBasis - pendingInstant;
+
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    vm.prank(manager);
+    cdoEpoch.getInstantWithdrawFunds();
+    _checkDefault();
+
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 totalBasis = activeBasis + creditVault.defaultPendingClaimBasis();
+    uint256 targetReserve = totalBasis * recoveryRatio / ONE_TRANCHE;
+    uint256 recovered = targetReserve - prefundedInstant;
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+    assertApproxEqAbs(creditVault.defaultRecoveryReserve(), targetReserve, 5, 'prefunded instant not reserved');
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(instantUser);
+    vm.prank(instantUser);
+    cdoEpoch.claimInstantWithdrawRequest();
+    assertApproxEqAbs(
+      IERC20Detailed(defaultUnderlying).balanceOf(instantUser) - balPre,
+      instantClaimBasis * recoveryRatio / ONE_TRANCHE,
+      5,
+      'instant request was not haircut by recovery ratio'
+    );
+  }
+
+  function testFinalizeDefaultClaimsFundedAndDefaultedInstantRedeemsInOneCall() external {
+    uint256 instantDelay = cdoEpoch.instantWithdrawDelay();
+    vm.prank(manager);
+    cdoEpoch.setInstantWithdrawParams(instantDelay, 1000, false);
+
+    address instantUser = makeAddr('mixed-default-instant-user');
+    uint256 amount = 20_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+    uint256[3] memory claimData;
+
+    _depositWithUser(instantUser, amount, true);
+    idleCDO.depositAA(amount);
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr / 2, _expectedFundsEndEpoch());
+
+    uint256 userTrancheBal = IERC20Detailed(address(AAtranche)).balanceOf(instantUser);
+    vm.prank(instantUser);
+    claimData[0] = cdoEpoch.requestWithdraw(userTrancheBal / 2, address(AAtranche));
+
+    _startEpochAndCheckPrices(1);
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    _getInstantFunds();
+
+    _stopEpochAndCheckPrices(1, initialProvidedApr / 4, _expectedFundsEndEpoch());
+
+    vm.prank(instantUser);
+    claimData[1] = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+    _startEpochAndCheckPrices(2);
+    uint256 pendingInstant = creditVault.pendingInstantWithdraws();
+    assertGt(pendingInstant, 0, 'default instant request should remain unfunded');
+    claimData[2] = claimData[1] - pendingInstant;
+
+    vm.warp(block.timestamp + cdoEpoch.instantWithdrawDelay() + 1);
+    vm.prank(manager);
+    cdoEpoch.getInstantWithdrawFunds();
+    _checkDefault();
+    assertEq(cdoEpoch.allowInstantWithdraw(), false, 'mixed funded and unfunded instant claims should stay frozen');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(instantUser);
+    cdoEpoch.claimInstantWithdrawRequest();
+
+    uint256 recovered =
+      ((cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees() + creditVault.defaultPendingClaimBasis())
+          * recoveryRatio
+          / ONE_TRANCHE) - claimData[2];
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(instantUser);
+    vm.prank(instantUser);
+    cdoEpoch.claimInstantWithdrawRequest();
+    assertApproxEqAbs(
+      IERC20Detailed(defaultUnderlying).balanceOf(instantUser) - balPre,
+      claimData[0] + (claimData[1] * recoveryRatio / ONE_TRANCHE),
+      5,
+      'funded and defaulted instant receipts should be claimed together'
+    );
+    assertEq(IERC20Detailed(strategyToken).balanceOf(instantUser), 0, 'user has no strategy receipt left');
+    assertEq(creditVault.instantWithdrawsRequests(instantUser), 0, 'instant requests should be fully cleared');
+  }
+
+  function testFinalizeDefaultHaircutsApr0PendingRedeemsWithAdjustedInterestBasis() external {
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+
+    address pendingUser = makeAddr('default-apr0-pending-user');
+    {
+      uint256 amount = 10_000 * ONE_SCALE;
+      _depositWithUser(pendingUser, amount, true);
+      idleCDO.depositAA(amount);
+    }
+
+    _startEpochAndCheckPrices(0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    _forceLastEpochAprToZero();
+
+    uint256 principal;
+    {
+      uint256 pendingUserTrancheBal = IERC20(AAtranche).balanceOf(pendingUser);
+      vm.prank(pendingUser);
+      principal = cdoEpoch.requestWithdraw(pendingUserTrancheBal / 2, address(AAtranche));
+    }
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
+
+    _startEpochAndCheckPrices(1);
+    uint256 expectedPendingBasis;
+    uint256 expectedActiveInterest;
+    {
+      uint256 poolInterest = 1_000 * ONE_SCALE;
+      uint256 expectedApr0Interest = _calcApr0NetForPrincipal(poolInterest, cdoEpoch.getContractValue(), principal, principal, cdoEpoch.fee());
+      expectedPendingBasis = principal + expectedApr0Interest;
+      expectedActiveInterest = poolInterest - expectedApr0Interest;
+    }
+
+    deal(defaultUnderlying, borrower, 0);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1_000 * ONE_SCALE);
+    _checkDefault();
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedActiveInterest, 'active default interest basis not stored');
+    assertEq(creditVault.defaultPendingClaimBasis(), expectedPendingBasis, 'apr0 pending basis not adjusted');
+
+    uint256 recovered = (cdoEpoch.getContractValue() + expectedActiveInterest + expectedPendingBasis) * 7e17 / ONE_TRANCHE;
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+    assertEq(creditVault.defaultRecoveryFinalized(), true, 'default recovery not finalized');
+    assertEq(creditVault.defaultRecoveryEpoch(), creditVault.epochNumber(), 'default recovery epoch mismatch');
+
+    uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(
+      IERC20Detailed(defaultUnderlying).balanceOf(pendingUser) - balPre,
+      expectedPendingBasis * 7e17 / ONE_TRANCHE,
+      5,
+      'apr0 pending request was not haircut on adjusted basis'
+    );
+  }
+
+  function testPostDefaultWithdrawRequiresClaimingOpenPriorReceipt() external {
+    address user = makeAddr('open-receipt-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 recoveryRatio = 7e17;
+
+    _depositWithUser(user, amount, true);
+    uint256 trancheBal = IERC20(AAtranche).balanceOf(user);
+    vm.prank(user);
+    cdoEpoch.requestWithdraw(trancheBal / 2, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+
+    _startEpochAndCheckPrices(1);
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
+    uint256 recovered = activeBasis * recoveryRatio / ONE_TRANCHE;
+    _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
+    _checkDefault();
+
+    deal(defaultUnderlying, manager, recovered);
+    vm.startPrank(manager);
+    IERC20Detailed(defaultUnderlying).approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    vm.stopPrank();
+
+    vm.prank(user);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    vm.startPrank(user);
+    cdoEpoch.claimWithdrawRequest();
+    uint256 postDefaultReceipt = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.stopPrank();
+    assertGt(postDefaultReceipt, 0, 'post-default request not created after old claim');
+  }
+
+  function testReceiptTransfersRemainDisabledAfterDefault() external {
     _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -3677,7 +4675,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _stopEpochAndCheckPrices(1, initialProvidedApr, 0);
     assertTrue(cdoEpoch.defaulted(), "pool should default");
 
-    // Transfers remain disabled unless explicitly toggled after default.
+    // Receipt claims remain address-bound after default.
     vm.prank(user);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     IERC20Detailed(address(strategy)).transfer(makeAddr("buyer"), claimAmount);
@@ -3689,10 +4687,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(underlying.balanceOf(user) - userUnderlyingPre, claimAmount, "user could not redeem the matured receipt");
   }
 
-  function testManagerCanToggleReceiptTransfersOnlyAfterDefault() external {
+  function testManagerCanOnlyClearLegacyReceiptTransferFlag() external {
     uint256 amountWei = 10000 * ONE_SCALE;
-    address user = makeAddr("user");
-    address buyer = makeAddr("buyer");
+    address user = makeAddr('user');
+    address buyer = makeAddr('buyer');
+    IdleCreditVault creditVault = IdleCreditVault(address(strategy));
 
     _depositWithUser(user, amountWei, true);
     vm.prank(user);
@@ -3700,7 +4699,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
-    IdleCreditVault(address(strategy)).setCanTransfer(true);
+    creditVault.setCanTransfer(true);
 
     _startEpochAndCheckPrices(0);
     _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
@@ -3711,18 +4710,33 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(address(1));
-    IdleCreditVault(address(strategy)).setCanTransfer(true);
+    creditVault.setCanTransfer(false);
 
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
-    IdleCreditVault(address(strategy)).setCanTransfer(true);
+    creditVault.setCanTransfer(true);
+
+    // Simulate upgrading a legacy deployment where the old manager flag was already true.
+    stdstore.target(address(strategy)).sig(creditVault.canTransfer.selector).checked_write(true);
+    assertTrue(creditVault.canTransfer(), 'legacy transfer flag was not set');
+
     vm.prank(user);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     IERC20Detailed(address(strategy)).transfer(buyer, claimAmount);
-
-    vm.prank(manager);
-    IdleCreditVault(address(strategy)).setCanTransfer(false);
+    vm.prank(user);
+    IERC20Detailed(address(strategy)).approve(buyer, claimAmount);
     vm.prank(buyer);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    IERC20Detailed(address(strategy)).transfer(user, claimAmount);
+    IERC20Detailed(address(strategy)).transferFrom(user, buyer, claimAmount);
+
+    vm.prank(manager);
+    creditVault.setCanTransfer(false);
+    assertFalse(creditVault.canTransfer(), 'legacy transfer flag was not cleared');
+
+    uint256 userBalancePre = underlying.balanceOf(user);
+    vm.prank(user);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(user) - userBalancePre, claimAmount, 'original holder could not claim');
   }
 
   function testClaimInstantWithdrawRequest() external {
@@ -3770,7 +4784,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.claimInstantWithdrawRequest();
 
     assertEq(IERC20Detailed(strategyToken).balanceOf(address(this)), 0, 'user has no strategy tokens');
-    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimInstantWithdrawRequest is wrong');
+    assertEq(
+      IERC20Detailed(defaultUnderlying).balanceOf(address(this)) - balPre, requestedAA1 + requestedAA2 + requestedBB, 'claimInstantWithdrawRequest is wrong'
+    );
     assertEq(_strategy.instantWithdrawsRequests(address(this)), 0, 'instantWithdrawsRequests after claim is wrong');
 
     // we start a new epoch with less apr so instant withdrawal are available
@@ -3877,9 +4893,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   /// Tests inherited from TestIdleCDOBase/TestIdleCDOLossMgmt
-  function _doDepositsWithInterest(uint256 aa, uint256 bb) 
-    internal override
-    returns (uint256 priceAA, uint256 priceBB) {
+  function _doDepositsWithInterest(uint256 aa, uint256 bb) internal override returns (uint256 priceAA, uint256 priceBB) {
     idleCDO.depositAA(aa);
     idleCDO.depositBB(bb);
 
@@ -3913,11 +4927,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _strategy.deposit(1);
   }
 
-  function testAPRSplitRatioRedeems(
-    uint16 _ratio,
-    uint16 _redeemRatioAA,
-    uint16 _redeemRatioBB
-  ) external virtual override {
+  function testAPRSplitRatioRedeems(uint16 _ratio, uint16 _redeemRatioAA, uint16 _redeemRatioBB) external virtual override {
     vm.assume(_ratio <= 1000 && _ratio > 0);
     // > 0 because it's a requirement of the withdraw
     vm.assume(_redeemRatioAA <= 1000 && _redeemRatioAA > 0);
@@ -3946,12 +4956,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
       cdoEpoch.requestWithdraw(amountBB, address(BBtranche));
     }
     
-    assertApproxEqAbs(
-      idleCDO.trancheAPRSplitRatio(), 
-      _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 
-      2,
-      "split ratio on redeem"
-    );
+    assertApproxEqAbs(idleCDO.trancheAPRSplitRatio(), _calcNewAPRSplit(idleCDO.getCurrentAARatio()), 2, 'split ratio on redeem');
   }
 
   function testRestoreOperations() external override {
@@ -4002,133 +5007,163 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.requestWithdraw(amount, address(BBtranche));
   }
 
+  function testRestoreOperationsDuringEpochOnlyRestoresMidEpochDeposits() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(owner);
+    cdoEpoch.emergencyShutdown();
+
+    address user = makeAddr('emergency-mid-epoch-user');
+    uint256 depositAmount = 1_000 * ONE_SCALE;
+    deal(defaultUnderlying, user, depositAmount);
+    vm.startPrank(user);
+    underlying.approve(address(cdoEpoch), depositAmount);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+    vm.stopPrank();
+
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+
+    assertTrue(cdoEpoch.paused(), 'ordinary operations must remain paused during the epoch');
+    assertTrue(cdoEpoch.isEpochRunning(), 'restoration must not stop the epoch');
+    vm.prank(user);
+    cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
+
+    vm.expectRevert(bytes('Pausable: paused'));
+    idleCDO.depositAA(ONE_SCALE);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertFalse(cdoEpoch.paused(), 'successful stop should fully reopen restored operations');
+    assertTrue(cdoEpoch.allowAAWithdrawRequest(), 'AA requests should reopen after stop');
+    assertTrue(cdoEpoch.allowBBWithdrawRequest(), 'BB requests should reopen after stop');
+  }
+
+  function testLegacyEmergencyStateRemainsClosedAfterUpgrade() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(owner);
+    cdoEpoch.emergencyShutdown();
+    // The shutdown uses the legacy skipDefaultCheck slot, so no migration call or new flag is needed.
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.depositDuringEpoch(ONE_SCALE, address(AAtranche));
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 newDuration = 7 days;
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, newDuration, 0);
+
+    assertTrue(cdoEpoch.paused(), 'legacy emergency state should survive a successful stop');
+    assertFalse(cdoEpoch.allowAAWithdrawRequest(), 'legacy emergency should keep AA requests disabled');
+    assertFalse(cdoEpoch.allowBBWithdrawRequest(), 'legacy emergency should keep BB requests disabled');
+    assertEq(cdoEpoch.epochDuration(), newDuration, 'emergency state should not suppress the requested duration');
+
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+    assertFalse(cdoEpoch.paused(), 'explicit restoration should clear legacy emergency state');
+  }
+
+  /// @notice A forced BB wipe must not reopen AA requests before the running epoch stops.
+  function testForcedBBWipeDuringEpochKeepsAARequestsClosed() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount * 9 / 10);
+    idleCDO.depositBB(amount / 10);
+    _startEpochAndCheckPrices(0);
+
+    _createLoss(20_000);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+
+    assertTrue(cdoEpoch.isEpochRunning(), 'forced accounting must not stop the epoch');
+    assertTrue(cdoEpoch.paused(), 'BB exhaustion should pause the vault');
+    assertFalse(cdoEpoch.allowAAWithdrawRequest(), 'AA requests must remain closed during the epoch');
+    assertFalse(cdoEpoch.allowBBWithdrawRequest(), 'BB requests must remain closed after exhaustion');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+  }
+
   function testCheckMaxDecreaseDefault() external override {
     uint256 amount = 10000 * ONE_SCALE;
-
-    // AA Ratio 98%
     uint256 amountAA = amount - amount / 50;
     uint256 amountBB = amount - amountAA;
     _doDepositsWithInterest(amountAA, amountBB);
-    uint256 newTVL = (
-        IdleCDOTranche(address(AAtranche)).totalSupply() * idleCDO.virtualPrice(address(AAtranche)) / ONE_TRANCHE_TOKEN +
-        IdleCDOTranche(address(BBtranche)).totalSupply() * idleCDO.virtualPrice(address(BBtranche)) / ONE_TRANCHE_TOKEN
-    );
-    uint256 interest = newTVL > amount ? newTVL - amountAA - amountBB : 0;
-
-    // now let's simulate a loss by decreasing strategy price
-    // curr price - 10%, this will trigger a default
-    uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
-    uint256 totLoss = (amount + interest) * lossBps / FULL_ALLOC;
+    uint256 lossBps = 10_000;
+    uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossBps / FULL_ALLOC;
+    (uint256 expectedAAPrice, uint256 expectedBBPrice) = _expectedBBFirstPrices(lossAmount);
     _createLoss(lossBps);
 
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
-    // juniors lost 100% as they need to cover seniors
-    assertEq(0, postBBPrice, 'Full loss for junior tranche');
-    // seniors are covered
-    assertApproxEqAbs(
-      (amountAA + amountBB + interest - totLoss) * ONE_SCALE / amountAA,
-      postAAPrice,
-      2,
-      'AA price lost about 8% (2% covered by junior)'
-    );
+    assertApproxEqAbs(postAAPrice, expectedAAPrice, 2, 'AA loss does not follow BB-first waterfall');
+    assertApproxEqAbs(postBBPrice, expectedBBPrice, 2, 'BB loss does not follow BB-first waterfall');
 
-    // deposits/redeems are disabled
-    vm.expectRevert(IdleCDO.Default.selector);
-    idleCDO.depositAA(amount);
-    vm.expectRevert(IdleCDO.Default.selector);
-    idleCDO.depositBB(amount);
-    vm.expectRevert(IdleCDO.Default.selector);
-    cdoEpoch.requestWithdraw(amount, address(AAtranche));
-    vm.expectRevert(IdleCDO.Default.selector);
-    cdoEpoch.requestWithdraw(amount, address(BBtranche));
-
-    // distribute loss, as non owner
     vm.startPrank(makeAddr('nonOwner'));
     vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
     IdleCDO(address(idleCDO)).updateAccounting();
     vm.stopPrank();
 
-    // effectively distribute loss
     vm.prank(idleCDO.owner());
     IdleCDO(address(idleCDO)).updateAccounting();
 
-    assertEq(idleCDO.priceAA(), postAAPrice, 'AA saved price updated');
-    assertEq(idleCDO.priceBB(), 0, 'BB saved price updated');
+    assertEq(cdoEpoch.priceAA(), postAAPrice, 'AA saved price updated');
+    assertEq(cdoEpoch.priceBB(), postBBPrice, 'BB saved price updated');
+    assertTrue(cdoEpoch.paused(), 'exhausting BB should pause the vault');
+    assertTrue(cdoEpoch.allowAAWithdrawRequest(), 'AA requests should remain available after BB exhaustion');
+    assertFalse(cdoEpoch.allowBBWithdrawRequest(), 'BB requests should close after BB exhaustion');
   }
 
-  // @dev Loss is > maxDecreaseDefault and is absorbed by junior holders if possible
+  // @dev A total active-position loss is crystallized at zero instead of looking uninitialized.
   function testDepositRedeemWithLossShutdown() external override {
     uint256 amount = 10000 * ONE_SCALE;
-    // AA Ratio is 98%
     idleCDO.depositAA(amount - amount / 50);
     idleCDO.depositBB(amount / 50);
-    uint256 preAAPrice = idleCDO.virtualPrice(address(AAtranche));
-    _cdoHarvest(true);
-
-    uint256 unclaimedFees = idleCDO.unclaimedFees();
-    // now let's simulate a loss by decreasing strategy price
-    // curr price - 5% + 1, this will trigger a default because the loss is >= junior tvl
-
-    _createLoss(idleCDO.maxDecreaseDefault() + 1);
+    _createLoss(FULL_ALLOC);
 
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
+    assertEq(postAAPrice, 0, 'AA wipe must be priced at zero');
+    assertEq(postBBPrice, 0, 'BB wipe must be priced at zero');
 
-    address newUser = address(0xcafe);
-    _donateToken(newUser, amount * 2);
-    // do another interaction to effectively update prices and trigger default
-    vm.startPrank(newUser);
-    // both deposits will revert as loss will accrue and leave 0 to juniors
-    underlying.approve(address(idleCDO), amount * 2);
     vm.expectRevert(IdleCDO.Default.selector);
     idleCDO.depositAA(amount);
-    vm.expectRevert(IdleCDO.Default.selector);
-    idleCDO.depositBB(amount);
-    vm.expectRevert(IdleCDO.Default.selector);
-    cdoEpoch.requestWithdraw(amount, address(AAtranche));
-    vm.expectRevert(IdleCDO.Default.selector);
-    cdoEpoch.requestWithdraw(amount, address(BBtranche));
-    vm.stopPrank();
 
     vm.prank(idleCDO.owner());
-    // This will set also allowAAWithdraw to true
     IdleCDO(address(idleCDO)).updateAccounting();
-    // loss is now distributed and shutdown triggered
-    uint256 postDepositAAPrice = idleCDO.virtualPrice(address(AAtranche));
-    uint256 postDepositBBPrice = idleCDO.virtualPrice(address(BBtranche));
+    assertEq(cdoEpoch.lastNAVAA(), 0, 'AA NAV should be zero');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'BB NAV should be zero');
+    assertEq(cdoEpoch.priceAA(), 0, 'AA saved price should be zero');
+    assertEq(cdoEpoch.priceBB(), 0, 'BB saved price should be zero');
 
-    assertEq(postDepositAAPrice, postAAPrice, "AA price did not change after updateAccounting");
-    assertEq(postDepositBBPrice, postBBPrice, "BB price did not change after updateAccounting");
-    assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
-    assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
-    assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-    assertEq(cdoEpoch.allowAAWithdrawRequest(), true, "allowAAWithdrawRequest not set to true");
-    assertEq(cdoEpoch.allowBBWithdrawRequest(), false, "allowBBWithdrawRequest set to true");
-    assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
-
-    // AA loss is 5% but 2% is covedered by junior (maxDelta 0.1% -> 1e15)
-    assertApproxEqRel(postDepositAAPrice, preAAPrice - (preAAPrice * 3000 / FULL_ALLOC), 1e15, "AA price is equal after loss");
-    // BB loss is 100% as they were only 2% of the total TVL
-    assertApproxEqAbs(postDepositBBPrice, 0, 0, "BB price after loss");
-
-    // deposits/redeems are disabled
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositAA(1);
     vm.expectRevert(bytes("Pausable: paused"));
     idleCDO.depositBB(1);
-    // expect revert NotAllowed
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    cdoEpoch.requestWithdraw(0, address(BBtranche));
-    cdoEpoch.requestWithdraw(0, address(AAtranche));
   }
 
   function testDepositWithLossSocialized(uint256 depositAmountAARatio) external override {
     vm.assume(depositAmountAARatio >= 0);
     vm.assume(depositAmountAARatio <= FULL_ALLOC);
-
-    vm.prank(idleCDO.owner());
-    idleCDO.setLossToleranceBps(500);
 
     uint256 amountAA = 10000 * ONE_SCALE * depositAmountAARatio / FULL_ALLOC;
     uint256 amountBB = 10000 * ONE_SCALE * (FULL_ALLOC - depositAmountAARatio) / FULL_ALLOC;
@@ -4142,32 +5177,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // deposit underlying to the strategy
     _cdoHarvest(true);
-    uint256 lossPerc = idleCDO.lossToleranceBps() / 2;
+    uint256 lossPerc = 250;
     // now let's simulate a loss by decreasing strategy price
     // curr price - about 0.25%
     _createLoss(lossPerc);
 
-    uint256 priceDelta = (lossPerc * ONE_SCALE) / FULL_ALLOC;
-    uint256 lastNAVAA = idleCDO.lastNAVAA();
-    uint256 currentAARatioScaled = lastNAVAA * ONE_SCALE / (idleCDO.lastNAVBB() + lastNAVAA);
+    uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossPerc / FULL_ALLOC;
+    (uint256 expectedAAPrice, uint256 expectedBBPrice) = _expectedBBFirstPrices(lossAmount);
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
 
-    // Both junior and senior lost
-    if (currentAARatioScaled > 0) {
-      assertApproxEqAbs(postAAPrice, (preAAPrice * (ONE_SCALE - priceDelta)) / ONE_SCALE, 100, "AA price after loss");
-    } else {
-      assertApproxEqAbs(postAAPrice, preAAPrice, 1, "AA price not changed");
-    }
-    if (currentAARatioScaled < ONE_SCALE) {
-      assertApproxEqAbs(postBBPrice, (preBBPrice * (ONE_SCALE - priceDelta)) / ONE_SCALE, 100, "BB price after loss");
-    } else {
-      assertApproxEqAbs(postBBPrice, preBBPrice, 1, "BB price not changed");
-    }
+    assertApproxEqAbs(postAAPrice, expectedAAPrice, 2, "AA price after BB-first loss");
+    assertApproxEqAbs(postBBPrice, expectedBBPrice, 2, "BB price after BB-first loss");
 
     // seniors lost
-    assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 0, "AA price not updated until new interaction");
-    assertApproxEqAbs(idleCDO.priceBB(), preBBPrice, 0, "BB price not updated until new interaction");
+    assertApproxEqAbs(cdoEpoch.priceAA(), preAAPrice, 0, "AA price not updated until new interaction");
+    assertApproxEqAbs(cdoEpoch.priceBB(), preBBPrice, 0, "BB price not updated until new interaction");
     assertApproxEqAbs(idleCDO.unclaimedFees(), unclaimedFees, 0, "Fees did not increase");
   }
 
@@ -4181,22 +5206,19 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
 
-    uint256 maxDecrease = idleCDO.maxDecreaseDefault();
+    uint256 lossBps = 10_000;
     uint256 unclaimedFees = idleCDO.unclaimedFees();
 
-    // now let's simulate a loss by decreasing strategy price
-    // curr price - about 10%
-    _createLoss(maxDecrease * 2);
+    _createLoss(lossBps);
 
-    uint256 priceDelta = ((maxDecrease * 2) * 1e18) / FULL_ALLOC;
+    uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossBps / FULL_ALLOC;
+    (uint256 expectedAAPrice, uint256 expectedBBPrice) = _expectedBBFirstPrices(lossAmount);
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
-    // juniors lost about 20%(~= 2x priceDelta) as there were seniors to cover
-    assertApproxEqAbs(postBBPrice, (preBBPrice * (1e18 - 2 * priceDelta)) / 1e18, 100, "BB price after loss");
-    // seniors are covered
-    assertApproxEqAbs(preAAPrice, postAAPrice, 1, "AA price unaffected");
-    assertApproxEqAbs(idleCDO.priceAA(), preAAPrice, 1, "AA price not updated until new interaction");
-    assertApproxEqAbs(idleCDO.priceBB(), preBBPrice, 1, "BB price not updated until new interaction");
+    assertApproxEqAbs(postBBPrice, expectedBBPrice, 2, "BB price after loss");
+    assertApproxEqAbs(postAAPrice, expectedAAPrice, 2, "AA price after loss");
+    assertApproxEqAbs(cdoEpoch.priceAA(), preAAPrice, 1, "AA price not updated until new interaction");
+    assertApproxEqAbs(cdoEpoch.priceBB(), preBBPrice, 1, "BB price not updated until new interaction");
     assertApproxEqAbs(idleCDO.unclaimedFees(), unclaimedFees, 1, "Fees did not increase");
   }
 
@@ -4208,29 +5230,30 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     IdleCreditVault(address(strategy)).setApr(0);
 
-    // NOTE: forcely decrease the vault price
-    // curr price - 10%
-    _createLoss(idleCDO.maxDecreaseDefault() * 2);
+    uint256 lossBps = 10_000;
+    uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossBps / FULL_ALLOC;
+    (uint256 expectedAAPrice, uint256 expectedBBPrice) = _expectedBBFirstPrices(lossAmount);
+    uint256 expectedAA = IERC20(AAtranche).balanceOf(address(this)) * expectedAAPrice / ONE_TRANCHE;
+    uint256 expectedBB = IERC20(BBtranche).balanceOf(address(this)) * expectedBBPrice / ONE_TRANCHE;
+    _createLoss(lossBps);
 
     // redeem all
     uint256 resAA = cdoEpoch.requestWithdraw(0, address(AAtranche));
     uint256 resBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
 
-    assertApproxEqRel(resAA, amount, 0.0001 * 1e18, "AA request after loss is wrong"); // 1e18 == 100%
-    // juniors lost about 5% as there were seniors to cover
-    assertApproxEqRel(resBB, (amount * 80_000) / 100_000, 0.0001 * 1e18, "BB request after loss is wrong"); // 1e18 == 100%
+    assertApproxEqAbs(resAA, expectedAA, 2, "AA request after loss is wrong");
+    assertApproxEqAbs(resBB, expectedBB, 2, "BB request after loss is wrong");
 
     assertApproxEqAbs(IERC20(AAtranche).balanceOf(address(this)), 0, 1, "AAtranche bal");
     assertApproxEqAbs(IERC20(BBtranche).balanceOf(address(this)), 0, 1, "BBtranche bal");
     assertLe(underlying.balanceOf(address(this)), initialBal, "underlying bal increased");
   }
-    // @dev Loss is between 0% and lossToleranceBps and is socialized
+
+  // @dev The inherited test name is retained, but Credit Vault losses use a BB-first waterfall.
   function testRedeemWithLossSocialized(uint256 depositAmountAARatio) external override {
     vm.assume(depositAmountAARatio >= 0);
     vm.assume(depositAmountAARatio <= FULL_ALLOC);
 
-    vm.prank(idleCDO.owner());
-    idleCDO.setLossToleranceBps(500);
     vm.prank(manager);
     IdleCreditVault(address(strategy)).setApr(0);
 
@@ -4242,11 +5265,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // now let's simulate a loss by decreasing strategy price
     // curr price - about 0.25%
-    _createLoss(idleCDO.lossToleranceBps() / 2);
+    uint256 lossBps = 250;
+    uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossBps / FULL_ALLOC;
+    (uint256 expectedAAPrice, uint256 expectedBBPrice) = _expectedBBFirstPrices(lossAmount);
+    _createLoss(lossBps);
 
-    uint256 priceDelta = ((idleCDO.lossToleranceBps() / 2) * ONE_SCALE) / FULL_ALLOC;
     uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
     uint256 priceBB = idleCDO.virtualPrice(address(BBtranche));
+
+    if (amountBB != 0 && lossAmount >= cdoEpoch.lastNAVBB()) {
+      vm.expectRevert(IdleCDO.Default.selector);
+      cdoEpoch.requestWithdraw(0, address(AAtranche));
+      return;
+    }
+
+    uint256 expectedAA = IERC20(AAtranche).balanceOf(address(this)) * expectedAAPrice / ONE_TRANCHE;
+    uint256 expectedBB = IERC20(BBtranche).balanceOf(address(this)) * expectedBBPrice / ONE_TRANCHE;
 
     // redeem all
     uint256 resAA;
@@ -4260,27 +5294,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     }
 
     if (depositAmountAARatio > 0) {
-      assertApproxEqRel(
-        resAA,
-        amountAA * (ONE_SCALE - priceDelta) / ONE_SCALE, 
-        10**14, 
-        "AA amount after loss"
-      );
-      // Abs = 11 because min deposit for AA is 0.1 underlying (with depositAmountAARatio = 1)
-      // and this can cause a price diff of up to 11 wei
-      assertApproxEqAbs(priceAA, ONE_SCALE - priceDelta, 11, "AA price after loss");
+      assertApproxEqAbs(resAA, expectedAA, 2, 'AA amount after loss');
+      assertApproxEqAbs(priceAA, expectedAAPrice, 2, "AA price after loss");
     } else {
       assertApproxEqRel(resAA, amountAA, 1, "AA amount not changed");
     }
 
     if (depositAmountAARatio < FULL_ALLOC) {
-      assertApproxEqRel(
-        resBB, 
-        (amountBB * (ONE_SCALE - priceDelta)) / ONE_SCALE, 
-        10**14, 
-        "BB amount after loss"
-      );
-      assertApproxEqAbs(priceBB, ONE_SCALE - priceDelta, 11, "BB price after loss");
+      assertApproxEqAbs(resBB, expectedBB, 2, 'BB amount after loss');
+      assertApproxEqAbs(priceBB, expectedBBPrice, 2, 'BB price after loss');
     } else {
       assertApproxEqRel(resBB, amountBB, 1, "BB amount not changed");
     }
@@ -4296,11 +5318,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setKeyringParams(keyring, 1);
 
-    vm.mockCall(
-      keyring,
-      abi.encodeWithSelector(IKeyring.checkCredential.selector),
-      abi.encode(false)
-    );
+    vm.mockCall(keyring, abi.encodeWithSelector(IKeyring.checkCredential.selector), abi.encode(false));
 
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     idleCDO.depositAA(1e18);
@@ -4309,11 +5327,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.requestWithdraw(0, address(AAtranche));
 
-    vm.mockCall(
-      keyring,
-      abi.encodeWithSelector(IKeyring.checkCredential.selector),
-      abi.encode(true)
-    );
+    vm.mockCall(keyring, abi.encodeWithSelector(IKeyring.checkCredential.selector), abi.encode(true));
 
     idleCDO.depositAA(10**3);
     idleCDO.depositBB(10**3);
@@ -4449,6 +5463,46 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertGt(underlying.balanceOf(address(this)), balThisPre, 'Bal for this contract did not increase');
   }
 
+  function testClosePoolWithDurationLeavesDurationClosed() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+
+    uint256 grossPrincipal = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    deal(defaultUnderlying, borrower, grossPrincipal + expectedInterest);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 1, 7 days, 0);
+
+    assertFalse(cdoEpoch.defaulted(), 'funded close should not default');
+    assertFalse(cdoEpoch.isEpochRunning(), 'close should stop the epoch');
+    assertEq(cdoEpoch.epochDuration(), 0, 'duration wrapper must not reopen a closed pool');
+    assertEq(cdoEpoch.epochEndDate(), 0, 'closed pool must have no end date');
+  }
+
+  function testClosePoolWithDurationRejectsLossBeforeStateChanges() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+
+    uint256 endDatePre = cdoEpoch.epochEndDate();
+    uint256 durationPre = cdoEpoch.epochDuration();
+    uint256 expectedInterestPre = cdoEpoch.expectedEpochInterest();
+    uint256 strategyBalancePre = strategyToken.balanceOf(address(cdoEpoch));
+
+    vm.warp(endDatePre + 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 1, 7 days, ONE_SCALE);
+
+    assertTrue(cdoEpoch.isEpochRunning(), 'rejected close must leave the epoch running');
+    assertFalse(cdoEpoch.defaulted(), 'rejected close must not default');
+    assertEq(cdoEpoch.epochEndDate(), endDatePre, 'rejected close changed the end date');
+    assertEq(cdoEpoch.epochDuration(), durationPre, 'rejected close changed the duration');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterestPre, 'rejected close changed expected interest');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), strategyBalancePre, 'rejected close changed strategy balance');
+  }
+
   function testClosePoolWithUnderlyingInContract() external {
     vm.startPrank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
@@ -4511,11 +5565,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _donateToken(address(this), donation);
     underlying.transfer(address(cdoEpoch), donation);
 
-    assertEq(
-      cdoEpoch.maxWithdrawable(address(this), address(AAtranche)),
-      maxWithdrawablePre,
-      "maxWithdrawable should ignore raw donations"
-    );
+    assertEq(cdoEpoch.maxWithdrawable(address(this), address(AAtranche)), maxWithdrawablePre, 'maxWithdrawable should ignore raw donations');
 
     vm.roll(block.number + 1);
     uint256 requested = cdoEpoch.requestWithdraw(0, address(AAtranche));
@@ -4542,11 +5592,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _donateToken(address(this), donation);
     underlying.transfer(address(cdoEpoch), donation);
 
-    assertEq(
-      impliedPrice.impliedVirtualPrice(address(AAtranche)),
-      impliedPricePre,
-      "implied virtual price should ignore raw donations"
-    );
+    assertEq(impliedPrice.impliedVirtualPrice(address(AAtranche)), impliedPricePre, 'implied virtual price should ignore raw donations');
   }
 
   function testSetFeeParamsIgnoresDonationWhenCheckpointingManagementFee() external {
@@ -4565,11 +5611,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _setFeeParams(TL_MULTISIG, cdoEpoch.fee(), cdoEpoch.feeSplit(), managementFeeRate);
 
-    assertEq(
-      cdoEpoch.unclaimedFees(),
-      _calcManagementFee(amount, managementFeeRate, elapsed),
-      "management fee checkpoint should ignore raw donations"
-    );
+    assertEq(cdoEpoch.unclaimedFees(), _calcManagementFee(amount, managementFeeRate, elapsed), 'management fee checkpoint should ignore raw donations');
   }
 
   function testDepositDuringEpochSkimsDonationBeforeLimitCheck() external {
@@ -4634,9 +5676,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 feeReceiverBalPre = underlying.balanceOf(cdoEpoch.feeReceiver());
 
     vm.mockCallRevert(
-      address(underlying),
-      abi.encodeWithSelector(bytes4(keccak256("transfer(address,uint256)")), borrower, amount),
-      bytes("borrower transfer failed")
+      address(underlying), abi.encodeWithSelector(bytes4(keccak256('transfer(address,uint256)')), borrower, amount), bytes('borrower transfer failed')
     );
 
     vm.prank(manager);
@@ -4647,6 +5687,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(underlying.balanceOf(address(cdoEpoch)), 0, "raw underlyings should not remain on CDO");
     assertEq(underlying.balanceOf(address(strategy)), strategyUnderlyingPre, "funds should return to strategy");
     assertEq(underlying.balanceOf(cdoEpoch.feeReceiver()), feeReceiverBalPre, "fee receiver should not get borrower funds");
+  }
+
+  function testDefaultedVaultCannotBeUnpausedOrRestartedBeforeFinalization() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, 0);
+    _checkDefault();
+
+    vm.prank(owner);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.unpause();
+
+    vm.warp(block.timestamp + cdoEpoch.bufferPeriod() + 1);
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.startEpoch();
   }
 
   function testUpdateAccountingSkimsDonationBeforeAccounting() external {
@@ -4915,7 +5971,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.defaulted(), false, "pool should not be defaulted");
   }
 
-  function testStopEpochWithDurationLossTriggersJuniorWipeShutdown() external {
+  function testStopEpochWithDurationLargeLossUsesBBFirstWaterfall() external {
     uint256 amount = 10_000 * ONE_SCALE;
     idleCDO.depositAA(amount);
     idleCDO.depositBB(amount);
@@ -4934,15 +5990,162 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpochWithDuration(0, 0, duration, lossAmount);
 
     assertEq(cdoEpoch.defaulted(), false, 'borrower default flag should remain false');
-    assertEq(cdoEpoch.paused(), true, 'pool should be paused after junior wipe');
-    assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'AA withdraw requests should stay enabled');
-    assertEq(cdoEpoch.allowBBWithdrawRequest(), false, 'BB withdraw requests should be disabled');
-    assertEq(cdoEpoch.lastNAVBB(), 0, 'junior nav should be wiped');
-    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), 0, 'BB price should be zero');
-    assertLt(cdoEpoch.virtualPrice(address(AAtranche)), preAAPrice, 'AA price should decrease');
+    assertEq(cdoEpoch.paused(), true, 'BB exhaustion should pause the pool');
+    assertEq(cdoEpoch.allowAAWithdrawRequest(), true, 'AA requests should remain enabled');
+    assertEq(cdoEpoch.allowBBWithdrawRequest(), false, 'BB requests should be disabled');
+    assertApproxEqAbs(cdoEpoch.virtualPrice(address(AAtranche)), preAAPrice * 90_000 / FULL_ALLOC, 2, 'AA spillover loss is wrong');
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), 0, 'BB should absorb loss first');
   }
 
-  function testStopEpochWithDurationLossDoesNotHaircutPendingWithdrawReceipts() external {
+  function testStopEpochWithDurationExactAAOnlyWipeIsTerminal() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, amount);
+
+    assertTrue(cdoEpoch.paused(), 'an exact AA-only wipe should be terminal');
+    assertEq(cdoEpoch.lastNAVAA(), 0, 'AA NAV should be zero');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), 0, 'AA wipe must stay priced at zero');
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), ONE_SCALE, 'unused BB should remain uninitialized');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+  }
+
+  function testStopEpochWithDurationExactBBOnlyWipeIsTerminal() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositBB(amount);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, amount);
+
+    assertTrue(cdoEpoch.paused(), 'an exact BB-only wipe should be terminal');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'BB NAV should be zero');
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), 0, 'BB wipe must stay priced at zero');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), ONE_SCALE, 'unused AA should remain uninitialized');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+  }
+
+  function testStopEpochWithDurationPendingReceiptCanLeaveExactActiveWipe() external {
+    address activeUser = makeAddr('active-wipe-user');
+    address pendingUser = makeAddr('pending-wipe-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    _depositWithUser(activeUser, amount, true);
+    // A one-unit pending receipt makes the final surviving recovery unit directly claimable,
+    // avoiding unrelated per-user payout dust in this terminal active-NAV regression.
+    _depositWithUser(pendingUser, 1, true);
+
+    vm.prank(pendingUser);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+    _startEpochAndCheckPrices(0);
+
+    uint256 activeBasis = cdoEpoch.getContractValue();
+    uint256 pendingBasis = IdleCreditVault(address(strategy)).pendingWithdraws();
+    uint256 lossAmount = activeBasis + pendingBasis - 1;
+    uint256 duration = cdoEpoch.epochDuration();
+    deal(defaultUnderlying, borrower, 1);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, lossAmount);
+
+    assertTrue(cdoEpoch.paused(), 'an exact active wipe should be terminal');
+    assertEq(cdoEpoch.lastNAVAA(), 0, 'active AA NAV should be zero');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), 0, 'active AA shares must stay priced at zero');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+
+    uint256 pendingBalancePre = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(pendingUser) - pendingBalancePre, 1, 'pending receipt should retain the final recovery unit');
+  }
+
+  function testWipedClassDoesNotReceiveLaterGains() external {
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    idleCDO.depositBB(ONE_SCALE);
+
+    vm.prank(owner);
+    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+
+    assertEq(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE, 'AA should be protected by BB');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'the loss should wipe BB');
+    assertTrue(cdoEpoch.paused(), 'BB exhaustion should pause the vault');
+
+    vm.prank(owner);
+    cdoEpoch.restoreOperations();
+
+    uint256 gain = 100 * ONE_SCALE;
+    deal(address(strategy), address(cdoEpoch), 10_000 * ONE_SCALE + gain, true);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+
+    assertEq(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE + gain, 'AA should receive the later gain');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'later gains must not revive wiped BB');
+  }
+
+  function testMintedInterestFeesUseAAAfterBBWipe() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    idleCDO.depositBB(ONE_SCALE);
+
+    vm.prank(owner);
+    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE, 'test setup should protect AA');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'test setup did not wipe BB');
+
+    vm.startPrank(owner);
+    cdoEpoch.restoreOperations();
+    cdoEpoch.setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 0);
+    cdoEpoch.setIsInterestMinted(true);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
+    vm.stopPrank();
+    stdstore.target(address(strategy)).sig(
+      IdleCreditVault(address(strategy)).totEpochDeposits.selector
+    ).checked_write(uint256(0));
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    uint256 feeSharesPre = AAtranche.balanceOf(TL_MULTISIG);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 100 * ONE_SCALE);
+
+    assertGt(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE, 'AA did not receive minted interest');
+    assertEq(cdoEpoch.lastNAVBB(), 0, 'minted interest revived wiped BB');
+    assertGt(AAtranche.balanceOf(TL_MULTISIG), feeSharesPre, 'fee shares were not minted in AA');
+    assertFalse(cdoEpoch.paused(), 'AA-only stop should complete normally');
+  }
+
+  function testStopEpochWithDurationLossHaircutsPendingWithdrawReceipts() external {
     address user1 = makeAddr('user1');
     address user2 = makeAddr('user2');
     uint256 amount = 10_000 * ONE_SCALE;
@@ -4961,6 +6164,15 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     uint256 duration = cdoEpoch.epochDuration();
     uint256 lossAmount = 500 * ONE_SCALE;
+    uint256 expectedClaim = _expectedLossAdjustedClaim(
+      cdoEpoch.getContractValue(),
+      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
+      cdoEpoch.fee(),
+      cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
+      requested,
+      lossAmount
+    );
     uint256 totFunds = _expectedFundsEndEpoch();
     deal(defaultUnderlying, borrower, totFunds);
 
@@ -4973,7 +6185,179 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 balPre = IERC20Detailed(defaultUnderlying).balanceOf(user1);
     vm.prank(user1);
     cdoEpoch.claimWithdrawRequest();
-    assertEq(IERC20Detailed(defaultUnderlying).balanceOf(user1) - balPre, requested, 'claim should match receipt amount');
+    uint256 claimed = underlying.balanceOf(user1) - balPre;
+    assertLt(claimed, requested, 'claim should be haircutted');
+    assertApproxEqAbs(claimed, expectedClaim, 5, 'claim should match proportional pending recovery');
+  }
+
+  function testStopEpochWithDurationCashLossUsesActualFeeOrdering() external {
+    uint256 performanceFeeRate = 10_000; // 10%
+    uint256 managementFeeRate = 2_000; // 2% annualized
+    _setFeeParams(TL_MULTISIG, performanceFeeRate, FULL_ALLOC, managementFeeRate);
+    address pendingUser = makeAddr('cash-fee-loss-pending-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+    _depositWithUser(pendingUser, amount, true);
+    idleCDO.depositAA(amount);
+
+    vm.prank(pendingUser);
+    uint256 pendingBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    _startEpochAndCheckPrices(0);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 lossAmount = 500 * ONE_SCALE;
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+
+    uint256 activeNavBeforeManagementFee = cdoEpoch.getContractValue();
+    uint256 accruedManagementFee = _calcManagementFee(activeNavBeforeManagementFee, managementFeeRate, block.timestamp - cdoEpoch.latestHarvestBlock());
+    uint256 expectedClaim = _expectedLossAdjustedClaim(
+      activeNavBeforeManagementFee - accruedManagementFee,
+      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
+      performanceFeeRate,
+      cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
+      pendingBasis,
+      lossAmount
+    );
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, lossAmount);
+
+    uint256 balancePre = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(pendingUser) - balancePre, expectedClaim, 5, 'cash loss basis did not match management/performance fee ordering');
+  }
+
+  function testStopEpochWithDurationPendingLossNeedsNoPolicySwitch() external {
+    idleCDO.depositAA(20_000 * ONE_SCALE);
+    uint256 requested = cdoEpoch.requestWithdraw(IERC20(AAtranche).balanceOf(address(this)) / 2, address(AAtranche));
+    _startEpochAndCheckPrices(0);
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 lossAmount = 500 * ONE_SCALE;
+    uint256 expectedClaim = _expectedLossAdjustedClaim(
+      cdoEpoch.getContractValue(),
+      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
+      cdoEpoch.fee(),
+      cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
+      requested,
+      lossAmount
+    );
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, lossAmount);
+
+    uint256 balancePre = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(address(this)) - balancePre, expectedClaim, 5, 'pending claim is not pro rata');
+  }
+
+  /// @notice Mixed-tranche pending receipts share loss pro rata while active loss remains BB-first.
+  function testStopEpochWithDurationMixedTranchePendingLoss() external {
+    address pendingBBUser = makeAddr('mixed-tranche-pending-loss-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(0, 0);
+
+    idleCDO.depositAA(amount);
+    _depositWithUser(pendingBBUser, amount, false);
+
+    uint256 requestedAA = cdoEpoch.requestWithdraw(AAtranche.balanceOf(address(this)) / 2, address(AAtranche));
+    uint256 pendingBBUserShares = BBtranche.balanceOf(pendingBBUser);
+    vm.prank(pendingBBUser);
+    uint256 requestedBB = cdoEpoch.requestWithdraw(pendingBBUserShares / 2, address(BBtranche));
+    _startEpochAndCheckPrices(0);
+    uint256 recoveryPrice;
+    {
+      uint256 duration = cdoEpoch.epochDuration();
+      uint256 lossAmount = 500 * ONE_SCALE;
+      uint256 activeBasis = cdoEpoch.getContractValue();
+      uint256 pendingBasis = requestedAA + requestedBB;
+      uint256 pendingLoss = lossAmount * pendingBasis / (activeBasis + pendingBasis);
+      uint256 pendingToFund = pendingBasis - pendingLoss;
+      uint256 activeLoss = lossAmount - pendingLoss;
+      uint256 lastNAVAA = cdoEpoch.lastNAVAA();
+      uint256 lastNAVBB = cdoEpoch.lastNAVBB();
+      deal(defaultUnderlying, borrower, pendingToFund);
+
+      vm.warp(cdoEpoch.epochEndDate() + 1);
+      vm.prank(manager);
+      cdoEpoch.stopEpochWithDuration(0, 0, duration, lossAmount);
+
+      assertFalse(cdoEpoch.isEpochRunning(), 'successful mixed-tranche loss did not stop the epoch');
+      assertEq(cdoEpoch.lastNAVAA(), lastNAVAA, 'active AA absorbed loss before BB');
+      assertApproxEqAbs(cdoEpoch.lastNAVBB(), lastNAVBB - activeLoss, 2, 'active loss was not applied BB-first');
+
+      recoveryPrice = pendingToFund * ONE_TRANCHE / pendingBasis;
+    }
+    {
+      uint256 balancePre = underlying.balanceOf(address(this));
+      cdoEpoch.claimWithdrawRequest();
+      uint256 expectedClaim = requestedAA * recoveryPrice / ONE_TRANCHE;
+      assertApproxEqAbs(underlying.balanceOf(address(this)) - balancePre, expectedClaim, 2, 'pending AA receipt was not haircutted pro rata');
+    }
+    {
+      uint256 balancePre = underlying.balanceOf(pendingBBUser);
+      vm.prank(pendingBBUser);
+      cdoEpoch.claimWithdrawRequest();
+      uint256 expectedClaim = requestedBB * recoveryPrice / ONE_TRANCHE;
+      assertApproxEqAbs(underlying.balanceOf(pendingBBUser) - balancePre, expectedClaim, 2, 'pending BB receipt was not haircutted pro rata');
+    }
+  }
+
+  function testStopEpochWithDurationLossDoesNotHaircutOldFundedReceipts() external {
+    address oldUser = makeAddr('old-funded-user');
+    address pendingUser = makeAddr('loss-pending-user');
+    uint256 amount = 10_000 * ONE_SCALE;
+
+    _depositWithUser(oldUser, amount, true);
+    _depositWithUser(pendingUser, amount, true);
+
+    uint256 oldClaim;
+    vm.prank(oldUser);
+    oldClaim = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+    assertEq(IdleCreditVault(address(strategy)).pendingWithdraws(), 0, 'old receipt should be funded');
+
+    uint256 pendingClaim;
+    vm.prank(pendingUser);
+    pendingClaim = cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    _startEpochAndCheckPrices(1);
+    uint256 lossAmount = 500 * ONE_SCALE;
+    uint256 expectedPendingClaim = _expectedLossAdjustedClaim(
+      cdoEpoch.getContractValue(),
+      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
+      cdoEpoch.fee(),
+      cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
+      pendingClaim,
+      lossAmount
+    );
+    uint256 duration = cdoEpoch.epochDuration();
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch());
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, lossAmount);
+
+    uint256 oldBalPre = underlying.balanceOf(oldUser);
+    vm.prank(oldUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(oldUser) - oldBalPre, oldClaim, 'old funded claim should stay at par');
+
+    uint256 pendingBalPre = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(pendingUser) - pendingBalPre, expectedPendingClaim, 5, 'loss-epoch pending claim should be haircutted');
   }
 
   function testStopEpochWithDurationLossSkippedOnBorrowerDefault() external {
@@ -4991,11 +6375,22 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, lossAmount);
 
     _checkDefault();
-    assertEq(
-      IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)),
-      strategyBalPre,
-      'loss burn should be skipped on default'
-    );
+    assertEq(IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)), strategyBalPre, 'loss burn should be skipped on default');
+  }
+
+  function testStopEpochWithDurationReturnsAfterBorrowerDefaultWithZeroDuration() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+
+    uint256 durationPre = cdoEpoch.epochDuration();
+    deal(defaultUnderlying, borrower, 0);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, 0, 1_000 * ONE_SCALE);
+
+    _checkDefault();
+    assertEq(cdoEpoch.epochDuration(), durationPre, 'defaulted stop should not update duration');
   }
 
   function testStopEpochWithDurationLossRevertsIfTooLarge() external {
@@ -5008,9 +6403,47 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 tooLargeLoss = 20_000 * ONE_SCALE;
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
-    vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
     cdoEpoch.stopEpochWithDuration(0, 0, duration, tooLargeLoss);
+  }
+
+  function testStopEpochWithDurationLossRejectsAmountAboveNetActiveBasis() external {
+    uint256 amount = 10_000 * ONE_SCALE;
+    uint256 managementFeeRate = 2_000;
+    uint256 lowGrossInterest = 100 * ONE_SCALE;
+
+    idleCDO.depositAA(amount);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, managementFeeRate);
+
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+
+    deal(defaultUnderlying, borrower, lowGrossInterest);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, lowGrossInterest);
+
+    uint256 carriedFee = cdoEpoch.unclaimedFees();
+    assertGt(carriedFee, 0, 'test requires a carried fee');
+    _setManagementFee(0);
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    uint256 activeBasis = cdoEpoch.getContractValue();
+    uint256 grossStrategyBalance = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 invalidLoss = activeBasis + 1;
+    assertLe(invalidLoss, grossStrategyBalance, 'test loss should still be burnable from the gross balance');
+
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, invalidLoss);
   }
 
   function testStopEpochWithDurationLossWithMintedInterest() external {
@@ -5046,6 +6479,40 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(strategyBalPost - strategyBalPre, overrideInterest - lossAmount, 'strategy token delta mismatch');
     assertGt(priceAAPost, priceAAPre, 'AA price should still increase with positive net interest');
     assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted');
+  }
+
+  function testStopEpochWithDurationMintedFeesSharePendingReceiptLoss() external {
+    _setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 0);
+    vm.startPrank(owner);
+    IdleCreditVault(address(strategy)).setMaxApr(0);
+    cdoEpoch.setIsInterestMinted(true);
+    vm.stopPrank();
+
+    address pendingUser = makeAddr('minted-fee-loss-pending-user');
+    _depositWithUser(pendingUser, 10_000 * ONE_SCALE, true);
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+
+    vm.prank(pendingUser);
+    uint256 pendingBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    _startEpochAndCheckPrices(0);
+
+    uint256 overrideInterest = 1_000 * ONE_SCALE;
+    uint256 lossAmount = 500 * ONE_SCALE;
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.unclaimedFees() + overrideInterest;
+    uint256 pendingLoss = lossAmount * pendingBasis / (activeBasis + pendingBasis);
+    uint256 expectedClaim = pendingBasis - pendingLoss;
+    uint256 duration = cdoEpoch.epochDuration();
+    deal(defaultUnderlying, borrower, pendingBasis + overrideInterest);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, overrideInterest, duration, lossAmount);
+
+    assertGt(IERC20Detailed(address(AAtranche)).balanceOf(TL_MULTISIG), 0, 'fee shares should be minted');
+    uint256 balancePre = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(pendingUser) - balancePre, expectedClaim, 5, 'pending loss should include minted fee shares in active basis');
   }
 
   function testStopEpochWithDurationLossWithApr0PendingWithdraws() external {
@@ -5086,49 +6553,23 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 poolInterest = 1_500 * ONE_SCALE;
     uint256 lossAmount = 300 * ONE_SCALE;
     uint256 duration = cdoEpoch.epochDuration();
-    deal(
-      defaultUnderlying,
-      borrower,
-      poolInterest + IdleCreditVault(address(strategy)).pendingWithdraws() + 15_000 * ONE_SCALE
-    );
+    deal(defaultUnderlying, borrower, poolInterest + IdleCreditVault(address(strategy)).pendingWithdraws() + 15_000 * ONE_SCALE);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
     cdoEpoch.stopEpochWithDuration(0, poolInterest, duration, lossAmount);
 
-    uint256 expectedThisInterest = _calcApr0NetForPrincipal(
-      poolInterest,
-      poolPrincipal,
-      principalThis + principalUser1,
-      principalThis,
-      cdoEpoch.fee()
-    );
-    uint256 expectedUser1Interest = _calcApr0NetForPrincipal(
-      poolInterest,
-      poolPrincipal,
-      principalThis + principalUser1,
-      principalUser1,
-      cdoEpoch.fee()
-    );
+    (uint256 expectedThisClaim, uint256 expectedUser1Claim) =
+      _expectedApr0LossClaims(poolInterest, poolPrincipal, principalThis, principalUser1, cdoEpoch.fee(), lossAmount);
 
     uint256 balThisPre = underlying.balanceOf(address(this));
     cdoEpoch.claimWithdrawRequest();
-    assertApproxEqAbs(
-      underlying.balanceOf(address(this)) - balThisPre,
-      principalThis + expectedThisInterest,
-      5,
-      'apr0 + loss claim wrong for user this'
-    );
+    assertApproxEqAbs(underlying.balanceOf(address(this)) - balThisPre, expectedThisClaim, 5, 'apr0 + loss claim wrong for user this');
 
     uint256 balUser1Pre = underlying.balanceOf(user1);
     vm.prank(user1);
     cdoEpoch.claimWithdrawRequest();
-    assertApproxEqAbs(
-      underlying.balanceOf(user1) - balUser1Pre,
-      principalUser1 + expectedUser1Interest,
-      5,
-      'apr0 + loss claim wrong for user1'
-    );
+    assertApproxEqAbs(underlying.balanceOf(user1) - balUser1Pre, expectedUser1Claim, 5, 'apr0 + loss claim wrong for user1');
   }
 
   function testWriteOffDeposit() external {
@@ -5195,10 +6636,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     // set isAYSActive to true
-    stdstore
-      .target(address(cdoEpoch))
-      .sig(cdoEpoch.isAYSActive.selector)
-      .checked_write(true);
+    vm.store(address(cdoEpoch), bytes32(CDO_SLOT_IS_AYS_ACTIVE), bytes32(uint256(1)));
     // set this to have an epoch during 1 year and buffer of 1 year
     cdoEpoch.setEpochParams(365 days, 365 days); 
     vm.stopPrank();
@@ -5260,10 +6698,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.startPrank(owner);
     cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     // set isAYSActive to true
-    stdstore
-      .target(address(cdoEpoch))
-      .sig(cdoEpoch.isAYSActive.selector)
-      .checked_write(true);
+    vm.store(address(cdoEpoch), bytes32(CDO_SLOT_IS_AYS_ACTIVE), bytes32(uint256(1)));
     // set this to have an epoch during 1 year and buffer of 1 year
     cdoEpoch.setEpochParams(365 days, 365 days); 
     vm.stopPrank();
@@ -5603,5 +7038,44 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // everything is multiplied by 100 so we can use 2 decimals (ie 555.53 becomes 55553)
     assertEq(priceAA, (1000000 + 55553) * ONE_SCALE / 1000000, 'AA price after stop epoch is wrong');
     assertEq(priceBB, (500000 + 69446) * ONE_SCALE / 500000, 'BB price after stop epoch is wrong');
+  }
+
+  /// @notice Fixed-APR request order cannot turn negative active interest into a wrapped uint.
+  function testFixedAprWithdrawOrderCannotWrapExpectedInterest() external {
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    vm.prank(owner);
+    cdoEpoch.setEpochParams(365 days, 0);
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+    address aaUser = makeAddr('fixed-order-aa');
+    assertTrue(AAtranche.transfer(aaUser, AAtranche.balanceOf(address(this))), 'AA transfer failed');
+
+    for (uint256 i = 0; i < 3; i++) {
+      uint256 bbBalance = BBtranche.balanceOf(address(this));
+      cdoEpoch.requestWithdraw(bbBalance * 9 / 10, address(BBtranche));
+    }
+    for (uint256 i = 0; i < 3; i++) {
+      uint256 aaBalance = AAtranche.balanceOf(aaUser);
+      vm.prank(aaUser);
+      cdoEpoch.requestWithdraw(aaBalance * 9 / 10, address(AAtranche));
+    }
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    assertFalse(cdoEpoch.defaulted(), 'healthy borrower should not default');
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'negative active interest should floor at zero');
+  }
+
+  /// @notice An uninitialized BB tranche reports zero APR when AA owns the entire vault.
+  function testGetAprWithOnlyAAHasZeroBBApr() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+
+    assertEq(idleCDO.getApr(address(AAtranche)), IdleCreditVault(address(strategy)).getApr(), 'AA APR is wrong');
+    assertEq(idleCDO.getApr(address(BBtranche)), 0, 'empty BB tranche should have zero APR');
   }
 }

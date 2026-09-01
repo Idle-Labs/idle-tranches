@@ -64,7 +64,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     vm.prank(_owner);
     TruefiCreditLineStrategy(address(strategy)).setWhitelistedCDO(address(_cdo));
     // set directDeposit to false to avoid small differences in apr
-    stdstore.target(address(_cdo)).sig(IIdleCDO(address(_cdo)).directDeposit.selector).checked_write(false);
+    vm.store(address(_cdo), bytes32(CDO_SLOT_DIRECT_DEPOSIT), bytes32(uint256(0)));
 
     _pokeLendingProtocol();
   }
@@ -168,7 +168,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     uint256 unclaimedFees = idleCDO.unclaimedFees();
     // now let's simulate a loss by decreasing strategy price
     // curr price - 5%, this will trigger a default because the loss is >= junior tvl
-    _createLoss(idleCDO.maxDecreaseDefault());
+    _createLoss(_cdoMaxDecreaseDefault());
 
     uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
     uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
@@ -201,8 +201,8 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
     assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
     assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-    assertEq(idleCDO.allowAAWithdraw(), true, "Default flag for senior set to true regardless");
-    assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for senior set");
+    assertEq(_cdoAllowAAWithdraw(), true, "Default flag for senior set to true regardless");
+    assertEq(_cdoAllowBBWithdraw(), false, "Default flag for senior set");
     assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
 
     // AA loss is 5% but 2% is covedered by junior (maxDelta 0.1% -> 1e15)
@@ -246,7 +246,7 @@ contract TestTruefiCreditLineArb is TestIdleCDOLossMgmt {
     // deposit underlying to the strategy
     _cdoHarvest(true);
 
-    _createLoss(idleCDO.lossToleranceBps() / 2);
+    _createLoss(_cdoLossToleranceBps() / 2);
 
     uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
     uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));

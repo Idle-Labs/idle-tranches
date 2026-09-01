@@ -7,8 +7,9 @@ import {IdleCDOPolygonZK} from "../../contracts/polygon-zk/IdleCDOPolygonZK.sol"
 import {IProxyAdmin} from "../../contracts/interfaces/IProxyAdmin.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IdleClearpoolStrategyPolygonZK} from "../../contracts/polygon-zk/strategies/clearpool/IdleClearpoolStrategyPolygonZK.sol";
+import "./CDOStorageReader.sol";
 
-contract TestGenericCDOZK is Test {
+contract TestGenericCDOZK is Test, CDOStorageReader {
   address private constant WETH = 0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9;
   address private constant USDC = 0xA8CE8aee21bC2A48a5EF670afCc9274C7bbbC035;
   address private constant CPOOL = 0xc3630b805F10E91c2de084Ac26C66bCD91F3D3fE;
@@ -163,10 +164,10 @@ contract TestGenericCDOZK is Test {
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
-    vm.prank(idleCDO.rebalancer());
+    vm.prank(_cdoRebalancer(address(idleCDO)));
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
     // linearly release all sold rewards
-    vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
+    vm.roll(block.number + _cdoReleaseBlocksPeriod(address(idleCDO)) + 1);
   }
 }

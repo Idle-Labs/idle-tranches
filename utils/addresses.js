@@ -3869,7 +3869,7 @@ exports.deployTokensAvax = {
       10e18.toString(), // intialApr
     ],
     cdo: avaxCDOs.creditavaxtestusdc,
-    cdoVariant: 'IdleCDOEpochVariantAvax',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -3911,7 +3911,7 @@ exports.deployTokensBase = {
       10e18.toString(), // intialApr
     ],
     cdo: baseCDOs.creditbasetestusdc,
-    cdoVariant: 'IdleCDOEpochVariantBase',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4064,7 +4064,7 @@ exports.deployTokensPolygon = {
       13e18.toString(), // intialApr 13%
     ],
     cdo: polygonCDOs.creditbastionusdt,
-    cdoVariant: 'IdleCDOEpochVariantPolygon',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4235,7 +4235,7 @@ exports.deployTokensOptimism = {
       0,
     ],
     cdo: optimismCDOs.credittestusdc,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4266,7 +4266,7 @@ exports.deployTokensOptimism = {
       10e18.toString(),
     ],
     cdo: optimismCDOs.credittestsamusdc,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4299,7 +4299,7 @@ exports.deployTokensOptimism = {
       10e18.toString(),
     ],
     cdo: optimismCDOs.creditmaventestusdc,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4332,7 +4332,7 @@ exports.deployTokensOptimism = {
       15e18.toString(), // intialApr
     ],
     cdo: optimismCDOs.creditfalcontestusdc,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4366,7 +4366,7 @@ exports.deployTokensOptimism = {
       0e17.toString(), // intialApr - redacted
     ],
     cdo: optimismCDOs.creditfaxusdc,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4403,7 +4403,7 @@ exports.deployTokensOptimism = {
       0e17.toString(), // intialApr - redacted
     ],
     cdo: optimismCDOs.creditfaxusdcfinal,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4440,7 +4440,7 @@ exports.deployTokensOptimism = {
       0e18.toString(), // intialApr - redacted
     ],
     cdo: optimismCDOs.creditfaxusdcfinalfinal,
-    cdoVariant: 'IdleCDOEpochVariantOptimism',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4498,7 +4498,7 @@ exports.deployTokensArbitrum = {
       17e18.toString(), // intialApr 17%
     ],
     cdo: arbitrumCDOs.creditbastionusdc,
-    cdoVariant: 'IdleCDOEpochVariantArbitrum',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,
@@ -4535,7 +4535,7 @@ exports.deployTokensArbitrum = {
       17e18.toString(), // intialApr 17%
     ],
     cdo: arbitrumCDOs.creditbastionusdt,
-    cdoVariant: 'IdleCDOEpochVariantArbitrum',
+    cdoVariant: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
     ...baseCDOArgs,
     AARatio: '100000',
     isAYSActive: false,

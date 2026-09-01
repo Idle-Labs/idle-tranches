@@ -252,7 +252,7 @@ contract TestAmphorStrategy is TestIdleCDOLossMgmt {
 
     // now let's simulate a loss by decreasing strategy price
     // curr price - about 0.25%
-    _createLoss(idleCDO.lossToleranceBps() / 2);
+    _createLoss(_cdoLossToleranceBps() / 2);
 
     uint256 priceDelta = ((prePrice - strategy.price()) * 1e18) / prePrice;
     uint256 lastNAVAA = idleCDO.lastNAVAA();

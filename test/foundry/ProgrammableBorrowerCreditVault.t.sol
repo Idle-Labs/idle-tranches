@@ -84,6 +84,8 @@ contract MockStopEpochLiquidityVault is ERC20 {
 contract TestProgrammableBorrowerCreditVault is Test {
   using stdStorage for StdStorage;
 
+  event BorrowerDefault(uint256 funds);
+
   address internal constant TL_MULTISIG = address(0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814);
   address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
   address internal constant MORPHO_BLUE = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
@@ -145,7 +147,6 @@ contract TestProgrammableBorrowerCreditVault is Test {
     cdoEpoch.setIsAYSActive(false);
     cdoEpoch.setFeeParams(TL_MULTISIG, 0, 100000, 0);
     cdoEpoch.setInstantWithdrawParams(3 days, 1.5e18, false);
-    cdoEpoch.setLossToleranceBps(5000);
     cdoEpoch.setEpochParams(36.5 days, 5 days);
     cdoEpoch.setKeyringParams(address(0), 0);
     vm.stopPrank();
@@ -436,7 +437,11 @@ contract TestProgrammableBorrowerCreditVault is Test {
     programmableBorrower.borrow(drawAmount);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 expectedLiability =
+      strategy.balanceOf(address(cdoEpoch)) + programmableBorrower.totalInterestDueNow() + strategy.pendingWithdraws();
 
+    vm.expectEmit(address(cdoEpoch));
+    emit BorrowerDefault(expectedLiability);
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, 1);
 
@@ -833,6 +838,32 @@ contract TestProgrammableBorrowerCreditVault is Test {
       5,
       "borrower accrued interest should remain un-settled on default"
     );
+  }
+
+  function testProgrammableBorrowerDefaultCheckpointsPositiveStopInterest() external {
+    uint256 amount = 10_000 * oneScale;
+    uint256 drawAmount = 1_000 * oneScale;
+
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(true);
+
+    idleCDO.depositAA(amount);
+    _startEpochAndCheckPrices(0);
+
+    vm.prank(revolvingBorrower);
+    programmableBorrower.borrow(drawAmount);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    _accrueMorphoVaultInterest();
+
+    uint256 expectedInterest = programmableBorrower.totalInterestDueNow();
+    assertGt(expectedInterest, 0, "expected positive pool-facing interest before default");
+
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertEq(cdoEpoch.defaulted(), true, "pool should default");
+    assertApproxEqAbs(cdoEpoch.expectedEpochInterest(), expectedInterest, 5, "default interest basis not checkpointed");
   }
 
   function testProgrammableBorrowerRequiresMintedInterest() external {

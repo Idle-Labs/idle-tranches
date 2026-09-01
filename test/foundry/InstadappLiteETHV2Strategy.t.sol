@@ -250,7 +250,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
 
         // now let's simulate a loss by decreasing strategy price
         // curr price - about 0.25%
-        _createLoss(idleCDO.lossToleranceBps() / 2);
+        _createLoss(_cdoLossToleranceBps() / 2);
 
         // Get AA tranche price
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -474,7 +474,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
 
         // now let's simulate a loss by decreasing strategy price
         // curr price - 10%, this will trigger a default
-        uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
+        uint256 lossBps = _cdoMaxDecreaseDefault() * 2;
         _createLoss(lossBps);
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
@@ -523,7 +523,7 @@ contract TestInstadappLiteETHV2Strategy is TestIdleCDOLossMgmt {
 
         // NOTE: forcely decrease the vault price
         // curr price - 2.5%
-        _createLoss(idleCDO.maxDecreaseDefault() / 2);
+        _createLoss(_cdoMaxDecreaseDefault() / 2);
 
         // redeem all
         uint256 resAA = idleCDO.withdrawAA(0);
