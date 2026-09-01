@@ -798,8 +798,6 @@ task("emergency-shutdown-cdo-multisig", "Upgrade IdleCDO instance")
     const multisig = await run('get-multisig-or-fake');
     await cdo.connect(multisig).emergencyShutdown();
     console.log('Is Paused ? ', await cdo.paused());
-    console.log('Allow AA withdraw ? ', await cdo.allowAAWithdraw());
-    console.log('Allow BB withdraw ? ', await cdo.allowBBWithdraw());
   });
 
 /**

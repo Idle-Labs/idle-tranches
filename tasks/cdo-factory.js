@@ -1089,12 +1089,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     }
 
-    const ays = await idleCDO.isAYSActive();
-    if (args.isAYSActive != ays) {
-      console.log("Toggling AYS");
-      await idleCDO.connect(signer).setIsAYSActive(args.isAYSActive);
-    }
-    console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
+    console.log(`Setting isAYSActive to ${args.isAYSActive}`);
+    await idleCDO.connect(signer).setIsAYSActive(args.isAYSActive);
 
     if (deployToken.rewardsData && deployToken.rewardsData.length > 0) {
       console.log('setting metamorpho rewards data');
@@ -2084,7 +2080,6 @@ task("print-contracts-info", "Prints deployed contracts info")
         underlyingData,
         strategyAddress,
         feeReceiver,
-        isAYSActive,
         epochDuration,
         bufferPeriod,
         feeValue,
@@ -2119,7 +2114,6 @@ task("print-contracts-info", "Prints deployed contracts info")
         })(),
         cdo.strategy(),
         cdo.feeReceiver(),
-        cdo.isAYSActive(),
         cdo.epochDuration(),
         cdo.bufferPeriod(),
         cdo.fee(),
@@ -2156,7 +2150,6 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`       Symbol:    ${bbTrancheData.symbol}`);
       console.log(`  Strategy:       ${strategyAddress}`);
       console.log(`  FeeReceiver:    ${feeReceiver}`);
-      console.log(`  isAYSActive:    ${isAYSActive}`);
       console.log(`  EpochDuration:  ${epochDuration}`);
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);

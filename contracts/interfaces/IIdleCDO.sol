@@ -9,13 +9,9 @@ interface IIdleCDO {
   function strategy() external view returns(address);
   function strategyToken() external view returns(address);
   function token() external view returns(address);
-  function rebalancer() external view returns(address);
   function owner() external view returns(address);
   function paused() external view returns(bool);
-  function directDeposit() external view returns(bool);
 
-  function allowAAWithdraw() external view returns(bool);
-  function allowBBWithdraw() external view returns(bool);
   function fee() external view returns(uint256);
   function limit() external view returns(uint256);
   function unclaimedFees() external view returns(uint256);

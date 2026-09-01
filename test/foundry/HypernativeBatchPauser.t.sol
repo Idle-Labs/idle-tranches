@@ -57,12 +57,7 @@ contract TestHypernativeBatchPauser is Test {
     batchPauser.pauseAll();
 
     assertEq(IIdleCDO(PROT_CONTRACT_1).paused(), true, "contract 1 should be paused");
-    assertEq(IIdleCDO(PROT_CONTRACT_1).allowAAWithdraw(), false, "contract 1 should have allowAAWithdraw set to false");
-    assertEq(IIdleCDO(PROT_CONTRACT_1).allowBBWithdraw(), false, "contract 1 should have allowBBWithdraw set to false");
-
     assertEq(IIdleCDO(PROT_CONTRACT_2).paused(), true, "contract 2 should be paused");
-    assertEq(IIdleCDO(PROT_CONTRACT_2).allowAAWithdraw(), false, "contract 2 should have allowAAWithdraw set to false");
-    assertEq(IIdleCDO(PROT_CONTRACT_2).allowBBWithdraw(), false, "contract 2 should have allowBBWithdraw set to false");
   }
 
   function testReplaceProtectedContracts() public {
