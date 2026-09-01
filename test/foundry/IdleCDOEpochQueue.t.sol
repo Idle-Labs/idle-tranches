@@ -898,6 +898,49 @@ contract TestIdleCDOEpochQueue is Test {
     assertGt(underlying.balanceOf(FASA) - userBalancePre, 0, 'user did not receive post-default recovery');
   }
 
+  /// @notice A queued withdrawal processed after a healthy pool close remains a normal funded claim.
+  function testHealthyCloseProcessesQueuedWithdrawalAsNormalClaim() external {
+    uint256 trancheAmount = ONE_TRANCHE;
+    uint256 claimEpoch = strategy.epochNumber() + 1;
+    _requestWithdrawWithUser(FASA, trancheAmount);
+
+    uint256 principal = strategy.balanceOf(address(cdoEpoch));
+    uint256 interest = cdoEpoch.expectedEpochInterest();
+    uint256 closeFunds = principal + interest;
+    address borrower = strategy.borrower();
+    deal(address(underlying), borrower, closeFunds, true);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), closeFunds);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertFalse(cdoEpoch.defaulted(), 'close should be healthy');
+    assertEq(cdoEpoch.epochEndDate(), 0, 'pool should be closed');
+    assertEq(strategy.epochNumber(), claimEpoch, 'queued epoch should be current');
+
+    queue.processWithdrawRequests();
+    uint256 claimBasis = queue.epochPendingClaims(claimEpoch);
+    assertGt(claimBasis, 0, 'queue claim should have a positive basis');
+    assertFalse(queue.isEpochInstant(claimEpoch), 'normal closed-pool receipt was classified as instant');
+    assertEq(strategy.withdrawsRequests(address(queue)), claimBasis, 'normal receipt was not recorded');
+    assertEq(strategy.instantWithdrawsRequests(address(queue)), 0, 'instant ledger should be empty');
+
+    uint256 queueBalancePre = underlying.balanceOf(address(queue));
+    queue.processWithdrawalClaims(claimEpoch);
+    assertEq(underlying.balanceOf(address(queue)) - queueBalancePre, claimBasis, 'queue did not receive the normal claim');
+    assertEq(strategy.withdrawsRequests(address(queue)), 0, 'normal receipt was not cleared');
+    assertEq(strategy.balanceOf(address(queue)), 0, 'queue strategy receipt was not burned');
+
+    uint256 expectedPayout = trancheAmount * queue.epochWithdrawPrice(claimEpoch) / ONE_TRANCHE;
+    uint256 userBalancePre = underlying.balanceOf(FASA);
+    vm.prank(FASA);
+    queue.claimWithdrawRequest(claimEpoch);
+    assertEq(underlying.balanceOf(FASA) - userBalancePre, expectedPayout, 'user did not receive the queued claim');
+    assertEq(queue.userWithdrawalsEpochs(FASA, claimEpoch), 0, 'user entitlement was not cleared');
+  }
+
   function testProcessWithdrawalClaimsInstantEpoch() external {
     _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
