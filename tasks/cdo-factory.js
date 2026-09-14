@@ -474,6 +474,11 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
     orchestrator: hasAddress(orchestratorAddress) ? orchestratorAddress : undefined,
   };
 }
+// IdleCDOStorage.guardian is fixed at slot 208 in the established proxy layout.
+const getPrintContractsInfoGuardian = async (_hre, cdoAddress) => {
+  const value = await _hre.ethers.provider.getStorageAt(cdoAddress, 208);
+  return _hre.ethers.utils.getAddress(_hre.ethers.utils.hexDataSlice(value, 12));
+}
 const getPrintContractsInfoCdoFlags = async (cdo) => {
   const [isInterestMinted, isDepositDuringEpochDisabled] = await Promise.all([
     cdo.isInterestMinted(),
@@ -1342,6 +1347,17 @@ task("protect-cdo", "Add cdo to hypernative pauser module")
     }
   });
 
+task("watch-and-protect-cdo", "Add cdo to Hypernative watchlists and custom agents, then protect it")
+  .addParam('cdo')
+  .addParam('name')
+  .addOptionalParam('chainid', 'Chain id used to pick Hypernative watchlists and params')
+  .addOptionalParam('aaTranche', 'AA tranche address for a newly deployed, untracked credit vault')
+  .addOptionalParam('underlyingDecimals', 'Underlying decimals for a newly deployed, untracked credit vault')
+  .setAction(async (args, _hre) => {
+    await _hre.run('watch-cdo', args);
+    await _hre.run('protect-cdo', { cdo: args.cdo });
+  });
+
 task("watch-cdo", "Add cdo to hypernative watchlists and Custom agents")
   .addParam('cdo')
   .addParam('name')
@@ -2088,12 +2104,13 @@ task("print-contracts-info", "Prints deployed contracts info")
         instantDisabled,
         aprDelta,
         instantDelay,
+        keyringData,
         keyringPolicy,
         cdoFlags,
         prefundedQueue,
       ] = await Promise.all([
         cdo.owner(),
-        cdo.guardian(),
+        getPrintContractsInfoGuardian(hre, cdo.address),
         (async () => {
           const address = await cdo.AATranche();
           const tranche = await ethers.getContractAt("IERC20Detailed", address);
@@ -2122,6 +2139,12 @@ task("print-contracts-info", "Prints deployed contracts info")
         cdo.disableInstantWithdraw(),
         cdo.instantWithdrawAprDelta(),
         cdo.instantWithdrawDelay(),
+        (async () => {
+          const address = await cdo.keyring();
+          if (!hasAddress(address)) return { address, admin: null };
+          const whitelist = await ethers.getContractAt("KeyringIdleWhitelist", address);
+          return { address, admin: await whitelist.admin() };
+        })(),
         cdo.keyringPolicyId(),
         getPrintContractsInfoCdoFlags(cdo),
         (async () => {
@@ -2160,6 +2183,8 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  Instant disable:${instantDisabled}`);
       console.log(`  APR Delta:      ${aprDelta}`);
       console.log(`  Instant Delay:  ${instantDelay}`);
+      console.log(`  Keyring Whitelist: ${keyringData.address}`);
+      console.log(`  Keyring Admin:  ${keyringData.admin ?? 'N/A (disabled)'}`);
       console.log(`  Keyring Policy: ${keyringPolicy}`);
       console.log(`  isInterestMinted: ${cdoFlags.isInterestMinted}`);
       console.log(`  isDepositDuringEpochDisabled: ${cdoFlags.isDepositDuringEpochDisabled}`);
