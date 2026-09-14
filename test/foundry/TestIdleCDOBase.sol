@@ -42,6 +42,18 @@ abstract contract TestIdleCDOBase is Test {
   bytes internal extraData;
   bytes internal extraDataSell;
 
+  uint256 internal constant CDO_SLOT_REBALANCER = 210;
+  uint256 internal constant CDO_SLOT_WITHDRAW_FLAGS = 211;
+  uint256 internal constant CDO_SLOT_UNLENT_PERC = 226;
+  uint256 internal constant CDO_SLOT_RELEASE_BLOCKS_PERIOD = 230;
+  uint256 internal constant CDO_SLOT_DIRECT_DEPOSIT = 232;
+  uint256 internal constant CDO_SLOT_IS_AYS_ACTIVE = 234;
+  uint256 internal constant CDO_SLOT_MIN_APR_SPLIT_AYS = 236;
+  uint256 internal constant CDO_SLOT_MAX_DECREASE_DEFAULT = 237;
+  uint256 internal constant CDO_SLOT_LOSS_TOLERANCE_BPS = 238;
+  uint256 internal constant CDO_OFFSET_ALLOW_AA_WITHDRAW = 20;
+  uint256 internal constant CDO_OFFSET_ALLOW_BB_WITHDRAW = 21;
+
   // override these methods in derived contracts
   function _deployStrategy(address _owner) internal virtual returns (
     address _strategy,
@@ -96,6 +108,66 @@ abstract contract TestIdleCDOBase is Test {
 
   function _selectFork() public virtual {}
 
+  /// @notice Reads a full uint256 from the CDO storage layout.
+  function _cdoUint256(uint256 cdoSlot) internal view returns (uint256) {
+    return uint256(vm.load(address(idleCDO), bytes32(cdoSlot)));
+  }
+
+  /// @notice Reads an address from a packed CDO storage slot.
+  function _cdoAddress(uint256 cdoSlot, uint256 cdoOffset) internal view returns (address) {
+    return address(uint160(uint256(vm.load(address(idleCDO), bytes32(cdoSlot))) >> (cdoOffset * 8)));
+  }
+
+  /// @notice Reads a bool from a packed CDO storage slot.
+  function _cdoBool(uint256 cdoSlot, uint256 cdoOffset) internal view returns (bool) {
+    return ((uint256(vm.load(address(idleCDO), bytes32(cdoSlot))) >> (cdoOffset * 8)) & 0xff) != 0;
+  }
+
+  /// @notice Returns the CDO rebalancer from storage after its generated getter was removed.
+  function _cdoRebalancer() internal view returns (address) {
+    return _cdoAddress(CDO_SLOT_REBALANCER, 0);
+  }
+
+  /// @notice Returns the AA withdraw flag from storage after its generated getter was removed.
+  function _cdoAllowAAWithdraw() internal view returns (bool) {
+    return _cdoBool(CDO_SLOT_WITHDRAW_FLAGS, CDO_OFFSET_ALLOW_AA_WITHDRAW);
+  }
+
+  /// @notice Returns the BB withdraw flag from storage after its generated getter was removed.
+  function _cdoAllowBBWithdraw() internal view returns (bool) {
+    return _cdoBool(CDO_SLOT_WITHDRAW_FLAGS, CDO_OFFSET_ALLOW_BB_WITHDRAW);
+  }
+
+  /// @notice Returns the unlent percentage from storage after its generated getter was removed.
+  function _cdoUnlentPerc() internal view returns (uint256) {
+    return _cdoUint256(CDO_SLOT_UNLENT_PERC);
+  }
+
+  /// @notice Returns the release blocks period from storage after its generated getter was removed.
+  function _cdoReleaseBlocksPeriod() internal view returns (uint256) {
+    return _cdoUint256(CDO_SLOT_RELEASE_BLOCKS_PERIOD);
+  }
+
+  /// @notice Returns the direct deposit flag from storage after its generated getter was removed.
+  function _cdoDirectDeposit() internal view returns (bool) {
+    return _cdoBool(CDO_SLOT_DIRECT_DEPOSIT, 0);
+  }
+
+  /// @notice Returns the minimum AYS APR split from storage after its generated getter was removed.
+  function _cdoMinAprSplitAYS() internal view returns (uint256) {
+    return _cdoUint256(CDO_SLOT_MIN_APR_SPLIT_AYS);
+  }
+
+  /// @notice Returns the max default decrease from storage after its generated getter was removed.
+  function _cdoMaxDecreaseDefault() internal view returns (uint256) {
+    return _cdoUint256(CDO_SLOT_MAX_DECREASE_DEFAULT);
+  }
+
+  /// @notice Returns the socialized-loss tolerance from storage after its generated getter was removed.
+  function _cdoLossToleranceBps() internal view returns (uint256) {
+    return _cdoUint256(CDO_SLOT_LOSS_TOLERANCE_BPS);
+  }
+
   function testInitialize() public virtual {
     assertEq(idleCDO.token(), address(underlying));
     assertGe(strategy.price(), ONE_SCALE, 'strategy price is wrong');
@@ -103,7 +175,8 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, 'BB price is wrong');
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
-    assertEq(idleCDO.maxDecreaseDefault(), 5000);
+    assertEq(idleCDO.oneToken(), ONE_SCALE, 'oneToken is wrong');
+    assertEq(_cdoMaxDecreaseDefault(), 5000);
   }
 
   function testCantReinitialize() external virtual;
@@ -139,7 +212,7 @@ abstract contract TestIdleCDOBase is Test {
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 10000 * 1e18, "AAtranche bal");
     assertEq(IERC20(BBtranche).balanceOf(address(this)), 10000 * 1e18, "BBtranche bal");
     assertEq(underlying.balanceOf(address(this)), initialBal - totAmount, "underlying bal strategy");
-    if (idleCDO.directDeposit()) {
+    if (_cdoDirectDeposit()) {
       assertEq(underlying.balanceOf(address(idleCDO)), 0, "underlying bal cdo");
       assertNotEq(strategyToken.balanceOf(address(idleCDO)), 0, "strategy bal cdo");
     } else {
@@ -344,7 +417,7 @@ abstract contract TestIdleCDOBase is Test {
     vm.prank(owner);
     idleCDO.setMinAprSplitAYS(80000);
 
-    assertEq(idleCDO.minAprSplitAYS(), 80000, "minAprSplitAYS is correct");
+    assertEq(_cdoMinAprSplitAYS(), 80000, "minAprSplitAYS is correct");
   }
 
   function testAPRSplitRatioDeposits(
@@ -425,11 +498,11 @@ abstract contract TestIdleCDOBase is Test {
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
-    vm.prank(idleCDO.rebalancer());
+    vm.prank(_cdoRebalancer());
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
     // linearly release all sold rewards
-    vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
+    vm.roll(block.number + _cdoReleaseBlocksPeriod() + 1);
   }
 
   function _depositWithUser(address _user, uint256 _amount, bool _isAA) internal {
@@ -503,10 +576,10 @@ abstract contract TestIdleCDOBase is Test {
     uint256 aux;
     if (ratio >= AA_RATIO_LIM_UP) {
       aux = ratio == FULL_ALLOC ? FULL_ALLOC : AA_RATIO_LIM_UP;
-    } else if (ratio > idleCDO.minAprSplitAYS()) {
+    } else if (ratio > _cdoMinAprSplitAYS()) {
       aux = ratio;
     } else {
-      aux = idleCDO.minAprSplitAYS();
+      aux = _cdoMinAprSplitAYS();
     }
     _new = aux * ratio / FULL_ALLOC;
   }

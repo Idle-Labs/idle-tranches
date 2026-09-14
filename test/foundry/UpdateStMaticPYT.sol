@@ -8,10 +8,11 @@ import "../../contracts/IdleCDOPoLidoVariant.sol";
 import "../../contracts/interfaces/IProxyAdmin.sol";
 import "../../contracts/interfaces/IStMatic.sol";
 import "forge-std/Test.sol";
+import "./CDOStorageReader.sol";
 
 // @notice contract used to test the update of lido PYT to the new 
 // IdleCDO implementation with the adaptive yield split strategy and referrals
-contract TestUpdateStMaticPYT is Test {
+contract TestUpdateStMaticPYT is Test, CDOStorageReader {
   using stdStorage for StdStorage;
   event Referral(uint256 _amount, address _ref);
 
@@ -191,11 +192,11 @@ contract TestUpdateStMaticPYT is Test {
     // skip fees distribution
     _skipFlags[3] = _skipRewards;
 
-    vm.prank(idleCDO.rebalancer());
+    vm.prank(_cdoRebalancer(address(idleCDO)));
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
 
     // linearly release all sold rewards
-    vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
+    vm.roll(block.number + _cdoReleaseBlocksPeriod(address(idleCDO)) + 1);
   }
   function _strategyReleaseBlocksPeriod() internal returns (uint256 releaseBlocksPeriod) {
     (bool success, bytes memory returnData) = address(strategy).staticcall(abi.encodeWithSignature("releaseBlocksPeriod()"));

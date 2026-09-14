@@ -6,10 +6,11 @@ import "../../contracts/IdleTokenFungible.sol";
 import "../../contracts/IdleCDO.sol";
 import "../../contracts/interfaces/IProxyAdmin.sol";
 import "forge-std/Test.sol";
+import "./CDOStorageReader.sol";
 
 import {IdlePYTClear} from "best-yield-PYT-strategy/ClearpoolStrategy.sol";
 
-contract TestIdleTokenFungible is Test {
+contract TestIdleTokenFungible is Test, CDOStorageReader {
   using stdStorage for StdStorage;
 
   event Referral(uint256 _amount, address _ref);
@@ -542,10 +543,10 @@ contract TestIdleTokenFungible is Test {
     // skip fees distribution
     _skipFlags[3] = true;
     // do harvest to put funds in lending
-    vm.prank(idleCDO.rebalancer());
+    vm.prank(_cdoRebalancer(address(idleCDO)));
     idleCDO.harvest(_skipFlags, _skipReward, _minAmount, _sellAmounts, _extraData);
     // linearly release all sold rewards if any
-    vm.roll(block.number + idleCDO.releaseBlocksPeriod() + 1); 
+    vm.roll(block.number + _cdoReleaseBlocksPeriod(address(idleCDO)) + 1);
   }
 
   function _rebalance(uint256 alloc1, uint256 alloc2) public {

@@ -510,7 +510,68 @@ const getPrintContractsInfoFeeAllocation = (feeSplit) => {
   };
 }
 const DEFAULT_CREDIT_VAULT_BLUEPRINT = 'creditrevolvingblueprintusdc';
-const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['cdo', 'strategy', 'queue', 'revolving', 'writeoff'];
+const CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER = ['strategy', 'cdo', 'queue', 'revolving', 'writeoff'];
+const CREDIT_VAULT_UPGRADE_STRATEGY_ABI = [
+  'function defaultRecoveryInitialized() view returns (bool)',
+  'function pendingWithdraws() view returns (uint256)',
+  'function pendingInstantWithdraws() view returns (uint256)',
+];
+const CREDIT_VAULT_UPGRADE_CDO_ABI = [
+  'function defaulted() view returns (bool)',
+  'function epochEndDate() view returns (uint256)',
+];
+const CREDIT_VAULT_PREFUNDED_CDO_ABI = [
+  'function epochQueue() view returns (address)',
+];
+const assertCreditVaultUpgradeReady = async (_hre, trackedCdo, components, label) => {
+  const upgradingStrategy = components.includes('strategy');
+  const upgradingCdo = components.includes('cdo');
+  const upgradingQueue = components.includes('queue');
+  if (upgradingQueue && !upgradingCdo && hasAddress(trackedCdo.queue)) {
+    let configuredQueue;
+    try {
+      const prefundedCdo = await _hre.ethers.getContractAt(CREDIT_VAULT_PREFUNDED_CDO_ABI, trackedCdo.cdoAddr);
+      configuredQueue = await prefundedCdo.epochQueue();
+    } catch {
+      configuredQueue = null;
+    }
+    if (configuredQueue && hasAddress(configuredQueue) && sameAddress(configuredQueue, trackedCdo.queue)) {
+      throw new Error(`${label}: prefunded queue upgrade requires the CDO in the same batch`);
+    }
+  }
+  if (!upgradingStrategy && !upgradingCdo) return;
+  if (upgradingCdo && !upgradingStrategy) {
+    throw new Error(`${label}: select the strategy with the CDO so the strategy is upgraded first`);
+  }
+
+  const strategy = await _hre.ethers.getContractAt(CREDIT_VAULT_UPGRADE_STRATEGY_ABI, trackedCdo.strategy);
+  let recoveryInitialized = false;
+  try {
+    recoveryInitialized = await strategy.defaultRecoveryInitialized();
+  } catch {
+    // Older strategies do not expose this getter and are treated as uninitialized.
+  }
+  if (recoveryInitialized) return;
+
+  const pendingInstant = await strategy.pendingInstantWithdraws();
+  if (!pendingInstant.isZero()) {
+    throw new Error(`${label}: pendingInstantWithdraws must be zero before upgrade`);
+  }
+  const pending = await strategy.pendingWithdraws();
+  if (pending.isZero()) return;
+
+  const cdo = await _hre.ethers.getContractAt(CREDIT_VAULT_UPGRADE_CDO_ABI, trackedCdo.cdoAddr);
+  const endDate = await cdo.epochEndDate();
+  const isDefaulted = await cdo.defaulted();
+  if (isDefaulted) {
+    throw new Error(`${label}: cannot upgrade legacy pendingWithdraws after borrower default`);
+  }
+  if (endDate.isZero()) {
+    console.log(`${label}: stale closed-vault pending counters will normalize lazily`);
+    return;
+  }
+  console.log(`${label}: legacy pendingWithdraws must be fully funded by the next successful zero-loss stop`);
+};
 const getCreditVaultBlueprintUpgradeComponents = (rawComponents = CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.join(',')) => {
   const components = rawComponents.toString().split(',').map((component) => component.trim().toLowerCase()).filter(Boolean);
   if (components.length === 0) {
@@ -529,16 +590,16 @@ const getCreditVaultBlueprintUpgradeComponents = (rawComponents = CREDIT_VAULT_B
 };
 const getCreditVaultBlueprintUpgradeTargets = (trackedCdo, components = CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER) => ([
   {
-    component: 'cdo',
-    label: 'Credit vault',
-    proxy: trackedCdo.cdoAddr,
-    contractName: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
-  },
-  {
     component: 'strategy',
     label: 'Strategy',
     proxy: trackedCdo.strategy,
     contractName: 'contracts/strategies/idle/IdleCreditVault.sol:IdleCreditVault',
+  },
+  {
+    component: 'cdo',
+    label: 'Credit vault',
+    proxy: trackedCdo.cdoAddr,
+    contractName: 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
   },
   {
     component: 'queue',
@@ -1028,12 +1089,8 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     }
 
-    const ays = await idleCDO.isAYSActive();
-    if (args.isAYSActive != ays) {
-      console.log("Toggling AYS");
-      await idleCDO.connect(signer).setIsAYSActive(args.isAYSActive);
-    }
-    console.log(`isAYSActive: ${await idleCDO.isAYSActive()}`);
+    console.log(`Setting isAYSActive to ${args.isAYSActive}`);
+    await idleCDO.connect(signer).setIsAYSActive(args.isAYSActive);
 
     if (deployToken.rewardsData && deployToken.rewardsData.length > 0) {
       console.log('setting metamorpho rewards data');
@@ -1087,18 +1144,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
 
     if (deployToken.isCreditVault) {
       console.log('Setting credit vault');
-      let cdoEpoch;
-      if (isOptimism) {
-        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantOptimism', idleCDOAddress, signer);
-      } else if (isArbitrum) {
-        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantArbitrum', idleCDOAddress, signer);
-      } else if (isBase) {
-        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantBase', idleCDOAddress, signer);
-      } else if (isAvax) {   
-        cdoEpoch = await ethers.getContractAt('IdleCDOEpochVariantAvax', idleCDOAddress, signer);
-      } else {
-        cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
-      }
+      const cdoEpoch = await ethers.getContractAt('contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant', idleCDOAddress, signer);
       const currentEpochDuration = await cdoEpoch.epochDuration();
       const currentBufferPeriod = await cdoEpoch.bufferPeriod();
       if ((deployToken.epochDuration || deployToken.bufferPeriod) && (!currentEpochDuration.eq(BN(deployToken.epochDuration)) || !currentBufferPeriod.eq(BN(deployToken.bufferPeriod)))) {
@@ -1919,6 +1965,7 @@ task("upgrade-credit-vault-blueprint", "Upgrade selected credit vault blueprint 
     }
 
     const components = getCreditVaultBlueprintUpgradeComponents(args.components);
+    await assertCreditVaultUpgradeReady(_hre, blueprint, components, args.cdoname);
     const targets = getCreditVaultBlueprintUpgradeTargets(blueprint, components);
     if (targets.length === 0) {
       throw new Error(`Blueprint ${args.cdoname} has no upgradeable proxies configured for components ${components.join(',')}`);
@@ -2033,7 +2080,6 @@ task("print-contracts-info", "Prints deployed contracts info")
         underlyingData,
         strategyAddress,
         feeReceiver,
-        isAYSActive,
         epochDuration,
         bufferPeriod,
         feeValue,
@@ -2068,7 +2114,6 @@ task("print-contracts-info", "Prints deployed contracts info")
         })(),
         cdo.strategy(),
         cdo.feeReceiver(),
-        cdo.isAYSActive(),
         cdo.epochDuration(),
         cdo.bufferPeriod(),
         cdo.fee(),
@@ -2105,7 +2150,6 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`       Symbol:    ${bbTrancheData.symbol}`);
       console.log(`  Strategy:       ${strategyAddress}`);
       console.log(`  FeeReceiver:    ${feeReceiver}`);
-      console.log(`  isAYSActive:    ${isAYSActive}`);
       console.log(`  EpochDuration:  ${epochDuration}`);
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);

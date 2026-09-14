@@ -6,6 +6,7 @@ import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 
 interface IIdleCDOEpochQueuePrefunded {
   function prefundedDepositsToProcess() external view returns (uint256);
+  function epochPrefundedDeposits(uint256) external view returns (uint256);
   function processPrefundedDeposits(uint256) external;
 }
 
@@ -25,17 +26,45 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
     epochQueue = _epochQueue;
   }
 
+  /// @inheritdoc IdleCDOEpochVariant
+  function setInstantWithdrawParams(uint256 _delay, uint256 _aprDelta, bool _disable) public override {
+    _checkNotAllowed(!_disable);
+    super.setInstantWithdrawParams(_delay, _aprDelta, true);
+  }
+
   /// @notice Block the direct `stopEpoch` selector when a prefunded queue is configured
-  /// @dev `stopEpochWithDuration` still reaches the base stop flow through an internal call
-  function _beforeStopEpoch() internal view override {
+  /// @dev `stopEpochWithDuration` still reaches the base stop flow through an internal call.
+  /// @param _isClosing true when this stop recalls all pool principal
+  /// @return additionalPrincipal prefunded principal already sent to the borrower
+  function _beforeStopEpoch(bool _isClosing) internal view override returns (uint256 additionalPrincipal) {
     // `stopEpochWithDuration` calls `stopEpoch` internally, so only block the direct selector path.
-    _checkNotAllowed(epochQueue != address(0) && msg.sig == this.stopEpoch.selector);
+    address _queue = epochQueue;
+    if (_queue == address(0)) return additionalPrincipal;
+    _checkNotAllowed(msg.sig == this.stopEpoch.selector);
+    if (_isClosing) {
+      uint256 nextEpoch = IdleCreditVault(strategy).epochNumber() + 1;
+      additionalPrincipal = IIdleCDOEpochQueuePrefunded(_queue).epochPrefundedDeposits(nextEpoch);
+    }
   }
 
   /// @notice Disable mid-epoch deposits for the prefunded variant.
   function depositDuringEpoch(uint256, address) external pure override returns (uint256) {
     _checkNotAllowed(true);
     return 0;
+  }
+
+  /// @inheritdoc IdleCDOEpochVariant
+  function _isInstantWithdrawEnabled() internal pure override returns (bool) {
+    return false;
+  }
+
+  /// @notice Check whether an amount can safely move from the queue to the borrower.
+  /// @dev Includes the persistent emergency flag and guarded-launch limit that the queue cannot
+  /// otherwise observe. The amount must include all queue deposits targeted to the next epoch.
+  /// @param _amount queued underlying proposed for prefunding
+  function checkPrefunding(uint256 _amount) external view {
+    _checkNotAllowed(defaulted || skipDefaultCheck || priceAA == 0);
+    _guarded(_amount);
   }
 
   /// @notice Finalize prefunded queue deposits after the base stop flow completes
@@ -47,6 +76,8 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
     IIdleCDOEpochQueuePrefunded _epochQueue = IIdleCDOEpochQueuePrefunded(_queue);
     uint256 _prefunded = _epochQueue.prefundedDepositsToProcess();
     if (_prefunded == 0) return;
+    // A zero post-loss AA price cannot safely mint new shares into the same tranche token.
+    _checkNotAllowed(priceAA == 0);
 
     // Prefunded deposits already reached the borrower, so they must join AA even if stop defaulted.
     // Mint tranche shares at the post-stop price and mirror the same amount in strategy tokens,

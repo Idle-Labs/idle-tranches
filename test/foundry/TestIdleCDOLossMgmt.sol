@@ -29,7 +29,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         idleCDO.depositBB(amount);
 
         uint256 prePrice = strategy.price();
-        uint256 maxDecrease = idleCDO.maxDecreaseDefault();
+        uint256 maxDecrease = _cdoMaxDecreaseDefault();
         uint256 unclaimedFees = idleCDO.unclaimedFees();
 
         // deposit underlying to the strategy
@@ -73,7 +73,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         _cdoHarvest(true);
         // now let's simulate a loss by decreasing strategy price
         // curr price - about 0.25%
-        _createLoss(idleCDO.lossToleranceBps() / 2);
+        _createLoss(_cdoLossToleranceBps() / 2);
 
         uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
         uint256 lastNAVAA = idleCDO.lastNAVAA();
@@ -112,7 +112,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         uint256 unclaimedFees = idleCDO.unclaimedFees();
         // now let's simulate a loss by decreasing strategy price
         // curr price - 5%, this will trigger a default because the loss is >= junior tvl
-        _createLoss(idleCDO.maxDecreaseDefault());
+        _createLoss(_cdoMaxDecreaseDefault());
 
         uint256 postAAPrice = idleCDO.virtualPrice(address(AAtranche));
         uint256 postBBPrice = idleCDO.virtualPrice(address(BBtranche));
@@ -145,8 +145,8 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
         assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
         assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
         assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-        assertEq(idleCDO.allowAAWithdraw(), true, "Default flag for senior set to true regardless");
-        assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for senior set");
+        assertEq(_cdoAllowAAWithdraw(), true, "Default flag for senior set to true regardless");
+        assertEq(_cdoAllowBBWithdraw(), false, "Default flag for senior set");
         assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
 
         // AA loss is 5% but 2% is covedered by junior (maxDelta 0.1% -> 1e15)
@@ -179,7 +179,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         // NOTE: forcely decrease the vault price
         // curr price - 2.5%
-        _createLoss(idleCDO.maxDecreaseDefault() / 2);
+        _createLoss(_cdoMaxDecreaseDefault() / 2);
 
         // redeem all
         uint256 resAA = idleCDO.withdrawAA(0);
@@ -219,7 +219,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         // now let's simulate a loss by decreasing strategy price
         // curr price - about 0.25%
-        _createLoss(idleCDO.lossToleranceBps() / 2);
+        _createLoss(_cdoLossToleranceBps() / 2);
 
         uint256 priceDelta = ((prePrice - strategy.price()) * ONE_SCALE) / prePrice;
         uint256 priceAA = idleCDO.virtualPrice(address(AAtranche));
@@ -330,7 +330,7 @@ abstract contract TestIdleCDOLossMgmt is TestIdleCDOBase {
 
         // now let's simulate a loss by decreasing strategy price
         // curr price - 10%, this will trigger a default
-        uint256 lossBps = IdleCDO(address(idleCDO)).maxDecreaseDefault() * 2;
+        uint256 lossBps = _cdoMaxDecreaseDefault() * 2;
         uint256 totLoss = (amount + interest) * lossBps / FULL_ALLOC;
         _createLoss(lossBps);
 

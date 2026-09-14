@@ -104,9 +104,9 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(idleCDO.tranchePrice(address(BBtranche)), ONE_SCALE, 'BB price is wrong');
     assertEq(initialAAApr, 0);
     assertEq(initialBBApr, initialApr);
-    assertEq(idleCDO.unlentPerc(), 0, 'unlentPerc is wrong');
-    assertEq(idleCDO.releaseBlocksPeriod(), 0, 'releaseBlocksPeriod is wrong');
-    assertEq(idleCDO.maxDecreaseDefault(), 100_000, 'maxDecreaseDefault is wrong');
+    assertEq(_cdoUnlentPerc(), 0, 'unlentPerc is wrong');
+    assertEq(_cdoReleaseBlocksPeriod(), 0, 'releaseBlocksPeriod is wrong');
+    assertEq(_cdoMaxDecreaseDefault(), 100_000, 'maxDecreaseDefault is wrong');
     assertEq(_usualStrategy.owner(), owner, 'owner is wrong');
     assertEq(_usualStrategy.decimals(), IERC20Detailed(USD0pp).decimals(), 'decimals are wrong');
     assertEq(_usualStrategy.symbol(), "idle_USD0++", 'symbol is wrong');
@@ -203,8 +203,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(tvlPre, _idleCDO.getContractValue(), "tvl is the same");
     assertEq(_idleCDO.isEpochRunning(), true, "epoch is not running");
     assertEq(_idleCDO.paused(), true, "deposits paused");
-    assertEq(_idleCDO.allowAAWithdraw(), false, "AA withdrawals paused");
-    assertEq(_idleCDO.allowBBWithdraw(), false, "BB withdrawals paused");
+    assertEq(_cdoAllowAAWithdraw(), false, "AA withdrawals paused");
+    assertEq(_cdoAllowBBWithdraw(), false, "BB withdrawals paused");
     assertEq(_idleCDO.priceAtStartEpoch(), oraclePrice, 'price at start epoch is wrong');
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(_idleCDO)), tvlPre, 'strategyToken bal is wrong');
 
@@ -280,8 +280,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(_strategy.oraclePrice(), oraclePrice, 'oraclePrice is wrong');
     assertEq(_idleCDO.isEpochRunning(), false, "epoch is running");
     assertEq(_idleCDO.paused(), true, "deposits not paused");
-    assertEq(_idleCDO.allowAAWithdraw(), true, "AA withdrawals paused");
-    assertEq(_idleCDO.allowBBWithdraw(), true, "BB withdrawals paused");
+    assertEq(_cdoAllowAAWithdraw(), true, "AA withdrawals paused");
+    assertEq(_cdoAllowBBWithdraw(), true, "BB withdrawals paused");
 
     // we now calculate what should be the amount of usd0++ that seniors should have in order
     // to have their initial deposits worth 1$ per usd0++
@@ -344,8 +344,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(_strategy.oraclePrice(), oraclePrice, 'oraclePrice is wrong');
     assertEq(_idleCDO.isEpochRunning(), false, "epoch is running");
     assertEq(_idleCDO.paused(), true, "deposits not paused");
-    assertEq(_idleCDO.allowAAWithdraw(), true, "AA withdrawals paused");
-    assertEq(_idleCDO.allowBBWithdraw(), true, "BB withdrawals paused");
+    assertEq(_cdoAllowAAWithdraw(), true, "AA withdrawals paused");
+    assertEq(_cdoAllowBBWithdraw(), true, "BB withdrawals paused");
 
     // we now calculate what should be the amount of usd0++ that seniors should have in order
     // to have their initial deposits worth 1$ per usd0++
@@ -565,8 +565,8 @@ contract TestIdleUsualStrategy is TestIdleCDOLossMgmt {
     assertEq(idleCDO.priceAA(), postDepositAAPrice, "AA saved price updated");
     assertEq(idleCDO.priceBB(), postDepositBBPrice, "BB saved price updated");
     assertEq(idleCDO.unclaimedFees(), unclaimedFees, "Fees did not increase");
-    assertEq(idleCDO.allowAAWithdraw(), true, "Default flag for senior set to true regardless");
-    assertEq(idleCDO.allowBBWithdraw(), false, "Default flag for senior set");
+    assertEq(_cdoAllowAAWithdraw(), true, "Default flag for senior set to true regardless");
+    assertEq(_cdoAllowBBWithdraw(), false, "Default flag for senior set");
     assertEq(idleCDO.lastNAVBB(), 0, "Last junior TVL should be 0");
 
     // AA loss is 5% but 2% is covedered by junior (maxDelta 0.1% -> 1e15)

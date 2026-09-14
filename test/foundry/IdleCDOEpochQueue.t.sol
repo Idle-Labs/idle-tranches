@@ -785,7 +785,164 @@ contract TestIdleCDOEpochQueue is Test {
     );
   }
 
+  /// @notice A valid proportional loss can round a small queue claim to zero without blocking later epochs.
+  function testProcessWithdrawalClaimsWithZeroRoundedQueuePayout() external {
+    _stopCurrentEpochWithApr(10e18);
+    address currentFeeReceiver = cdoEpoch.feeReceiver();
+    vm.prank(cdoEpoch.owner());
+    cdoEpoch.setFeeParams(currentFeeReceiver, 0, 100_000, 0);
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    uint256 tranchePrice = cdoEpoch.virtualPrice(address(tranche));
+    uint256 tinyTrancheAmount = (ONE_TRANCHE + tranchePrice - 1) / tranchePrice;
+    _requestWithdrawWithUser(FASA, tinyTrancheAmount);
+
+    _stopCurrentEpochWithApr(10e18);
+    uint256 claimEpoch = strategy.epochNumber();
+
+    vm.prank(manager);
+    queue.processWithdrawRequests();
+    uint256 queueClaimBasis = queue.epochPendingClaims(claimEpoch);
+    assertEq(queueClaimBasis, 1, 'test requires a one-unit queue claim');
+
+    vm.prank(FASA);
+    cdoEpoch.requestWithdraw(ONE_TRANCHE, address(tranche));
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+
+    uint256 pendingBasis = strategy.pendingWithdraws();
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest();
+    uint256 totalBasis = activeBasis + pendingBasis;
+    uint256 totalRecovery = totalBasis / 100_000;
+    uint256 lossAmount = totalBasis - totalRecovery;
+    (uint256 pendingToFund, ) = strategy.previewLossAdjustedWithdrawFunds(lossAmount);
+    uint256 fundsToRepay = cdoEpoch.expectedEpochInterest() + pendingToFund;
+    deal(address(underlying), strategy.borrower(), fundsToRepay, true);
+    vm.prank(strategy.borrower());
+    underlying.approve(address(cdoEpoch), fundsToRepay);
+
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(10e18, 0, duration, lossAmount);
+
+    queue.processWithdrawalClaims(claimEpoch);
+    assertEq(queue.epochWithdrawPrice(claimEpoch), 0, 'rounded withdraw price should be zero');
+    assertTrue(queue.isEpochWithdrawZero(claimEpoch), 'zero payout marker was not saved');
+    assertEq(queue.epochPendingClaims(claimEpoch), 0, 'zero payout claim remained pending');
+    assertFalse(queue.pendingClaims(), 'zero payout blocked later processing');
+
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    vm.prank(FASA);
+    queue.deleteWithdrawRequest(claimEpoch);
+
+    uint256 balancePre = underlying.balanceOf(FASA);
+    vm.prank(FASA);
+    queue.claimWithdrawRequest(claimEpoch);
+    assertEq(underlying.balanceOf(FASA), balancePre, 'zero payout transferred underlying');
+    assertEq(queue.userWithdrawalsEpochs(FASA, claimEpoch), 0, 'zero payout receipt was not cleared');
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    _requestWithdrawWithUser(FASA, ONE_TRANCHE);
+    _stopCurrentEpochWithApr(10e18);
+
+    uint256 laterEpoch = strategy.epochNumber();
+    vm.prank(manager);
+    queue.processWithdrawRequests();
+    assertGt(queue.epochPendingClaims(laterEpoch), 0, 'later withdrawal was not processed');
+    assertTrue(queue.pendingClaims(), 'later claim was not opened');
+  }
+
+  function testProcessPostDefaultWithdrawalAsNormalClaim() external {
+    uint256 trancheAmount = ONE_TRANCHE;
+    uint256 claimEpoch = strategy.epochNumber() + 1;
+    _requestWithdrawWithUser(FASA, trancheAmount);
+
+    // Move the queued request into the current strategy epoch without processing it.
+    _stopCurrentEpochWithApr(10e18);
+    assertEq(strategy.epochNumber(), claimEpoch, 'queued epoch did not become current');
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    deal(address(underlying), strategy.borrower(), 0, true);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(cdoEpoch.owner());
+    cdoEpoch.stopEpoch(0, 0);
+    assertEq(cdoEpoch.defaulted(), true, 'pool should be defaulted');
+
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    uint256 activeInterest = expectedInterest > pendingFees ? expectedInterest - pendingFees : 0;
+    activeInterest = activeInterest * (100_000 - cdoEpoch.fee()) / 100_000;
+    uint256 recovered = strategy.balanceOf(address(cdoEpoch)) + activeInterest;
+    deal(address(underlying), manager, recovered, true);
+    vm.startPrank(manager);
+    underlying.approve(address(strategy), recovered);
+    cdoEpoch.finalizeDefault(recovered, manager);
+    queue.processWithdrawRequests();
+    vm.stopPrank();
+
+    assertEq(queue.isEpochInstant(claimEpoch), false, 'post-default request was classified as instant');
+    uint256 queueBalancePre = underlying.balanceOf(address(queue));
+    queue.processWithdrawalClaims(claimEpoch);
+    assertGt(underlying.balanceOf(address(queue)) - queueBalancePre, 0, 'queue did not receive recovery funds');
+    assertEq(queue.pendingClaims(), false, 'post-default queue claim remained pending');
+
+    uint256 userBalancePre = underlying.balanceOf(FASA);
+    vm.prank(FASA);
+    queue.claimWithdrawRequest(claimEpoch);
+    assertGt(underlying.balanceOf(FASA) - userBalancePre, 0, 'user did not receive post-default recovery');
+  }
+
+  /// @notice A queued withdrawal processed after a healthy pool close remains a normal funded claim.
+  function testHealthyCloseProcessesQueuedWithdrawalAsNormalClaim() external {
+    uint256 trancheAmount = ONE_TRANCHE;
+    uint256 claimEpoch = strategy.epochNumber() + 1;
+    _requestWithdrawWithUser(FASA, trancheAmount);
+
+    uint256 principal = strategy.balanceOf(address(cdoEpoch));
+    uint256 interest = cdoEpoch.expectedEpochInterest();
+    uint256 closeFunds = principal + interest;
+    address borrower = strategy.borrower();
+    deal(address(underlying), borrower, closeFunds, true);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), closeFunds);
+
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 1);
+
+    assertFalse(cdoEpoch.defaulted(), 'close should be healthy');
+    assertEq(cdoEpoch.epochEndDate(), 0, 'pool should be closed');
+    assertEq(strategy.epochNumber(), claimEpoch, 'queued epoch should be current');
+
+    queue.processWithdrawRequests();
+    uint256 claimBasis = queue.epochPendingClaims(claimEpoch);
+    assertGt(claimBasis, 0, 'queue claim should have a positive basis');
+    assertFalse(queue.isEpochInstant(claimEpoch), 'normal closed-pool receipt was classified as instant');
+    assertEq(strategy.withdrawsRequests(address(queue)), claimBasis, 'normal receipt was not recorded');
+    assertEq(strategy.instantWithdrawsRequests(address(queue)), 0, 'instant ledger should be empty');
+
+    uint256 queueBalancePre = underlying.balanceOf(address(queue));
+    queue.processWithdrawalClaims(claimEpoch);
+    assertEq(underlying.balanceOf(address(queue)) - queueBalancePre, claimBasis, 'queue did not receive the normal claim');
+    assertEq(strategy.withdrawsRequests(address(queue)), 0, 'normal receipt was not cleared');
+    assertEq(strategy.balanceOf(address(queue)), 0, 'queue strategy receipt was not burned');
+
+    uint256 expectedPayout = trancheAmount * queue.epochWithdrawPrice(claimEpoch) / ONE_TRANCHE;
+    uint256 userBalancePre = underlying.balanceOf(FASA);
+    vm.prank(FASA);
+    queue.claimWithdrawRequest(claimEpoch);
+    assertEq(underlying.balanceOf(FASA) - userBalancePre, expectedPayout, 'user did not receive the queued claim');
+    assertEq(queue.userWithdrawalsEpochs(FASA, claimEpoch), 0, 'user entitlement was not cleared');
+  }
+
   function testProcessWithdrawalClaimsInstantEpoch() external {
+    _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
     _stopCurrentEpochWithApr(10e18);
     // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
@@ -848,6 +1005,7 @@ contract TestIdleCDOEpochQueue is Test {
   }
 
   function testProcessWithdrawalClaimsMixedInstantAndNormalEpoch() external {
+    _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
     _stopCurrentEpochWithApr(10e18);
     // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
@@ -905,6 +1063,7 @@ contract TestIdleCDOEpochQueue is Test {
   }
 
   function testProcessWithdrawalClaimsWithProcessRequestsInSameBuffer() external {
+    _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
     _stopCurrentEpochWithApr(10e18);
     // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
@@ -971,6 +1130,7 @@ contract TestIdleCDOEpochQueue is Test {
   }
 
   function testProcessWithdrawWhenInstantAreDisabled() external {
+    _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
     _stopCurrentEpochWithApr(10e18);
     // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
@@ -1096,6 +1256,7 @@ contract TestIdleCDOEpochQueue is Test {
   }
 
   function testClaimInstantWithdrawRequest() external {
+    _useStandardEpochVariant();
     // stop epoch #0 and set apr for next epoch to 10%
     _stopCurrentEpochWithApr(10e18);
     // we are now in epoch #1 (epoch starts at the beginning of the buffer period)
@@ -1300,6 +1461,12 @@ contract TestIdleCDOEpochQueue is Test {
     underlying.approve(address(queue), amount);
     queue.requestDeposit(amount);
     vm.stopPrank();
+  }
+
+  /// @notice Use the standard epoch implementation for queue tests that exercise instant mode.
+  function _useStandardEpochVariant() internal {
+    IdleCDOEpochVariant standardImplementation = new IdleCDOEpochVariant();
+    vm.etch(address(cdoEpoch), address(standardImplementation).code);
   }
 
   function _requestWithdrawWithUser(address _user, uint256 trancheAmount) internal {

@@ -22,7 +22,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   // TVL limit in underlying value
   uint256 public limit;
   // recovery address
-  address public governanceRecoveryFund;
+  address internal governanceRecoveryFund;
 
   /// @param _limit TVL limit. (0 means unlimited)
   /// @param _governanceRecoveryFund recovery address

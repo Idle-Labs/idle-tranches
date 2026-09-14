@@ -71,6 +71,8 @@ const loadTaskInternals = () => {
   const source = `${fs.readFileSync(taskPath, "utf8")}
 module.exports = {
   CV_DEFAULT_BLUEPRINT_CDO_NAME,
+  assertCvUpgradeReady,
+  assertCvUpgradePlanReady,
   getCreditVaultUpgradeBlueprintTarget,
   getCreditVaultUpgradeTarget,
   getRequestedCvUpgradeComponents,
@@ -181,8 +183,8 @@ describe("credit vault upgrade task helpers", function () {
     const { getRequestedCvUpgradeComponents } = loadTaskInternals();
 
     expect(getRequestedCvUpgradeComponents("strategy,revolving,cdo")).to.deep.equal([
-      "cdo",
       "strategy",
+      "cdo",
       "revolving",
     ]);
   });
@@ -248,6 +250,239 @@ describe("credit vault upgrade task helpers", function () {
 
     expect(target).to.equal(null);
   });
+
+  it("applies the same clean-state preflight to timelock plans", async function () {
+    const { assertCvUpgradeReady } = loadTaskInternals();
+    const trackedCdo = {
+      cdoAddr: "0x0000000000000000000000000000000000000002",
+      strategy: "0x0000000000000000000000000000000000000001",
+    };
+    const hreWithPendingInstant = {
+      ethers: {
+        getContractAt: async () => ({
+          defaultRecoveryInitialized: async () => false,
+          pendingInstantWithdraws: async () => ethers.BigNumber.from(1),
+          pendingWithdraws: async () => ethers.BigNumber.from(0),
+        }),
+      },
+    };
+
+    let error;
+    try {
+      await assertCvUpgradeReady(
+        hreWithPendingInstant,
+        trackedCdo,
+        ["strategy", "cdo"],
+        "test"
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("pendingInstantWithdraws must be zero");
+  });
+
+  it("allows non-defaulted legacy normal pending state and rejects it after default", async function () {
+    const { assertCvUpgradeReady } = loadTaskInternals();
+    const trackedCdo = {
+      cdoAddr: "0x0000000000000000000000000000000000000002",
+      strategy: "0x0000000000000000000000000000000000000001",
+    };
+    let isDefaulted = false;
+    const hreWithPendingNormal = {
+      ethers: {
+        getContractAt: async (_abi, address) => {
+          if (normalizeAddress(address) === normalizeAddress(trackedCdo.strategy)) {
+            return {
+              defaultRecoveryInitialized: async () => false,
+              pendingInstantWithdraws: async () => ethers.BigNumber.from(0),
+              pendingWithdraws: async () => ethers.BigNumber.from(1),
+            };
+          }
+          return {
+            defaulted: async () => isDefaulted,
+            epochEndDate: async () => ethers.BigNumber.from(1),
+          };
+        },
+      },
+    };
+
+    await assertCvUpgradeReady(
+      hreWithPendingNormal,
+      trackedCdo,
+      ["strategy", "cdo"],
+      "test"
+    );
+
+    isDefaulted = true;
+    let error;
+    try {
+      await assertCvUpgradeReady(
+        hreWithPendingNormal,
+        trackedCdo,
+        ["strategy", "cdo"],
+        "test"
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("cannot upgrade legacy pendingWithdraws after borrower default");
+  });
+
+  it("requires selecting the strategy with a CDO upgrade", async function () {
+    const { assertCvUpgradeReady } = loadTaskInternals();
+    const trackedCdo = {
+      cdoAddr: "0x0000000000000000000000000000000000000002",
+      strategy: "0x0000000000000000000000000000000000000001",
+    };
+    let error;
+    try {
+      await assertCvUpgradeReady(
+        {
+          ethers: {
+            getContractAt: async () => ({
+              defaultRecoveryInitialized: async () => true,
+            }),
+          },
+        },
+        trackedCdo,
+        ["cdo"],
+        "test"
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("select the strategy with the CDO");
+  });
+
+  it("rejects a prefunded queue-only timelock upgrade", async function () {
+    const { assertCvUpgradeReady } = loadTaskInternals();
+    const trackedCdo = {
+      cdoAddr: "0x0000000000000000000000000000000000000002",
+      strategy: "0x0000000000000000000000000000000000000001",
+      queue: "0x0000000000000000000000000000000000000003",
+    };
+    const hreWithPrefundedQueue = {
+      ethers: {
+        getContractAt: async () => ({
+          epochQueue: async () => trackedCdo.queue,
+        }),
+      },
+    };
+
+    let error;
+    try {
+      await assertCvUpgradeReady(
+        hreWithPrefundedQueue,
+        trackedCdo,
+        ["queue"],
+        "test"
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("prefunded queue upgrade requires the CDO");
+  });
+
+  it("rechecks clean state from the saved plan immediately before execution", async function () {
+    const { assertCvUpgradePlanReady } = loadTaskInternals();
+    const trackedCdo = addresses.CDOs.creditgauntlettestusdc;
+    const proxyAdminInterface = new ethers.utils.Interface(PROXY_ADMIN_ABI);
+    const newImplementation = "0x0000000000000000000000000000000000000009";
+    const plan = {
+      targets: [trackedCdo.proxyAdmin, trackedCdo.proxyAdmin],
+      payloads: [
+        proxyAdminInterface.encodeFunctionData("upgrade", [trackedCdo.strategy, newImplementation]),
+        proxyAdminInterface.encodeFunctionData("upgrade", [trackedCdo.cdoAddr, newImplementation]),
+      ],
+    };
+    const hreWithDirtyState = {
+      network: hreLike.network,
+      ethers: {
+        getContractAt: async (_abi, address) => {
+          if (normalizeAddress(address) === normalizeAddress(trackedCdo.strategy)) {
+            return {
+              defaultRecoveryInitialized: async () => false,
+              pendingInstantWithdraws: async () => ethers.BigNumber.from(1),
+              pendingWithdraws: async () => ethers.BigNumber.from(0),
+            };
+          }
+          throw new Error(`unexpected contract ${address}`);
+        },
+      },
+    };
+
+    let error;
+    try {
+      await assertCvUpgradePlanReady(hreWithDirtyState, plan);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("pendingInstantWithdraws must be zero");
+  });
+
+  it("rejects a saved prefunded queue-only plan immediately before execution", async function () {
+    const { assertCvUpgradePlanReady } = loadTaskInternals();
+    const trackedCdo = addresses.CDOs.creditgauntlettestusdc;
+    const proxyAdminInterface = new ethers.utils.Interface(PROXY_ADMIN_ABI);
+    const plan = {
+      targets: [trackedCdo.proxyAdmin],
+      payloads: [
+        proxyAdminInterface.encodeFunctionData("upgrade", [
+          trackedCdo.queue,
+          "0x0000000000000000000000000000000000000009",
+        ]),
+      ],
+    };
+
+    let error;
+    try {
+      await assertCvUpgradePlanReady(
+        {
+          network: hreLike.network,
+          ethers: {
+            getContractAt: async () => ({
+              epochQueue: async () => trackedCdo.queue,
+            }),
+          },
+        },
+        plan
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("prefunded queue upgrade requires the CDO");
+  });
+
+  it("rejects a saved plan whose proxy disappeared from network config", async function () {
+    const { assertCvUpgradePlanReady } = loadTaskInternals();
+    const proxyAdminInterface = new ethers.utils.Interface(PROXY_ADMIN_ABI);
+    const missingProxy = "0x0000000000000000000000000000000000000008";
+    const newImplementation = "0x0000000000000000000000000000000000000009";
+    const plan = {
+      targets: ["0x0000000000000000000000000000000000000007"],
+      payloads: [
+        proxyAdminInterface.encodeFunctionData("upgrade", [missingProxy, newImplementation]),
+      ],
+    };
+
+    let error;
+    try {
+      await assertCvUpgradePlanReady(
+        {
+          network: hreLike.network,
+          ethers: {
+            getContractAt: async () => {
+              throw new Error("unexpected state lookup");
+            },
+          },
+        },
+        plan
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.message).to.include("missing from the current network config");
+  });
 });
 
 describe("schedule-cv-upgrades-timelock integration", function () {
@@ -310,7 +545,7 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     await stopProcess(anvil);
   });
 
-  it("schedules a real cdo+strategy upgrade batch and writes the minimal plan", async function () {
+  it("schedules a real strategy-first upgrade batch with plain upgrade calls", async function () {
     planPath = getPlanPath();
 
     runScheduleTask({
@@ -339,12 +574,12 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     const decodedUpgrades = decodeUpgrades(plan);
     const blueprintConfig = addresses.CDOs.creditrevolvingblueprintusdc;
     const blueprintImplementations = [
-      await getImplementationAddress(provider, blueprintConfig.cdoAddr),
       await getImplementationAddress(provider, blueprintConfig.strategy),
+      await getImplementationAddress(provider, blueprintConfig.cdoAddr),
     ].map(normalizeAddress);
     expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
-      cdoConfig.cdoAddr,
       cdoConfig.strategy,
+      cdoConfig.cdoAddr,
     ].map(normalizeAddress));
 
     const expectedOperationId = await timelock.hashOperationBatch(
@@ -383,10 +618,10 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(plan.targets).to.have.length(4);
     expect(plan.values).to.deep.equal([0, 0, 0, 0]);
     expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
-      addresses.CDOs.creditgauntlettestusdc.cdoAddr,
       addresses.CDOs.creditgauntlettestusdc.strategy,
-      addresses.CDOs.creditl1testusdc.cdoAddr,
+      addresses.CDOs.creditgauntlettestusdc.cdoAddr,
       addresses.CDOs.creditl1testusdc.strategy,
+      addresses.CDOs.creditl1testusdc.cdoAddr,
     ].map(normalizeAddress));
 
     const uniqueNewImplementations = [...new Set(decodedUpgrades.map((item) => item.newImplementation))];
@@ -450,11 +685,11 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(plan.targets).to.have.length(7);
     expect(plan.values).to.deep.equal([0, 0, 0, 0, 0, 0, 0]);
     expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
-      addresses.CDOs.creditgauntlettestusdc.cdoAddr,
       addresses.CDOs.creditgauntlettestusdc.strategy,
+      addresses.CDOs.creditgauntlettestusdc.cdoAddr,
       addresses.CDOs.creditgauntlettestusdc.queue,
-      addresses.CDOs.creditrevolvingearnifiusdc.cdoAddr,
       addresses.CDOs.creditrevolvingearnifiusdc.strategy,
+      addresses.CDOs.creditrevolvingearnifiusdc.cdoAddr,
       addresses.CDOs.creditrevolvingearnifiusdc.queue,
       addresses.CDOs.creditrevolvingearnifiusdc.programmableBorrower,
     ].map(normalizeAddress));
