@@ -235,20 +235,22 @@ const getCreditVaultCdoContractName = (_hre, deployToken) => {
   return contractName;
 }
 
-const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, component) => {
+const getCreditVaultUpgradeTarget = async (_hre, networkTokens, networkCDOs, cdoName, component) => {
   const deployToken = networkTokens[cdoName];
   const networkCdo = networkCDOs[cdoName];
-  if (!deployToken || !networkCdo) {
+  if (!networkCdo) {
     throw new Error(`Missing config for ${cdoName}`);
   }
 
   const targetByComponent = {
     cdo: {
-      contractName: getCreditVaultCdoContractName(_hre, deployToken),
+      contractName: deployToken
+        ? getCreditVaultCdoContractName(_hre, deployToken)
+        : 'contracts/IdleCDOEpochVariant.sol:IdleCDOEpochVariant',
       proxyAddress: networkCdo.cdoAddr,
     },
     strategy: {
-      contractName: deployToken.strategyName,
+      contractName: deployToken ? deployToken.strategyName : 'IdleCreditVault',
       proxyAddress: networkCdo.strategy,
     },
     queue: {
@@ -270,6 +272,19 @@ const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, 
     return null;
   }
 
+  if (component === 'cdo' && !deployToken) {
+    // Factory deployments need no deployTokens recipe. Detect the prefunded variant even
+    // when its queue is unset, so a standard blueprint cannot replace its implementation.
+    const cdo = await _hre.ethers.getContractAt(CV_PREFUNDED_CDO_ABI, target.proxyAddress);
+    try {
+      await cdo.epochQueue();
+      target.contractName = 'contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded';
+    } catch (error) {
+      // Only an empty selector revert identifies the standard variant; RPC failures must abort.
+      if (error.code !== 'CALL_EXCEPTION' || error.data !== '0x' || error.error) throw error;
+    }
+  }
+
   return {
     cdoName,
     component,
@@ -278,8 +293,8 @@ const getCreditVaultUpgradeTarget = (_hre, networkTokens, networkCDOs, cdoName, 
   };
 }
 
-const getCreditVaultUpgradeBlueprintTarget = (_hre, networkTokens, networkCDOs, blueprintName, component) => {
-  const target = getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, blueprintName, component);
+const getCreditVaultUpgradeBlueprintTarget = async (_hre, networkTokens, networkCDOs, blueprintName, component) => {
+  const target = await getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, blueprintName, component);
   if (!target) {
     throw new Error(`Blueprint ${blueprintName} does not have a valid ${component} proxy configured`);
   }
@@ -437,7 +452,7 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, timelock, bluepr
     }
     await assertCvUpgradeReady(_hre, trackedCdo, components, cdoName);
     for (const component of components) {
-      const target = getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component);
+      const target = await getCreditVaultUpgradeTarget(_hre, networkTokens, networkCDOs, cdoName, component);
       if (!target) {
         console.log(`Skipping ${cdoName} / ${component}: component not configured`);
         continue;
@@ -475,7 +490,7 @@ const buildCvUpgradePlan = async (_hre, { cdoNames, components, timelock, bluepr
   const blueprintTargets = new Map();
   for (const target of targets) {
     if (!blueprintTargets.has(target.component)) {
-      const blueprintTarget = getCreditVaultUpgradeBlueprintTarget(_hre, networkTokens, networkCDOs, blueprintName, target.component);
+      const blueprintTarget = await getCreditVaultUpgradeBlueprintTarget(_hre, networkTokens, networkCDOs, blueprintName, target.component);
       blueprintTarget.currentImplementation = ethers.utils.getAddress(
         await getImplementationAddress(ethers.provider, blueprintTarget.proxyAddress)
       );

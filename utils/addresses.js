@@ -1077,63 +1077,63 @@ const CDOs = {
     morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
     morphoMarketId: '0xfc12e6c22618e8dedee4935f13d553271576505bb779667b86f983a90f064e99'
   },
-  creditblackrockcashxtestusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x438De8BF88564E2E73d77ad0C7E75a03A0d179Ca',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0x375F5A0Ed74D8F6a14AD4fe43f47D3601B7C893E',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x438De8BF88564E2E73d77ad0C7E75a03A0d179Ca',
-    AATranche: '0x466f775F83cD449490c7C08B6976422F369Fa5a7',
-    BBTranche: '0xD23A1a52f5Ed82BFd9fc5E3e22902FC848311a31',
-    writeOff: '0x9567341f6C94deFc1538A05daAAEb159cf0e9739',
-    keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0'
-  },
-  creditapollotestusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0x95AE17A364eD1dB3e98524439ba7940c2FE8CF5b',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
-    AATranche: '0x8f834F177633324c175Ee4a7f6801F0e2579838d',
-    BBTranche: '0xFaB811526e5cca4Ef3A2706b1C73C2594b9E89F7',
-    writeOff: '0xC3C9B18eFaF05aD94EC1867a677Cd8B1eaF50086',
-    keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0',
-    queue: '0xc11966f3216c75e5e607ec0c23e9cdefec21cbf4'
-  },
-  creditlaserdigitalusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
-    underlying: mainnetContracts.USDC,
-    // NOTE: this is the prefunded variant
-    cdoAddr: '0xdb90AE28a02b6cb1772192f88FdAC5516E094459',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
-    AATranche: '0x39Bb84c79D6515F2038C24c3592546128664aeEE',
-    BBTranche: '0xd00743892b048c4A6A2b3F15A4602282cd34421E',
-    writeOff: '0x6120e46A4dD1bC8E4a94aeE0f71987C62De99931',
-    keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
-    queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
-  },
-  creditapollousdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
-    underlying: mainnetContracts.USDC,
-    // NOTE: this is the prefunded variant
-    cdoAddr: '0x1e157459A4E03822C2784ba5ea98AD204BD7D479',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
-    AATranche: '0xF444E23e4371ef92487279a6C5f23F735DB88a7E',
-    BBTranche: '0x5f630650C0E4b80e0a5948B7e9B9bA6fBCE631D2',
-    writeOff: '0xe05f146b17CCc77f6c9224A613Bb156d65DA43E0',
-    keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
-    queue: '0x3Ee06a5c8b15951cb68711e21e451409EBfdF3F9'
-  },
+  // creditblackrockcashxtestusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x438De8BF88564E2E73d77ad0C7E75a03A0d179Ca',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x375F5A0Ed74D8F6a14AD4fe43f47D3601B7C893E',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x438De8BF88564E2E73d77ad0C7E75a03A0d179Ca',
+  //   AATranche: '0x466f775F83cD449490c7C08B6976422F369Fa5a7',
+  //   BBTranche: '0xD23A1a52f5Ed82BFd9fc5E3e22902FC848311a31',
+  //   writeOff: '0x9567341f6C94deFc1538A05daAAEb159cf0e9739',
+  //   keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0'
+  // },
+  // creditapollotestusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x95AE17A364eD1dB3e98524439ba7940c2FE8CF5b',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x5AcB25BC5F9c099e511805eD67409208e39b0322',
+  //   AATranche: '0x8f834F177633324c175Ee4a7f6801F0e2579838d',
+  //   BBTranche: '0xFaB811526e5cca4Ef3A2706b1C73C2594b9E89F7',
+  //   writeOff: '0xC3C9B18eFaF05aD94EC1867a677Cd8B1eaF50086',
+  //   keyringWhitelist: '0xb84957322Bb6381f21f3414584483458050D77A0',
+  //   queue: '0xc11966f3216c75e5e607ec0c23e9cdefec21cbf4'
+  // },
+  // creditlaserdigitalusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
+  //   underlying: mainnetContracts.USDC,
+  //   // NOTE: this is the prefunded variant
+  //   cdoAddr: '0xdb90AE28a02b6cb1772192f88FdAC5516E094459',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0xc226DfC347aBD8Bef6efBbf67B58589333A004A2',
+  //   AATranche: '0x39Bb84c79D6515F2038C24c3592546128664aeEE',
+  //   BBTranche: '0xd00743892b048c4A6A2b3F15A4602282cd34421E',
+  //   writeOff: '0x6120e46A4dD1bC8E4a94aeE0f71987C62De99931',
+  //   keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
+  //   queue: '0x49DDC46222EBb472D0630CB18B7f77C05D350dF8'
+  // },
+  // creditapollousdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
+  //   underlying: mainnetContracts.USDC,
+  //   // NOTE: this is the prefunded variant
+  //   cdoAddr: '0x1e157459A4E03822C2784ba5ea98AD204BD7D479',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x2Be56D589E2fA893658C717bDeeb6668473bC37D',
+  //   AATranche: '0xF444E23e4371ef92487279a6C5f23F735DB88a7E',
+  //   BBTranche: '0x5f630650C0E4b80e0a5948B7e9B9bA6fBCE631D2',
+  //   writeOff: '0xe05f146b17CCc77f6c9224A613Bb156d65DA43E0',
+  //   keyringWhitelist: '0x6375954D0f91E1721967914d8Cd3011eE4Bf2688',
+  //   queue: '0x3Ee06a5c8b15951cb68711e21e451409EBfdF3F9'
+  // },
   creditm1capitalusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
@@ -1175,18 +1175,33 @@ const CDOs = {
     programmableBorrower: '0x36569d9AfAfC8bFD6bb844EE371F401c695F1bf6',
     writeOff: '0x8A00A03465277d96F4996f397550259aC6D0DEAe',
   },
-  creditgamiusdc: {
+  // creditgamiusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x6f9f571fe577e8e1abba64a1e6cfdd77532cce67',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
+  //   AATranche: '0xedd10db19864724cb6bf82c6a9f16c57d9270722',
+  //   BBTranche: '0xc8161d771fabe79ffd45e9fbbd1536210db09344',
+  //   keyringWhitelist: '0xd4bd983953b20dd9989c7d609cf15003cfdc4d4a',
+  //   queue: '0xe6b37838f5aa077b6ce301139ef27102fb0fa685'
+  // },
+  creditsentinelusdusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
+    strategyToken: '0x6E09Cefe8Bdc09a630a58df6d1Ae45B2D58C83c9',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0x6f9f571fe577e8e1abba64a1e6cfdd77532cce67',
+    cdoAddr: '0x4b66D8D870E7493695384EbDd19F46a5E2D46eB6',
     proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x761ee8922a2ea8527f505bf9258b0c447ac9413d',
-    AATranche: '0xedd10db19864724cb6bf82c6a9f16c57d9270722',
-    BBTranche: '0xc8161d771fabe79ffd45e9fbbd1536210db09344',
-    keyringWhitelist: '0xd4bd983953b20dd9989c7d609cf15003cfdc4d4a',
-    queue: '0xe6b37838f5aa077b6ce301139ef27102fb0fa685'
+    strategy: '0x6E09Cefe8Bdc09a630a58df6d1Ae45B2D58C83c9',
+    AATranche: '0x908cd44bF602869a83669228c00a1C8D20897276',
+    BBTranche: '0x06006F50255D1FdDDF354e2f7Df944678a9bdC4d',
+    keyringWhitelist: '0x351071c248bb5ccDB49b26f8bf7FE8f2500a2910',
+    queue: '0x37703441614De6F4FB4C564F6180Beca61D01c5e',
+    programmableBorrower: '',
+    writeOff: '',
   },
   creditgauntlettestusdc: {
     decimals: 6,
@@ -1222,30 +1237,45 @@ const CDOs = {
   creditbedrockstrategiesusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x90BBABcE4d3bF3eD65714d51d9F42241ab0eAb88',
+    strategyToken: '0xDC7EFe2Add13469c2b26657C85454223bF7799FE',
     underlying: mainnetContracts.USDC,
-    cdoAddr: '0x918A134607105de3bDf70f7b7460aCf630Abf4b9',
+    cdoAddr: '0xA4e8d9cf663bdBD1B45FEaB6DB1811268Be8bB79',
     proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x90BBABcE4d3bF3eD65714d51d9F42241ab0eAb88',
-    AATranche: '0x20Ae600f955073Fc28B25D88d6a77599047e9cd8',
-    BBTranche: '0x23160d07E4A92333b0aA39bB6f2B2bC5C4010FC3',
-    keyringWhitelist: '',
+    strategy: '0xDC7EFe2Add13469c2b26657C85454223bF7799FE',
+    AATranche: '0x4ab3ff2Cd2451Bb7831B874e8327DD2C1f9552b5',
+    BBTranche: '0x6d836eCc7E111eD063f7BaDB0e65082Ea88057d4',
+    keyringWhitelist: '0x7f5d6a616550a16EEBE14Cde28Dc543c504171C8',
     queue: '',
     programmableBorrower: '',
     writeOff: '',
   },
-  creditglasgowcosmicusdc: {
-    decimals: 6,
+  // creditglasgowcosmicusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x7138121eAB9222FF431DeD712E587e297E128800',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x8Eb547423f652BDD20Cc5a32802812d89509180c',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x7138121eAB9222FF431DeD712E587e297E128800',
+  //   AATranche: '0xDa7E999327d99d3E2C5396ab8865f9264E0b850F',
+  //   BBTranche: '0xB8FDb43EfF65797c7eBb15FA49c57ec2d99e5F2E',
+  //   keyringWhitelist: '',
+  //   queue: '0x4D6745973c3A677528cB58eB594374F24AF0C770',
+  //   programmableBorrower: '',
+  //   writeOff: '',
+  // },
+  creditaxiomwbtc: {
+    decimals: 8,
     // strategyToken it's the strategy itself here
-    strategyToken: '0x7138121eAB9222FF431DeD712E587e297E128800',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0x8Eb547423f652BDD20Cc5a32802812d89509180c',
+    strategyToken: '0x74E862277B5BEC233E2f1b0272CE1e215462507a',
+    underlying: mainnetContracts.WBTC,
+    cdoAddr: '0x338e0a8008364a4d5139cB49E00e93bDb51290d6',
     proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x7138121eAB9222FF431DeD712E587e297E128800',
-    AATranche: '0xDa7E999327d99d3E2C5396ab8865f9264E0b850F',
-    BBTranche: '0xB8FDb43EfF65797c7eBb15FA49c57ec2d99e5F2E',
-    keyringWhitelist: '',
-    queue: '0x4D6745973c3A677528cB58eB594374F24AF0C770',
+    strategy: '0x74E862277B5BEC233E2f1b0272CE1e215462507a',
+    AATranche: '0xD1624bb76743dd8dC8D8043246e7338A5CD23772',
+    BBTranche: '0xE56EC386dBE81E79F4620dd7235e80E3f2C83502',
+    keyringWhitelist: '0x98bca367B0a10dAA5Ef89a911D4c1ba96Ff70bDE',
+    queue: '0x2Cd361544a3647Ab16A983cA2576f084abEA80D0',
     programmableBorrower: '',
     writeOff: '',
   },
@@ -1263,128 +1293,128 @@ const CDOs = {
   //   BBTranche: '0x625fa7f7127181a55ca62e9A247374e6a8845151',
   //   queue: '0x75a878869F6920C5bB815205cD08F85480791A19'
   // },
-  // defunct
-  creditabraxasv2usdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0x0Ad21c3Ac4ffE7C1Ed2b1B717cd051DeD365fa32',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x6dbDEeF7a188bEaFFC2c57006e5D8edAf0C0e9e6',
-    BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
-    queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
-  },
-  // defunct
-  creditpsalionweth: {
-    decimals: 18,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
-    underlying: mainnetContracts.WETH,
-    cdoAddr: '0x8B2640178D35730634Adc961877FFfBad8C9e686',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
-    AATranche: '0xc04AfB30A4169edA1f08D5828cEe146D20DC4b91',
-    BBTranche: '0x73080845253A2c5C0ecC8ED4E8135C898b2143f9',
-    queue: '0x5a19D4154aEE4FC4a9756581297758400e70bEb0'
-  },
-  // defunct
-  creditpsalionwbtc: {
-    decimals: 8,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
-    underlying: mainnetContracts.WBTC,
-    cdoAddr: '0xc8CE005415325Bc5dBF526BCd0775388cb36db7F',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
-    AATranche: '0xa6aE2ce3537349B3e2518B053130C5A0E45AA23e',
-    BBTranche: '0xfF592ABfF0b4b31b8317B960565Da1fB697f11C1',
-    queue: '0x894B22c8E6AdB3e9Ecca6b004BB0f14839D706a2'
-  },
-  // defunct
-  creditpsalionusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0x5613A49D10Fed6B7Fa3a6f9b0C3524D8537Da2cF',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
-    BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
-  },
-  // defunct
-  creditpsaliontestusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0xe17018c162f8AB82dcFb3cc3Da65A8b99Ac36D99',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
-    AATranche: '0xf1DD13D0E471e365c8177d07327445284912b26c',
-    BBTranche: '0xF01a9964b209Eed143483Fbe4C2eCB0BBfD0eA39',
-  },
-  // defunct
-  creditcarpathianweth: {
-    decimals: 18,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
-    underlying: mainnetContracts.WETH,
-    cdoAddr: '0xdb6cAe7c1365219cf3d8D3728e96309CDDDe27F9',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
-    AATranche: '0x1388c0d942B7565637b8F9A06E8063c9e505c7c4',
-    BBTranche: '0x7F97740d7253ed0AA765b195b247C3d0Af0Bd502',
-    queue: '0x070b87c221aF6Cd77D0052b27a62Ac9D71f021d2'
-  },
-  // defunct
-  creditl1testusdc: {
-    decimals: 6,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x86d82BE0AFE6438ad1f2DBbb817c348C57718a85',
-    underlying: mainnetContracts.USDC,
-    cdoAddr: '0xF2cCB7A32cdF7f4350A4194465FC482875f899a8',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x86d82BE0AFE6438ad1f2DBbb817c348C57718a85',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x61a9D031E2C89b48C883ffF46a87Ea37DB16FbC7',
-    BBTranche: '0x32F28ebbEB58676153485C74aac609E209b73BeD',
-  },
-  // defunct
-  usualusd0pptest: {
-    decimals: 18,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
-    underlying: mainnetContracts.USD0pp,
-    cdoAddr: '0x7c31fDCa14368E0DA2DA7E518687012287bB90B1',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x3A34157DF5F07fF757B599716F41E8DC7829b090',
-    BBTranche: '0x228d530C7b3570E5eb7c7D049bFEC45D28e611Fa'
-  },
-  // defunct
-  usualusd0pp: {
-    decimals: 18,
-    // strategyToken it's the strategy itself here
-    strategyToken: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
-    underlying: mainnetContracts.USD0pp,
-    cdoAddr: '0x67e04c90877FC63334d420e75f54d7ce1C8bCe01',
-    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-    strategy: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
-    AArewards: '0x0000000000000000000000000000000000000000',
-    BBrewards: '0x0000000000000000000000000000000000000000',
-    AATranche: '0x891BDf6580D58337E9557B44dd01D8eaBE07Df15',
-    BBTranche: '0xE4EF3FD4eE87fF6EdF20Fd8F92301341a5a52D5b'
-  },
+  // // defunct
+  // creditabraxasv2usdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x0Ad21c3Ac4ffE7C1Ed2b1B717cd051DeD365fa32',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0xE7E13F902Ea13e6EaAa4ed9A2DE5898436D12cbF',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x6dbDEeF7a188bEaFFC2c57006e5D8edAf0C0e9e6',
+  //   BBTranche: '0xAeC53e87B91bcCB5350244a3b932d89B28De1ea3',
+  //   queue: '0xeBa43518e4fddA8D82Ad711DA3b27717779DBdF7'
+  // },
+  // // defunct
+  // creditpsalionweth: {
+  //   decimals: 18,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
+  //   underlying: mainnetContracts.WETH,
+  //   cdoAddr: '0x8B2640178D35730634Adc961877FFfBad8C9e686',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x3CB2e7ac9642B75A49Fe2A504242cfa7Daa9931d',
+  //   AATranche: '0xc04AfB30A4169edA1f08D5828cEe146D20DC4b91',
+  //   BBTranche: '0x73080845253A2c5C0ecC8ED4E8135C898b2143f9',
+  //   queue: '0x5a19D4154aEE4FC4a9756581297758400e70bEb0'
+  // },
+  // // defunct
+  // creditpsalionwbtc: {
+  //   decimals: 8,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
+  //   underlying: mainnetContracts.WBTC,
+  //   cdoAddr: '0xc8CE005415325Bc5dBF526BCd0775388cb36db7F',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x5F8644771da0B422406Eb86a665Be2c680Adf3fF',
+  //   AATranche: '0xa6aE2ce3537349B3e2518B053130C5A0E45AA23e',
+  //   BBTranche: '0xfF592ABfF0b4b31b8317B960565Da1fB697f11C1',
+  //   queue: '0x894B22c8E6AdB3e9Ecca6b004BB0f14839D706a2'
+  // },
+  // // defunct
+  // creditpsalionusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x5613A49D10Fed6B7Fa3a6f9b0C3524D8537Da2cF',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x45F427Fe0dCdE43A8D814FE68DC4112805d60b3A',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x20dbc261dc6d190898e974e4aa63f33e73ed01fb',
+  //   BBTranche: '0x54eef41402784a98ed66f66ebb7d21b27bb4278d',
+  // },
+  // // defunct
+  // creditpsaliontestusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0xe17018c162f8AB82dcFb3cc3Da65A8b99Ac36D99',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x9FbC629aF0d0fA9eb45658b0ED66e4635780da9E',
+  //   AATranche: '0xf1DD13D0E471e365c8177d07327445284912b26c',
+  //   BBTranche: '0xF01a9964b209Eed143483Fbe4C2eCB0BBfD0eA39',
+  // },
+  // // defunct
+  // creditcarpathianweth: {
+  //   decimals: 18,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
+  //   underlying: mainnetContracts.WETH,
+  //   cdoAddr: '0xdb6cAe7c1365219cf3d8D3728e96309CDDDe27F9',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x935976C45a4d5d0Dd1B7a1aBe7241050fE5DD5eb',
+  //   AATranche: '0x1388c0d942B7565637b8F9A06E8063c9e505c7c4',
+  //   BBTranche: '0x7F97740d7253ed0AA765b195b247C3d0Af0Bd502',
+  //   queue: '0x070b87c221aF6Cd77D0052b27a62Ac9D71f021d2'
+  // },
+  // // defunct
+  // creditl1testusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x86d82BE0AFE6438ad1f2DBbb817c348C57718a85',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0xF2cCB7A32cdF7f4350A4194465FC482875f899a8',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x86d82BE0AFE6438ad1f2DBbb817c348C57718a85',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x61a9D031E2C89b48C883ffF46a87Ea37DB16FbC7',
+  //   BBTranche: '0x32F28ebbEB58676153485C74aac609E209b73BeD',
+  // },
+  // // defunct
+  // usualusd0pptest: {
+  //   decimals: 18,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
+  //   underlying: mainnetContracts.USD0pp,
+  //   cdoAddr: '0x7c31fDCa14368E0DA2DA7E518687012287bB90B1',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x775D6F71Ac19fC9b9618eF42808987E4e5475408',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x3A34157DF5F07fF757B599716F41E8DC7829b090',
+  //   BBTranche: '0x228d530C7b3570E5eb7c7D049bFEC45D28e611Fa'
+  // },
+  // // defunct
+  // usualusd0pp: {
+  //   decimals: 18,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
+  //   underlying: mainnetContracts.USD0pp,
+  //   cdoAddr: '0x67e04c90877FC63334d420e75f54d7ce1C8bCe01',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x1D659F4357e30De73eD2Dc02Ed4e34bCa262dCC8',
+  //   AArewards: '0x0000000000000000000000000000000000000000',
+  //   BBrewards: '0x0000000000000000000000000000000000000000',
+  //   AATranche: '0x891BDf6580D58337E9557B44dd01D8eaBE07Df15',
+  //   BBTranche: '0xE4EF3FD4eE87fF6EdF20Fd8F92301341a5a52D5b'
+  // },
 };
 
 const trancheErc4626Wrappers = {
@@ -3247,7 +3277,7 @@ exports.deployTokens = {
     // #########
     queue: true,
     hypernative: true,
-    proxyCdoAddress: CDOs.creditabraxasv2usdc.cdoAddr,
+    proxyCdoAddress: CDOs.creditabraxasv2usdc?.cdoAddr,
   },
   creditpsalionusdc: {
     decimals: 6,
@@ -3591,7 +3621,7 @@ exports.deployTokens = {
     queue: true,
     writeoff: true,
     hypernative: false,
-    proxyCdoAddress: CDOs.creditblackrockcashxtestusdc.cdoAddr
+    proxyCdoAddress: CDOs.creditblackrockcashxtestusdc?.cdoAddr
   },
   creditlaserdigitalusdc: {
     decimals: 6,
@@ -3678,7 +3708,7 @@ exports.deployTokens = {
     depositDuringEpoch: false,
     prefundedDeposits: true,
     prefundedDepositsWindows: '172800', // 2 days
-    proxyCdoAddress: CDOs.creditlaserdigitalusdc.cdoAddr,
+    proxyCdoAddress: CDOs.creditlaserdigitalusdc?.cdoAddr,
   },
   creditm1capitalusdc: {
     decimals: 6,
@@ -3851,7 +3881,7 @@ exports.deployTokens = {
     AARatio: '20000',
     limit: '0',
     isAYSActive: false,
-    proxyCdoAddress: CDOs.usualusd0pptest.cdoAddr
+    proxyCdoAddress: CDOs.usualusd0pptest?.cdoAddr
   },
 };
 
