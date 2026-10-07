@@ -939,27 +939,27 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _checkTranche(_tranche);
     // Remove raw donations so write-off interest math only sees accounted vault value.
     _skimDonatedAssets();
+    // Accrue management fees and update the net tranche price before burning.
+    _updateAccounting();
 
     // Calculate tranche tokens value with current tranche price
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
-    // We now calculate how much interest + fee the tranche would have generated in the current epoch
-    (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
-    // given that _calcInterestWithdrawRequest returns an interest and diff value meant to be used in requestWithdraw
-    // it does not include the buffer period but given that the epoch is running expectedEpochInterest was
-    // calculated with the buffer period included, so we need to scale the interest
-    uint256 _epochDuration = epochDuration;
-
-    // (interest + diff) gives the interest based on tvl as write off debt won't follow senior/junior interest split ratio
-    // diff is positive for AA and negative for BB (in this case it won't be > of interest)
-    interest = uint256(int256(interest) + diff) * (_epochDuration + bufferPeriod) / _epochDuration;
+    // A write-off removes gross full-period interest, independent of the tranche APR split.
+    uint256 interest = _calcInterest(_underlyings);
 
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
     IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
 
-    // remove the interest + fee from expectedEpochInterest
-    expectedEpochInterest -= interest;
+    // Pending withdrawal fees are already owed; a write-off can only remove active interest.
+    uint256 feeFloor = pendingWithdrawFees;
+    uint256 expectedInterest = expectedEpochInterest;
+    if (expectedInterest <= feeFloor || interest >= expectedInterest - feeFloor) {
+      expectedEpochInterest = feeFloor;
+    } else {
+      expectedEpochInterest = expectedInterest - interest;
+    }
   }
 
   /// @notice Claim a withdraw request from the vault. Can be done when at least 1 epoch passed
