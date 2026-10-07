@@ -102,6 +102,12 @@ const medRunConfig = {
   }
 };
 
+// hardhat-upgrades 1.28 adds storageLayout only to default compilers, not overrides.
+// Gap validation needs compiler slots and offsets for overridden contracts too.
+for (const config of [overrideConfig, minimalSizeConfig, ultraminimalSizeConfig, highRunConfig, medRunConfig]) {
+  config.settings.outputSelection = { '*': { '*': ['storageLayout'] } };
+}
+
 module.exports = {
   solidity: {
     compilers: [

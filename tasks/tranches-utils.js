@@ -281,7 +281,10 @@ const getCreditVaultUpgradeTarget = async (_hre, networkTokens, networkCDOs, cdo
       target.contractName = 'contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded';
     } catch (error) {
       // Only an empty selector revert identifies the standard variant; RPC failures must abort.
-      if (error.code !== 'CALL_EXCEPTION' || error.data !== '0x' || error.error) throw error;
+      const rpcError = error.error;
+      const emptyRpcRevert = rpcError && rpcError.code === 3 && rpcError.message === 'execution reverted' &&
+        (rpcError.data === undefined || rpcError.data === '0x');
+      if (error.code !== 'CALL_EXCEPTION' || error.data !== '0x' || (rpcError && !emptyRpcRevert)) throw error;
     }
   }
 

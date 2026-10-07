@@ -1077,6 +1077,51 @@ const CDOs = {
     morphoOracle: '0x52eA2C12734B5bB61e1edf52Bb0f01D9206493Fc',
     morphoMarketId: '0xfc12e6c22618e8dedee4935f13d553271576505bb779667b86f983a90f064e99'
   },
+  // creditfalconxwbtc: {
+  //   decimals: 8,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x292dF3F883D1608c540725baffB077114569d66F',
+  //   underlying: mainnetContracts.WBTC,
+  //   cdoAddr: '0xe8026B3352892D5c73002b901c05cE5399a3CE28',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x292dF3F883D1608c540725baffB077114569d66F',
+  //   AATranche: '0x6B7CfB76e29edf91e774278bED4a53FA6C1Ee8ac',
+  //   BBTranche: '0x260cFBEEfe75EAF436f43b10240358Bb6bcD942A',
+  //   keyringWhitelist: '0x74C8421F1963B06a80BDcbF62813532dd3f05a4A',
+  //   queue: '0x72F187c5a5a006178E28D14eeC51FF3E6976ed56',
+  //   programmableBorrower: '',
+  //   writeOff: '0x87b015e27FCaFf0cB2835c999b243a1B93707D4f',
+  // },
+  creditfalconxcbbtc: {
+    decimals: 8,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0xb751A69Ec32EFfD83C4aE7A456b9e86F55531eA6',
+    underlying: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf',
+    cdoAddr: '0xa74a5E8652a15d627d0bD16d3579D2F041383995',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0xb751A69Ec32EFfD83C4aE7A456b9e86F55531eA6',
+    AATranche: '0x4BaC97112E970C88d89C4BF9DDDe4733D4dB567a',
+    BBTranche: '0x2cf425B8A62cfe20aE13cbd2B7662356e78DC6e4',
+    keyringWhitelist: '0xFE0A1574bec527a2aAc7bdeA8E6C822EAC628988',
+    queue: '0x3F16f3D6Cf3c26dD40ecd583d4748CbC895E3C1b',
+    programmableBorrower: '',
+    writeOff: '0x08E436847E112cdA4a83DB7cfb05a2C997072eE1',
+  },
+  creditfalconxweth: {
+    decimals: 18,
+    // strategyToken it's the strategy itself here
+    strategyToken: '0x75Ae1586325B22a1E05819f1Adf476f5ECd299B8',
+    underlying: mainnetContracts.WETH,
+    cdoAddr: '0x804eDB2e28338425c3e8f8CD60672237E286a5b2',
+    proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+    strategy: '0x75Ae1586325B22a1E05819f1Adf476f5ECd299B8',
+    AATranche: '0x41829Cd0E756E45b2F72Bb46c2C03262562695cd',
+    BBTranche: '0xA47A74E48041aB7D961Bc02052B8BAa3065519f4',
+    keyringWhitelist: '0x1B5a7fFdc5AED6D504D28C1d4AE115D21fD6D92b',
+    queue: '0x144ef5592aB034C04931799e5Feb8a8Ae960afA0',
+    programmableBorrower: '',
+    writeOff: '0x3D8E9952c324664e747AEDF8C547225B0bd233aa',
+  },
   // creditblackrockcashxtestusdc: {
   //   decimals: 6,
   //   // strategyToken it's the strategy itself here
@@ -1249,21 +1294,6 @@ const CDOs = {
     programmableBorrower: '',
     writeOff: '',
   },
-  // creditglasgowcosmicusdc: {
-  //   decimals: 6,
-  //   // strategyToken it's the strategy itself here
-  //   strategyToken: '0x7138121eAB9222FF431DeD712E587e297E128800',
-  //   underlying: mainnetContracts.USDC,
-  //   cdoAddr: '0x8Eb547423f652BDD20Cc5a32802812d89509180c',
-  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
-  //   strategy: '0x7138121eAB9222FF431DeD712E587e297E128800',
-  //   AATranche: '0xDa7E999327d99d3E2C5396ab8865f9264E0b850F',
-  //   BBTranche: '0xB8FDb43EfF65797c7eBb15FA49c57ec2d99e5F2E',
-  //   keyringWhitelist: '',
-  //   queue: '0x4D6745973c3A677528cB58eB594374F24AF0C770',
-  //   programmableBorrower: '',
-  //   writeOff: '',
-  // },
   creditaxiomwbtc: {
     decimals: 8,
     // strategyToken it's the strategy itself here
@@ -1279,6 +1309,21 @@ const CDOs = {
     programmableBorrower: '',
     writeOff: '',
   },
+  // creditglasgowcosmicusdc: {
+  //   decimals: 6,
+  //   // strategyToken it's the strategy itself here
+  //   strategyToken: '0x7138121eAB9222FF431DeD712E587e297E128800',
+  //   underlying: mainnetContracts.USDC,
+  //   cdoAddr: '0x8Eb547423f652BDD20Cc5a32802812d89509180c',
+  //   proxyAdmin: mainnetContracts.proxyAdminWithTimelock,
+  //   strategy: '0x7138121eAB9222FF431DeD712E587e297E128800',
+  //   AATranche: '0xDa7E999327d99d3E2C5396ab8865f9264E0b850F',
+  //   BBTranche: '0xB8FDb43EfF65797c7eBb15FA49c57ec2d99e5F2E',
+  //   keyringWhitelist: '',
+  //   queue: '0x4D6745973c3A677528cB58eB594374F24AF0C770',
+  //   programmableBorrower: '',
+  //   writeOff: '',
+  // },
   // creditabraxasusdc: {
   //   decimals: 6,
   //   // strategyToken it's the strategy itself here

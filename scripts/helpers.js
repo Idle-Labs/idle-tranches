@@ -68,12 +68,17 @@ const getMultisigSigner = async (skipLog) => {
 
   const ledgerSigner = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
   const service = new SafeService(safeServiceUrl);
-  // needed for polygon zkevm as we are using an old version of the sdk
+  // The legacy SDK registry lacks Polygon zkEVM and Base Safe 1.3.0 deployments.
   const contractNetworks = {
     1101: {
       multiSendAddress: '0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761',
       safeMasterCopyAddress: '0x3E5c63644E683549055b9Be8653de26E0B4CD36E',
       safeProxyFactoryAddress: '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2'
+    },
+    8453: {
+      multiSendAddress: '0x998739BFdAAdde7C933B942a68053933098f9EDa',
+      safeMasterCopyAddress: '0xfb1bffC9d739B8D520DaF37dF666da4C687191EA',
+      safeProxyFactoryAddress: '0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC'
     }
   };
 
@@ -83,7 +88,7 @@ const getMultisigSigner = async (skipLog) => {
     contractNetworks
   };
 
-  if (!isPolygonZK) {
+  if (!isPolygonZK && !isBase) {
     delete safeObj.contractNetworks;
   }
 

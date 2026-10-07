@@ -2,7 +2,7 @@ require("hardhat/config")
 const { BigNumber } = require("@ethersproject/bignumber");
 const helpers = require("../scripts/helpers");
 const addresses = require("../utils/addresses");
-const { getAdminAddress, getImplementationAddress } = require("@openzeppelin/upgrades-core");
+const { getAdminAddress, getImplementationAddress, Manifest } = require("@openzeppelin/upgrades-core");
 const { task } = require("hardhat/config");
 const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 
@@ -479,12 +479,51 @@ const getPrintContractsInfoGuardian = async (_hre, cdoAddress) => {
   const value = await _hre.ethers.provider.getStorageAt(cdoAddress, 208);
   return _hre.ethers.utils.getAddress(_hre.ethers.utils.hexDataSlice(value, 12));
 }
+const getPrintContractsInfoImplementation = async (provider, proxyAddress, deployments) => {
+  const address = await getImplementationAddress(provider, proxyAddress);
+  const deployment = deployments.find(item => item?.address?.toLowerCase() === address.toLowerCase());
+  let blockNumber;
+  if (deployment?.txHash) {
+    const receipt = await provider.getTransactionReceipt(deployment.txHash);
+    if (receipt?.contractAddress?.toLowerCase() === address.toLowerCase()) blockNumber = receipt.blockNumber;
+  }
+  if (blockNumber === undefined) {
+    try {
+      let low = 0;
+      let high = await provider.getBlockNumber();
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (await provider.getCode(address, middle) === '0x') low = middle + 1;
+        else high = middle;
+      }
+      blockNumber = low;
+    } catch (error) {
+      return { address, deployedAt: null };
+    }
+  }
+  const block = await provider.getBlock(blockNumber);
+  const deployedAt = block ? `${new Date(block.timestamp * 1000).toISOString()} (block ${blockNumber})` : null;
+  return { address, deployedAt };
+}
 const getPrintContractsInfoCdoFlags = async (cdo) => {
-  const [isInterestMinted, isDepositDuringEpochDisabled] = await Promise.all([
+  const [isInterestMinted, isDepositDuringEpochDisabled, isProgrammableBorrower, isBBDepositEnabled] = await Promise.all([
     cdo.isInterestMinted(),
     cdo.isDepositDuringEpochDisabled(),
+    getPrintContractsInfoOptionalGetter(() => cdo.isProgrammableBorrower()),
+    getPrintContractsInfoOptionalGetter(() => cdo.isBBDepositEnabled()),
   ]);
-  return { isInterestMinted, isDepositDuringEpochDisabled };
+  return { isInterestMinted, isDepositDuringEpochDisabled, isProgrammableBorrower, isBBDepositEnabled };
+}
+const getPrintContractsInfoOptionalGetter = async (getter) => {
+  try {
+    return await getter();
+  } catch (error) {
+    const rpcError = error.error;
+    const emptyRpcRevert = rpcError && rpcError.code === 3 && rpcError.message === 'execution reverted' &&
+      (rpcError.data === undefined || rpcError.data === '0x');
+    if (error.code !== 'CALL_EXCEPTION' || error.data !== '0x' || (rpcError && !emptyRpcRevert)) throw error;
+    return null;
+  }
 }
 const getPrintContractsInfoStrategyState = async (strategy) => {
   const maxApr = await strategy.maxApr();
@@ -1972,7 +2011,7 @@ task("upgrade-credit-vault-blueprint", "Upgrade selected credit vault blueprint 
   .addOptionalParam('cdoname', 'Blueprint CDO key from utils/addresses.js', DEFAULT_CREDIT_VAULT_BLUEPRINT)
   .addOptionalParam('components', 'Comma-separated components: cdo,strategy,queue,revolving,writeoff', CREDIT_VAULT_BLUEPRINT_COMPONENT_ORDER.join(','))
   .setAction(async (args, _hre) => {
-    await _hre.run("compile");
+    await _hre.run("compile", { concurrency: 1 });
 
     const networkCDOs = getNetworkCDOs(_hre);
     const blueprint = networkCDOs[args.cdoname];
@@ -2015,26 +2054,38 @@ task("upgrade-credit-vault-blueprint", "Upgrade selected credit vault blueprint 
     console.log(`Components: ${components.join(', ')}`);
     console.log();
 
+    // Validate the whole selection before deploying or upgrading any component.
+    // The manifest must describe the implementation actually deployed. forceImport
+    // with the new factory would incorrectly label old bytecode with the new layout.
     for (const target of targets) {
       const currentAdmin = await getAdminAddress(_hre.ethers.provider, target.proxy);
       if (!sameAddress(currentAdmin, proxyAdminAddress)) {
         throw new Error(`${target.label} proxy admin ${currentAdmin} does not match ${proxyAdminAddress}`);
       }
 
-      const currentImplementation = await getImplementationAddress(_hre.ethers.provider, target.proxy);
-      const contractFactory = await _hre.ethers.getContractFactory(target.contractName, signer);
+      target.currentImplementation = await getImplementationAddress(_hre.ethers.provider, target.proxy);
+      target.contractFactory = await _hre.ethers.getContractFactory(target.contractName, signer);
+      const artifact = await _hre.artifacts.readArtifact(target.contractName);
+      const currentCode = await _hre.ethers.provider.getCode(target.currentImplementation);
+      target.alreadyCurrent = currentCode.toLowerCase() === artifact.deployedBytecode.toLowerCase();
+      if (!target.alreadyCurrent) {
+        await _hre.upgrades.validateUpgrade(target.currentImplementation, target.contractFactory, { kind: 'transparent' });
+      }
+    }
 
-      // Register only the implementation layout. Importing the blueprint proxy would warn
-      // because it intentionally uses an EOA ProxyAdmin instead of the main manifest admin.
-      await _hre.upgrades.forceImport(currentImplementation, contractFactory);
-      const newImplementation = await _hre.upgrades.prepareUpgrade(target.proxy, contractFactory, {
+    for (const target of targets) {
+      if (target.alreadyCurrent) {
+        console.log(`${target.label}: already running the compiled implementation at ${target.currentImplementation}, skipping`);
+        continue;
+      }
+      const newImplementation = await _hre.upgrades.prepareUpgrade(target.proxy, target.contractFactory, {
         kind: 'transparent',
         redeployImplementation: 'always',
       });
 
       console.log(`${target.label}`);
       console.log(`  Proxy:          ${target.proxy}`);
-      console.log(`  Current impl:   ${currentImplementation}`);
+      console.log(`  Current impl:   ${target.currentImplementation}`);
       console.log(`  New impl:       ${newImplementation}`);
 
       const tx = await proxyAdmin.upgrade(target.proxy, newImplementation);
@@ -2078,6 +2129,8 @@ task("print-contracts-info", "Prints deployed contracts info")
   .setAction(async (args) => {
     console.log('Printing contracts info');
     const resolvedAddresses = resolvePrintContractsInfoAddresses(hre, args);
+    const manifest = await Manifest.forNetwork(ethers.provider);
+    const deployments = Object.values((await manifest.read()).impls);
     const queueAddress = resolvedAddresses.queue;
     const writeOffAddress = resolvedAddresses.writeoff;
     const orchestratorAddress = resolvedAddresses.orchestrator;
@@ -2161,7 +2214,10 @@ task("print-contracts-info", "Prints deployed contracts info")
       ]);
       cdoPrefundedQueue = prefundedQueue;
       const feeAllocation = getPrintContractsInfoFeeAllocation(feeSplit);
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, cdo.address, deployments);
       console.log(`CDO at ${cdo.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  Guardian:       ${guardian}`);
       console.log(`  Underlying:     ${underlyingData.address} (${underlyingData.name} ${underlyingData.decimals} decimals)`);
@@ -2188,6 +2244,12 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  Keyring Policy: ${keyringPolicy}`);
       console.log(`  isInterestMinted: ${cdoFlags.isInterestMinted}`);
       console.log(`  isDepositDuringEpochDisabled: ${cdoFlags.isDepositDuringEpochDisabled}`);
+      if (cdoFlags.isProgrammableBorrower !== null) {
+        console.log(`  isProgrammableBorrower: ${cdoFlags.isProgrammableBorrower}`);
+      }
+      if (cdoFlags.isBBDepositEnabled !== null) {
+        console.log(`  isBBDepositEnabled: ${cdoFlags.isBBDepositEnabled}`);
+      }
       if (cdoPrefundedQueue !== null) {
         console.log(`  Prefunded Queue:${cdoPrefundedQueue}`);
       }
@@ -2221,7 +2283,10 @@ task("print-contracts-info", "Prints deployed contracts info")
         strategy.unscaledApr(),
         getPrintContractsInfoStrategyState(strategy),
       ]);
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, strategy.address, deployments);
       console.log(`Strategy at ${strategy.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  Underlying:     ${underlyingData.address} (${underlyingData.name} ${underlyingData.decimals} decimals)`);
       console.log(`  Decimals:       ${tokenDecimals}`);
@@ -2238,7 +2303,10 @@ task("print-contracts-info", "Prints deployed contracts info")
         orchestrator,
         cdo ? cdo.address : resolvedAddresses.cdo
       );
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, orchestrator.address, deployments);
       console.log(`Orchestrator at ${orchestrator.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
       console.log(`  Owner:          ${orchestratorState.owner}`);
       console.log(`  Operator:       ${orchestratorState.operator}`);
       if (orchestratorState.isCreditVaultAllowed !== null) {
@@ -2264,7 +2332,10 @@ task("print-contracts-info", "Prints deployed contracts info")
       const isPrefundedQueue = cdoPrefundedQueue !== null &&
         cdoPrefundedQueue !== addr0 &&
         normalizeAddress(cdoPrefundedQueue) === normalizeAddress(queue.address);
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, queue.address, deployments);
       console.log(`Queue at ${queue.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  CDO:            ${epochCdo}`);
       console.log(`  Underlying:     ${underlying}`);
@@ -2291,7 +2362,10 @@ task("print-contracts-info", "Prints deployed contracts info")
         writeOffEscrow.exitFee(),
         writeOffEscrow.feeReceiver(),
       ]);
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, writeOffEscrow.address, deployments);
       console.log(`WriteOff escrow at ${writeOffEscrow.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
       console.log(`  Owner:          ${owner}`);
       console.log(`  CDO:            ${epochCdo}`);
       console.log(`  Strategy:       ${strategyAddress}`);
