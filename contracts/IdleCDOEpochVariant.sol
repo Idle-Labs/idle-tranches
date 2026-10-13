@@ -201,6 +201,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Default recovery should not keep accruing fees or leave old fee claims senior to LP recovery.
     fee = 0;
     managementFee = 0;
+    pendingManagementFees = 0;
     unclaimedFees = 0;
     latestHarvestBlock = block.timestamp;
 
@@ -698,30 +699,16 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
     uint256 expectedInt = expectedEpochInterest;
     uint256 pendingFees = pendingWithdrawFees;
-    uint256 trancheExpected;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
     // (exclude pendingWithdrawFees since they go to fee receivers, not tranche holders)
-    if (expectedInt > pendingFees) {
-      trancheExpected = _calcTrancheInterestShare(
-        _netGainAfterFees(expectedInt - pendingFees, _calculateManagementFee(lastNAVAA + lastNAVBB, remaining)),
-        _tranche
-      );
-    }
-    // interest this deposit will earn for the tranche over the remaining time (net of fees)
-    uint256 trancheInterest = _calcTrancheInterestShare(
-      _netGainAfterFees(interest, _calculateManagementFee(_amount, remaining)),
-      _tranche
-    );
+    expectedInt = expectedInt > pendingFees ? expectedInt - pendingFees : 0;
     // pre-deposit expected final NAV for existing holders.
-    // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
-    uint256 expectedFinal = _lastSavedNAV(_tranche) + trancheExpected;
+    // This must remain positive to price the deposit after projected fees.
+    uint256 expectedFinal = _projectedTrancheNAV(expectedInt, _tranche, 0);
 
-    // mint at a discounted price so depositor gets principal + its prorated interest at epoch end
-    // A mid‑epoch depositor should get _amount + trancheInterest at epoch end.
-    // So they need minted = (amount + trancheInterest) / priceEnd.
-    // priceEnd = expectedFinal / _trancheTotSupply
-    // so minted = (amount + trancheInterest) * _trancheTotSupply / expectedFinal
-    _minted = (_amount + trancheInterest) * _trancheTotSupply / expectedFinal;
+    // The deposit's entitlement is the increase in projected ending NAV, net of fees.
+    // Minted shares = incremental entitlement / (expectedFinal / _trancheTotSupply).
+    _minted = (_projectedTrancheNAV(expectedInt + interest, _tranche, _amount) - expectedFinal) * _trancheTotSupply / expectedFinal;
     _mintShares(_tranche, msg.sender, _minted, _amount);
 
     // update expected epoch interest
@@ -730,6 +717,19 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault(strategy).mintStrategyTokens(_amount);
     // transfer underlyings to the borrower
     _transferUnderlyings(_borrower(), _amount);
+  }
+
+  /// @notice Project ending tranche NAV using the same allocation as settlement.
+  /// @param interest Expected active interest, excluding pending receipt fees.
+  /// @param tranche Tranche receiving the optional deposit.
+  /// @param amount Additional principal credited to the tranche.
+  /// @return Projected tranche NAV at epoch end, after fees.
+  function _projectedTrancheNAV(uint256 interest, address tranche, uint256 amount) internal view returns (uint256) {
+    uint256 nav = lastNAVAA + lastNAVBB + amount;
+    uint256 trancheNAV = _lastSavedNAV(tranche) + amount;
+    uint256 managementFees = _calculateManagementFee(nav, epochEndDate - block.timestamp);
+    (, int256 gain) = _virtualPriceAux(tranche, nav + interest - managementFees, nav, trancheNAV, managementFees);
+    return uint256(int256(trancheNAV) + gain);
   }
 
   /// @notice Request a withdraw from the vault
@@ -885,24 +885,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     return _totalInterest * (_tranche == AATranche ? ratio : FULL_ALLOC - ratio) / FULL_ALLOC;
   }
 
-  /// @notice Apply projected management and performance fees to a positive gain.
-  function _netGainAfterFees(uint256 _gain, uint256 _managementFee) private view returns (uint256 netGain) {
-    if (_managementFee >= _gain) return netGain;
-    // remove mgmt fee and performance fee
-    _gain -= _managementFee;
-    return _gain - _gain * fee / FULL_ALLOC;
-  }
-
   /// @notice Calculate total fees charged on a withdrawal request.
   /// @param _principal Principal leaving live NAV.
   /// @param _interest Projected interest for the requested principal.
   /// @return Total management and performance fees to subtract from principal plus projected interest.
   function _totalWithdrawFees(uint256 _principal, uint256 _interest) private view returns (uint256) {
     uint256 _mgmtFee = _calculateManagementFee(_principal, _withdrawRequestManagementFeeDuration());
-    // When interest covers management fees, interest - netGain equals management fee plus performance fee.
-    return _mgmtFee >= _interest ?
-      _mgmtFee :
-      _interest - _netGainAfterFees(_interest, _mgmtFee);
+    // Performance fees apply only to interest remaining after management fees.
+    return _mgmtFee >= _interest ? _mgmtFee : _mgmtFee + _performanceFee(_interest - _mgmtFee);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
