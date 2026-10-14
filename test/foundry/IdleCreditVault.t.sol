@@ -3323,10 +3323,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     cdoEpoch.requestWithdraw(IERC20(AAtranche).balanceOf(address(this)) / 2, address(AAtranche));
 
-    _startEpochAndCheckPrices(1);
-
+    // The buffer still permits APR edits; APR0 settlement must reject an incompatible change.
     vm.prank(manager);
     IdleCreditVault(address(strategy)).setAprs(1e18, 1e18);
+
+    _startEpochAndCheckPrices(1);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
@@ -5790,6 +5791,48 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // assert epoch is stopped
     assertEq(_vault.isEpochRunning(), false, 'Epoch was stopped');
+  }
+
+  /// @notice Every APR setter rejects manager edits during an epoch and rolls back both APR fields.
+  function testAprGuardAllSettersDuringEpoch() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    idleCDO.depositAA(1000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    uint256 beforeScaled = cv.lastApr();
+    uint256 beforeUnscaled = cv.unscaledApr();
+    vm.startPrank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setApr(5e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setAprs(5e18, 6e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setAprsWithBuffer(5e18, 30 days, 1 days);
+    vm.stopPrank();
+    assertEq(cv.lastApr(), beforeScaled);
+    assertEq(cv.unscaledApr(), beforeUnscaled);
+  }
+
+  /// @notice Factory configuration can set APRs before the strategy has a whitelisted CDO.
+  function testAprGuardBeforeCdoSetup() external {
+    IdleCreditVault fresh = new IdleCreditVault();
+    fresh.setAprs(5e18, 6e18);
+    assertEq(fresh.lastApr(), 6e18);
+    assertEq(fresh.unscaledApr(), 5e18);
+  }
+
+  /// @notice Managers retain access to all APR setters between epochs.
+  function testAprGuardBufferSetters() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    vm.startPrank(manager);
+    cv.setApr(5e18);
+    assertEq(cv.lastApr(), 5e18);
+    cv.setAprs(6e18, 7e18);
+    assertEq(cv.lastApr(), 7e18);
+    assertEq(cv.unscaledApr(), 6e18);
+    cv.setAprsWithBuffer(8e18, 30 days, 1 days);
+    vm.stopPrank();
+    assertEq(cv.lastApr(), 8e18 * uint256(31) / 30);
+    assertEq(cv.unscaledApr(), 8e18);
   }
 
   function testSetAprs() external {

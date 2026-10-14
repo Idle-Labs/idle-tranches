@@ -228,6 +228,8 @@ contract IdleCreditVault is
     // if cdo is not yet set we skip the check (this can happen only during the setup)
     if (_cdo != address(0)) {
       if (msg.sender != _cdo && msg.sender != manager) revert NotAllowed();
+      // Managers cannot change a running epoch's APR; the CDO can still set the next APR during settlement.
+      if (msg.sender != _cdo && IIdleCDOEpochVariant(_cdo).isEpochRunning()) revert NotAllowed();
     }
     uint256 _maxApr = maxApr;
     if (_maxApr != 0 && _apr > _maxApr) revert NotAllowed();
