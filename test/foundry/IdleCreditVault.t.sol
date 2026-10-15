@@ -572,25 +572,21 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function _expectedImpliedVirtualPrice(address _tranche, uint256 elapsed, uint256 duration, uint256 managementFeeElapsed) internal view returns (uint256) {
     uint256 trancheSupply = IERC20(_tranche).totalSupply();
-    uint256 basePrice = cdoEpoch.virtualPrice(_tranche);
     uint256 expectedGain = cdoEpoch.expectedEpochInterest() - cdoEpoch.pendingWithdrawFees();
     uint256 accruedGain = expectedGain * elapsed / duration;
     uint256 accruedManagementFee = _calcManagementFee(cdoEpoch.getContractValue(), cdoEpoch.managementFee(), managementFeeElapsed);
-    if (accruedManagementFee >= accruedGain) {
-      return basePrice;
+    accruedManagementFee += cdoEpoch.pendingManagementFees();
+    uint256 aaNav = cdoEpoch.lastNAVAA();
+    uint256 bbNav = cdoEpoch.lastNAVBB();
+    // Use actual saved NAV, since discounted deposits can leave the cached price unchanged.
+    accruedGain += cdoEpoch.getContractValue() + cdoEpoch.pendingManagementFees() - (aaNav + bbNav);
+    if (accruedGain > accruedManagementFee) {
+      accruedGain -= (accruedGain - accruedManagementFee) * cdoEpoch.fee() / FULL_ALLOC;
     }
-    accruedGain -= accruedManagementFee;
-    accruedGain -= accruedGain * cdoEpoch.fee() / FULL_ALLOC;
-
-    uint256 trancheGain;
-    if (_tranche == address(AAtranche)) {
-      uint256 bbGain = accruedGain * (FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio()) / FULL_ALLOC;
-      trancheGain = accruedGain - bbGain;
-    } else {
-      trancheGain = accruedGain * (FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio()) / FULL_ALLOC;
-    }
-
-    return ((trancheSupply * basePrice / ONE_TRANCHE_TOKEN) + trancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
+    uint256 bbGain = aaNav == 0 ? accruedGain : bbNav == 0 ? 0 : accruedGain * (FULL_ALLOC - cdoEpoch.trancheAPRSplitRatio()) / FULL_ALLOC;
+    uint256 bbFee = accruedManagementFee * bbNav / (aaNav + bbNav);
+    uint256 trancheGain = _tranche == address(AAtranche) ? aaNav + accruedGain - bbGain - (accruedManagementFee - bbFee) : bbNav + bbGain - bbFee;
+    return trancheGain * ONE_TRANCHE_TOKEN / trancheSupply;
   }
 
   function testDeposits() external override {
@@ -1580,7 +1576,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 minted = cdoEpoch.depositDuringEpoch(depositAmount, address(AAtranche));
     vm.stopPrank();
 
-    assertEq(minted, exp.expectedMinted, 'minted is wrong');
+    // Projecting the complete ending NAV can move one underlying unit between rounded gains.
+    assertApproxEqAbs(minted, exp.expectedMinted, ONE_TRANCHE / ONE_SCALE, 'minted exceeds rounding tolerance');
     assertEq(IERC20(address(AAtranche)).balanceOf(user), minted, 'user tranche balance is wrong');
     assertEq(cdoEpoch.expectedEpochInterest(), exp.expectedInterest + exp.interest, 'expectedEpochInterest is wrong');
     assertEq(cdoEpoch.lastNAVAA(), exp.lastNAVTranche + depositAmount, 'lastNAVAA is wrong');
@@ -3326,10 +3323,11 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     cdoEpoch.requestWithdraw(IERC20(AAtranche).balanceOf(address(this)) / 2, address(AAtranche));
 
-    _startEpochAndCheckPrices(1);
-
+    // The buffer still permits APR edits; APR0 settlement must reject an incompatible change.
     vm.prank(manager);
     IdleCreditVault(address(strategy)).setAprs(1e18, 1e18);
+
+    _startEpochAndCheckPrices(1);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
@@ -5795,6 +5793,48 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(_vault.isEpochRunning(), false, 'Epoch was stopped');
   }
 
+  /// @notice Every APR setter rejects manager edits during an epoch and rolls back both APR fields.
+  function testAprGuardAllSettersDuringEpoch() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    idleCDO.depositAA(1000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    uint256 beforeScaled = cv.lastApr();
+    uint256 beforeUnscaled = cv.unscaledApr();
+    vm.startPrank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setApr(5e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setAprs(5e18, 6e18);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cv.setAprsWithBuffer(5e18, 30 days, 1 days);
+    vm.stopPrank();
+    assertEq(cv.lastApr(), beforeScaled);
+    assertEq(cv.unscaledApr(), beforeUnscaled);
+  }
+
+  /// @notice Factory configuration can set APRs before the strategy has a whitelisted CDO.
+  function testAprGuardBeforeCdoSetup() external {
+    IdleCreditVault fresh = new IdleCreditVault();
+    fresh.setAprs(5e18, 6e18);
+    assertEq(fresh.lastApr(), 6e18);
+    assertEq(fresh.unscaledApr(), 5e18);
+  }
+
+  /// @notice Managers retain access to all APR setters between epochs.
+  function testAprGuardBufferSetters() external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    vm.startPrank(manager);
+    cv.setApr(5e18);
+    assertEq(cv.lastApr(), 5e18);
+    cv.setAprs(6e18, 7e18);
+    assertEq(cv.lastApr(), 7e18);
+    assertEq(cv.unscaledApr(), 6e18);
+    cv.setAprsWithBuffer(8e18, 30 days, 1 days);
+    vm.stopPrank();
+    assertEq(cv.lastApr(), 8e18 * uint256(31) / 30);
+    assertEq(cv.unscaledApr(), 8e18);
+  }
+
   function testSetAprs() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
@@ -6628,6 +6668,409 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     assertGt(cdoEpoch.virtualPrice(address(AAtranche)), priceAA, "Price should increase");
     assertEq(feeReceiverBalPos - feeReceiverBalPre, 200 * ONE_SCALE, 'Fee receiver should receive the 10% fee of the assets remaining');
+  }
+
+  /// @notice Start a one-year fee-bearing epoch with two equally sized positions.
+  /// @param minted Whether settlement mints interest instead of collecting cash.
+  /// @param withBB Whether the second position belongs to BB.
+  function _startWriteOffFeeEpoch(bool minted, bool withBB) internal {
+    vm.startPrank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 1_000);
+    cdoEpoch.setEpochParams(365 days, 0);
+    cdoEpoch.setIsAYSActive(withBB);
+    cdoEpoch.setIsInterestMinted(minted);
+    vm.stopPrank();
+
+    _depositWithUser(borrower, 10_000 * ONE_SCALE, true);
+    _transferBurnedTrancheTokens(borrower, true);
+    address lender = makeAddr('write-off-fee-lender');
+    _depositWithUser(lender, 10_000 * ONE_SCALE, !withBB);
+    if (withBB) _transferBurnedTrancheTokens(lender, false);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), type(uint256).max);
+    vm.startPrank(manager);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
+    cdoEpoch.startEpoch();
+    vm.stopPrank();
+  }
+
+  /// @notice A delayed partial exit pays elapsed fees and preserves their strategy-token backing.
+  function testWriteOffAccruesManagementFeeBeforeNetBurn() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(block.timestamp + 182.5 days);
+
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+
+    // Half a year costs 100; the written-off quarter of the supply is worth 4,975 net.
+    assertEq(cdoEpoch.unclaimedFees(), 100 * ONE_SCALE, 'elapsed management fee missing');
+    assertEq(cdoEpoch.latestHarvestBlock(), block.timestamp, 'fee checkpoint not advanced');
+    assertEq(cdoEpoch.priceAA(), 995_000, 'write-off used a gross tranche price');
+    assertEq(cdoEpoch.lastNAVAA(), 14_925 * ONE_SCALE, 'remaining LP NAV wrong');
+    assertEq(cdoEpoch.getContractValue(), 14_925 * ONE_SCALE, 'net backing wrong');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 15_025 * ONE_SCALE, 'accrued fee backing burned');
+    assertEq(AAtranche.balanceOf(borrower), 5_000 * ONE_TRANCHE, 'wrong number of shares burned');
+    assertEq(cdoEpoch.expectedEpochInterest(), 1_502_500_000, 'interest reduction must use the net burn');
+  }
+
+  /// @notice Cash settlement accrues the second interval only on the surviving net position.
+  function testWriteOffManagementFeeCashSettlement() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+    uint256 feeBalanceBefore = underlying.balanceOf(TL_MULTISIG);
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    // 100 accrued before exit plus 14,925 * 1% * 1/2 after exit.
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, 174_625_000, 'wrong cash fee payment');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'funded fees remain unpaid');
+    assertEq(cdoEpoch.lastEpochInterest(), 1_327_875_000, 'wrong net interest');
+    assertEq(cdoEpoch.getContractValue(), 16_352_875_000, 'remaining NAV does not reconcile');
+    assertFalse(cdoEpoch.defaulted(), 'fully funded settlement defaulted');
+  }
+
+  /// @notice Minted settlement pays the same fee liability in AA shares without collecting cash.
+  function testWriteOffManagementFeeMintedSettlement() external {
+    _startWriteOffFeeEpoch(true, false);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+    uint256 borrowerCash = underlying.balanceOf(borrower);
+    uint256 feeCash = underlying.balanceOf(TL_MULTISIG);
+    uint256 feeShares = AAtranche.balanceOf(TL_MULTISIG);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertEq(underlying.balanceOf(borrower), borrowerCash, 'minted settlement collected borrower cash');
+    assertEq(underlying.balanceOf(TL_MULTISIG), feeCash, 'minted fee paid as cash');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'minted fees remain unpaid');
+    assertEq(cdoEpoch.lastEpochInterest(), 1_327_875_000, 'minted net interest wrong');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 16_527_500_000, 'minted backing wrong');
+    uint256 issuedShares = AAtranche.balanceOf(TL_MULTISIG) - feeShares;
+    assertApproxEqAbs(issuedShares * cdoEpoch.priceAA() / ONE_TRANCHE, 174_625_000, 1, 'minted fee value wrong');
+  }
+
+  /// @notice Performance fees apply to the gain since the write-off's management-fee checkpoint.
+  function testWriteOffManagementAndPerformanceFeeSettlement() external {
+    _startWriteOffFeeEpoch(false, false);
+    _setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 1_000);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+    uint256 feeBalanceBefore = underlying.balanceOf(TL_MULTISIG);
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    // Management: 100 + 74.625. Performance: (1,502.5 - 74.625) * 10%.
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, 317_412_500, 'combined fee payment wrong');
+    assertEq(cdoEpoch.lastEpochInterest(), 1_185_087_500, 'combined fees produced wrong net interest');
+    assertEq(cdoEpoch.getContractValue(), 16_210_087_500, 'combined fee NAV wrong');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'combined fees remain unpaid');
+  }
+
+  /// @notice Donation skimming runs before the checkpoint and cannot inflate fees or the burn price.
+  function testWriteOffManagementFeeIgnoresDonation() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(block.timestamp + 182.5 days);
+    uint256 feeBalanceBefore = underlying.balanceOf(TL_MULTISIG);
+    deal(defaultUnderlying, address(cdoEpoch), 40 * ONE_SCALE, true);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, 40 * ONE_SCALE, 'donation was not skimmed');
+    assertEq(cdoEpoch.unclaimedFees(), 100 * ONE_SCALE, 'donation inflated management fee');
+    assertEq(cdoEpoch.priceAA(), 995_000, 'donation inflated burn price');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 15_025 * ONE_SCALE, 'donation changed principal burn');
+  }
+
+  /// @notice A write-off after a discounted deposit preserves all accrued fees and uses the updated NAV per share.
+  function testWriteOffManagementFeeAfterMidEpochDeposit() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.warp(block.timestamp + 90 days);
+    address entrant = makeAddr('write-off-mid-epoch-entrant');
+    deal(defaultUnderlying, entrant, 1_000 * ONE_SCALE, true);
+    vm.startPrank(entrant);
+    underlying.approve(address(cdoEpoch), 1_000 * ONE_SCALE);
+    cdoEpoch.depositDuringEpoch(1_000 * ONE_SCALE, address(AAtranche));
+    vm.stopPrank();
+
+    uint256 navBefore = cdoEpoch.getContractValue();
+    uint256 backingBefore = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 additionalFee = _calcManagementFee(navBefore, 1_000, 30 days);
+    uint256 totalFee = cdoEpoch.unclaimedFees() + additionalFee;
+    uint256 netPrice = (navBefore - additionalFee) * ONE_TRANCHE / AAtranche.totalSupply();
+    vm.warp(block.timestamp + 30 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+
+    assertEq(cdoEpoch.unclaimedFees(), totalFee, 'deposit and exit fee intervals wrong');
+    assertEq(cdoEpoch.priceAA(), netPrice, 'discounted shares not reflected in burn price');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), backingBefore - 5_000 * netPrice, 'mid-epoch net burn wrong');
+    assertEq(cdoEpoch.getContractValue(), cdoEpoch.lastNAVAA(), 'mid-epoch exit NAV not reconciled');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoEpoch.lastNAVAA() + totalFee, 'mid-epoch fee backing lost');
+  }
+
+  /// @notice Every repeated write-off closes its own fee interval without charging twice in one block.
+  function testWriteOffRepeatedManagementFeeCheckpoints() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(block.timestamp + 91.25 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(2_500 * ONE_TRANCHE, address(AAtranche));
+    assertEq(cdoEpoch.unclaimedFees(), 50 * ONE_SCALE, 'first interval wrong');
+    uint256 remainingNav = cdoEpoch.getContractValue();
+    vm.warp(block.timestamp + 91.25 days);
+    uint256 totalFee = 50 * ONE_SCALE + _calcManagementFee(remainingNav, 1_000, 91.25 days);
+    vm.startPrank(borrower);
+    cdoEpoch.writeOffDeposit(2_500 * ONE_TRANCHE, address(AAtranche));
+    cdoEpoch.writeOffDeposit(2_500 * ONE_TRANCHE, address(AAtranche));
+    vm.stopPrank();
+
+    assertEq(cdoEpoch.unclaimedFees(), totalFee, 'repeated exit lost or duplicated fees');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoEpoch.lastNAVAA() + totalFee, 'fee backing not conserved');
+    assertEq(AAtranche.balanceOf(borrower), 2_500 * ONE_TRANCHE, 'repeated burn wrong');
+  }
+
+  /// @notice A rate-only checkpoint must also be reflected in the net price used by a later write-off.
+  function testWriteOffAfterManagementFeeRateChange() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(block.timestamp + 91.25 days);
+    _setManagementFee(2_000);
+    assertEq(cdoEpoch.priceAA(), ONE_SCALE, 'rate setter unexpectedly updated price');
+    vm.warp(block.timestamp + 91.25 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+
+    // First interval: 50. Second interval: 19,950 * 2% * 1/4 = 99.75.
+    assertEq(cdoEpoch.unclaimedFees(), 149_750_000, 'old and new rates not respected');
+    assertEq(cdoEpoch.priceAA(), 992_512, 'previously checkpointed fees missing from burn price');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoEpoch.lastNAVAA() + 149_750_000, 'old fees lost backing');
+  }
+
+  /// @notice An AA-only exit can remove all circulating LP principal while keeping fee backing intact.
+  function testWriteOffAllPositionsPreservesCarriedManagementFees() external {
+    _startWriteOffFeeEpoch(false, false);
+    address lender = makeAddr('write-off-fee-lender');
+    uint256 lenderShares = AAtranche.balanceOf(lender);
+    vm.prank(lender);
+    AAtranche.transfer(borrower, lenderShares);
+    // Preserve the production minimum-liquidity shares when all circulating positions exit.
+    vm.prank(borrower);
+    AAtranche.transfer(address(1), 1_000);
+    vm.warp(block.timestamp + 182.5 days);
+    uint256 borrowerShares = AAtranche.balanceOf(borrower);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(borrowerShares, address(AAtranche));
+
+    assertEq(AAtranche.totalSupply(), 1_000, 'circulating LP shares remain');
+    assertEq(cdoEpoch.getContractValue(), 1, 'only rounding dust should remain for locked shares');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 100 * ONE_SCALE + 1, 'fee reserve was burned');
+    assertEq(cdoEpoch.unclaimedFees(), 100 * ONE_SCALE, 'accrued fees waived');
+    uint256 residualInterest = cdoEpoch.expectedEpochInterest();
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertEq(cdoEpoch.unclaimedFees(), 100 * ONE_SCALE - residualInterest, 'unfunded fees must carry forward');
+    assertEq(cdoEpoch.getContractValue(), 1 + residualInterest, 'locked-share interest not reconciled');
+    assertEq(cdoEpoch.lastNAVAA(), cdoEpoch.getContractValue(), 'remaining NAV not checkpointed');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 100 * ONE_SCALE + 1, 'carried fees are not backed');
+    assertFalse(cdoEpoch.defaulted(), 'fee-only settlement defaulted');
+  }
+
+  /// @notice AA and BB burns use prices reduced by each tranche's NAV-proportional management fee.
+  /// @param burnBB Whether the borrower writes off BB rather than AA.
+  function testWriteOffManagementFeeWithBothTranches(bool burnBB) external {
+    _startWriteOffFeeEpoch(false, true);
+    if (burnBB) {
+      vm.prank(makeAddr('write-off-fee-lender'));
+      BBtranche.transfer(borrower, 5_000 * ONE_TRANCHE);
+    }
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, burnBB ? address(BBtranche) : address(AAtranche));
+
+    assertEq(cdoEpoch.unclaimedFees(), 100 * ONE_SCALE, 'mixed-tranche fees wrong');
+    assertEq(cdoEpoch.priceAA(), 995_000, 'AA must pay its proportional fee');
+    assertEq(cdoEpoch.priceBB(), 995_000, 'BB must pay its proportional fee');
+    assertEq(cdoEpoch.lastNAVAA(), (burnBB ? 9_950 : 4_975) * ONE_SCALE, 'AA burn valuation wrong');
+    assertEq(cdoEpoch.lastNAVBB(), (burnBB ? 4_975 : 9_950) * ONE_SCALE, 'BB burn valuation wrong');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB() + 100 * ONE_SCALE, 'mixed fee backing wrong');
+  }
+
+  /// @notice Proportional management expenses do not exhaust a tiny junior position or block a write-off.
+  function testWriteOffManagementFeeDoesNotExhaustTinyBB() external {
+    _startWriteOffFeeEpoch(false, false);
+    // Total accrued fees exceed BB's NAV, but BB owes only its proportional share.
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    _depositWithUser(makeAddr('small-bb'), ONE_SCALE, false);
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    vm.warp(block.timestamp + 30 days);
+    uint256 sharesBefore = AAtranche.balanceOf(borrower);
+    uint256 checkpointBefore = cdoEpoch.latestHarvestBlock();
+    uint256 bbBefore = cdoEpoch.lastNAVBB();
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+
+    assertEq(AAtranche.balanceOf(borrower), sharesBefore - ONE_TRANCHE, 'write-off did not burn shares');
+    assertGt(cdoEpoch.latestHarvestBlock(), checkpointBefore, 'fee checkpoint did not advance');
+    assertGt(cdoEpoch.unclaimedFees(), bbBefore, 'test requires total fees greater than BB NAV');
+    assertGt(cdoEpoch.lastNAVBB(), 0, 'proportional fee exhausted BB');
+    assertLt(cdoEpoch.lastNAVBB(), bbBefore, 'BB did not pay its proportional expense');
+  }
+
+  /// @notice Management-fee conservation holds across varying rates, exit sizes, and exit timestamps.
+  /// @param rate Annualized management fee in FULL_ALLOC units.
+  /// @param elapsed Seconds since the opening checkpoint, including a possible late stop.
+  /// @param portion Portion of the borrower position to write off in FULL_ALLOC units.
+  function testFuzzWriteOffManagementFeeConservation(uint256 rate, uint256 elapsed, uint256 portion) external {
+    rate = bound(rate, 0, 2_000);
+    elapsed = bound(elapsed, 0, 395 days);
+    portion = bound(portion, 1, FULL_ALLOC);
+    _startWriteOffFeeEpoch(false, false);
+    _setManagementFee(rate);
+    uint256 sharesToBurn = 10_000 * ONE_TRANCHE * portion / FULL_ALLOC;
+    uint256 accruedFee = _calcManagementFee(20_000 * ONE_SCALE, rate, elapsed);
+    uint256 netPrice = (20_000 * ONE_SCALE - accruedFee) * ONE_TRANCHE / AAtranche.totalSupply();
+    uint256 netBurn = sharesToBurn * netPrice / ONE_TRANCHE;
+    vm.warp(block.timestamp + elapsed);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(sharesToBurn, address(AAtranche));
+
+    assertEq(cdoEpoch.unclaimedFees(), accruedFee, 'fee through exit wrong');
+    assertEq(cdoEpoch.priceAA(), netPrice, 'net burn price wrong');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 20_000 * ONE_SCALE - netBurn, 'wrong principal burned');
+    assertEq(cdoEpoch.getContractValue(), 20_000 * ONE_SCALE - netBurn - accruedFee, 'net NAV not conserved');
+    assertEq(cdoEpoch.lastNAVAA(), cdoEpoch.getContractValue(), 'saved NAV not reconciled');
+    assertEq(cdoEpoch.latestHarvestBlock(), block.timestamp, 'exit checkpoint missing');
+
+    uint256 laterFee = _calcManagementFee(cdoEpoch.getContractValue(), rate, 30 days);
+    vm.warp(block.timestamp + 30 days);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.unclaimedFees(), accruedFee + laterFee, 'post-exit fee base wrong');
+  }
+
+  /// @notice Recreate the report's skewed AA/BB book without modifying contract storage.
+  /// @param performanceFee Fee charged on withdrawal interest, in FULL_ALLOC units.
+  function _prepareWriteOffFeeFloorBook(uint256 performanceFee) internal returns (address firstRequester) {
+    firstRequester = makeAddr('fee-floor-first-requester');
+    address secondRequester = makeAddr('fee-floor-second-requester');
+    address bbProvider = makeAddr('fee-floor-bb-provider');
+
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setFeeParams(TL_MULTISIG, performanceFee, FULL_ALLOC, 1000);
+    vm.stopPrank();
+
+    _depositWithUser(firstRequester, 5 * ONE_SCALE, true);
+    _depositWithUser(secondRequester, 5 * ONE_SCALE, true);
+    _depositWithUser(borrower, ONE_SCALE, true);
+    _depositWithUser(bbProvider, 990 * ONE_SCALE, false);
+    vm.prank(borrower);
+    underlying.approve(address(cdoEpoch), type(uint256).max);
+
+    vm.prank(firstRequester);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+    vm.prank(secondRequester);
+    cdoEpoch.requestWithdraw(0, address(AAtranche));
+
+    assertGt(cdoEpoch.pendingWithdrawFees(), 0, 'requests must book fees');
+    vm.prank(owner);
+    cdoEpoch.startEpoch();
+    assertEq(cdoEpoch.expectedEpochInterest(), cdoEpoch.pendingWithdrawFees(), 'request adjustment must bind fee floor');
+  }
+
+  /// @notice A borrower write-off cannot consume fees reserved for pending receipts.
+  function testWriteOffPreservesPendingFeeFloorWithActiveBB() external {
+    address firstRequester = _prepareWriteOffFeeFloorBook(10_000);
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    uint256 feeBalanceBefore = underlying.balanceOf(cdoEpoch.feeReceiver());
+
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'write-off must preserve pending fees');
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(owner);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+
+    assertFalse(cdoEpoch.defaulted(), 'fully paying borrower must not default');
+    assertFalse(cdoEpoch.isEpochRunning(), 'epoch must settle');
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'pending fees must clear');
+    assertGe(underlying.balanceOf(cdoEpoch.feeReceiver()) - feeBalanceBefore, pendingFees, 'pending fees must be paid');
+
+    uint256 userBalanceBefore = underlying.balanceOf(firstRequester);
+    vm.prank(firstRequester);
+    cdoEpoch.claimWithdrawRequest();
+    assertGt(underlying.balanceOf(firstRequester), userBalanceBefore, 'receipt must be claimable');
+  }
+
+  /// @notice The same write-off must not underflow when pending fees are thin.
+  function testWriteOffPreservesThinPendingFeeFloorWithActiveBB() external {
+    _prepareWriteOffFeeFloorBook(0);
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'thin fees must remain reserved');
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate() + 1);
+    vm.prank(owner);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    assertFalse(cdoEpoch.isEpochRunning(), 'thin-fee epoch must settle');
+  }
+
+  /// @notice A delayed write-off at the interest floor accrues active fees while preserving exact receipt payouts.
+  function testWriteOffFeeFloorCarriesAccruedManagementFees() external {
+    address firstRequester = _prepareWriteOffFeeFloorBook(10_000);
+    address secondRequester = makeAddr('fee-floor-second-requester');
+    IdleCreditVault credit = IdleCreditVault(address(strategy));
+    uint256 firstClaim = credit.withdrawsRequests(firstRequester);
+    uint256 secondClaim = credit.withdrawsRequests(secondRequester);
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    uint256 feeBalanceBefore = underlying.balanceOf(TL_MULTISIG);
+    uint256 accruedFee = _calcManagementFee(cdoEpoch.getContractValue(), 1_000, 10 days);
+    vm.warp(block.timestamp + 10 days);
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    assertEq(cdoEpoch.unclaimedFees(), accruedFee, 'floor write-off missed elapsed fees');
+    assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'write-off consumed pending fees');
+    accruedFee += _calcManagementFee(cdoEpoch.getContractValue(), 1_000, cdoEpoch.epochEndDate() - block.timestamp);
+
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    assertFalse(cdoEpoch.defaulted(), 'floor settlement defaulted');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, pendingFees, 'receipt fees not paid exactly');
+    assertEq(cdoEpoch.unclaimedFees(), accruedFee, 'unfunded active fees must carry forward');
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'settled receipt fees remain pending');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoEpoch.getContractValue() + accruedFee, 'carried fees lost backing');
+
+    uint256 balanceBefore = underlying.balanceOf(firstRequester);
+    vm.prank(firstRequester);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(firstRequester) - balanceBefore, firstClaim, 'first receipt payout changed');
+    balanceBefore = underlying.balanceOf(secondRequester);
+    vm.prank(secondRequester);
+    cdoEpoch.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(secondRequester) - balanceBefore, secondClaim, 'second receipt payout changed');
   }
 
   function testWriteOffDepositMultipleTranchesSeniorRedeem() external {

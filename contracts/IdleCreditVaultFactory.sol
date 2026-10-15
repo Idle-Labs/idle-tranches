@@ -17,10 +17,14 @@ contract IdleCreditVaultFactory is Initializable {
   uint256 public constant DEFAULT_FEE_SPLIT = 50_000;
   uint256 public constant MIN_PERFORMANCE_FEE = 5_000;
   uint256 public constant MIN_MANAGEMENT_FEE = 500;
+  /// @notice Pareto deployer wallet authorized to manage deployment permissions alongside treasury.
+  address public constant DEPLOYER = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
 
   address public treasury;
   uint256 public feeSplit;
   address public proxyAdmin;
+  /// @notice Wallets allowed to deploy credit vaults through either deployment flow.
+  mapping(address => bool) public whitelist;
 
   event CreditVaultDeployed(
     address creditVault,
@@ -35,6 +39,8 @@ contract IdleCreditVaultFactory is Initializable {
   error FeesTooLow();
   error Is0();
   error OnlyTreasury();
+  error OnlyTreasuryOrDeployer();
+  error NotWhitelisted();
   error WriteOffUnsupported();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -47,6 +53,8 @@ contract IdleCreditVaultFactory is Initializable {
     treasury = _treasury;
     proxyAdmin = _proxyAdmin;
     _setFeeSplit(DEFAULT_FEE_SPLIT);
+    whitelist[_treasury] = true;
+    whitelist[DEPLOYER] = true;
   }
 
   struct StrategyData {
@@ -94,6 +102,7 @@ contract IdleCreditVaultFactory is Initializable {
     StrategyData memory strategyData,
     AncillaryParams memory ancillaryParams
   ) external {
+    if (!whitelist[msg.sender]) revert NotWhitelisted();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
     if (manager == address(0)) revert Is0();
@@ -129,6 +138,7 @@ contract IdleCreditVaultFactory is Initializable {
     ProgrammableBorrowerParams memory programmableBorrowerParams,
     AncillaryParams memory ancillaryParams
   ) external {
+    if (!whitelist[msg.sender]) revert NotWhitelisted();
     if (ancillaryParams.writeOffImplementation != address(0)) revert WriteOffUnsupported();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
@@ -308,6 +318,15 @@ contract IdleCreditVaultFactory is Initializable {
 
   function _checkMinimumFees(CreditVaultParams memory cvParams) internal pure {
     if (cvParams.fees < MIN_PERFORMANCE_FEE && cvParams.managementFee < MIN_MANAGEMENT_FEE) revert FeesTooLow();
+  }
+
+  /// @notice Allow or revoke a wallet's access to both credit-vault deployment flows.
+  /// @dev Only treasury or the Pareto deployer may update the whitelist; both must be whitelisted to deploy.
+  /// @param wallet Address whose deployment permission is updated.
+  /// @param status True to allow deployment, false to revoke it.
+  function setWhitelistStatus(address wallet, bool status) external {
+    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
+    whitelist[wallet] = status;
   }
 
   function setFeeSplit(uint256 _feeSplit) external {
