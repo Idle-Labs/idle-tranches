@@ -152,6 +152,112 @@ contract IdleCreditVaultFactoryTest is Test {
   address internal proxyAdmin = makeAddr("proxyAdmin");
   address internal factoryProxyAdmin = makeAddr("factoryProxyAdmin");
 
+  /// @notice Treasury and the Pareto deployer can independently grant and revoke deployment access.
+  function testWhitelistAdminsCanGrantAndRevokeAccess() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[2] memory admins = [owner, factory.DEPLOYER()];
+    address wallet = makeAddr("wallet");
+
+    for (uint256 i = 0; i < admins.length; i++) {
+      vm.prank(admins[i]);
+      factory.setWhitelistStatus(wallet, true);
+      assertTrue(factory.whitelist(wallet), "wallet allowed");
+
+      // Setting the same status twice must not accidentally toggle it back.
+      vm.prank(admins[i]);
+      factory.setWhitelistStatus(wallet, true);
+      assertTrue(factory.whitelist(wallet), "wallet still allowed");
+
+      vm.prank(admins[i]);
+      factory.setWhitelistStatus(wallet, false);
+      assertFalse(factory.whitelist(wallet), "wallet revoked");
+    }
+  }
+
+  /// @notice Deployment permission does not allow a creator to manage the whitelist.
+  function testWhitelistedCreatorCannotUpdateWhitelist() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    vm.prank(creator);
+    factory.setWhitelistStatus(manager, true);
+    assertFalse(factory.whitelist(manager), "manager not added");
+
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    vm.prank(creator);
+    factory.setWhitelistStatus(creator, false);
+    assertTrue(factory.whitelist(creator), "creator not removed");
+  }
+
+  /// @notice An unlisted wallet cannot grant itself deployment permission.
+  function testUnlistedWalletCannotWhitelistItself() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    vm.prank(manager);
+    factory.setWhitelistStatus(manager, true);
+    assertFalse(factory.whitelist(manager), "manager not added");
+  }
+
+  /// @notice Both deployment flows reject unlisted callers.
+  function testUnlistedWalletsCannotDeploy() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    _assertDeploymentNotWhitelisted(factory, manager);
+  }
+
+  /// @notice Initially whitelisted admins can have deployment access revoked without losing whitelist management.
+  function testRevokedAdminsCannotDeploy() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[2] memory admins = [owner, factory.DEPLOYER()];
+
+    for (uint256 i = 0; i < admins.length; i++) {
+      vm.prank(owner);
+      factory.setWhitelistStatus(admins[i], false);
+      _assertDeploymentNotWhitelisted(factory, admins[i]);
+
+      vm.prank(admins[i]);
+      factory.setWhitelistStatus(admins[i], true);
+      assertTrue(factory.whitelist(admins[i]), "admin allowed again");
+    }
+  }
+
+  /// @notice Revoking an allowed creator immediately blocks both deployment flows.
+  function testRevokedCreatorCannotDeploy() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    vm.prank(owner);
+    factory.setWhitelistStatus(creator, false);
+    _assertDeploymentNotWhitelisted(factory, creator);
+  }
+
+  /// @notice Neither the implementation nor an initialized factory proxy can be initialized again.
+  function testFactoryInitializationIsLocked() external {
+    IdleCreditVaultFactory implementation = new IdleCreditVaultFactory();
+    vm.expectRevert(bytes("Initializable: contract is already initialized"));
+    implementation.initialize(owner, proxyAdmin);
+
+    IdleCreditVaultFactory factory = _deployFactory();
+    vm.expectRevert(bytes("Initializable: contract is already initialized"));
+    factory.initialize(manager, factoryProxyAdmin);
+    assertEq(factory.treasury(), owner, "treasury preserved");
+    assertTrue(factory.whitelist(creator), "whitelist preserved");
+  }
+
+  /// @notice Check authorization before any deployment inputs or external calls are processed.
+  function _assertDeploymentNotWhitelisted(IdleCreditVaultFactory factory, address caller) internal {
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams;
+    IdleCreditVaultFactory.StrategyData memory strategyData;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    IdleCreditVaultFactory.ProgrammableBorrowerParams memory borrowerParams;
+
+    vm.expectRevert(IdleCreditVaultFactory.NotWhitelisted.selector);
+    vm.prank(caller);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+
+    vm.expectRevert(IdleCreditVaultFactory.NotWhitelisted.selector);
+    vm.prank(caller);
+    factory.deployRevolvingCreditVault(cvParams, strategyData, borrowerParams, ancillaryParams);
+  }
+
   /// @notice Reads an address from a CDO storage slot whose generated getter was removed.
   function _cdoAddress(address _cdo, uint256 _slot) internal view returns (address) {
     return address(uint160(uint256(vm.load(_cdo, bytes32(_slot)))));
@@ -392,6 +498,11 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(factory.feeSplit(), DEFAULT_FACTORY_FEE_SPLIT, "default fee split");
 
     vm.prank(creator);
+    vm.expectRevert(ONLY_TREASURY);
+    factory.setFeeSplit(70000);
+
+    address paretoDeployer = factory.DEPLOYER();
+    vm.prank(paretoDeployer);
     vm.expectRevert(ONLY_TREASURY);
     factory.setFeeSplit(70000);
 
@@ -636,6 +747,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(address(uint160(uint256(vm.load(proxy, EIP1967_ADMIN_SLOT)))), proxyAdmin, "proxy admin");
   }
 
+  /// @notice Deploy a factory with both admins whitelisted, then authorize the test creator.
   function _deployFactory() internal returns (IdleCreditVaultFactory factory) {
     IdleCreditVaultFactory factoryImplementation = new IdleCreditVaultFactory();
     factory = IdleCreditVaultFactory(address(new TransparentUpgradeableProxy(
@@ -644,6 +756,11 @@ contract IdleCreditVaultFactoryTest is Test {
       abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector, owner, proxyAdmin)
     )));
     assertEq(factory.proxyAdmin(), proxyAdmin, "factory proxy admin");
+    assertFalse(factory.whitelist(creator), "creator initially unlisted");
+    assertTrue(factory.whitelist(owner), "treasury initially whitelisted");
+    assertTrue(factory.whitelist(factory.DEPLOYER()), "deployer initially whitelisted");
+    vm.prank(owner);
+    factory.setWhitelistStatus(creator, true);
   }
 
   function _deployRevolvingCreditVault(
