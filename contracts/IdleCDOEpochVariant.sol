@@ -360,7 +360,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Base interest for stopEpoch: explicit override (>1) or precomputed expected epoch interest.
     uint256 _expectedInterest;
     // Strategy finalizes APR0 bucket state and returns adjusted stopEpoch values.
-    (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest);
+    (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest, isProgrammableBorrower);
     // Pending withdraws may be increased during APR0 settlement, so read after prepareStopEpochWithApr0.
     uint256 _pendingWithdraws = _strategy.pendingWithdraws();
 
@@ -986,12 +986,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
   /// @notice Resolve the stop-epoch interest value, optionally sourcing it from a programmable borrower.
   /// @dev Programmable borrowers are always the source of truth for epoch interest.
-  /// In that mode `_interest` values `0` and `1` both resolve to the realized epoch interest,
+  /// In that mode `_interest` values `0` and `1` both resolve to realized interest plus pending fee backing,
   /// while `1` still separately signals the close-pool path to the caller.
   function _resolveStopEpochInterest(uint256 _interest) internal view returns (uint256 _resolvedInterest) {
     if (isProgrammableBorrower) {
       _checkNotAllowed(_interest > 1);
-      return IProgrammableBorrower(_borrower()).totalInterestDueNow();
+      // Restore the fee principal deducted from APR0 withdrawal receipts at request time.
+      return IProgrammableBorrower(_borrower()).totalInterestDueNow() + pendingWithdrawFees;
     }
 
     _resolvedInterest = _interest;

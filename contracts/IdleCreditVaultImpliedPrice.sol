@@ -55,20 +55,22 @@ contract IdleCreditVaultImpliedPrice {
     if (duration == 0 || block.timestamp <= startDate) return 0;
 
     uint256 elapsed = block.timestamp >= endDate ? duration : block.timestamp - startDate;
-    bool isProgrammable = cdo.isProgrammableBorrower();
-    uint256 expectedInterest = isProgrammable ? _programmableBorrowerInterest(cdo) : cdo.expectedEpochInterest();
+    if (cdo.isProgrammableBorrower()) return _programmableBorrowerInterest(cdo);
+    uint256 expectedInterest = cdo.expectedEpochInterest();
     uint256 pendingFees = cdo.pendingWithdrawFees();
     if (elapsed == 0 || expectedInterest <= pendingFees) return 0;
 
     accruedGain = expectedInterest - pendingFees;
-    if (!isProgrammable) accruedGain = accruedGain * elapsed / duration;
+    accruedGain = accruedGain * elapsed / duration;
   }
 
-  /// @notice Current net epoch interest due from a programmable borrower.
-  /// @dev The borrower returns interest accrued to now, so callers must not prorate it again.
-  function _programmableBorrowerInterest(IdleCDOEpochVariant cdo) private view returns (uint256) {
-    address borrower = IdleCreditVault(cdo.strategy()).borrower();
-    return IProgrammableBorrower(borrower).totalInterestDueNow();
+  /// @notice Current realized interest attributable to active LPs in programmable mode.
+  /// @dev Raw interest excludes fee principal and is already accrued; only remove the APR0 receipt share.
+  function _programmableBorrowerInterest(IdleCDOEpochVariant cdo) private view returns (uint256 interest) {
+    IdleCreditVault strategy = IdleCreditVault(cdo.strategy());
+    interest = IProgrammableBorrower(strategy.borrower()).totalInterestDueNow();
+    uint256 principal = strategy.apr0TotalPrincipal();
+    if (principal != 0) interest -= interest * principal / (cdo.getContractValue() + principal);
   }
 
   /// @notice Project settlement NAV using the CDO's yield, fee and credit-loss allocation rules.

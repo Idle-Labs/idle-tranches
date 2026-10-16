@@ -490,11 +490,20 @@ contract IdleCreditVault is
   /// @return _expInterest stopEpoch interest after APR0 adjustments
   /// @return _adjPendingWithdrawFees pending withdraw fees after APR0 adjustments
   function prepareStopEpochWithApr0(uint256 _interest) external returns (uint256 _expInterest, uint256 _adjPendingWithdrawFees) {
+    return prepareStopEpochWithApr0(_interest, false);
+  }
+
+  /// @notice Compute and apply APR0 deltas with an explicit interest-resolution flag.
+  /// @param _interest Resolved settlement amount, or legacy stopEpoch override.
+  /// @param _resolved True when the CDO has resolved interest, so zero and one are literal amounts.
+  /// @return _expInterest stopEpoch interest after APR0 adjustments
+  /// @return _adjPendingWithdrawFees pending withdraw fees after APR0 adjustments
+  function prepareStopEpochWithApr0(uint256 _interest, bool _resolved) public returns (uint256 _expInterest, uint256 _adjPendingWithdrawFees) {
     _onlyIdleCDO();
     IIdleCDOEpochVariant _cdo = IIdleCDOEpochVariant(idleCDO);
     uint256 _pendingFees = _cdo.pendingWithdrawFees();
     uint256 _tvl = _cdo.getContractValue();
-    _expInterest = _interest > 1 ? _interest : _cdo.expectedEpochInterest();
+    _expInterest = _resolved || _interest > 1 ? _interest : _cdo.expectedEpochInterest();
     _adjPendingWithdrawFees = _pendingFees;
     // Principal currently waiting for withdraw that was requested while APR was 0,
     // net of the upfront management fee charged at request time.
@@ -510,9 +519,9 @@ contract IdleCreditVault is
     }
 
     uint256 _apr0NetInterest;
-    // APR0 allocation is computed only when stopEpoch receives a real override interest.
-    // _expectedInterest == 1 is the "request all funds back" sentinel and is handled in IdleCDO.
-    if (_expInterest > 1 && _expInterest > _pendingFees) {
+    // Programmable amounts are already resolved, including literal zero/one-unit results.
+    // Non-programmable overrides retain the legacy sentinel handling.
+    if ((_resolved || _expInterest > 1) && _expInterest > _pendingFees) {
       // Remove already booked withdraw fees from the interest base before splitting.
       uint256 _interestNetOfFees = _expInterest - _pendingFees;
       // Total principal used for the pro-rata split:

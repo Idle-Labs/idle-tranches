@@ -15,6 +15,7 @@ import {IdleCreditVault} from "../../contracts/strategies/idle/IdleCreditVault.s
 import {ProgrammableBorrower, StopEpochVaultLiquidityUnavailable} from "../../contracts/strategies/idle/ProgrammableBorrower.sol";
 import {IMMVault} from "../../contracts/interfaces/morpho/IMMVault.sol";
 import {IMorpho} from "../../contracts/interfaces/morpho/IMorpho.sol";
+import {MockEpochInvariantERC20, MockEpochInvariantVault} from "./ProgrammableBorrowerEpochInvariant.t.sol";
 
 error NotAllowed();
 error InvalidAmount();
@@ -1631,5 +1632,382 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
   function _onePercentPerDayInterest(uint256 principal, uint256 elapsedDays) internal pure returns (uint256) {
     return principal * elapsedDays / 100;
+  }
+}
+
+/// @notice Check fee backing and final prices through real programmable-borrower settlement.
+contract ProgrammableBorrowerManagementFeeTest is Test {
+  address internal owner = makeAddr("owner");
+  address internal manager = makeAddr("manager");
+  address internal borrower = makeAddr("borrower");
+  address internal lender = makeAddr("lender");
+  MockEpochInvariantERC20 internal asset;
+  MockEpochInvariantVault internal vault;
+  IdleCDOEpochVariant internal cdo;
+  IdleCreditVault internal strategy;
+  ProgrammableBorrower internal facility;
+  IdleCDOTranche internal aa;
+  IdleCreditVaultImpliedPrice internal priceHelper;
+
+  /// @notice Deploy the production contracts behind proxies with a 1% annual management fee.
+  function setUp() public {
+    vm.warp(1700000000);
+    asset = new MockEpochInvariantERC20();
+    vault = new MockEpochInvariantVault(address(asset));
+    address admin = makeAddr("proxyAdmin");
+    strategy = IdleCreditVault(address(new TransparentUpgradeableProxy(address(new IdleCreditVault()), admin, "")));
+    strategy.initialize(address(asset), owner, manager, borrower, "Fee regression", 0);
+    cdo = IdleCDOEpochVariant(address(new TransparentUpgradeableProxy(address(new IdleCDOEpochVariant()), admin, "")));
+    cdo.initialize(0, address(asset), owner, owner, address(0), address(strategy), 100000);
+    aa = IdleCDOTranche(cdo.AATranche());
+    facility = ProgrammableBorrower(address(new TransparentUpgradeableProxy(address(new ProgrammableBorrower()), admin, "")));
+    facility.initialize(address(vault), address(cdo), owner, manager, borrower, 10e18);
+    priceHelper = new IdleCreditVaultImpliedPrice();
+
+    vm.startPrank(owner);
+    strategy.setWhitelistedCDO(address(cdo));
+    strategy.setBorrower(address(facility));
+    strategy.setMaxApr(0);
+    cdo.setFeeParams(owner, 0, 100000, 1000);
+    cdo.setIsInterestMinted(true);
+    cdo.setIsProgrammableBorrower(true);
+    vm.stopPrank();
+    vm.prank(manager);
+    cdo.setEpochParams(365 days, 0);
+    deal(address(asset), lender, 1000e18, true);
+    vm.prank(lender);
+    asset.approve(address(cdo), type(uint256).max);
+  }
+
+  /// @notice Deposit 1,000 assets and optionally request withdrawal before starting the epoch.
+  function _start(uint256 shares) internal {
+    vm.prank(lender);
+    cdo.depositAA(1000e18);
+    vm.roll(block.number + 1);
+    if (shares != 0) {
+      vm.prank(lender);
+      cdo.requestWithdraw(shares, address(aa));
+    }
+    vm.prank(manager);
+    cdo.startEpoch();
+  }
+
+  /// @notice Settle at the scheduled end and check that the facility did not default.
+  function _stop(bool close) internal {
+    vm.warp(cdo.epochEndDate());
+    vm.prank(manager);
+    cdo.stopEpoch(0, close ? 1 : 0);
+    assertFalse(cdo.defaulted(), "unexpected default");
+    assertFalse(cdo.isEpochRunning(), "epoch still running");
+  }
+
+  /// @notice Match all remaining assets and borrower debt to the CDO's strategy-token backing.
+  function _assertBacking() internal view {
+    uint256 backing = facility.totalUnderlying() + facility.borrowerPrincipal() + facility.borrowerInterestOwedNow();
+    assertApproxEqAbs(backing, strategy.balanceOf(address(cdo)), 1, "unaccounted fee backing");
+    assertEq(cdo.unclaimedFees(), 0, "fees not settled");
+  }
+
+  /// @notice The upfront fee remains backed, and the pending lender receives its full yield share.
+  function test_pendingManagementFeeIsBackedAndClaimable() external {
+    _start(500e18);
+    assertEq(cdo.pendingWithdrawFees(), 5e18);
+    vault.addGain(100e18);
+    uint256 pendingInterest = 100e18 * uint256(495) / 995;
+    _stop(false);
+    _assertBacking();
+    assertEq(cdo.lastEpochInterest(), 100e18 - pendingInterest - 5e18);
+    uint256 feeValue = aa.balanceOf(owner) * cdo.priceAA() / 1e18;
+    assertApproxEqAbs(feeValue, 10e18, 1, "wrong fee payment");
+    vm.prank(lender);
+    cdo.claimWithdrawRequest();
+    // APR0 per-user rate rounding can leave less than one wei per unit of principal.
+    assertApproxEqAbs(asset.balanceOf(lender), 495e18 + pendingInterest, 495, "wrong withdrawal payout");
+  }
+
+  /// @notice Active management fees continue to work when no withdrawals are pending.
+  function test_noPendingWithdrawalsPreservesBacking() external {
+    _start(0);
+    vault.addGain(100e18);
+    vm.warp(cdo.epochEndDate());
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), 1.09e18);
+    _stop(false);
+    _assertBacking();
+    assertEq(cdo.getContractValue(), 1100e18);
+    assertEq(cdo.priceAA(), 1.09e18);
+  }
+
+  /// @notice Near-total withdrawals settle even when yield is below their upfront fee.
+  function test_lowYieldNearTotalWithdrawalSettles() external {
+    _start(1000e18 - 1000);
+    vault.addGain(1e18);
+    _stop(false);
+    _assertBacking();
+  }
+
+  /// @notice Fee backing is restored even when the facility earns no interest.
+  function test_zeroYieldPreservesBacking() external {
+    _start(500e18);
+    vm.warp(cdo.epochEndDate());
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), 0.99e18);
+    _stop(false);
+    _assertBacking();
+    assertEq(cdo.getContractValue(), 505e18);
+    assertEq(cdo.priceAA(), 0.99e18);
+  }
+
+  /// @notice Close recalls the deducted withdrawal fee as well as all other facility assets.
+  function test_closeRecallsAllFeeBacking() external {
+    _start(500e18);
+    vault.addGain(100e18);
+    _stop(true);
+    assertEq(cdo.epochDuration(), 0);
+    assertEq(facility.totalUnderlying(), 0, "fee backing stranded at close");
+    assertEq(asset.balanceOf(owner), 10e18, "wrong cash fees");
+    assertEq(asset.balanceOf(address(strategy)), 1090e18);
+  }
+
+  /// @notice A literal one-unit realized gain is accounted in both normal and close settlement.
+  function testFuzz_oneUnitInterestIsNotASentinel(bool close) external {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 100000, 0);
+    _start(500e18);
+    vault.addGain(1);
+    _stop(close);
+    assertEq(cdo.lastEpochInterest(), 1, "realized interest treated as a sentinel");
+    if (close) assertEq(facility.totalUnderlying(), 0);
+    else _assertBacking();
+  }
+
+  /// @notice Legacy callers keep zero/one sentinels and explicit overrides without the new CDO getter.
+  function testFuzz_legacySettlementWithoutProgrammableGetter(uint256 input, bool pending) external {
+    input = bound(input, 0, 2);
+    _start(pending ? 500e18 : 0);
+    // Emulate an older CDO where this selector does not exist.
+    vm.mockCallRevert(address(cdo), abi.encodeWithSignature("isProgrammableBorrower()"), bytes(""));
+    uint256 suppliedInterest = input == 2 ? 100e18 : input;
+    uint256 expectedInterest = input == 2 ? suppliedInterest : cdo.expectedEpochInterest();
+    uint256 receiptInterest = pending && input == 2 ? (expectedInterest - 5e18) * 495 / 995 : 0;
+    vm.prank(address(cdo));
+    (uint256 settledInterest, uint256 settledFees) = strategy.prepareStopEpochWithApr0(suppliedInterest);
+    assertEq(settledInterest, expectedInterest - receiptInterest);
+    assertEq(settledFees, pending ? 5e18 : 0);
+    assertEq(strategy.pendingWithdraws(), (pending ? 495e18 : 0) + receiptInterest);
+    assertEq(strategy.apr0TotalPrincipal(), 0);
+  }
+
+  /// @notice Resolved zero/one amounts need neither the mode getter nor the legacy expected-interest fallback.
+  function testFuzz_resolvedSettlementWithoutProgrammableGetter(bool oneUnit, bool pending) external {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 100000, 0);
+    _start(pending ? 500e18 : 0);
+    vm.mockCallRevert(address(cdo), abi.encodeWithSignature("isProgrammableBorrower()"), bytes(""));
+    vm.mockCallRevert(address(cdo), abi.encodeWithSignature("expectedEpochInterest()"), bytes(""));
+    uint256 interest = oneUnit ? 1 : 0;
+    vm.prank(address(cdo));
+    (uint256 settledInterest, uint256 settledFees) = strategy.prepareStopEpochWithApr0(interest, true);
+    assertEq(settledInterest, interest);
+    assertEq(settledFees, 0);
+    assertEq(strategy.pendingWithdraws(), pending ? 500e18 : 0);
+    assertEq(strategy.apr0TotalPrincipal(), 0);
+  }
+
+  /// @notice Both settlement selectors retain the CDO-only authorization check.
+  function test_settlementOverloadsOnlyCDO() external {
+    vm.expectRevert(NotAllowed.selector);
+    strategy.prepareStopEpochWithApr0(0);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.prepareStopEpochWithApr0(0, false);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.prepareStopEpochWithApr0(1, true);
+  }
+
+  /// @notice Pending fee backing does not increase the real borrower's contractual debt.
+  function test_feeBackingDoesNotIncreaseBorrowerDebt() external {
+    _start(500e18);
+    vm.prank(borrower);
+    facility.borrow(100e18);
+    _stop(false);
+    _assertBacking();
+    assertEq(facility.borrowerPrincipal(), 100e18);
+    assertEq(facility.borrowerInterestDebt(), 10e18);
+  }
+
+  /// @notice Projected active prices match settlement with zero, low, and ordinary realized yield.
+  function testFuzz_impliedPriceMatchesSettlement(uint256 gain, bool performanceFee) external {
+    gain = bound(gain, 0, 100e18);
+    if (performanceFee) {
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 10000, 100000, 1000);
+    }
+    _start(500e18);
+    vault.addGain(gain);
+    vm.warp(cdo.epochEndDate());
+    uint256 projectedPrice = priceHelper.impliedVirtualPrice(address(aa));
+    _stop(false);
+    _assertBacking();
+    assertEq(projectedPrice, cdo.priceAA(), "implied price differs from settlement");
+  }
+
+  /// @notice The helper uses interest already earned without prorating it again mid-epoch.
+  function test_impliedPriceUsesActualMidEpochInterest() external {
+    _start(500e18);
+    vault.addGain(2e18);
+    vm.warp(block.timestamp + 182.5 days);
+    uint256 pendingInterest = 2e18 * uint256(495) / 995;
+    uint256 expectedPrice = (500e18 + 2e18 - pendingInterest - 2.5e18) * 1e18 / 500e18;
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), expectedPrice);
+  }
+
+  /// @notice Both tranche projections preserve the adaptive yield split and NAV-based fee allocation.
+  function test_impliedPricesMatchSettlementWithBothTranches() external {
+    vm.startPrank(owner);
+    cdo.setBBDepositEnabled(true);
+    cdo.setIsAYSActive(true);
+    cdo.setFeeParams(owner, 10000, 100000, 1000);
+    vm.stopPrank();
+    address juniorLender = makeAddr("juniorLender");
+    deal(address(asset), juniorLender, 100e18, true);
+    vm.startPrank(juniorLender);
+    asset.approve(address(cdo), 100e18);
+    cdo.depositBB(100e18);
+    vm.stopPrank();
+    _start(500e18);
+    vault.addGain(100e18);
+    vm.warp(cdo.epochEndDate());
+    uint256 seniorPrice = priceHelper.impliedVirtualPrice(address(aa));
+    uint256 juniorPrice = priceHelper.impliedVirtualPrice(cdo.BBTranche());
+    _stop(false);
+    _assertBacking();
+    assertEq(seniorPrice, cdo.priceAA());
+    assertEq(juniorPrice, cdo.priceBB());
+  }
+
+  /// @notice A retryable liquidity failure rolls back fee and APR0 settlement before a successful retry.
+  function test_feeSettlementRollsBackWhenVaultLiquidityIsUnavailable() external {
+    _start(500e18);
+    vault.addGain(100e18);
+    vault.setWithdrawLimit(0);
+    vm.warp(cdo.epochEndDate());
+    vm.prank(manager);
+    vm.expectRevert(StopEpochVaultLiquidityUnavailable.selector);
+    cdo.stopEpoch(0, 0);
+    assertTrue(cdo.isEpochRunning());
+    assertTrue(facility.epochAccountingActive());
+    assertEq(cdo.pendingWithdrawFees(), 5e18);
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(strategy.apr0TotalPrincipal(), 495e18);
+    assertEq(strategy.pendingWithdraws(), 495e18);
+    vault.setWithdrawLimit(type(uint256).max);
+    _stop(false);
+    _assertBacking();
+  }
+
+  /// @notice Fee principal cancels out of the APR cap, including its exact one-unit boundary.
+  function testFuzz_feeBackingDoesNotChangeMaxAprLimit(bool aboveCap) external {
+    vm.prank(owner);
+    strategy.setMaxApr(10e18);
+    _start(500e18);
+    // 99.5 earnings split into 49.5 for pending receipts and exactly 50 for active NAV.
+    vault.addGain(99.5e18 + (aboveCap ? 1 : 0));
+    if (aboveCap) {
+      vm.warp(cdo.epochEndDate());
+      vm.prank(manager);
+      vm.expectRevert(NotAllowed.selector);
+      cdo.stopEpoch(0, 0);
+      assertTrue(cdo.isEpochRunning());
+    } else {
+      _stop(false);
+      _assertBacking();
+    }
+  }
+
+  /// @notice Changing the fee rate mid-epoch preserves both fee backing and projected pricing.
+  function test_feeChangeDuringEpochPreservesBackingAndPrice() external {
+    _start(500e18);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 100000, 2000);
+    vault.addGain(100e18);
+    vm.warp(cdo.epochEndDate());
+    uint256 projectedPrice = priceHelper.impliedVirtualPrice(address(aa));
+    _stop(false);
+    _assertBacking();
+    assertEq(projectedPrice, cdo.priceAA());
+  }
+
+  /// @notice Explicit losses haircut pending receipts and active fee shares without losing backing.
+  function test_explicitLossWithManagementFeesPreservesBacking() external {
+    _start(500e18);
+    vault.applyLoss(100e18);
+    vm.warp(cdo.epochEndDate());
+    vm.prank(manager);
+    cdo.stopEpochWithDuration(0, 0, 365 days, 100e18);
+    assertFalse(cdo.defaulted());
+    _assertBacking();
+    assertEq(cdo.getContractValue(), 454.5e18);
+    vm.prank(lender);
+    cdo.claimWithdrawRequest();
+    assertEq(asset.balanceOf(lender), 445.5e18);
+  }
+
+  /// @notice Default recovery keeps the existing net receipt basis and waives active accrued fees.
+  function test_defaultRecoveryAfterFailedFeeSettlement() external {
+    _start(500e18);
+    vault.applyLoss(600e18);
+    vm.warp(cdo.epochEndDate());
+    vm.prank(manager);
+    cdo.stopEpoch(0, 0);
+    assertTrue(cdo.defaulted());
+    assertFalse(facility.epochAccountingActive());
+    assertEq(cdo.expectedEpochInterest(), 5e18);
+    assertEq(strategy.pendingWithdraws(), 495e18);
+    vm.prank(manager);
+    facility.emergencyExitVault(0);
+    vm.prank(owner);
+    facility.rescueTokens(address(asset), address(this), 400e18);
+    asset.approve(address(strategy), 400e18);
+    vm.prank(manager);
+    cdo.finalizeDefault(400e18, address(this));
+    uint256 recoveryPrice = 400e18 * uint256(1e18) / 995e18;
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(cdo.managementFee(), 0);
+    assertEq(cdo.getContractValue(), 500 * recoveryPrice);
+    vm.prank(lender);
+    cdo.claimWithdrawRequest();
+    assertEq(asset.balanceOf(lender), 495 * recoveryPrice);
+  }
+
+  /// @notice Restored fee principal is not recognized as fresh yield in the following epoch.
+  function test_feeBackingDoesNotBecomeNextEpochInterest() external {
+    _start(500e18);
+    vault.addGain(100e18);
+    _stop(false);
+    _assertBacking();
+    uint256 backing = strategy.balanceOf(address(cdo));
+    vm.prank(manager);
+    cdo.startEpoch();
+    _stop(false);
+    _assertBacking();
+    assertEq(cdo.lastEpochInterest(), 0);
+    assertEq(strategy.balanceOf(address(cdo)), backing);
+  }
+
+  /// @notice Vary withdrawal size, fee rate, realized yield and close mode while conserving assets.
+  function testFuzz_feeBackingAcrossWithdrawalsAndClose(uint256 shares, uint256 rate, uint256 gain, bool close) external {
+    shares = bound(shares, 0, 1000e18 - 1000);
+    rate = bound(rate, 0, 2000);
+    gain = bound(gain, 0, 100e18);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 100000, rate);
+    _start(shares);
+    vault.addGain(gain);
+    _stop(close);
+    if (close) {
+      assertEq(facility.totalUnderlying(), 0);
+      assertEq(asset.balanceOf(address(strategy)) + asset.balanceOf(owner), 1000e18 + gain);
+    } else {
+      _assertBacking();
+    }
   }
 }
