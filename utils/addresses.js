@@ -1106,6 +1106,7 @@ const CDOs = {
     queue: '0x3F16f3D6Cf3c26dD40ecd583d4748CbC895E3C1b',
     programmableBorrower: '',
     writeOff: '0x08E436847E112cdA4a83DB7cfb05a2C997072eE1',
+    orchestrator: '0x052e51568351eFfa9EA90DF6FE648446f006323b'
   },
   creditfalconxweth: {
     decimals: 18,
@@ -1121,6 +1122,7 @@ const CDOs = {
     queue: '0x144ef5592aB034C04931799e5Feb8a8Ae960afA0',
     programmableBorrower: '',
     writeOff: '0x3D8E9952c324664e747AEDF8C547225B0bd233aa',
+    orchestrator: '0x052e51568351eFfa9EA90DF6FE648446f006323b'
   },
   // creditblackrockcashxtestusdc: {
   //   decimals: 6,

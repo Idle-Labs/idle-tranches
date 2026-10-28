@@ -4,7 +4,8 @@ pragma solidity 0.8.10;
 import "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ITransparentUpgradeableProxy, TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
 import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantPrefunded.sol";
@@ -159,17 +160,15 @@ contract IdleCreditVaultFactoryTest is Test {
     address wallet = makeAddr("wallet");
 
     for (uint256 i = 0; i < admins.length; i++) {
-      vm.prank(admins[i]);
-      factory.setWhitelistStatus(wallet, true);
+      _setDeploymentAllowance(factory, admins[i], wallet, 1);
       assertTrue(factory.whitelist(wallet), "wallet allowed");
 
-      // Setting the same status twice must not accidentally toggle it back.
-      vm.prank(admins[i]);
-      factory.setWhitelistStatus(wallet, true);
+      // Repeating the same grant replaces the remaining allowance rather than adding to it.
+      _setDeploymentAllowance(factory, admins[i], wallet, 1);
       assertTrue(factory.whitelist(wallet), "wallet still allowed");
+      assertEq(factory.remainingDeployments(wallet), 1);
 
-      vm.prank(admins[i]);
-      factory.setWhitelistStatus(wallet, false);
+      _setDeploymentAllowance(factory, admins[i], wallet, 0);
       assertFalse(factory.whitelist(wallet), "wallet revoked");
     }
   }
@@ -179,13 +178,11 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory factory = _deployFactory();
 
     vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
-    vm.prank(creator);
-    factory.setWhitelistStatus(manager, true);
+    _setDeploymentAllowance(factory, creator, manager, 1);
     assertFalse(factory.whitelist(manager), "manager not added");
 
     vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
-    vm.prank(creator);
-    factory.setWhitelistStatus(creator, false);
+    _setDeploymentAllowance(factory, creator, creator, 0);
     assertTrue(factory.whitelist(creator), "creator not removed");
   }
 
@@ -194,8 +191,7 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory factory = _deployFactory();
 
     vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
-    vm.prank(manager);
-    factory.setWhitelistStatus(manager, true);
+    _setDeploymentAllowance(factory, manager, manager, 1);
     assertFalse(factory.whitelist(manager), "manager not added");
   }
 
@@ -211,12 +207,10 @@ contract IdleCreditVaultFactoryTest is Test {
     address[2] memory admins = [owner, factory.DEPLOYER()];
 
     for (uint256 i = 0; i < admins.length; i++) {
-      vm.prank(owner);
-      factory.setWhitelistStatus(admins[i], false);
+      _setDeploymentAllowance(factory, owner, admins[i], 0);
       _assertDeploymentNotWhitelisted(factory, admins[i]);
 
-      vm.prank(admins[i]);
-      factory.setWhitelistStatus(admins[i], true);
+      _setDeploymentAllowance(factory, admins[i], admins[i], type(uint256).max);
       assertTrue(factory.whitelist(admins[i]), "admin allowed again");
     }
   }
@@ -224,9 +218,161 @@ contract IdleCreditVaultFactoryTest is Test {
   /// @notice Revoking an allowed creator immediately blocks both deployment flows.
   function testRevokedCreatorCannotDeploy() external {
     IdleCreditVaultFactory factory = _deployFactory();
-    vm.prank(owner);
-    factory.setWhitelistStatus(creator, false);
+    _setDeploymentAllowance(factory, owner, creator, 0);
     _assertDeploymentNotWhitelisted(factory, creator);
+  }
+
+  /// @notice Either admin can batch-grant finite or unlimited allowances and revoke wallets with zero.
+  function testBatchDeploymentAllowances() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[] memory wallets = new address[](3);
+    wallets[0] = creator;
+    wallets[1] = manager;
+    wallets[2] = factory.DEPLOYER();
+    uint256[] memory allowances = new uint256[](3);
+    allowances[0] = 4;
+    allowances[1] = 0;
+    allowances[2] = factory.UNLIMITED_DEPLOYMENTS();
+    vm.prank(owner);
+    factory.setDeploymentAllowances(wallets, allowances);
+    assertEq(factory.remainingDeployments(creator), 4, "replaces rather than adds");
+    assertTrue(factory.whitelist(creator));
+    assertFalse(factory.whitelist(manager));
+    assertEq(factory.remainingDeployments(manager), 0);
+    assertEq(factory.remainingDeployments(wallets[2]), type(uint256).max);
+
+    allowances[0] = 0;
+    allowances[1] = 3;
+    allowances[2] = 0;
+    vm.prank(wallets[2]);
+    factory.setDeploymentAllowances(wallets, allowances);
+    assertFalse(factory.whitelist(creator));
+    assertEq(factory.remainingDeployments(creator), 0);
+    assertTrue(factory.whitelist(manager));
+    assertEq(factory.remainingDeployments(manager), 3);
+    _assertDeploymentNotWhitelisted(factory, creator);
+    _assertDeploymentNotWhitelisted(factory, wallets[2]);
+    // Revoking deployment access does not remove the deployer's administrative authority.
+    _setDeploymentAllowance(factory, wallets[2], wallets[2], type(uint256).max);
+    assertTrue(factory.whitelist(wallets[2]));
+  }
+
+  /// @notice Invalid batch lengths and unauthorized callers cannot modify any allowance or whitelist entry.
+  function testBatchDeploymentAllowancesRejectInvalidCalls() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[] memory wallets = new address[](2);
+    wallets[0] = creator;
+    wallets[1] = manager;
+    uint256[] memory allowances = new uint256[](1);
+    allowances[0] = 0;
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    vm.prank(creator);
+    factory.setDeploymentAllowances(wallets, allowances);
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    vm.prank(manager);
+    factory.setDeploymentAllowances(wallets, allowances);
+    vm.expectRevert(IdleCreditVaultFactory.LengthMismatch.selector);
+    vm.prank(owner);
+    factory.setDeploymentAllowances(wallets, allowances);
+    assertTrue(factory.whitelist(creator));
+    assertEq(factory.remainingDeployments(creator), 2);
+    assertFalse(factory.whitelist(manager));
+  }
+
+  /// @notice Standard and revolving deployments consume the same allowance, then both are blocked at zero.
+  function testDeploymentAllowanceSharedAcrossFlows() external {
+    vm.warp(100 days);
+    IdleCreditVaultFactory factory = _deployFactory();
+    _deployStandardCreditVault(factory);
+    assertEq(factory.remainingDeployments(creator), 1);
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    _deployRevolvingCreditVault(factory, underlying, new MockFactoryVault(address(underlying)));
+    assertEq(factory.remainingDeployments(creator), 0);
+    _assertFactoryFeeGate(factory, 5000, 0, IdleCreditVaultFactory.DeploymentLimitReached.selector);
+
+    // An admin must explicitly replenish the exhausted allowance.
+    _setDeploymentAllowance(factory, owner, creator, 1);
+    _deployStandardCreditVault(factory);
+    assertEq(factory.remainingDeployments(creator), 0);
+  }
+
+  /// @notice Unlimited allowances remain unchanged in either flow, while whitelist revocation still applies.
+  function testUnlimitedDeploymentAllowance() external {
+    vm.warp(100 days);
+    IdleCreditVaultFactory factory = _deployFactory();
+    address testCreator = creator;
+    creator = factory.DEPLOYER();
+    _deployStandardCreditVault(factory);
+    assertEq(factory.remainingDeployments(creator), type(uint256).max);
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    _deployRevolvingCreditVault(factory, underlying, new MockFactoryVault(address(underlying)));
+    assertEq(factory.remainingDeployments(creator), type(uint256).max);
+    _setDeploymentAllowance(factory, owner, creator, 0);
+    _assertDeploymentNotWhitelisted(factory, creator);
+    assertEq(factory.remainingDeployments(creator), 0);
+
+    creator = testCreator;
+    _setDeploymentAllowance(factory, owner, creator, type(uint256).max);
+    _deployStandardCreditVault(factory);
+    assertEq(factory.remainingDeployments(creator), type(uint256).max, "unlimited is configurable for any wallet");
+  }
+
+  /// @notice Whitelist permission alone does not grant a deployment quota after upgrading.
+  function testWhitelistWithoutAllowanceCannotDeploy() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    creator = manager;
+    // Simulate an entry from the earlier whitelist-only implementation (mapping at slot 3).
+    vm.store(address(factory), keccak256(abi.encode(creator, uint256(3))), bytes32(uint256(1)));
+    assertEq(factory.remainingDeployments(creator), 0);
+    _assertFactoryFeeGate(factory, 5000, 0, IdleCreditVaultFactory.DeploymentLimitReached.selector);
+  }
+
+  /// @notice Reverts both before and after proxy creation restore the caller's full allowance.
+  function testRevertedDeploymentsPreserveAllowance() external {
+    vm.warp(100 days);
+    IdleCreditVaultFactory factory = _deployFactory();
+    _assertFactoryFeeGate(factory, 0, 0, FEES_TOO_LOW);
+    assertEq(factory.remainingDeployments(creator), 2);
+    _assertFactoryFeeGate(factory, 5000, 0, IS_0);
+    assertEq(factory.remainingDeployments(creator), 2);
+
+    // A zero fee receiver makes CDO configuration revert after the proxies have been created.
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeCreditVaultParams(address(0));
+    cvParams.underlying = address(new MockFactoryERC20("Mock USDC", "mUSDC", 6));
+    cvParams.implementation = address(new IdleCDOEpochVariant());
+    IdleCreditVaultFactory.StrategyData memory strategyData;
+    strategyData.implementation = address(new IdleCreditVault());
+    strategyData.manager = manager;
+    strategyData.borrower = realBorrower;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    IdleCreditVaultFactory.ProgrammableBorrowerParams memory borrowerParams;
+    vm.expectRevert(IS_0);
+    vm.prank(creator);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    assertEq(factory.remainingDeployments(creator), 2);
+    vm.expectRevert(IS_0);
+    vm.prank(creator);
+    factory.deployRevolvingCreditVault(cvParams, strategyData, borrowerParams, ancillaryParams);
+    assertEq(factory.remainingDeployments(creator), 2);
+  }
+
+  /// @notice Grant one wallet an explicit remaining allowance through the batch API.
+  function _setDeploymentAllowance(IdleCreditVaultFactory factory, address admin, address wallet, uint256 allowance) internal {
+    address[] memory wallets = new address[](1);
+    wallets[0] = wallet;
+    uint256[] memory allowances = new uint256[](1);
+    allowances[0] = allowance;
+    vm.prank(admin);
+    factory.setDeploymentAllowances(wallets, allowances);
+  }
+
+  /// @notice Complete a standard deployment as the test creator to exercise successful quota consumption.
+  function _deployStandardCreditVault(IdleCreditVaultFactory factory) internal {
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    _deployCreditVaultWithConfig(
+      factory, underlying, address(new IdleCDOEpochVariant()), _makeCreditVaultParams(creatorFeeReceiver), ancillaryParams
+    );
   }
 
   /// @notice Neither the implementation nor an initialized factory proxy can be initialized again.
@@ -240,6 +386,178 @@ contract IdleCreditVaultFactoryTest is Test {
     factory.initialize(manager, factoryProxyAdmin);
     assertEq(factory.treasury(), owner, "treasury preserved");
     assertTrue(factory.whitelist(creator), "whitelist preserved");
+  }
+
+  /// @notice Only treasury may change floors, independently of deployment whitelist membership.
+  function testMinimumFeesAreTreasuryOnly() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[3] memory callers = [creator, manager, factory.DEPLOYER()];
+    for (uint256 i = 0; i < callers.length; i++) {
+      vm.expectRevert(ONLY_TREASURY);
+      vm.prank(callers[i]);
+      factory.setMinimumFees(1000, 100);
+    }
+    _setDeploymentAllowance(factory, owner, owner, 0);
+    vm.prank(owner);
+    factory.setMinimumFees(1000, 100);
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 1000);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 100);
+  }
+
+  /// @notice Floors cannot exceed the actual maximum fees accepted by credit vaults.
+  function testMinimumFeesRespectVaultCaps() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    vm.startPrank(owner);
+    vm.expectRevert(AMOUNT_TOO_HIGH);
+    factory.setMinimumFees(20001, 500);
+    vm.expectRevert(AMOUNT_TOO_HIGH);
+    factory.setMinimumFees(5000, 2001);
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 5000);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 200);
+    factory.setMinimumFees(20000, 2000);
+    vm.stopPrank();
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 20000);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 2000);
+  }
+
+  /// @notice Both paths use updated floors and retain the inclusive either-fee acceptance rule.
+  function testUpdatedMinimumFeesApplyToBothDeploymentFlows() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    _assertFactoryFeeGate(factory, 4999, 199, FEES_TOO_LOW);
+    vm.prank(owner);
+    factory.setMinimumFees(10000, 1000);
+    _assertFactoryFeeGate(factory, 5000, 500, FEES_TOO_LOW);
+    _assertFactoryFeeGate(factory, 9999, 999, FEES_TOO_LOW);
+    _assertFactoryFeeGate(factory, 10000, 0, IS_0);
+    _assertFactoryFeeGate(factory, 0, 1000, IS_0);
+
+    vm.prank(owner);
+    factory.setMinimumFees(2000, 200);
+    _assertFactoryFeeGate(factory, 1999, 199, FEES_TOO_LOW);
+    _assertFactoryFeeGate(factory, 2000, 0, IS_0);
+    _assertFactoryFeeGate(factory, 0, 200, IS_0);
+  }
+
+  /// @notice An explicit zero floor disables the combined gate instead of restoring legacy defaults.
+  function testZeroMinimumFeePermitsZeroFees() external {
+    vm.warp(100 days);
+    IdleCreditVaultFactory factory = _deployFactory();
+    vm.prank(owner);
+    factory.setMinimumFees(0, 500);
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 0);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 500);
+    _assertFactoryFeeGate(factory, 0, 0, IS_0);
+    vm.prank(owner);
+    factory.setMinimumFees(5000, 0);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 0);
+    _assertFactoryFeeGate(factory, 0, 0, IS_0);
+
+    vm.prank(owner);
+    factory.setMinimumFees(0, 0);
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 0);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 0);
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeCreditVaultParams(creatorFeeReceiver);
+    cvParams.fees = 0;
+    cvParams.managementFee = 0;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    AncillaryDeployment memory deployment = _deployCreditVaultWithConfig(
+      factory, underlying, address(new IdleCDOEpochVariant()), cvParams, ancillaryParams
+    );
+    assertEq(IdleCDOEpochVariant(deployment.cv).fee(), 0);
+    assertEq(IdleCDOEpochVariant(deployment.cv).managementFee(), 0);
+    vm.prank(owner);
+    factory.setMinimumFees(5000, 500);
+    _assertFactoryFeeGate(factory, 0, 0, FEES_TOO_LOW);
+    assertEq(IdleCDOEpochVariant(deployment.cv).fee(), 0, "existing fees unchanged");
+    assertEq(IdleCDOEpochVariant(deployment.cv).managementFee(), 0, "existing management fee unchanged");
+  }
+
+  /// @notice Ordinary upgrades preserve configured floors, including an intentional zero value.
+  function testConfiguredMinimumFeesSurviveUpgrade() external {
+    IdleCreditVaultFactory factory = _deployFactory();
+    vm.prank(owner);
+    factory.setMinimumFees(0, 200);
+    IdleCreditVaultFactory implementation = new IdleCreditVaultFactory();
+    vm.prank(factoryProxyAdmin);
+    ITransparentUpgradeableProxy(address(factory)).upgradeTo(address(implementation));
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 0);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 200);
+    assertTrue(factory.whitelist(creator));
+    assertEq(factory.remainingDeployments(creator), 2, "quota preserved");
+    _assertFactoryFeeGate(factory, 0, 0, IS_0);
+  }
+
+  /// @notice Rehearse a plain upgrade of the production Mainnet V3 factory without initialization.
+  function testMainnetFactoryUpgrade() external {
+    vm.createSelectFork("mainnet", 26290277);
+    _assertFactoryUpgrade(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
+  }
+
+  /// @notice Rehearse the same upgrade and treasury configuration on the production Base V3 factory.
+  function testBaseFactoryUpgrade() external {
+    vm.createSelectFork(vm.envString("BASE_RPC_URL"), 53194953);
+    _assertFactoryUpgrade(0x4220714A44EAF70810AB8742a8875FAcEe2De004);
+  }
+
+  /// @notice Preserve legacy state, require explicit whitelist grants, and apply default then custom floors.
+  function _assertFactoryUpgrade(address factoryAddress) internal {
+    IdleCreditVaultFactory factory = IdleCreditVaultFactory(factoryAddress);
+    address treasuryBefore = factory.treasury();
+    address adminBefore = factory.proxyAdmin();
+    uint256 splitBefore = factory.feeSplit();
+    bytes32[8] memory slots;
+    for (uint256 i = 0; i < slots.length; i++) slots[i] = vm.load(factoryAddress, bytes32(i));
+    ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(factoryAddress, EIP1967_ADMIN_SLOT)))));
+    address adminOwner = admin.owner();
+    IdleCreditVaultFactory implementation = new IdleCreditVaultFactory();
+    vm.prank(adminOwner);
+    admin.upgrade(ITransparentUpgradeableProxy(factoryAddress), address(implementation));
+    assertEq(admin.getProxyImplementation(ITransparentUpgradeableProxy(factoryAddress)), address(implementation));
+    for (uint256 i = 0; i < slots.length; i++) assertEq(vm.load(factoryAddress, bytes32(i)), slots[i]);
+    assertEq(factory.treasury(), treasuryBefore);
+    assertEq(factory.proxyAdmin(), adminBefore);
+    assertEq(factory.feeSplit(), splitBefore);
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 5000);
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 200);
+    assertFalse(factory.whitelist(treasuryBefore), "initialize not rerun");
+    assertFalse(factory.whitelist(factory.DEPLOYER()), "deployer not automatically granted access");
+    assertEq(factory.remainingDeployments(treasuryBefore), 0);
+    assertEq(factory.remainingDeployments(factory.DEPLOYER()), 0);
+    _assertDeploymentNotWhitelisted(factory, treasuryBefore);
+    vm.expectRevert(bytes("Initializable: contract is already initialized"));
+    factory.initialize(owner, proxyAdmin);
+
+    _assertDeploymentNotWhitelisted(factory, creator);
+    _setDeploymentAllowance(factory, factory.DEPLOYER(), creator, 2);
+    _assertFactoryFeeGate(factory, 4999, 199, FEES_TOO_LOW);
+    _assertFactoryFeeGate(factory, 5000, 0, IS_0);
+    _assertFactoryFeeGate(factory, 0, 200, IS_0);
+    vm.prank(treasuryBefore);
+    factory.setMinimumFees(1000, 100);
+    _assertFactoryFeeGate(factory, 999, 99, FEES_TOO_LOW);
+    _assertFactoryFeeGate(factory, 1000, 0, IS_0);
+    _assertFactoryFeeGate(factory, 0, 100, IS_0);
+    _setDeploymentAllowance(factory, treasuryBefore, factory.DEPLOYER(), type(uint256).max);
+    assertEq(factory.remainingDeployments(factory.DEPLOYER()), type(uint256).max);
+    _deployStandardCreditVault(factory);
+    assertEq(factory.remainingDeployments(creator), 1, "upgraded factory consumes quota");
+  }
+
+  /// @notice Use a zero manager to stop after the fee gate, before deploying any contracts.
+  function _assertFactoryFeeGate(IdleCreditVaultFactory factory, uint256 fees, uint256 managementFee, bytes4 expected) internal {
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams;
+    cvParams.fees = fees;
+    cvParams.managementFee = managementFee;
+    IdleCreditVaultFactory.StrategyData memory strategyData;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    IdleCreditVaultFactory.ProgrammableBorrowerParams memory borrowerParams;
+    vm.expectRevert(expected);
+    vm.prank(creator);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.expectRevert(expected);
+    vm.prank(creator);
+    factory.deployRevolvingCreditVault(cvParams, strategyData, borrowerParams, ancillaryParams);
   }
 
   /// @notice Check authorization before any deployment inputs or external calls are processed.
@@ -439,7 +757,7 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory.CreditVaultParams memory cvParams =
       _makeCreditVaultParams(creatorFeeReceiver);
     cvParams.fees = 4999;
-    cvParams.managementFee = 499;
+    cvParams.managementFee = 199;
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
       keyring: address(0),
       queueImplementation: address(0),
@@ -469,7 +787,7 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory.CreditVaultParams memory cvParams =
       _makeCreditVaultParams(creatorFeeReceiver);
     cvParams.fees = 0;
-    cvParams.managementFee = 500;
+    cvParams.managementFee = 200;
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams = IdleCreditVaultFactory.AncillaryParams({
       keyring: address(0),
       queueImplementation: address(0),
@@ -487,7 +805,7 @@ contract IdleCreditVaultFactoryTest is Test {
 
     IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
     assertEq(cv.fee(), 0, "performance fee");
-    assertEq(cv.managementFee(), 500, "management fee");
+    assertEq(cv.managementFee(), 200, "management fee");
   }
 
   function testTreasuryCanUpdateFactoryFeeSplit() external {
@@ -636,7 +954,7 @@ contract IdleCreditVaultFactoryTest is Test {
     });
     IdleCreditVaultFactory.CreditVaultParams memory cvParams = _makeRevolvingCreditVaultParams();
     cvParams.fees = 4999;
-    cvParams.managementFee = 499;
+    cvParams.managementFee = 199;
 
     address strategyImplementation = address(new IdleCreditVault());
     address cdoImplementation = address(new IdleCDOEpochVariant());
@@ -747,7 +1065,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(address(uint160(uint256(vm.load(proxy, EIP1967_ADMIN_SLOT)))), proxyAdmin, "proxy admin");
   }
 
-  /// @notice Deploy a factory with both admins whitelisted, then authorize the test creator.
+  /// @notice Deploy a factory with unlimited admin allowances, then grant the test creator two deployments.
   function _deployFactory() internal returns (IdleCreditVaultFactory factory) {
     IdleCreditVaultFactory factoryImplementation = new IdleCreditVaultFactory();
     factory = IdleCreditVaultFactory(address(new TransparentUpgradeableProxy(
@@ -756,11 +1074,14 @@ contract IdleCreditVaultFactoryTest is Test {
       abi.encodeWithSelector(IdleCreditVaultFactory.initialize.selector, owner, proxyAdmin)
     )));
     assertEq(factory.proxyAdmin(), proxyAdmin, "factory proxy admin");
+    assertEq(factory.MIN_PERFORMANCE_FEE(), 5000, "default performance minimum");
+    assertEq(factory.MIN_MANAGEMENT_FEE(), 200, "default management minimum");
     assertFalse(factory.whitelist(creator), "creator initially unlisted");
     assertTrue(factory.whitelist(owner), "treasury initially whitelisted");
     assertTrue(factory.whitelist(factory.DEPLOYER()), "deployer initially whitelisted");
-    vm.prank(owner);
-    factory.setWhitelistStatus(creator, true);
+    assertEq(factory.remainingDeployments(owner), type(uint256).max, "treasury unlimited");
+    assertEq(factory.remainingDeployments(factory.DEPLOYER()), type(uint256).max, "deployer unlimited");
+    _setDeploymentAllowance(factory, owner, creator, 2);
   }
 
   function _deployRevolvingCreditVault(
