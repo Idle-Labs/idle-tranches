@@ -9,8 +9,6 @@ const HypernativeModuleAbi = require("../abi/HypernativeModule.json");
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
 const FULL_ALLOC = '100000';
-const MIN_CREDIT_VAULT_PERFORMANCE_FEE = '5000';
-const MIN_CREDIT_VAULT_MANAGEMENT_FEE = '500';
 const mainnetContracts = addresses.IdleTokens.mainnet;
 const polygonContracts = addresses.IdleTokens.polygon;
 const polygonZKContracts = addresses.IdleTokens.polygonZK;
@@ -262,14 +260,14 @@ const sameAddress = (left, right) => {
 const normalizeAddress = (address) => (address || '').toLowerCase();
 const hasAddress = (address) => !helpers.isEmptyString(address) && ethers.utils.isAddress(address.toString().trim()) && address.toString().trim().toLowerCase() !== addr0;
 const getCreditVaultFee = (deployToken) => deployToken.fees === undefined ? '0' : deployToken.fees;
-const getCreditVaultFactoryFee = (deployToken) => deployToken.fees === undefined ? MIN_CREDIT_VAULT_PERFORMANCE_FEE : deployToken.fees;
+const getCreditVaultFactoryFee = (deployToken, minPerformanceFee) => deployToken.fees === undefined ? minPerformanceFee : deployToken.fees;
 const getCreditVaultFeeSplit = (deployToken) => deployToken.feeSplit === undefined ? FULL_ALLOC : deployToken.feeSplit;
 const getCreditVaultFeeReceiver = (deployToken, owner) => deployToken.feeReceiver || owner;
 const getCreditVaultManagementFee = (deployToken) => deployToken.managementFee === undefined ? '0' : deployToken.managementFee;
-const validateCreditVaultMinimumFees = (fees, managementFee) => {
-  if (BN(fees).lt(MIN_CREDIT_VAULT_PERFORMANCE_FEE) && BN(managementFee).lt(MIN_CREDIT_VAULT_MANAGEMENT_FEE)) {
+const validateCreditVaultMinimumFees = (fees, managementFee, minPerformanceFee, minManagementFee) => {
+  if (BN(fees).lt(minPerformanceFee) && BN(managementFee).lt(minManagementFee)) {
     throw new Error(
-      `Credit vault fees too low: performance fee must be at least ${MIN_CREDIT_VAULT_PERFORMANCE_FEE} or management fee at least ${MIN_CREDIT_VAULT_MANAGEMENT_FEE}`
+      `Credit vault fees too low: performance fee must be at least ${minPerformanceFee} or management fee at least ${minManagementFee}`
     );
   }
 };
@@ -1695,10 +1693,13 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     });
     const keyringPolicy = deployToken.keyringPolicy || '0';
     console.log(`Setting keyring policy ${keyringPolicy}`);
-    const fees = getCreditVaultFactoryFee(deployToken);
+    const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
+    const minPerformanceFee = (await factory.MIN_PERFORMANCE_FEE()).toString();
+    const minManagementFee = (await factory.MIN_MANAGEMENT_FEE()).toString();
+    const fees = getCreditVaultFactoryFee(deployToken, minPerformanceFee);
     const feeReceiver = getCreditVaultFeeReceiver(deployToken, owner);
     const managementFee = getCreditVaultManagementFee(deployToken);
-    validateCreditVaultMinimumFees(fees, managementFee);
+    validateCreditVaultMinimumFees(fees, managementFee, minPerformanceFee, minManagementFee);
     console.log(`Has queue: ${deployToken.queue}`);
     console.log()
 
@@ -1706,7 +1707,6 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     console.log('Is deposit during epoch disabled: ', !deployToken.depositDuringEpoch);
     console.log();
 
-    const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
     const factoryFeeSplit = await factory.feeSplit();
     const factoryProxyAdmin = await factory.proxyAdmin();
     console.log("Factory proxy admin:      ", factoryProxyAdmin);
@@ -1892,10 +1892,13 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     const keyringPolicy = deployToken.keyringPolicy || '0';
     console.log(`Setting keyring policy ${keyringPolicy}`);
 
-    const fees = getCreditVaultFactoryFee(deployToken);
+    const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
+    const minPerformanceFee = (await factory.MIN_PERFORMANCE_FEE()).toString();
+    const minManagementFee = (await factory.MIN_MANAGEMENT_FEE()).toString();
+    const fees = getCreditVaultFactoryFee(deployToken, minPerformanceFee);
     const feeReceiver = getCreditVaultFeeReceiver(deployToken, owner);
     const managementFee = getCreditVaultManagementFee(deployToken);
-    validateCreditVaultMinimumFees(fees, managementFee);
+    validateCreditVaultMinimumFees(fees, managementFee, minPerformanceFee, minManagementFee);
     console.log(`Has queue: ${deployToken.queue}`);
     console.log()
 
@@ -1914,7 +1917,6 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     console.log("ProgrammableBorrower APR:           ", programmableBorrowerConfig.borrowerApr);
     console.log()
 
-    const factory = await ethers.getContractAt("IdleCreditVaultFactory", factoryAddr, signer);
     const factoryFeeSplit = await factory.feeSplit();
     const factoryProxyAdmin = await factory.proxyAdmin();
     console.log("Factory proxy admin:      ", factoryProxyAdmin);
@@ -2632,6 +2634,41 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
 
     return creditVaultFactory;
 });
+
+/**
+ * @name upgrade-cv-factory
+ * Deploy an implementation and propose its upgrade through the treasury Safe.
+ */
+task("upgrade-cv-factory", "Deploy and propose a credit vault factory upgrade through the treasury Safe")
+  .setAction(async (args, _hre) => {
+    await _hre.run("compile", { concurrency: 1 });
+    const networkContracts = getNetworkContracts(_hre);
+    const factoryAddress = networkContracts.creditVaultFactoryV3;
+    const adminAddress = await getAdminAddress(_hre.ethers.provider, factoryAddress);
+    const admin = await _hre.ethers.getContractAt("ProxyAdmin", adminAddress);
+    const owner = await admin.owner();
+    if (!sameAddress(owner, networkContracts.timelock)) {
+      throw new Error(`Factory ProxyAdmin owner ${owner} does not match timelock ${networkContracts.timelock}`);
+    }
+
+    console.log(`Factory: ${factoryAddress}`);
+    await helpers.prompt('deploy factory implementation and propose the upgrade? [y/n]', true);
+    const signer = await _hre.run('get-signer-or-fake');
+    // The existing helper validates storage compatibility before deployment.
+    const implementation = await helpers.prepareContractUpgrade(factoryAddress, 'IdleCreditVaultFactory', signer);
+    await _hre.run('verify-contract', { address: implementation });
+    const multisig = await _hre.run('get-multisig-or-fake');
+    const timelock = await _hre.ethers.getContractAt("Timelock", owner, multisig);
+    // A plain upgrade preserves existing settings and does not rerun initialize.
+    const payload = admin.interface.encodeFunctionData('upgrade', [factoryAddress, implementation]);
+    const zero = _hre.ethers.constants.HashZero;
+    const delay = await timelock.getMinDelay();
+    await timelock.callStatic.schedule(adminAddress, 0, payload, zero, zero, delay);
+    const tx = await timelock.schedule(adminAddress, 0, payload, zero, zero, delay);
+    console.log(`Safe schedule proposal: ${tx.hash}`);
+    console.log(`Execute the Safe proposal, then wait ${delay.toString()} seconds before executing the upgrade.`);
+    return { factory: factoryAddress, implementation };
+  });
 
 /**
  * @name deploy-keyring-whitelist
