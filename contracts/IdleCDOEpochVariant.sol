@@ -813,7 +813,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _tranche Tranche to get the value for
   /// @return Value of the tranche tokens in underlyings
   function _trancheToUnderlyings(uint256 _amount, address _tranche) internal view returns (uint256) {
-    return _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    // Round only the final underlying amount, not the per-share price.
+    return _amount == 0 ? 0 : _amount * _lastSavedNAV(_tranche) / _trancheSupply(_tranche);
   }
 
   /// @notice Revert unless an address is one of this vault's tranche tokens.

@@ -253,19 +253,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     priceBB = _priceBB;
   }
 
-  /// @notice calculates the NAV for a tranche considering the interest that is yet to be splitted
+  /// @notice calculates the tranche balance using its saved or virtual price
   /// @param _tranche address of the requested tranche
-  /// @return net asset value, in underlying tokens, for _tranche considering all nav
-  function _virtualBalance(address _tranche) internal view returns (uint256) {
-    // balance is: tranche supply * virtual tranche price
-    return _trancheSupply(_tranche) * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
-  }
-
-  /// @notice calculates the NAV for a tranche without considering the interest that is yet to be splitted
-  /// @param _tranche address of the requested tranche
-  /// @return net asset value, in underlying tokens, for _tranche
-  function _instantBalance(address _tranche) internal view returns (uint256) {
-    return _trancheSupply(_tranche) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+  /// @param _instant if true, use the saved price instead of the virtual price
+  /// @return tranche value in underlying tokens, retaining the existing price rounding
+  function _virtualBalance(address _tranche, bool _instant) internal view returns (uint256) {
+    return _trancheSupply(_tranche) * (_instant ? _tranchePrice(_tranche) : virtualPrice(_tranche)) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice gets total supply for a specific tranche
@@ -353,8 +346,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
   function _mintSharesAtCurrPrice(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
-    // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
-    _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
+    // Use the exact NAV ratio; rounding the price first over-mints shares for large deposits and fees.
+    uint256 supply = _trancheSupply(_tranche);
+    _minted = supply == 0 ? _amount * ONE_TRANCHE_TOKEN / oneToken : _amount * supply / _lastSavedNAV(_tranche);
     _mintShares(_tranche, _to, _minted, _amount);
   }
 
@@ -417,10 +411,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _instant if true, it returns the current ratio without accrued interest
   /// @return AA tranches ratio (in underlying value) considering all interest
   function _getAARatio(bool _instant) internal view returns (uint256) {
-    function(address) internal view returns (uint256) _getNAV =
-      _instant ? _instantBalance : _virtualBalance;
-    uint256 AABal = _getNAV(AATranche);
-    uint256 contractVal = AABal + _getNAV(BBTranche);
+    uint256 AABal = _virtualBalance(AATranche, _instant);
+    uint256 contractVal = AABal + _virtualBalance(BBTranche, _instant);
     if (contractVal == 0) {
       return 0;
     }

@@ -1717,7 +1717,7 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     _stop(false);
     _assertBacking();
     assertEq(cdo.lastEpochInterest(), 100e18 - pendingInterest - 5e18);
-    uint256 feeValue = aa.balanceOf(owner) * cdo.priceAA() / 1e18;
+    uint256 feeValue = aa.balanceOf(owner) * cdo.lastNAVAA() / aa.totalSupply();
     assertApproxEqAbs(feeValue, 10e18, 1, "wrong fee payment");
     vm.prank(lender);
     cdo.claimWithdrawRequest();
