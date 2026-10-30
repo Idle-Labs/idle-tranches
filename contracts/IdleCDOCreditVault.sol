@@ -10,6 +10,7 @@ import "./interfaces/IERC20Detailed.sol";
 import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
 import "./IdleCDOStorage.sol";
+import "./strategies/idle/IdleCreditVault.sol";
 
 /// @title IdleCDO fork for credit vaults
 /// @author Idle Labs Inc.
@@ -175,7 +176,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
       _managedContractValue(), // nav
       lastNAVAA + lastNAVBB, // lastNAV
       _lastSavedNAV(_tranche), // lastTrancheNAV
-      trancheAPRSplitRatio
+      pendingManagementFees
     );
   }
 
@@ -218,26 +219,31 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// - update tranche prices (priceAA and priceBB)
   /// - update net asset value for both tranches (lastNAVAA and lastNAVBB)
   /// - update fee accounting (unclaimedFees)
-  /// @return shutdown true when a loss exhausted BB or fully wiped an AA-only vault
+  /// @return shutdown true when BB or an AA-only vault is fully wiped
   function _updateAccounting() internal virtual returns (bool shutdown) {
     _accrueManagementFee();
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
     uint256 _lastNAV = _lastNAVAA + _lastNAVBB;
+    // NAV already excludes accrued management fees, which are included in unclaimedFees.
     uint256 nav = getContractValue();
-    uint256 _aprSplitRatio = trancheAPRSplitRatio;
-    // If gain is > 0, then collect some fees in `unclaimedFees`
+    // If gain is > 0, then collect some performance fees in `unclaimedFees`
     if (nav > _lastNAV) {
-      unclaimedFees += (nav - _lastNAV) * fee / FULL_ALLOC;
+      unclaimedFees += _performanceFee(nav - _lastNAV);
     }
-    (uint256 _priceAA, int256 _totalAAGain) = _virtualPriceAux(AATranche, nav, _lastNAV, _lastNAVAA, _aprSplitRatio);
-    (uint256 _priceBB, int256 _totalBBGain) = _virtualPriceAux(BBTranche, nav, _lastNAV, _lastNAVBB, _aprSplitRatio);
+    (uint256 _priceAA, int256 _totalAAGain) = _virtualPriceAux(AATranche, nav, _lastNAV, _lastNAVAA, pendingManagementFees);
+    (uint256 _priceBB, int256 _totalBBGain) = _virtualPriceAux(BBTranche, nav, _lastNAV, _lastNAVBB, pendingManagementFees);
     lastNAVAA = uint256(int256(_lastNAVAA) + _totalAAGain);
     lastNAVBB = uint256(int256(_lastNAVBB) + _totalBBGain);
 
-    // Ordinary losses exhaust BB before reducing AA. Stop normal interactions once BB is wiped,
-    // or when an AA-only vault is fully wiped, so the loss must be crystallized explicitly.
-    if ((_totalBBGain < 0 && -_totalBBGain >= int256(_lastNAVBB)) || (_lastNAV != 0 && nav == 0)) {
+    // Reset pending management fees after accounting
+    pendingManagementFees = 0;
+
+    // Stop normal interactions when an active BB tranche or the whole vault is wiped.
+    // Proportional fees, rounded down for BB, cannot wipe BB while fees < total saved NAV.
+    // Fee-only wipes at or above that limit deliberately trigger the same guard.
+    // Forced accounting records the wipe and keeps operations closed.
+    if ((_lastNAVBB != 0 && lastNAVBB == 0) || (_lastNAV != 0 && nav == 0)) {
       shutdown = true;
       if (!skipDefaultCheck) revert Default();
       // Keep a total wipe distinguishable from an uninitialized vault when no BB NAV existed.
@@ -248,19 +254,12 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     priceBB = _priceBB;
   }
 
-  /// @notice calculates the NAV for a tranche considering the interest that is yet to be splitted
+  /// @notice calculates the tranche balance using its saved or virtual price
   /// @param _tranche address of the requested tranche
-  /// @return net asset value, in underlying tokens, for _tranche considering all nav
-  function _virtualBalance(address _tranche) internal view returns (uint256) {
-    // balance is: tranche supply * virtual tranche price
-    return _trancheSupply(_tranche) * virtualPrice(_tranche) / ONE_TRANCHE_TOKEN;
-  }
-
-  /// @notice calculates the NAV for a tranche without considering the interest that is yet to be splitted
-  /// @param _tranche address of the requested tranche
-  /// @return net asset value, in underlying tokens, for _tranche
-  function _instantBalance(address _tranche) internal view returns (uint256) {
-    return _trancheSupply(_tranche) * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+  /// @param _instant if true, use the saved price instead of the virtual price
+  /// @return tranche value in underlying tokens, retaining the existing price rounding
+  function _virtualBalance(address _tranche, bool _instant) internal view returns (uint256) {
+    return _trancheSupply(_tranche) * (_instant ? _tranchePrice(_tranche) : virtualPrice(_tranche)) / ONE_TRANCHE_TOKEN;
   }
 
   /// @notice gets total supply for a specific tranche
@@ -281,7 +280,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _nav current NAV
   /// @param _lastNAV last saved NAV
   /// @param _lastTrancheNAV last saved tranche NAV
-  /// @param _trancheAPRSplitRatio APR split ratio for AA tranche
+  /// @param _managementFees Management expenses not yet allocated to the supplied NAVs.
   /// @return _virtualPrice tranche price considering all interest
   /// @return _totalTrancheGain (int256) tranche gain/loss since last update
   function _virtualPriceAux(
@@ -289,13 +288,13 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     uint256 _nav,
     uint256 _lastNAV,
     uint256 _lastTrancheNAV,
-    uint256 _trancheAPRSplitRatio
+    uint256 _managementFees
   ) internal virtual view returns (uint256 _virtualPrice, int256 _totalTrancheGain) {
     // A zero supply identifies a tranche that was never initialized. A non-zero supply with
     // zero NAV is an economically wiped tranche and must keep its saved zero price.
     uint256 trancheSupply = _trancheSupply(_tranche);
     if (trancheSupply == 0) return (oneToken, 0);
-    if (_lastNAV == 0 && _nav == 0) return (0, 0);
+    if (_lastTrancheNAV == 0) return (0, 0);
 
     // In order to correctly split the interest generated between AA and BB tranche holders
     // (according to the trancheAPRSplitRatio) we need to know how much interest/loss we gained
@@ -306,32 +305,38 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     int256 totalGain = int256(_nav) - int256(_lastNAV);
     // Ordinary zero-delta interactions keep their saved price for compatibility. Forced
     // accounting recomputes NAV per share, which is required after discounted mid-epoch deposits.
-    if (totalGain == 0 && !skipDefaultCheck) return (_tranchePrice(_tranche), 0);
+    if (totalGain == 0 && _managementFees == 0 && !skipDefaultCheck) return (_tranchePrice(_tranche), 0);
 
     // Remove performance fee for gains
     if (totalGain > 0) {
-      totalGain -= totalGain * int256(fee) / int256(FULL_ALLOC);
+      // MAX_FEE bounds the fee by this positive gain; multiplication remains checked in the helper.
+      unchecked { totalGain -= int256(_performanceFee(uint256(totalGain))); }
     }
 
+    // Split investment PnL independently of management expenses, which follow saved NAV.
+    totalGain += int256(_managementFees);
     bool _isAATranche = _tranche == AATranche;
+    uint256 bbNav = _isAATranche ? _lastNAV - _lastTrancheNAV : _lastTrancheNAV;
+    uint256 bbFee = _managementFees * bbNav / _lastNAV;
     // A class with no saved NAV cannot be revived by later gains. If only this class has saved
     // NAV, it receives the full gain or loss; otherwise both classes participate.
-    if (_lastTrancheNAV == 0) {
-      _totalTrancheGain = 0;
-    } else if (_lastNAV == _lastTrancheNAV) {
+    if (_lastNAV == _lastTrancheNAV) {
       _totalTrancheGain = totalGain;
     } else {
       if (totalGain > 0) {
-        // Split the net gain, according to _trancheAPRSplitRatio, with precision loss favoring the AA tranche.
-        int256 totalBBGain = totalGain * int256(FULL_ALLOC - _trancheAPRSplitRatio) / int256(FULL_ALLOC);
+        // Split investment gains according to trancheAPRSplitRatio, with precision loss favoring AA.
+        int256 totalBBGain = int256(uint256(totalGain) * (FULL_ALLOC - trancheAPRSplitRatio) / FULL_ALLOC);
         // The new NAV for the tranche is old NAV + total gain for the tranche
-        _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain;
+        // The configured split bounds totalBBGain by totalGain.
+        unchecked { _totalTrancheGain = _isAATranche ? (totalGain - totalBBGain) : totalBBGain; }
       } else {
-        int256 maxBBLoss = -int256(lastNAVBB);
+        int256 maxBBLoss = int256(bbFee) - int256(bbNav);
         int256 totalBBLoss = totalGain > maxBBLoss ? totalGain : maxBBLoss;
-        _totalTrancheGain = _isAATranche ? totalGain - totalBBLoss : totalBBLoss;
+        // The allocated junior loss lies between totalGain and zero.
+        unchecked { _totalTrancheGain = _isAATranche ? totalGain - totalBBLoss : totalBBLoss; }
       }
     }
+    _totalTrancheGain -= int256(_isAATranche ? _managementFees - bbFee : bbFee);
     // Split the new NAV (_lastTrancheNAV + _totalTrancheGain) per tranche token
     _virtualPrice = uint256(int256(_lastTrancheNAV) + _totalTrancheGain) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
@@ -342,8 +347,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _tranche tranche address
   /// @return _minted number of tranche tokens minted
   function _mintSharesAtCurrPrice(uint256 _amount, address _to, address _tranche) internal virtual returns (uint256 _minted) {
-    // calculate # of tranche token to mint based on current tranche price: _amount / tranchePrice
-    _minted = _amount * ONE_TRANCHE_TOKEN / _tranchePrice(_tranche);
+    // Use the exact NAV ratio; rounding the price first over-mints shares for large deposits and fees.
+    uint256 supply = _trancheSupply(_tranche);
+    _minted = supply == 0 ? _amount * ONE_TRANCHE_TOKEN / oneToken : _amount * supply / _lastSavedNAV(_tranche);
     _mintShares(_tranche, _to, _minted, _amount);
   }
 
@@ -406,10 +412,8 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _instant if true, it returns the current ratio without accrued interest
   /// @return AA tranches ratio (in underlying value) considering all interest
   function _getAARatio(bool _instant) internal view returns (uint256) {
-    function(address) internal view returns (uint256) _getNAV =
-      _instant ? _instantBalance : _virtualBalance;
-    uint256 AABal = _getNAV(AATranche);
-    uint256 contractVal = AABal + _getNAV(BBTranche);
+    uint256 AABal = _virtualBalance(AATranche, _instant);
+    uint256 contractVal = AABal + _virtualBalance(BBTranche, _instant);
     if (contractVal == 0) {
       return 0;
     }
@@ -550,12 +554,23 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @notice Checkpoint accrued management fees into `unclaimedFees`.
   /// @dev Raw underlyings are excluded because unsolicited transfers are skimmed instead of managed.
   function _accrueManagementFee() internal {
-    unclaimedFees += _calculateManagementFee(_managedContractValue(), block.timestamp - latestHarvestBlock);
+    uint256 accruedFee = _calculateManagementFee(_managedContractValue(), block.timestamp - latestHarvestBlock);
+    pendingManagementFees += accruedFee;
+    unclaimedFees += accruedFee;
     latestHarvestBlock = block.timestamp;
   }
 
+  /// @notice Calculate the performance fee on a positive gain net of management expenses.
+  /// @param gain Gain subject to the configured performance fee.
+  /// @return Fee in underlying units.
+  function _performanceFee(uint256 gain) internal view returns (uint256) {
+    return gain * fee / FULL_ALLOC;
+  }
+
   /// @notice calculate annualized management fee for a balance over a duration
+  /// @dev The first successful epoch stop activates fees; earlier periods are waived.
   function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256) {
+    if (IdleCreditVault(strategy).epochNumber() == 0) return 0;
     // 3153600000000 == FULL_ALLOC * 365 days
     return _nav * managementFee * _duration / 3153600000000;
   }

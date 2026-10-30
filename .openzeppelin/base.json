@@ -4699,6 +4699,191 @@
         },
         "namespaces": {}
       }
+    },
+    "70fb57333e06fc737449909f1218e6f7979a7c263e1683e0fbba86745e9c83b4": {
+      "address": "0x7bE5622b27ceb9f2f3776fa5c8e3BA23Db65Ced7",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "treasury",
+            "offset": 2,
+            "slot": "0",
+            "type": "t_address",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:21"
+          },
+          {
+            "label": "feeSplit",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_uint256",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:22"
+          },
+          {
+            "label": "proxyAdmin",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:23"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "f28c907aa9a9d92fdd752f43868b3c2db9a7b051e584d614d3a84228452ce034": {
+      "address": "0x776d38b982ce9035252ebFD5CE47332C300378F3",
+      "txHash": "0xaa0059fe87b21809521bad1bfda9e194081d1777ae645d2376c10bbc94cac8e2",
+      "layout": {
+        "solcVersion": "0.8.10",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "treasury",
+            "offset": 2,
+            "slot": "0",
+            "type": "t_address",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:23"
+          },
+          {
+            "label": "feeSplit",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_uint256",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:26"
+          },
+          {
+            "label": "proxyAdmin",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:27"
+          },
+          {
+            "label": "whitelist",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:29"
+          },
+          {
+            "label": "minPerformanceFee",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_uint256",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:30"
+          },
+          {
+            "label": "minManagementFee",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:31"
+          },
+          {
+            "label": "minimumFeesSet",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_bool",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:33"
+          },
+          {
+            "label": "remainingDeployments",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "IdleCreditVaultFactory",
+            "src": "contracts/IdleCreditVaultFactory.sol:35"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
     }
   }
 }

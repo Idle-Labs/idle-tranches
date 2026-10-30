@@ -45,8 +45,8 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     cdoEpoch.setKeyringParams(address(0), 1);
   }
 
-  function testContractSize() public view {
-    bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariantPrefunded.sol/IdleCDOEpochVariantPrefunded.json");
+  function testContractSize() public pure {
+    bytes memory runtime = type(IdleCDOEpochVariantPrefunded).runtimeCode;
     console2.log('size', runtime.length);
     assertLt(runtime.length, 24_576, "IdleCDOEpochVariantPrefunded deployed bytecode too large");
   }
