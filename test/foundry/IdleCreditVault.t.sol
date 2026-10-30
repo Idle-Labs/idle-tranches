@@ -3654,6 +3654,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _setFeeParams(address _feeReceiver, uint256 _fee, uint256 _feeSplit, uint256 _managementFee) internal {
+    // Existing fee-accounting scenarios assume a completed launch epoch.
+    if (_managementFee != 0 && IdleCreditVault(address(strategy)).epochNumber() == 0) {
+      stdstore.target(address(strategy)).sig(IdleCreditVault(address(strategy)).epochNumber.selector).checked_write(1);
+    }
     vm.prank(owner);
     cdoEpoch.setFeeParams(_feeReceiver, _fee, _feeSplit, _managementFee);
   }
@@ -6709,8 +6713,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   /// @param minted Whether settlement mints interest instead of collecting cash.
   /// @param withBB Whether the second position belongs to BB.
   function _startWriteOffFeeEpoch(bool minted, bool withBB) internal {
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 1_000);
     vm.startPrank(owner);
-    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 1_000);
     cdoEpoch.setEpochParams(365 days, 0);
     cdoEpoch.setIsAYSActive(withBB);
     cdoEpoch.setIsInterestMinted(minted);
@@ -7000,16 +7004,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.unclaimedFees(), accruedFee + laterFee, 'post-exit fee base wrong');
   }
 
-  /// @notice Recreate the report's skewed AA/BB book without modifying contract storage.
+  /// @notice Recreate the report's skewed AA/BB book after the launch fee exemption.
   /// @param performanceFee Fee charged on withdrawal interest, in FULL_ALLOC units.
   function _prepareWriteOffFeeFloorBook(uint256 performanceFee) internal returns (address firstRequester) {
     firstRequester = makeAddr('fee-floor-first-requester');
     address secondRequester = makeAddr('fee-floor-second-requester');
     address bbProvider = makeAddr('fee-floor-bb-provider');
 
+    _setFeeParams(TL_MULTISIG, performanceFee, FULL_ALLOC, 1000);
     vm.startPrank(owner);
     cdoEpoch.setIsAYSActive(false);
-    cdoEpoch.setFeeParams(TL_MULTISIG, performanceFee, FULL_ALLOC, 1000);
     vm.stopPrank();
 
     _depositWithUser(firstRequester, 5 * ONE_SCALE, true);

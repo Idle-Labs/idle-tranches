@@ -1637,6 +1637,8 @@ contract TestProgrammableBorrowerCreditVault is Test {
 
 /// @notice Check fee backing and final prices through real programmable-borrower settlement.
 contract ProgrammableBorrowerManagementFeeTest is Test {
+  using stdStorage for StdStorage;
+
   address internal owner = makeAddr("owner");
   address internal manager = makeAddr("manager");
   address internal borrower = makeAddr("borrower");
@@ -1657,6 +1659,8 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     address admin = makeAddr("proxyAdmin");
     strategy = IdleCreditVault(address(new TransparentUpgradeableProxy(address(new IdleCreditVault()), admin, "")));
     strategy.initialize(address(asset), owner, manager, borrower, "Fee regression", 0);
+    // These backing regressions exercise management fees after the launch exemption.
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(1);
     cdo = IdleCDOEpochVariant(address(new TransparentUpgradeableProxy(address(new IdleCDOEpochVariant()), admin, "")));
     cdo.initialize(0, address(asset), owner, owner, address(0), address(strategy), 100000);
     aa = IdleCDOTranche(cdo.AATranche());
@@ -1706,6 +1710,28 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     uint256 backing = facility.totalUnderlying() + facility.borrowerPrincipal() + facility.borrowerInterestOwedNow();
     assertApproxEqAbs(backing, strategy.balanceOf(address(cdo)), 1, "unaccounted fee backing");
     assertEq(cdo.unclaimedFees(), 0, "fees not settled");
+  }
+
+  /// @notice The first programmable settlement waives both receipt and active management fees.
+  function test_firstProgrammableEpochWaivesManagementFees() external {
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    _start(500e18);
+    assertEq(cdo.pendingWithdrawFees(), 0);
+    vault.addGain(100e18);
+    vm.warp(cdo.epochEndDate());
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), 1.1e18);
+    _stop(false);
+    _assertBacking();
+    assertEq(strategy.epochNumber(), 1);
+    assertEq(cdo.priceAA(), 1.1e18);
+    assertEq(aa.balanceOf(owner), 0);
+    vm.prank(lender);
+    cdo.claimWithdrawRequest();
+    assertEq(asset.balanceOf(lender), 550e18);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 5.5e18);
   }
 
   /// @notice The upfront fee remains backed, and the pending lender receives its full yield share.

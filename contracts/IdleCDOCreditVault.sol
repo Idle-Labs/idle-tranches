@@ -10,6 +10,7 @@ import "./interfaces/IERC20Detailed.sol";
 import "./GuardedLaunchUpgradable.sol";
 import "./IdleCDOTranche.sol";
 import "./IdleCDOStorage.sol";
+import "./strategies/idle/IdleCreditVault.sol";
 
 /// @title IdleCDO fork for credit vaults
 /// @author Idle Labs Inc.
@@ -567,7 +568,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   }
 
   /// @notice calculate annualized management fee for a balance over a duration
+  /// @dev The first successful epoch stop activates fees; earlier periods are waived.
   function _calculateManagementFee(uint256 _nav, uint256 _duration) internal view returns (uint256) {
+    if (IdleCreditVault(strategy).epochNumber() == 0) return 0;
     // 3153600000000 == FULL_ALLOC * 365 days
     return _nav * managementFee * _duration / 3153600000000;
   }

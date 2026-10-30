@@ -279,7 +279,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // if there is any surplus then we send those to the borrower
     uint256 pendingInstant = _pendingInstant();
     uint256 totUnderlyings = _contractTokenBalance(token);
-    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    uint256 _pendingWithdraws = _pendingWithdrawals();
     _strategy.collectInstantWithdrawFunds(pendingInstant > totUnderlyings ? totUnderlyings : pendingInstant);
 
     // if there are more requests than the current underlyings we simply send all underlyings
@@ -362,7 +362,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Strategy finalizes APR0 bucket state and returns adjusted stopEpoch values.
     (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest, isProgrammableBorrower);
     // Pending withdraws may be increased during APR0 settlement, so read after prepareStopEpochWithApr0.
-    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    uint256 _pendingWithdraws = _pendingWithdrawals();
 
     // special case where we get everything back from the borrower
     if (_isRequestingAllFunds) {
@@ -428,7 +428,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
       if (_mintInterest) {
         // if interest is not transferred we mint strategy tokens equal to the full epoch interest
-        if (_grossInterest != 0) _strategy.mintStrategyTokens(_grossInterest);
+        if (_grossInterest != 0) _mintStrategyTokens(_grossInterest);
         // and increase unclaimedFees by pending withdraw fees before _updateAccounting
         unclaimedFees += _pendingWithdrawFees;
       }
@@ -714,7 +714,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // update expected epoch interest
     expectedEpochInterest += interest;
     // mint strategy tokens to this contract
-    IdleCreditVault(strategy).mintStrategyTokens(_amount);
+    _mintStrategyTokens(_amount);
     // transfer underlyings to the borrower
     _transferUnderlyings(_borrower(), _amount);
   }
@@ -795,6 +795,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _transferUnderlyings(feeReceiver, _contractTokenBalance(token));
   }
 
+  /// @notice Mint strategy tokens for deposited principal or minted interest.
+  /// @param amount Strategy tokens to mint in underlying units.
+  function _mintStrategyTokens(uint256 amount) internal {
+    IdleCreditVault(strategy).mintStrategyTokens(amount);
+  }
+
   /// @notice Calculate the interest of an epoch for the given amount
   /// @param _amount Amount of underlyings
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
@@ -827,6 +833,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @return borrower address
   function _borrower() internal view returns (address) {
     return IdleCreditVault(strategy).borrower();
+  }
+
+  /// @notice Get pending normal withdrawals from the strategy.
+  /// @return Pending normal withdrawals in underlying units.
+  function _pendingWithdrawals() internal view returns (uint256) {
+    return IdleCreditVault(strategy).pendingWithdraws();
   }
 
   /// @notice Get pending instant withdraws from strategy.

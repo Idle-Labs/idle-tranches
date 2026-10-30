@@ -32,7 +32,8 @@ contract IdleCreditVaultImpliedPrice {
     uint256 strategyBalance = IERC20Detailed(cdo.strategyToken()).balanceOf(address(cdo));
     uint256 unpaidFees = cdo.unclaimedFees();
     uint256 managedNav = strategyBalance > unpaidFees ? strategyBalance - unpaidFees : 0;
-    uint256 elapsedFee = managedNav * cdo.managementFee() * (block.timestamp - cdo.latestHarvestBlock()) / (FULL_ALLOC * 365 days);
+    uint256 elapsedFee = IdleCreditVault(cdo.strategy()).epochNumber() == 0 ? 0 :
+      managedNav * cdo.managementFee() * (block.timestamp - cdo.latestHarvestBlock()) / (FULL_ALLOC * 365 days);
     uint256 projectedAssets = managedNav + _accruedGain(cdo);
     if (elapsedFee >= projectedAssets) return 0;
     price = _projectedNAV(cdo, isAATranche, projectedAssets - elapsedFee, cdo.pendingManagementFees() + elapsedFee) * ONE_TRANCHE_TOKEN / trancheSupply;
