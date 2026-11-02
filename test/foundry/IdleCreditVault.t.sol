@@ -7561,4 +7561,280 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(idleCDO.getApr(address(AAtranche)), IdleCreditVault(address(strategy)).getApr(), 'AA APR is wrong');
     assertEq(idleCDO.getApr(address(BBtranche)), 0, 'empty BB tranche should have zero APR');
   }
+
+  /// @notice Price a permitted mid-epoch entry using real token transfers and share minting.
+  function _writeOffTestEntry(address entrant, uint256 amount) internal {
+    deal(defaultUnderlying, entrant, amount, true);
+    vm.startPrank(entrant);
+    underlying.approve(address(cdoEpoch), amount);
+    cdoEpoch.depositDuringEpoch(amount, address(AAtranche));
+    vm.stopPrank();
+  }
+
+  /// @notice Settle the actual borrower liability and return the remaining lender's exact NAV entitlement.
+  function _settleWriteOffLender() internal returns (uint256) {
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    assertFalse(cdoEpoch.defaulted(), 'funded write-off settlement defaulted');
+    return AAtranche.balanceOf(makeAddr('write-off-fee-lender')) * cdoEpoch.lastNAVAA() / AAtranche.totalSupply();
+  }
+
+  /// @notice Late entries cannot make a subsequent write-off reduce the remaining lender's settlement value.
+  /// @param entryDay Entry timing within a one-year epoch.
+  /// @param amount Entrant principal, including entries larger than the initial vault.
+  /// @param burnBps Portion of the borrower's position retired.
+  /// @param mgmt Annual management fee, including zero.
+  /// @param performance Performance fee on net gains, including zero.
+  /// @param minted Whether fees and interest settle through minted accounting.
+  function testWriteOffMidEpochSettlementFuzz(uint256 entryDay, uint256 amount, uint256 burnBps, uint256 mgmt, uint256 performance, bool minted) public {
+    entryDay = bound(entryDay, 1, 360);
+    amount = bound(amount, ONE_SCALE, 1_000_000 * ONE_SCALE);
+    burnBps = bound(burnBps, 1, 10_000);
+    mgmt = bound(mgmt, 0, 2_000);
+    performance = bound(performance, 0, 20_000);
+    _startWriteOffFeeEpoch(minted, false);
+    _setFeeParams(TL_MULTISIG, performance, FULL_ALLOC, mgmt);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.warp(block.timestamp + entryDay * 1 days);
+    _writeOffTestEntry(makeAddr('proration-entrant'), amount);
+    vm.warp(block.timestamp + 1 days);
+    _writeOffTestEntry(makeAddr('proration-entrant-two'), amount / 3);
+    vm.warp(block.timestamp + 1 days);
+    // Equal fee checkpoints in both worlds isolate write-off economics from fee compounding.
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(0, address(AAtranche));
+    uint256 snap = vm.snapshot();
+    uint256 baseline = _settleWriteOffLender();
+    vm.revertTo(snap);
+    uint256 shares = AAtranche.balanceOf(borrower) * burnBps / 10_000;
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(shares, address(AAtranche));
+    uint256 actual = _settleWriteOffLender();
+    assertGe(actual + 5, baseline, 'discounted entry subsidized borrower from remaining lender');
+    if (mgmt == 0) assertApproxEqAbs(actual, baseline, 5, 'fee-free ending entitlement changed');
+  }
+
+  /// @notice Same-block partial write-offs have the same settled economics as one combined write-off.
+  function testWriteOffMidEpochRepeatedBurns() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.warp(block.timestamp + 180 days);
+    _writeOffTestEntry(makeAddr('repeat-entrant'), 30_000 * ONE_SCALE);
+    vm.warp(block.timestamp + 1 days);
+    uint256 snap = vm.snapshot();
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(9_000 * ONE_TRANCHE, address(AAtranche));
+    uint256 combined = _settleWriteOffLender();
+    vm.revertTo(snap);
+    vm.startPrank(borrower);
+    for (uint256 i; i < 9; i++) cdoEpoch.writeOffDeposit(1_000 * ONE_TRANCHE, address(AAtranche));
+    vm.stopPrank();
+    assertApproxEqAbs(_settleWriteOffLender(), combined, 10, 'split write-offs changed settlement');
+  }
+
+  /// @notice Deposits remain usable after a write-off, including shares acquired from a late entrant.
+  function testWriteOffMidEpochAlternatingEntriesAndExits() external {
+    _startWriteOffFeeEpoch(false, false);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    uint256 snap = vm.snapshot();
+    uint256 baseline = _settleWriteOffLender();
+    vm.revertTo(snap);
+    address entrant = makeAddr('alternating-entrant');
+    for (uint256 i; i < 3; i++) {
+      vm.warp(block.timestamp + 90 days);
+      _writeOffTestEntry(entrant, (i + 1) * 10_000 * ONE_SCALE);
+      // Model an ordinary escrow acquisition: the borrower retires newly acquired fungible AA.
+      uint256 shares = AAtranche.balanceOf(entrant);
+      vm.prank(entrant);
+      AAtranche.transfer(borrower, shares);
+      vm.prank(borrower);
+      cdoEpoch.writeOffDeposit(shares, address(AAtranche));
+    }
+    assertApproxEqAbs(_settleWriteOffLender(), baseline, 5, 'alternating entries and exits diluted lender');
+  }
+
+  /// @notice An empty fee-free book allows a zero write-off without dividing by its zero principal.
+  function testWriteOffMidEpochEmptyBook() external {
+    _startWriteOffFeeEpoch(false, false);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    address lender = makeAddr('write-off-fee-lender');
+    uint256 shares = AAtranche.balanceOf(lender);
+    vm.prank(lender);
+    AAtranche.transfer(borrower, shares);
+    shares = AAtranche.balanceOf(borrower);
+    vm.startPrank(borrower);
+    cdoEpoch.writeOffDeposit(shares, address(AAtranche));
+    cdoEpoch.writeOffDeposit(0, address(AAtranche));
+    vm.stopPrank();
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'empty book retained active interest');
+    assertEq(cdoEpoch.lastNAVAA(), 0, 'empty book retained NAV');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 0, 'empty book retained principal');
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    assertFalse(cdoEpoch.defaulted(), 'empty book settlement defaulted');
+  }
+
+  /// @notice The legacy fee-floor guard still handles a saved expected amount below pending receipt fees.
+  function testWriteOffPreservesFeeFloorWhenExpectedInterestIsLower() external {
+    _startWriteOffFeeEpoch(false, false);
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.expectedEpochInterest.selector).checked_write(uint256(0));
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.pendingWithdrawFees.selector).checked_write(uint256(ONE_SCALE));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    assertEq(cdoEpoch.expectedEpochInterest(), ONE_SCALE, 'legacy fee floor not preserved');
+  }
+
+  /// @notice Old fee reserves are excluded from the new epoch's interest base and reset at the next start.
+  function testWriteOffCarriedFeesAndNextEpochReset() external {
+    _startWriteOffFeeEpoch(false, false);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 2);
+    assertGt(cdoEpoch.unclaimedFees(), 0, 'fee reserve did not carry');
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    uint256 expectedBefore = cdoEpoch.expectedEpochInterest();
+    vm.warp(block.timestamp + 182.5 days);
+    uint256 backingBefore = strategyToken.balanceOf(address(cdoEpoch));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, address(AAtranche));
+    uint256 burned = backingBefore - strategyToken.balanceOf(address(cdoEpoch));
+    assertApproxEqAbs(expectedBefore - cdoEpoch.expectedEpochInterest(), burned / 10, 1, 'old fee reserve diluted interest relief');
+    _settleWriteOffLender();
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'funded fees did not clear');
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+    expectedBefore = cdoEpoch.expectedEpochInterest();
+    backingBefore = strategyToken.balanceOf(address(cdoEpoch));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(1_000 * ONE_TRANCHE, address(AAtranche));
+    burned = backingBefore - strategyToken.balanceOf(address(cdoEpoch));
+    assertApproxEqAbs(expectedBefore - cdoEpoch.expectedEpochInterest(), burned / 10, 1, 'opening reserve did not reset');
+  }
+
+  /// @notice No fees makes the expected ending entitlement invariant exact up to underlying rounding.
+  function testWriteOffMidEpochZeroFees() external {
+    testWriteOffMidEpochSettlementFuzz(180, 100_000 * ONE_SCALE, 9_000, 0, 0, false);
+  }
+
+  /// @notice A zero-APR epoch can retire principal while retaining management-fee backing.
+  function testWriteOffMidEpochZeroApr() external {
+    initialProvidedApr = 0;
+    testWriteOffMidEpochSettlementFuzz(180, 100_000 * ONE_SCALE, 9_000, 1_000, 0, false);
+  }
+
+  /// @notice Mid-epoch deposits remain blocked for economically active AA/BB books with AYS enabled.
+  function testWriteOffMidEpochAYSGuard() external {
+    _startWriteOffFeeEpoch(false, true);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.warp(block.timestamp + 180 days);
+    vm.expectRevert(NotAllowed.selector);
+    cdoEpoch.depositDuringEpoch(ONE_SCALE, address(AAtranche));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(1_000 * ONE_TRANCHE, address(AAtranche));
+    _settleWriteOffLender();
+  }
+
+  /// @notice A fixed-split dual-tranche vault settles the remaining gross interest and both tranche NAVs.
+  /// @param burnBB Whether the borrower retires junior shares.
+  function testWriteOffMidEpochFixedSplitBothTranches(bool burnBB) external {
+    _startWriteOffFeeEpoch(false, true);
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    vm.prank(manager);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.warp(block.timestamp + 182.5 days);
+    _writeOffTestEntry(makeAddr('mixed-entry'), 10_000 * ONE_SCALE);
+    uint256 ratio = cdoEpoch.trancheAPRSplitRatio();
+    // Original 20,000 earns 2,000; the halfway entry earns 500.
+    assertEq(cdoEpoch.expectedEpochInterest(), 2_500 * ONE_SCALE, 'incorrect entry interest');
+    if (burnBB) {
+      vm.prank(makeAddr('write-off-fee-lender'));
+      BBtranche.transfer(borrower, 5_000 * ONE_TRANCHE);
+    }
+    uint256 backing = strategyToken.balanceOf(address(cdoEpoch));
+    vm.prank(borrower);
+    cdoEpoch.writeOffDeposit(5_000 * ONE_TRANCHE, burnBB ? address(BBtranche) : address(AAtranche));
+    uint256 retired = backing - strategyToken.balanceOf(address(cdoEpoch));
+    uint256 interest = cdoEpoch.expectedEpochInterest();
+    // Gross interest accrues at the capital-weighted 2,500 / 30,000 rate, independent of the yield split.
+    assertApproxEqAbs(interest, 2_500 * ONE_SCALE - retired / 12, 1, 'gross interest proration wrong');
+    uint256 aaNav = cdoEpoch.lastNAVAA();
+    uint256 bbNav = cdoEpoch.lastNAVBB();
+    _settleWriteOffLender();
+    uint256 juniorYield = interest * (FULL_ALLOC - ratio) / FULL_ALLOC;
+    assertEq(cdoEpoch.lastNAVAA(), aaNav + interest - juniorYield, 'AA settlement wrong');
+    assertEq(cdoEpoch.lastNAVBB(), bbNav + juniorYield, 'BB settlement wrong');
+    assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), backing - retired + interest, 'settlement does not conserve value');
+  }
+
+  /// @notice Fund a pinned-fork settlement and return exact AA NAV per 1e18 shares.
+  function _settleWriteOffFork(IdleCDOEpochVariant vault) internal returns (uint256) {
+    IdleCreditVault credit = IdleCreditVault(vault.strategy());
+    deal(USDC, credit.borrower(), 1_000_000_000 * ONE_SCALE, true);
+    vm.prank(credit.borrower());
+    IERC20Detailed(USDC).approve(address(vault), type(uint256).max);
+    vm.warp(vault.epochEndDate());
+    vm.prank(credit.manager());
+    vault.stopEpoch(8e18, 0);
+    assertFalse(vault.defaulted(), 'fork settlement defaulted');
+    return vault.lastNAVAA() * ONE_TRANCHE / IERC20Detailed(vault.AATranche()).totalSupply();
+  }
+
+  /// @notice A settled-epoch ProxyAdmin upgrade preserves application slots and protects the next epoch's lenders.
+  /// @dev Uses historical FalconX positions and a funded stop, then a real deposit by an admitted lender.
+  function testWriteOffFalconXForkUpgrade() external {
+    address proxy = 0x433D5B175148dA32Ffe1e1A37a939E1b7e79be4d;
+    vm.createSelectFork('mainnet', 26272200);
+    IdleCDOEpochVariant vault = IdleCDOEpochVariant(proxy);
+    IdleCreditVault credit = IdleCreditVault(vault.strategy());
+    // A running legacy epoch has no opening-fee snapshot. Finish it before the plain upgrade.
+    _settleWriteOffFork(vault);
+    bytes32[] memory beforeSlots = new bytes32[](310);
+    for (uint256 i; i < beforeSlots.length; i++) beforeSlots[i] = vm.load(proxy, bytes32(i));
+    bytes32 adminSlot = bytes32(uint256(keccak256('eip1967.proxy.admin')) - 1);
+    ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(proxy, adminSlot)))));
+    IdleCDOEpochVariant implementation = new IdleCDOEpochVariant();
+    assertLe(address(implementation).code.length, 24_576, 'CDO exceeds EIP-170');
+    vm.prank(admin.owner());
+    admin.upgrade(ITransparentUpgradeableProxy(proxy), address(implementation));
+    ProxyAdmin strategyAdmin = ProxyAdmin(address(uint160(uint256(vm.load(address(credit), adminSlot)))));
+    IdleCreditVault strategyImplementation = new IdleCreditVault();
+    vm.prank(strategyAdmin.owner());
+    strategyAdmin.upgrade(ITransparentUpgradeableProxy(address(credit)), address(strategyImplementation));
+    for (uint256 i; i < beforeSlots.length; i++) assertEq(vm.load(proxy, bytes32(i)), beforeSlots[i], 'application slot changed');
+    vm.warp(vault.epochEndDate() + vault.bufferPeriod());
+    vm.prank(credit.manager());
+    vault.startEpoch();
+    assertEq(uint256(vm.load(proxy, bytes32(uint256(244)))), vault.unclaimedFees(), 'opening fees not initialized');
+    vm.warp(vault.epochEndDate() - vault.epochDuration() / 2);
+    address entrant = 0x01F211E10DE421c932C6ef70a72E2F210bac29CE;
+    address tranche = vault.AATranche();
+    deal(USDC, entrant, 5_000_000 * ONE_SCALE, true);
+    vm.startPrank(entrant);
+    IERC20Detailed(USDC).approve(proxy, type(uint256).max);
+    vault.depositDuringEpoch(5_000_000 * ONE_SCALE, tranche);
+    vm.stopPrank();
+    vm.warp(block.timestamp + 1 days);
+    vm.prank(credit.borrower());
+    vault.writeOffDeposit(0, tranche);
+    uint256 snap = vm.snapshot();
+    uint256 baseline = _settleWriteOffFork(vault);
+    vm.revertTo(snap);
+    uint256 shares = IERC20Detailed(tranche).balanceOf(credit.borrower());
+    vm.prank(credit.borrower());
+    vault.writeOffDeposit(shares, tranche);
+    assertGe(_settleWriteOffFork(vault), baseline, 'write-off reduced remaining holder price');
+  }
 }

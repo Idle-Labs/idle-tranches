@@ -132,7 +132,7 @@ contract IdleCreditVaultFactoryTest is Test {
     keccak256("CreditVaultDeployed(address,address,address,address,address,address)");
   bytes32 internal constant EIP1967_ADMIN_SLOT =
     0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
-  uint256 internal constant DEFAULT_FACTORY_FEE_SPLIT = 50000;
+  uint256 internal constant DEFAULT_FACTORY_FEE_SPLIT = 0;
   uint256 internal constant CDO_SLOT_GOVERNANCE_RECOVERY_FUND = 202;
   uint256 internal constant CDO_SLOT_GUARDIAN = 208;
 

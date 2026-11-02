@@ -131,6 +131,8 @@ contract IdleCDOStorage {
   bool public isBBDepositEnabled;
   /// @notice Management fees accrued but not yet allocated to the saved tranche NAVs.
   uint256 public pendingManagementFees;
+  /// @notice Unclaimed fees carried into the running epoch, excluded from its interest-bearing principal.
+  uint256 internal openingUnclaimedFees;
   // uint256 public test;
 
 
@@ -144,7 +146,7 @@ contract IdleCDOStorage {
   // The size of the __gap array is calculated so that the 
   // amount of storage used by a contract always adds up to 
   // always the same number, 50 in this case.
-  uint256[42] private __gap;
+  uint256[41] private __gap;
   // uint256[41] private __gap; -> after adding `test`
   // #######################
   // IMPORTANT: Do not add any variables below `__gap`

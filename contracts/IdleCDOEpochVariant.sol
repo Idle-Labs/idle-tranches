@@ -242,6 +242,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Remove raw donated underlyings before calculating epoch interest or borrower transfer amounts.
     _skimDonatedAssets();
 
+    openingUnclaimedFees = unclaimedFees;
     isEpochRunning = true;
     // prevent deposits
     _pause();
@@ -947,8 +948,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
     // Calculate tranche tokens value with current tranche price
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
-    // A write-off removes gross full-period interest, independent of the tranche APR split.
-    uint256 interest = _calcInterest(_underlyings);
+    // Fees accrued this epoch move value from NAV to the fee reserve without changing the
+    // interest-bearing base. Mid-epoch entries add full principal but only prorated interest.
+    uint256 expectedInterest = expectedEpochInterest;
+    uint256 feeFloor = pendingWithdrawFees;
+    uint256 interest = _underlyings == 0 || expectedInterest <= feeFloor ? 0 : _underlyings * (expectedInterest - feeFloor) /
+      (lastNAVAA + lastNAVBB + unclaimedFees - openingUnclaimedFees);
 
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
@@ -956,8 +961,6 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
 
     // Pending withdrawal fees are already owed; a write-off can only remove active interest.
-    uint256 feeFloor = pendingWithdrawFees;
-    uint256 expectedInterest = expectedEpochInterest;
     if (expectedInterest <= feeFloor || interest >= expectedInterest - feeFloor) {
       expectedEpochInterest = feeFloor;
     } else {
