@@ -6024,30 +6024,65 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.defaulted(), false, "pool should not be defaulted");
   }
 
-  function testStopEpochWithDurationLossKeepsExpectedInterestFlow() external {
+  /// @notice A fixed-rate loss stop waives active interest in both cash and minted modes.
+  /// @param minted Whether settlement uses minted interest instead of borrower cash.
+  function testStopEpochWithDurationLossWaivesFixedInterest(bool minted) external {
+    _setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(minted);
     idleCDO.depositAA(10_000 * ONE_SCALE);
     _startEpochAndCheckPrices(0);
-
-    uint256 lossAmount = 1_000 * ONE_SCALE;
+    assertGt(cdoEpoch.expectedEpochInterest(), 0, 'test requires positive expected interest');
+    uint256 feesBefore = underlying.balanceOf(TL_MULTISIG);
     uint256 duration = cdoEpoch.epochDuration();
-    uint256 contractValuePre = cdoEpoch.getContractValue();
-    uint256 priceAAPre = cdoEpoch.virtualPrice(address(AAtranche));
-    uint256 expectedInterestPre = cdoEpoch.expectedEpochInterest();
-    uint256 totFunds = _expectedFundsEndEpoch();
-    deal(defaultUnderlying, borrower, totFunds);
-
-    vm.warp(cdoEpoch.epochEndDate() + 1);
+    // No receipt funding is due, so this stop must not collect expected interest.
+    deal(defaultUnderlying, borrower, 0, true);
+    vm.warp(cdoEpoch.epochEndDate());
     vm.prank(manager);
-    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, lossAmount);
+    cdoEpoch.stopEpochWithDuration(5e18, 0, duration, 1_000 * ONE_SCALE);
 
-    uint256 contractValuePost = cdoEpoch.getContractValue();
-    uint256 priceAAPost = cdoEpoch.virtualPrice(address(AAtranche));
+    assertEq(cdoEpoch.getContractValue(), 9_000 * ONE_SCALE, 'loss stop credited interest');
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), 9_000 * ONE_SCALE, 'wrong strategy backing');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'active interest was not waived');
+    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'expected interest was not cleared');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'performance fee charged on waived interest');
+    assertEq(underlying.balanceOf(TL_MULTISIG), feesBefore, 'unexpected cash fee');
+    assertEq(AAtranche.balanceOf(TL_MULTISIG), 0, 'unexpected fee shares');
+    assertEq(IdleCreditVault(address(strategy)).unscaledApr(), 5e18, 'next APR was not set');
+    assertFalse(cdoEpoch.isEpochRunning(), 'epoch did not stop');
+    assertFalse(cdoEpoch.defaulted(), 'zero-interest stop defaulted');
+  }
 
-    assertGt(expectedInterestPre, 0, "expectedEpochInterest should be > 0 before stop");
-    assertLt(contractValuePost, contractValuePre, "contract value should decrease after loss");
-    assertEq(cdoEpoch.expectedEpochInterest(), 0, "expectedEpochInterest should be reset after stop");
-    assertLt(priceAAPost, priceAAPre, "AA price should decrease after loss");
-    assertEq(cdoEpoch.defaulted(), false, "pool should not be defaulted");
+  /// @notice With AYS enabled, no senior interest is distributed before a junior-only loss.
+  function testStopEpochWithDurationFixedLossUsesBBFirstWithoutInterest() external {
+    idleCDO.depositAA(9_000 * ONE_SCALE);
+    idleCDO.depositBB(1_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    assertEq(cdoEpoch.trancheAPRSplitRatio(), 81_000, 'test requires the adaptive split');
+    assertGt(cdoEpoch.expectedEpochInterest(), 0, 'test requires fixed interest');
+    uint256 duration = cdoEpoch.epochDuration();
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, duration, 500 * ONE_SCALE);
+    assertEq(cdoEpoch.lastNAVAA(), 9_000 * ONE_SCALE, 'AA received waived interest');
+    assertEq(cdoEpoch.lastNAVBB(), 500 * ONE_SCALE, 'BB did not absorb the exact loss');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'loss stop distributed interest');
+  }
+
+  /// @notice A positive interest argument, including the close sentinel, cannot accompany a loss.
+  /// @param interest Positive raw stop argument to reject.
+  function testFuzzStopEpochWithDurationLossRejectsPositiveInterest(uint256 interest) external {
+    interest = bound(interest, 1, type(uint256).max);
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    uint256 duration = cdoEpoch.epochDuration();
+    uint256 expectedInterest = cdoEpoch.expectedEpochInterest();
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
+    cdoEpoch.stopEpochWithDuration(0, interest, duration, ONE_SCALE);
+    assertTrue(cdoEpoch.isEpochRunning(), 'rejected stop changed epoch state');
+    assertEq(cdoEpoch.expectedEpochInterest(), expectedInterest, 'rejected stop changed interest');
   }
 
   function testStopEpochWithDurationLargeLossUsesBBFirstWaterfall() external {
@@ -6245,7 +6280,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 lossAmount = 500 * ONE_SCALE;
     uint256 expectedClaim = _expectedLossAdjustedClaim(
       cdoEpoch.getContractValue(),
-      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.fee(),
       cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
@@ -6290,7 +6325,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 accruedManagementFee = _calcManagementFee(activeNavBeforeManagementFee, managementFeeRate, block.timestamp - cdoEpoch.latestHarvestBlock());
     uint256 expectedClaim = _expectedLossAdjustedClaim(
       activeNavBeforeManagementFee - accruedManagementFee,
-      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.pendingWithdrawFees(),
       performanceFeeRate,
       cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
@@ -6306,6 +6341,54 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(pendingUser);
     cdoEpoch.claimWithdrawRequest();
     assertApproxEqAbs(underlying.balanceOf(pendingUser) - balancePre, expectedClaim, 5, 'cash loss basis did not match management/performance fee ordering');
+    assertEq(cdoEpoch.unclaimedFees(), accruedManagementFee, 'active management fees must carry forward');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'loss stop distributed active interest');
+  }
+
+  /// @notice A loss stop funds receipt fees and preserves fixed receipt interest, including a one-unit fee floor.
+  /// @param tiny Whether the pending fee is exactly one underlying unit.
+  /// @param minted Whether fees are paid in AA shares instead of cash.
+  function testStopEpochWithDurationLossPreservesPendingFees(bool tiny, bool minted) external {
+    _setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 0);
+    vm.prank(owner);
+    cdoEpoch.setIsInterestMinted(minted);
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    address pendingUser = makeAddr('loss-fee-floor-user');
+    _depositWithUser(pendingUser, tiny ? 100 : 1_000 * ONE_SCALE, true);
+    vm.prank(pendingUser);
+    uint256 pendingBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
+    assertEq(pendingFees, tiny ? 1 : 10 * ONE_SCALE, 'wrong receipt fee floor');
+    assertGt(pendingBasis, tiny ? 100 : 1_000 * ONE_SCALE, 'fixed receipt interest missing');
+    _startEpochAndCheckPrices(0);
+    assertGt(cdoEpoch.expectedEpochInterest(), pendingFees, 'test requires active expected interest');
+
+    uint256 activeBasis = cdoEpoch.getContractValue() + (minted ? pendingFees : 0);
+    uint256 lossAmount = 500 * ONE_SCALE;
+    uint256 pendingLoss = lossAmount * pendingBasis / (activeBasis + pendingBasis);
+    uint256 pendingToFund = pendingBasis - pendingLoss;
+    uint256 feesBefore = underlying.balanceOf(TL_MULTISIG);
+    deal(defaultUnderlying, borrower, pendingToFund + (minted ? 0 : pendingFees), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(initialProvidedApr, 0, 365 days, lossAmount);
+
+    assertFalse(cdoEpoch.defaulted(), 'fee floor caused a default');
+    assertEq(underlying.balanceOf(borrower), 0, 'wrong borrower funding');
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feesBefore, minted ? 0 : pendingFees, 'wrong cash fee');
+    assertEq(AAtranche.balanceOf(TL_MULTISIG), minted ? pendingFees * ONE_TRANCHE / ONE_SCALE : 0, 'wrong fee shares');
+    assertEq(cdoEpoch.getContractValue(), activeBasis - (lossAmount - pendingLoss), 'wrong active loss');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'active interest was not waived');
+    assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'receipt fees were not cleared');
+    assertEq(cdoEpoch.epochDuration(), 365 days, 'one-unit fee was treated as close');
+    uint256 balanceBefore = underlying.balanceOf(pendingUser);
+    vm.prank(pendingUser);
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(pendingUser) - balanceBefore, pendingToFund, 2, 'fixed receipt haircut is wrong');
   }
 
   function testStopEpochWithDurationPendingLossNeedsNoPolicySwitch() external {
@@ -6316,7 +6399,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 lossAmount = 500 * ONE_SCALE;
     uint256 expectedClaim = _expectedLossAdjustedClaim(
       cdoEpoch.getContractValue(),
-      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.fee(),
       cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
@@ -6414,7 +6497,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 lossAmount = 500 * ONE_SCALE;
     uint256 expectedPendingClaim = _expectedLossAdjustedClaim(
       cdoEpoch.getContractValue(),
-      cdoEpoch.expectedEpochInterest(),
+      cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.pendingWithdrawFees(),
       cdoEpoch.fee(),
       cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(),
@@ -6441,6 +6524,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testStopEpochWithDurationLossSkippedOnBorrowerDefault() external {
     idleCDO.depositAA(10_000 * ONE_SCALE);
+    cdoEpoch.requestWithdraw(AAtranche.balanceOf(address(this)) / 2, address(AAtranche));
     _startEpochAndCheckPrices(0);
 
     uint256 duration = cdoEpoch.epochDuration();
@@ -6459,6 +6543,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testStopEpochWithDurationReturnsAfterBorrowerDefaultWithZeroDuration() external {
     idleCDO.depositAA(10_000 * ONE_SCALE);
+    cdoEpoch.requestWithdraw(AAtranche.balanceOf(address(this)) / 2, address(AAtranche));
     _startEpochAndCheckPrices(0);
 
     uint256 durationPre = cdoEpoch.epochDuration();
@@ -6525,6 +6610,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpochWithDuration(0, 0, duration, invalidLoss);
   }
 
+  /// @notice Minted mode rejects a positive override and can then settle the same loss at zero interest.
   function testStopEpochWithDurationLossWithMintedInterest() external {
     _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
     vm.prank(owner);
@@ -6548,15 +6634,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
+    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cdoEpoch.stopEpochWithDuration(0, overrideInterest, duration, lossAmount);
+    vm.prank(manager);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, lossAmount);
 
     uint256 contractValuePost = cdoEpoch.getContractValue();
     uint256 strategyBalPost = IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch));
     uint256 priceAAPost = cdoEpoch.virtualPrice(address(AAtranche));
 
-    assertEq(contractValuePost, contractValuePre + overrideInterest - lossAmount, 'contract value mismatch');
-    assertEq(strategyBalPost - strategyBalPre, overrideInterest - lossAmount, 'strategy token delta mismatch');
-    assertGt(priceAAPost, priceAAPre, 'AA price should still increase with positive net interest');
+    assertEq(contractValuePost, contractValuePre - lossAmount, 'contract value mismatch');
+    assertEq(strategyBalPre - strategyBalPost, lossAmount, 'strategy token delta mismatch');
+    assertLt(priceAAPost, priceAAPre, 'AA price should reflect only the loss');
     assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted');
   }
 
@@ -6575,17 +6664,17 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 pendingBasis = cdoEpoch.requestWithdraw(0, address(AAtranche));
     _startEpochAndCheckPrices(0);
 
-    uint256 overrideInterest = 1_000 * ONE_SCALE;
+    uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
     uint256 lossAmount = 500 * ONE_SCALE;
-    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.unclaimedFees() + overrideInterest;
+    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.unclaimedFees() + pendingFees;
     uint256 pendingLoss = lossAmount * pendingBasis / (activeBasis + pendingBasis);
     uint256 expectedClaim = pendingBasis - pendingLoss;
     uint256 duration = cdoEpoch.epochDuration();
-    deal(defaultUnderlying, borrower, pendingBasis + overrideInterest);
+    deal(defaultUnderlying, borrower, pendingBasis + pendingFees);
 
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
-    cdoEpoch.stopEpochWithDuration(0, overrideInterest, duration, lossAmount);
+    cdoEpoch.stopEpochWithDuration(0, 0, duration, lossAmount);
 
     assertGt(IERC20Detailed(address(AAtranche)).balanceOf(TL_MULTISIG), 0, 'fee shares should be minted');
     uint256 balancePre = underlying.balanceOf(pendingUser);
@@ -6622,14 +6711,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     }
     uint256 poolPrincipal = cdoEpoch.getContractValue();
 
-    // epoch 1: settle apr0 with override interest and realize additional loss
+    // Epoch 1: settle APR0 receipts without interest and apply their proportional loss.
     _startEpochAndCheckPrices(1);
     assertEq(cdoEpoch.isEpochRunning(), true, 'epoch should be running before stop');
     assertEq(IdleCreditVault(address(strategy)).pendingInstantWithdraws(), 0, 'pending instant should be 0');
     assertEq(IdleCreditVault(address(strategy)).unscaledApr(), 0, 'unscaledApr should be 0 for apr0 flow');
     assertEq(cdoEpoch.pendingWithdrawFees(), 0, 'pending withdraw fees should be 0 for apr0 flow');
     assertEq(cdoEpoch.defaulted(), false, 'pool should not be defaulted before stop');
-    uint256 poolInterest = 1_500 * ONE_SCALE;
+    uint256 poolInterest = 0;
     uint256 lossAmount = 300 * ONE_SCALE;
     uint256 duration = cdoEpoch.epochDuration();
     deal(defaultUnderlying, borrower, poolInterest + IdleCreditVault(address(strategy)).pendingWithdraws() + 15_000 * ONE_SCALE);
@@ -6637,6 +6726,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
     cdoEpoch.stopEpochWithDuration(0, poolInterest, duration, lossAmount);
+
+    assertEq(IdleCreditVault(address(strategy)).apr0TotalPrincipal(), 0, 'APR0 bucket was not closed');
+    assertEq(cdoEpoch.lastEpochInterest(), 0, 'APR0 loss stop distributed interest');
 
     (uint256 expectedThisClaim, uint256 expectedUser1Claim) =
       _expectedApr0LossClaims(poolInterest, poolPrincipal, principalThis, principalUser1, cdoEpoch.fee(), lossAmount);

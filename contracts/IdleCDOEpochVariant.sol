@@ -347,9 +347,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _pendingInstant() != 0 ||
       // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
       // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
-      (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0)) ||
-      // Closing already recalls all principal, so applying a separate loss burn would strand returned cash.
-      (_isRequestingAllFunds && _lossAmount != 0)
+      (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
     );
 
     uint256 _totBorrowed = _beforeStopEpoch(_isRequestingAllFunds);
@@ -357,6 +355,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _skimDonatedAssets();
 
     _interest = _resolveStopEpochInterest(_interest);
+    if (_lossAmount != 0) {
+      // Reject close, positive fixed-borrower input, or positive calculated programmable interest.
+      _checkNotAllowed(_isRequestingAllFunds || _interest != (isProgrammableBorrower ? _pendingWithdrawFees : 0));
+      // A fixed-borrower zero input now resolves to receipt fees only, including a zero/one-unit fee floor.
+      expectedEpochInterest = _pendingWithdrawFees;
+    }
 
     // Base interest for stopEpoch: explicit override (>1) or precomputed expected epoch interest.
     uint256 _expectedInterest;
@@ -496,7 +500,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
       emit AccrueInterest(_expectedInterest - _totBorrowed, _totalFees);
       if (_lossAmount != 0) {
-        _strategy.burnStrategyTokens(_lossAmount);
+        _burnStrategyTokens(_lossAmount);
         // Realize the active loss immediately through the ordinary BB-first waterfall.
         _forceUpdateAccounting();
       }
@@ -510,6 +514,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Stop epoch and set new duration
   /// @dev see stopEpoch and setEpochParams for more details, bufferPeriod is not modified
   /// Loss accounting policy for `_lossAmount`:
+  /// - nonzero loss requires `_interest == 0` and settles zero active interest, preserving pending withdrawal fees
+  /// - programmable borrowers must also have zero calculated interest
   /// - pending receipts share the pending portion of the loss pro rata because tranche identity is not stored
   /// - the remaining active-position loss uses the ordinary BB-first tranche waterfall
   /// - hard borrower defaults instead apply one aggregate recovery multiplier to active and pending claims
@@ -802,6 +808,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     IdleCreditVault(strategy).mintStrategyTokens(amount);
   }
 
+  /// @notice Burn strategy tokens for realized loss or borrower write-off.
+  /// @param amount Underlying-denominated strategy tokens to burn.
+  function _burnStrategyTokens(uint256 amount) internal {
+    IdleCreditVault(strategy).burnStrategyTokens(amount);
+  }
+
   /// @notice Calculate the interest of an epoch for the given amount
   /// @param _amount Amount of underlyings
   function _calcInterest(uint256 _amount) internal view returns (uint256) {
@@ -910,6 +922,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
+  /// @dev Approximate normal-withdrawal estimate: does not allocate pendingManagementFees or account for instant mode.
+  /// Unbooked gains/losses, stale NAV inputs and rounding can also make the actual request amount differ.
+  /// For a quote when requests are enabled, simulate requestWithdraw via eth_call from the lender.
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256 currentUnderlyings) {
@@ -958,7 +973,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
-    IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
+    _burnStrategyTokens(_underlyings);
 
     // Pending withdrawal fees are already owed; a write-off can only remove active interest.
     if (expectedInterest <= feeFloor || interest >= expectedInterest - feeFloor) {

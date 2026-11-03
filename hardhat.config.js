@@ -225,7 +225,7 @@ module.exports = {
       url: `https://eth-kovan.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
     },
     mainnet: {
-      url: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: process.env.ETH_RPC_URL || `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,
@@ -240,7 +240,7 @@ module.exports = {
       timeout: 1200000
     },
     base: {
-      url: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: process.env.BASE_RPC_URL || `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,

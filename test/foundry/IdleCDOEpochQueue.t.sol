@@ -815,12 +815,12 @@ contract TestIdleCDOEpochQueue is Test {
     vm.warp(cdoEpoch.epochEndDate() + 1);
 
     uint256 pendingBasis = strategy.pendingWithdraws();
-    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest();
+    // Explicit-loss stops waive the expected active interest before splitting the loss.
+    uint256 activeBasis = cdoEpoch.getContractValue();
     uint256 totalBasis = activeBasis + pendingBasis;
     uint256 totalRecovery = totalBasis / 100_000;
     uint256 lossAmount = totalBasis - totalRecovery;
-    (uint256 pendingToFund, ) = strategy.previewLossAdjustedWithdrawFunds(lossAmount);
-    uint256 fundsToRepay = cdoEpoch.expectedEpochInterest() + pendingToFund;
+    uint256 fundsToRepay = pendingBasis - lossAmount * pendingBasis / totalBasis;
     deal(address(underlying), strategy.borrower(), fundsToRepay, true);
     vm.prank(strategy.borrower());
     underlying.approve(address(cdoEpoch), fundsToRepay);

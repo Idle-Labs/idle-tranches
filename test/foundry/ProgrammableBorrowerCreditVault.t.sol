@@ -1977,6 +1977,59 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     assertEq(asset.balanceOf(lender), 445.5e18);
   }
 
+  /// @notice A loss stop rejects even one unit of calculated yield without mutating APR0 or fee state.
+  /// @param tiny Whether the programmable yield is exactly one underlying unit.
+  /// @param drawn Whether yield comes from borrower debt rather than the ERC4626 vault.
+  function test_explicitLossRejectsCalculatedInterest(bool tiny, bool drawn) external {
+    _start(500e18);
+    if (drawn) {
+      vm.prank(borrower);
+      facility.borrow(tiny ? 10 : 500e18);
+    } else {
+      vault.addGain(tiny ? 1 : 100e18);
+    }
+    vm.warp(cdo.epochEndDate());
+    assertGt(facility.totalInterestDueNow(), 0, "test requires calculated interest");
+    uint256 pendingBasis = strategy.pendingWithdraws();
+    uint256 pendingPrincipal = strategy.apr0TotalPrincipal();
+    uint256 checkpoint = cdo.latestHarvestBlock();
+    vm.prank(manager);
+    vm.expectRevert(NotAllowed.selector);
+    cdo.stopEpochWithDuration(0, 0, 365 days, 100e18);
+    assertTrue(cdo.isEpochRunning(), "rejected stop ended epoch");
+    assertTrue(facility.epochAccountingActive(), "rejected stop settled facility");
+    assertEq(strategy.pendingWithdraws(), pendingBasis, "rejected stop changed receipts");
+    assertEq(strategy.apr0TotalPrincipal(), pendingPrincipal, "rejected stop closed APR0 bucket");
+    assertEq(cdo.pendingWithdrawFees(), 5e18, "rejected stop changed fee floor");
+    assertEq(cdo.latestHarvestBlock(), checkpoint, "rejected stop accrued fees");
+    if (drawn) {
+      deal(address(asset), borrower, facility.borrowerPrincipal() + facility.borrowerInterestOwedNow(), true);
+      vm.startPrank(borrower);
+      asset.approve(address(facility), type(uint256).max);
+      facility.repay(0);
+      vm.stopPrank();
+    }
+    // The rejected explicit loss does not prevent an ordinary interest-bearing stop.
+    _stop(false);
+    _assertBacking();
+  }
+
+  /// @notice A programmable loss with no pending fees resolves literal zero and preserves management fees.
+  function test_explicitLossWithoutPendingFeesSettlesZeroInterest() external {
+    _start(0);
+    vault.applyLoss(100e18);
+    vm.warp(cdo.epochEndDate());
+    assertEq(facility.totalInterestDueNow(), 0);
+    vm.prank(manager);
+    cdo.stopEpochWithDuration(0, 0, 365 days, 100e18);
+    assertFalse(cdo.defaulted());
+    assertFalse(cdo.isEpochRunning());
+    assertEq(cdo.lastEpochInterest(), 0);
+    assertEq(cdo.getContractValue(), 900e18);
+    assertGt(aa.balanceOf(owner), 0, "management fee shares were not issued");
+    _assertBacking();
+  }
+
   /// @notice Default recovery keeps the existing net receipt basis and waives active accrued fees.
   function test_defaultRecoveryAfterFailedFeeSettlement() external {
     _start(500e18);
