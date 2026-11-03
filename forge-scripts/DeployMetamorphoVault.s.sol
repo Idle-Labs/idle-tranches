@@ -52,6 +52,18 @@ contract DeployMetamorphoVault is Script {
     console.log('IMPORTANT: Call acceptOwnership in morpho vault with: ', TL_MULTISIG);
   }
 
+  /// @notice Deploys a tranche adapter and Morpho oracle, using the tranche's underlying as the loan token.
+  /// @param collateralToken Tranche token to price.
+  /// @param oracleFactory MorphoChainlinkOracleV2 factory on the deployment chain.
+  /// @return oracle The oracle to use for a Morpho market.
+  function deployOracle(address collateralToken, IMetaMorphoOracleFactory oracleFactory) external returns (IMorphoChainlinkOracleV2 oracle) {
+    vm.startBroadcast();
+    TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken);
+    console.log('adapter.address ', address(adapter));
+    oracle = _createOracle(adapter, IERC20Detailed(collateralToken).decimals(), adapter.loanTokenDecimals(), oracleFactory);
+    vm.stopBroadcast();
+  }
+
   function _setUpMorphoVault() public {
     (IMorpho.MarketParams memory tranche1Params, bytes32 marketId) = _initializeTrancheMarket(AA_tranche_1);
 
@@ -73,8 +85,8 @@ contract DeployMetamorphoVault is Script {
     console.logBytes32(marketId);
   }
 
-  function _createOracle(TranchesChainlinkOracle adapter, uint256 collateralDecimals, uint256 loanDecimals) internal returns (IMorphoChainlinkOracleV2 oracle) {
-    oracle = ORACLE_FACTORY.createMorphoChainlinkOracleV2(
+  function _createOracle(TranchesChainlinkOracle adapter, uint256 collateralDecimals, uint256 loanDecimals, IMetaMorphoOracleFactory oracleFactory) internal returns (IMorphoChainlinkOracleV2 oracle) {
+    oracle = oracleFactory.createMorphoChainlinkOracleV2(
       IERC4626(address(0)), 
       1, 
       adapter, 
@@ -95,7 +107,7 @@ contract DeployMetamorphoVault is Script {
     address loanToken = IIdleCDO(IdleCDOTranche(collateralToken).minter()).token();
     // 1. Deploy oracle for collateral token
     TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken);
-    IMorphoChainlinkOracleV2 oracle = _createOracle(adapter, IERC20Detailed(collateralToken).decimals(), IERC20Detailed(loanToken).decimals());
+    IMorphoChainlinkOracleV2 oracle = _createOracle(adapter, IERC20Detailed(collateralToken).decimals(), IERC20Detailed(loanToken).decimals(), ORACLE_FACTORY);
     // 2. Create market in morpho blue
     marketParams = IMorpho.MarketParams({
       loanToken: loanToken,

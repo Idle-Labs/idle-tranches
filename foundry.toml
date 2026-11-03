@@ -23,6 +23,7 @@ solc = '0.8.10'
 [rpc_endpoints]
 matic = "${POLYGON_RPC_URL}"
 mainnet = "${ETH_RPC_URL}"
+base = "${BASE_RPC_URL}"
 polygonzk = "${POLYGON_ZK_RPC_URL}"
 optimism = "${OPTIMISM_RPC_URL}"
 arbitrum = "${ARBITRUM_RPC_URL}"
@@ -30,4 +31,5 @@ goerli = "${GOERLI_RPC_URL}"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
+base = { key = "${ETHERSCAN_API_KEY}" }
 matic = { key = "${POLYGON_ETHERSCAN_API_KEY}" }
