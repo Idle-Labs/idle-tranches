@@ -1993,6 +1993,125 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(oldDepositorValue, exp.expectedExistingFinal, 1000, 'old depositor tranche value is wrong');
   }
 
+  /// @notice Mid-epoch projections match settlement below, at and above the remaining management-fee threshold.
+  /// @param regime Selects gross existing interest of 5, 9.9 or 20 against 9.9 of future management fees.
+  /// @param minted Whether fees are settled with tranche shares instead of available borrower cash.
+  function testDepositDuringEpochProjectionAtFeeThreshold(uint256 regime, bool minted) external {
+    regime = bound(regime, 0, 2);
+    uint256 apr = regime == 0 ? 0.5e18 : regime == 1 ? 0.99e18 : 2e18;
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(apr, apr);
+    vm.stopPrank();
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    cdoEpoch.setIsInterestMinted(minted);
+    vm.stopPrank();
+    _startEpochAndCheckPrices(0);
+    _setFeeParams(TL_MULTISIG, 10_000, FULL_ALLOC, 2_000);
+    vm.warp(cdoEpoch.epochEndDate() - 182.5 days);
+
+    MidEpochFeeExpectations memory exp;
+    exp.expectedInterest = regime == 0 ? 5_000_000 : regime == 1 ? 9_900_000 : 20_000_000;
+    // First-half fees are 10. Remaining fees are 9.9 before entry and 19.9 after entry.
+    exp.expectedExistingFinal = 990_000_000 + exp.expectedInterest - 9_900_000;
+    if (exp.expectedInterest > 9_900_000) exp.expectedExistingFinal -= (exp.expectedInterest - 9_900_000) / 10;
+    uint256 gross = exp.expectedInterest + exp.expectedInterest / 2;
+    uint256 performance = gross > 19_900_000 ? (gross - 19_900_000) / 10 : 0;
+    exp.expectedTotalFinal = 1_990_000_000 + gross - 19_900_000 - performance;
+    exp.expectedUserFinal = exp.expectedTotalFinal - exp.expectedExistingFinal;
+    exp.expectedFees = 29_900_000 + performance;
+    exp.expectedMinted = exp.expectedUserFinal * AAtranche.totalSupply() / exp.expectedExistingFinal;
+    address entrant = makeAddr('fee-threshold-entrant');
+    deal(defaultUnderlying, entrant, 1_000 * ONE_SCALE, true);
+    vm.startPrank(entrant);
+    underlying.approve(address(cdoEpoch), 1_000 * ONE_SCALE);
+    uint256 issued = cdoEpoch.depositDuringEpoch(1_000 * ONE_SCALE, address(AAtranche));
+    vm.stopPrank();
+    assertEq(issued, exp.expectedMinted, 'projection minted the wrong entitlement');
+    uint256 receiverBalance = underlying.balanceOf(TL_MULTISIG);
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(apr, 0);
+    // Exact NAV ratios avoid confusing the six-decimal displayed price with the final entitlement.
+    assertApproxEqAbs(issued * cdoEpoch.lastNAVAA() / AAtranche.totalSupply(), exp.expectedUserFinal, 2, 'entrant settlement differs from projection');
+    assertApproxEqAbs(AAtranche.balanceOf(address(this)) * cdoEpoch.lastNAVAA() / AAtranche.totalSupply(), exp.expectedExistingFinal, 2, 'existing holder settlement differs from projection');
+    uint256 charged = cdoEpoch.unclaimedFees() + underlying.balanceOf(TL_MULTISIG) - receiverBalance;
+    charged += AAtranche.balanceOf(TL_MULTISIG) * cdoEpoch.lastNAVAA() / AAtranche.totalSupply();
+    assertApproxEqAbs(charged, exp.expectedFees, 1, 'settlement charged different fees');
+    assertFalse(cdoEpoch.defaulted(), 'fee threshold blocked settlement');
+  }
+
+  /// @notice Replays CE-4 with AYS disabled and measures the proposed cap's effect on actual settlement.
+  function testDepositDuringEpochCapChangesJuniorAdjustmentEntitlement() external {
+    vm.startPrank(manager);
+    cdoEpoch.setEpochParams(365 days, 0);
+    IdleCreditVault(address(strategy)).setAprs(10e18, 10e18);
+    vm.stopPrank();
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    // Reproduce the auditor's fixed 80/20 initializer configuration, not an AYS deployment.
+    stdstore.target(address(cdoEpoch)).sig(cdoEpoch.trancheAPRSplitRatio.selector).checked_write(80_000);
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    idleCDO.depositBB(100 * ONE_SCALE);
+    cdoEpoch.requestWithdraw(0, address(BBtranche));
+    _startEpochAndCheckPrices(0);
+    // The new 1,000 deposit enters at epoch start, so it earns a full year's gross interest.
+    address entrant = makeAddr('junior-adjustment-entrant');
+    deal(defaultUnderlying, entrant, 1_000 * ONE_SCALE, true);
+    uint256 cap = 1_000 * ONE_SCALE * ONE_TRANCHE / cdoEpoch.priceAA();
+    vm.startPrank(entrant);
+    underlying.approve(address(cdoEpoch), 1_000 * ONE_SCALE);
+    uint256 issued = cdoEpoch.depositDuringEpoch(1_000 * ONE_SCALE, address(AAtranche));
+    vm.stopPrank();
+    assertGt(issued, cap, 'test must exercise a binding share cap');
+    uint256 snapshot = vm.snapshot();
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertLt(cdoEpoch.priceAA(), ONE_SCALE, 'current mint must reproduce the interim price drop');
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    uint256 uncapped = issued * cdoEpoch.lastNAVAA() / AAtranche.totalSupply();
+    assertApproxEqAbs(uncapped, 1_080 * ONE_SCALE, 2, 'uncapped entrant entitlement');
+    assertApproxEqAbs(AAtranche.balanceOf(address(this)) * cdoEpoch.lastNAVAA() / AAtranche.totalSupply(), 1_070_400_000, 2, 'uncapped existing entitlement');
+
+    assertTrue(vm.revertTo(snapshot), 'snapshot restore failed');
+    // Model only the proposed mint cap: remove excess entrant shares, leaving principal and interest unchanged.
+    vm.prank(address(cdoEpoch));
+    AAtranche.burn(entrant, issued - cap);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.priceAA(), ONE_SCALE, 'cap did not preserve the interim price');
+    deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(initialProvidedApr, 0);
+    uint256 capped = cap * cdoEpoch.lastNAVAA() / AAtranche.totalSupply();
+    assertApproxEqAbs(capped, 1_075_200_000, 2, 'capped entrant entitlement');
+    assertApproxEqAbs(AAtranche.balanceOf(address(this)) * cdoEpoch.lastNAVAA() / AAtranche.totalSupply(), 1_075_200_000, 2, 'capped existing entitlement');
+    assertGt(uncapped, capped, 'cap must reduce the entrant payout');
+  }
+
+  /// @notice A full circulating withdrawal leaves the production minimum shares backing residual NAV.
+  /// @param junior Whether the funded tranche is BB rather than AA.
+  function testFullCirculatingWithdrawalKeepsMinimumShares(bool junior) external {
+    IdleCDOTranche tranche = junior ? BBtranche : AAtranche;
+    if (junior) idleCDO.depositBB(1_000 * ONE_SCALE);
+    else idleCDO.depositAA(1_000 * ONE_SCALE);
+    assertEq(tranche.balanceOf(address(1)), 1_000, 'minimum shares were not locked');
+    cdoEpoch.requestWithdraw(0, address(tranche));
+    assertEq(tranche.balanceOf(address(this)), 0, 'circulating shares remain');
+    assertEq(tranche.totalSupply(), 1_000, 'locked shares were removed');
+    assertEq(junior ? cdoEpoch.lastNAVBB() : cdoEpoch.lastNAVAA(), 1, 'residual NAV is not backed by locked shares');
+  }
+
   function testDepositDuringEpochNumericalFullBuffer() external {
     // 10% apr, 1-year epoch, 1-year buffer (scaled apr = 20%)
     vm.startPrank(manager);
