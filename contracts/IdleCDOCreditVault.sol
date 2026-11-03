@@ -168,15 +168,18 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted
   /// ie the interest/loss generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX)
+  /// @dev Includes elapsed management fees without checkpointing storage.
   /// @param _tranche address of the requested tranche
   /// @return _virtualPrice tranche price considering all interest/losses
   function virtualPrice(address _tranche) public virtual view returns (uint256 _virtualPrice) {
+    uint256 nav = _managedContractValue();
+    uint256 elapsedFee = _calculateManagementFee(nav, block.timestamp - latestHarvestBlock);
     (_virtualPrice, ) = _virtualPriceAux(
       _tranche,
-      _managedContractValue(), // nav
+      nav - elapsedFee, // nav
       lastNAVAA + lastNAVBB, // lastNAV
       _lastSavedNAV(_tranche), // lastTrancheNAV
-      pendingManagementFees
+      pendingManagementFees + elapsedFee
     );
   }
 

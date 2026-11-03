@@ -1051,6 +1051,139 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(previewed, requested, "maxWithdrawable should include elapsed management fee");
   }
 
+  /// @notice Fee-inclusive views match accounting in both the buffer and a running epoch.
+  /// @param withBB Whether both tranches have capital.
+  /// @param running Whether the epoch is running when prices are read.
+  function testVirtualPriceIncludesElapsedManagementFees(bool withBB, bool running) external {
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    if (withBB) idleCDO.depositBB(100 * ONE_SCALE);
+    _setManagementFee(1_000);
+    if (running) _toggleEpoch(true, 0, 0);
+    uint256 checkpoint = cdoEpoch.latestHarvestBlock();
+    vm.warp(block.timestamp + 7 days);
+    uint256 accrued = _calcManagementFee(cdoEpoch.getContractValue(), 1_000, block.timestamp - checkpoint);
+    uint256 juniorFee = accrued * cdoEpoch.lastNAVBB() / (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB());
+    uint256 aaPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 bbPrice = cdoEpoch.virtualPrice(address(BBtranche));
+    assertEq(aaPrice, (cdoEpoch.lastNAVAA() - accrued + juniorFee) * ONE_TRANCHE / AAtranche.totalSupply());
+    if (withBB) assertEq(bbPrice, (cdoEpoch.lastNAVBB() - juniorFee) * ONE_TRANCHE / BBtranche.totalSupply());
+    assertLt(aaPrice, cdoEpoch.priceAA(), 'elapsed fee missing');
+    assertEq(cdoEpoch.unclaimedFees(), 0, 'view booked fees');
+    assertEq(cdoEpoch.pendingManagementFees(), 0, 'view allocated fees');
+    assertEq(cdoEpoch.latestHarvestBlock(), checkpoint, 'view checkpointed fees');
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.priceAA(), aaPrice, 'AA preview differs from accounting');
+    assertEq(cdoEpoch.priceBB(), bbPrice, 'BB preview differs from accounting');
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), aaPrice, 'AA fee counted twice');
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), bbPrice, 'BB fee counted twice');
+  }
+
+  /// @notice Quotes and dependent views match accounting across fees, gains, losses and junior wipes.
+  /// @param aa Initial senior principal, bounded to funded test balances.
+  /// @param bb Initial junior principal, including an empty tranche.
+  /// @param rate Annual management fee, bounded to the protocol maximum.
+  /// @param elapsed Time split between a fee checkpoint and the price preview.
+  /// @param value Remaining managed value as a fraction of NAV, including gains and a full loss.
+  function testFuzzVirtualPriceMatchesAccounting(uint256 aa, uint256 bb, uint256 rate, uint256 elapsed, uint256 value) external {
+    aa = bound(aa, ONE_SCALE, 1_000_000 * ONE_SCALE);
+    bb = bound(bb, 0, 1_000_000 * ONE_SCALE);
+    rate = bound(rate, 0, 2_000);
+    elapsed = bound(elapsed, 0, 365 days);
+    value = bound(value, 0, 2 * FULL_ALLOC);
+    deal(defaultUnderlying, address(this), aa + bb, true);
+    idleCDO.depositAA(aa);
+    if (bb != 0) idleCDO.depositBB(bb);
+    _setFeeParams(TL_MULTISIG, value % 20_001, FULL_ALLOC, rate);
+    vm.warp(block.timestamp + elapsed / 2);
+    _setManagementFee(rate);
+    // Change backing independently of booked fees to exercise investment PnL and fee allocation together.
+    deal(address(strategy), address(cdoEpoch), cdoEpoch.unclaimedFees() + cdoEpoch.getContractValue() * value / FULL_ALLOC, true);
+    vm.warp(block.timestamp + elapsed - elapsed / 2);
+    uint256 aaPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 bbPrice = cdoEpoch.virtualPrice(address(BBtranche));
+    uint256 aaRatio = cdoEpoch.getCurrentAARatio();
+    uint256 aaApr = cdoEpoch.getApr(address(AAtranche));
+    uint256 bbApr = cdoEpoch.getApr(address(BBtranche));
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.priceAA(), aaPrice, 'AA quote differs from accounting');
+    assertEq(cdoEpoch.priceBB(), bbPrice, 'BB quote differs from accounting');
+    assertEq(cdoEpoch.getCurrentAARatio(), aaRatio, 'ratio quote differs from accounting');
+    assertEq(cdoEpoch.getApr(address(AAtranche)), aaApr, 'AA APR quote differs from accounting');
+    assertEq(cdoEpoch.getApr(address(BBtranche)), bbApr, 'BB APR quote differs from accounting');
+    assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), cdoEpoch.getContractValue(), 'fees or PnL were allocated twice');
+  }
+
+  /// @notice Elapsed fees recompute NAV per share after discounted deposits leave the saved price behind.
+  function testVirtualPriceElapsedFeesAfterMidEpochDeposit() external {
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    _setManagementFee(1_000);
+    vm.startPrank(owner);
+    cdoEpoch.setIsAYSActive(false);
+    cdoEpoch.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    _toggleEpoch(true, 0, 0);
+    vm.warp(block.timestamp + cdoEpoch.epochDuration() / 2);
+    cdoEpoch.depositDuringEpoch(1_000 * ONE_SCALE, address(AAtranche));
+    uint256 savedPrice = cdoEpoch.priceAA();
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), savedPrice, 'zero elapsed fee should preserve saved price');
+    vm.warp(block.timestamp + 1 minutes);
+    uint256 quotedPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    assertGt(quotedPrice, savedPrice, 'NAV per share should include the discounted mint');
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.priceAA(), quotedPrice, 'quote differs from accounting after discounted mint');
+  }
+
+  /// @notice A fee-rate checkpoint and a later elapsed period are allocated together without double charging.
+  function testVirtualPriceIncludesPendingAndElapsedManagementFees() external {
+    idleCDO.depositAA(900 * ONE_SCALE);
+    idleCDO.depositBB(100 * ONE_SCALE);
+    _setManagementFee(1_000);
+    vm.warp(block.timestamp + 365 days);
+    _setManagementFee(2_000);
+    assertEq(cdoEpoch.pendingManagementFees(), 10 * ONE_SCALE);
+    vm.warp(block.timestamp + 365 days);
+    uint256 aaPrice = cdoEpoch.virtualPrice(address(AAtranche));
+    uint256 bbPrice = cdoEpoch.virtualPrice(address(BBtranche));
+    assertEq(aaPrice, 970_200, 'AA must include both fee periods');
+    assertEq(bbPrice, 970_200, 'BB fees must follow NAV, not yield allocation');
+    assertEq(cdoEpoch.pendingManagementFees(), 10 * ONE_SCALE, 'view changed booked fees');
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.priceAA(), aaPrice);
+    assertEq(cdoEpoch.priceBB(), bbPrice);
+    assertEq(cdoEpoch.unclaimedFees(), 29_800_000, 'wrong total management fee');
+  }
+
+  /// @notice Zero fees and the first-epoch waiver leave both initialized and empty tranche prices unchanged.
+  /// @param firstEpoch Whether the nonzero fee is waived before the first successful epoch stop.
+  function testVirtualPriceManagementFeeWaiver(bool firstEpoch) external {
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    if (!firstEpoch) stdstore.target(address(strategy)).sig(IdleCreditVault(address(strategy)).epochNumber.selector).checked_write(1);
+    vm.prank(owner);
+    cdoEpoch.setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, firstEpoch ? 1_000 : 0);
+    vm.warp(block.timestamp + 365 days);
+    assertEq(cdoEpoch.virtualPrice(address(AAtranche)), ONE_SCALE);
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), ONE_SCALE);
+    assertEq(cdoEpoch.unclaimedFees(), 0);
+  }
+
+  /// @notice Total elapsed fees may exceed a tiny BB NAV while its proportional fee still rounds to zero.
+  function testVirtualPriceElapsedFeesPreserveTinyBB() external {
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    idleCDO.depositBB(1);
+    _setManagementFee(1_000);
+    vm.warp(block.timestamp + 1 days);
+    assertGt(_calcManagementFee(cdoEpoch.getContractValue(), 1_000, 1 days), cdoEpoch.lastNAVBB());
+    assertEq(cdoEpoch.virtualPrice(address(BBtranche)), ONE_SCALE);
+    vm.prank(owner);
+    cdoEpoch.updateAccounting();
+    assertEq(cdoEpoch.lastNAVBB(), 1);
+    assertEq(cdoEpoch.priceBB(), ONE_SCALE);
+  }
+
   function testManagementFeeAccruesOnLiveNav() external {
     uint256 amount = 10_000 * ONE_SCALE;
     uint256 mgmtFee = 1_000; // 1%
@@ -2208,10 +2341,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _startEpochAndCheckPrices(uint256 epochNum) internal {
-    // start epoch
+    // Compare prices at the same timestamp, after buffer fees have elapsed.
+    if (cdoEpoch.epochEndDate() != 0) {
+      vm.warp(block.timestamp + cdoEpoch.bufferPeriod() + 1);
+    }
     uint256 AAPricePre = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePre = cdoEpoch.virtualPrice(address(BBtranche));
-    _toggleEpoch(true, 0, 0);
+    vm.prank(IdleCreditVault(cdoEpoch.strategy()).manager());
+    cdoEpoch.startEpoch();
     uint256 AAPricePost = cdoEpoch.virtualPrice(address(AAtranche));
     uint256 BBPricePost = cdoEpoch.virtualPrice(address(BBtranche));
     assertApproxEqAbs(AAPricePost, AAPricePre, 1, string(abi.encodePacked('AA price is not the same after starting epoch: ', epochNum)));
