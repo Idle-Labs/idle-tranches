@@ -2121,6 +2121,45 @@ task("print-cv-addresses-from-tx", "Print addresses.js CDO entry from a credit v
     console.log(formatCreditVaultAddressesEntry(_hre, entry));
   });
 
+task("print-cv-epoch-preview", "Print epoch parameters and a hypothetical end date for credit vaults started now")
+  .addVariadicPositionalParam('names', 'Credit vault names from utils/addresses.js')
+  .setAction(async ({ names }, _hre) => {
+    const now = Date.now();
+    const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Rome',
+      dateStyle: 'medium',
+      timeStyle: 'long',
+    });
+
+    for (const name of names) {
+      const trackedCdo = getTrackedCreditVaultByName(_hre, name);
+      if (!hasAddress(trackedCdo.cdoAddr)) {
+        throw new Error(`No CDO address configured for ${name}`);
+      }
+
+      const cdo = await _hre.ethers.getContractAt('IdleCDOEpochVariant', trackedCdo.cdoAddr);
+      const [duration, buffer, strategyAddress] = await Promise.all([
+        cdo.epochDuration(),
+        cdo.bufferPeriod(),
+        cdo.strategy(),
+      ]);
+      const strategy = await _hre.ethers.getContractAt('IdleCreditVault', strategyAddress);
+      const [scaledApr, unscaledApr] = await Promise.all([
+        strategy.getApr(),
+        strategy.unscaledApr(),
+      ]);
+      const expectedEnd = new Date(now + duration.toNumber() * 1000);
+
+      console.log(`${name} (${trackedCdo.cdoAddr})`);
+      console.log(`  Duration:       ${duration} seconds`);
+      console.log(`  Buffer:         ${buffer} seconds`);
+      console.log(`  Scaled APR:     ${_hre.ethers.utils.formatUnits(scaledApr, 18)}% (${scaledApr})`);
+      console.log(`  Unscaled APR:   ${_hre.ethers.utils.formatUnits(unscaledApr, 18)}% (${unscaledApr})`);
+      console.log(`  Expected end:   ${dateFormatter.format(expectedEnd)} (Europe/Rome)`);
+      console.log();
+    }
+  });
+
 task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('name', 'Credit vault name from utils/addresses.js')
   .addOptionalParam('cdo', 'Cdo address')
@@ -2151,6 +2190,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         underlyingData,
         strategyAddress,
         feeReceiver,
+        epochRunning,
         epochDuration,
         bufferPeriod,
         feeValue,
@@ -2169,8 +2209,8 @@ task("print-contracts-info", "Prints deployed contracts info")
         (async () => {
           const address = await cdo.AATranche();
           const tranche = await ethers.getContractAt("IERC20Detailed", address);
-          const [name, symbol] = await Promise.all([tranche.name(), tranche.symbol()]);
-          return { address, name, symbol };
+          const [name, symbol, price] = await Promise.all([tranche.name(), tranche.symbol(), cdo.virtualPrice(address)]);
+          return { address, name, symbol, price };
         })(),
         (async () => {
           const address = await cdo.BBTranche();
@@ -2186,6 +2226,7 @@ task("print-contracts-info", "Prints deployed contracts info")
         })(),
         cdo.strategy(),
         cdo.feeReceiver(),
+        cdo.isEpochRunning(),
         cdo.epochDuration(),
         cdo.bufferPeriod(),
         cdo.fee(),
@@ -2226,11 +2267,13 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  AATranche:      ${aaTrancheData.address}`);
       console.log(`       Name:      ${aaTrancheData.name}`);
       console.log(`       Symbol:    ${aaTrancheData.symbol}`);
+      console.log(`       Price:     ${ethers.utils.formatUnits(aaTrancheData.price, underlyingData.decimals)} underlying / AA`);
       console.log(`  BBTranche:      ${bbTrancheData.address}`);
       console.log(`       Name:      ${bbTrancheData.name}`);
       console.log(`       Symbol:    ${bbTrancheData.symbol}`);
       console.log(`  Strategy:       ${strategyAddress}`);
       console.log(`  FeeReceiver:    ${feeReceiver}`);
+      console.log(`  Epoch running:  ${epochRunning}`);
       console.log(`  EpochDuration:  ${epochDuration}`);
       console.log(`  BufferPeriod:   ${bufferPeriod}`);
       console.log(`  Fees:           ${feeValue}`);
