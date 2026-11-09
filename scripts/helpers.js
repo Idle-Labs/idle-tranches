@@ -10,6 +10,7 @@ const TransparentUpgradeableProxy = require("@openzeppelin/upgrades-core/artifac
 
 const BN = n => BigNumber.from(n);
 const ONE_TOKEN = decimals => BigNumber.from('10').pow(BigNumber.from(decimals));
+let ledgerEOA;
 
 const log = (...arguments) => {
   if (hre.network.config.chainId == '31337' && !hre.network.config.forking) {
@@ -153,7 +154,17 @@ const getSigner = async (acc) => {
     hre.network.name == 'base' ||
     hre.network.name == 'tempo'
   ) {
-    signer = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
+    // Nested deployment tasks must share one HID connection before returning to older contract instances.
+    if (!ledgerEOA || ledgerEOA.provider !== ethers.provider) {
+      ledgerEOA = new LedgerSigner(ethers.provider, undefined, "m/44'/60'/0'/0/0");
+      // Ledger sends raw transactions, bypassing Hardhat's eth_sendTransaction gas multiplier.
+      const gasMultiplier = hre.network.config.gasMultiplier || 1;
+      if (gasMultiplier !== 1) {
+        const estimateGas = ledgerEOA.estimateGas.bind(ledgerEOA);
+        ledgerEOA.estimateGas = async (transaction) => (await estimateGas(transaction)).mul(Math.ceil(gasMultiplier * 10000)).add(9999).div(10000);
+      }
+    }
+    signer = ledgerEOA;
   }
   const address = await signer.getAddress();
   // log(`Deploying with ${address}, balance ${BN(await ethers.provider.getBalance(address)).div(ONE_TOKEN(18))} ETH`);
@@ -173,10 +184,12 @@ const callContract = async (address, method, params, from = null) => {
 const deployContract = async (contractName, params, signer) => {
   log(`Deploying ${contractName}`);
   const contractFactory = await ethers.getContractFactory(contractName, signer);
+  log(`Constructor parameters: ${JSON.stringify(params)}. Awaiting wallet approval.`);
   let contract = await contractFactory.deploy(...params);
+  log(`Submitted ${contractName}: ${contract.deployTransaction.hash}, nonce ${contract.deployTransaction.nonce}, gas limit ${contract.deployTransaction.gasLimit.toString()}, expected address ${contract.address}`);
   await contract.deployed();
   let contractReceipt = await contract.deployTransaction.wait()
-  log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash} ((gas ${contractReceipt.cumulativeGasUsed.toString()}))`);
+  log(`📤 ${contractName} created: ${contract.address} @tx: ${contractReceipt.transactionHash} ((gas ${contractReceipt.gasUsed.toString()}))`);
   log();
   return contract;
 };
@@ -186,17 +199,22 @@ const deployUpgradableContract = async (contractName, params, signer, proxyAdmin
   if (proxyAdminAddress) {
     proxyAdminAddress = ethers.utils.getAddress(proxyAdminAddress);
     await hre.upgrades.validateImplementation(contractFactory, { kind: 'transparent' });
+    log(`Deploy ${contractName} implementation (logic only). Awaiting wallet approval.`);
     const implementation = await contractFactory.deploy();
+    log(`Submitted ${contractName} implementation: ${implementation.deployTransaction.hash}, nonce ${implementation.deployTransaction.nonce}, gas limit ${implementation.deployTransaction.gasLimit.toString()}, expected address ${implementation.address}`);
     await implementation.deployed();
     const implementationReceipt = await implementation.deployTransaction.wait();
-    log(`📤 ${contractName} implementation created: ${implementation.address} @tx: ${implementationReceipt.transactionHash}, (gas ${implementationReceipt.cumulativeGasUsed.toString()})`);
+    log(`📤 ${contractName} implementation created: ${implementation.address} @tx: ${implementationReceipt.transactionHash}, (gas ${implementationReceipt.gasUsed.toString()})`);
 
     const initializeData = contractFactory.interface.encodeFunctionData("initialize", params);
     const proxyFactory = await ethers.getContractFactory(TransparentUpgradeableProxy.abi, TransparentUpgradeableProxy.bytecode, signer);
+    log(`Deploy and initialize ${contractName} proxy. Implementation: ${implementation.address}, ProxyAdmin: ${proxyAdminAddress}`);
+    log(`Initializer parameters: ${JSON.stringify(params)}. Awaiting wallet approval.`);
     const proxy = await proxyFactory.deploy(implementation.address, proxyAdminAddress, initializeData);
+    log(`Submitted ${contractName} proxy: ${proxy.deployTransaction.hash}, nonce ${proxy.deployTransaction.nonce}, gas limit ${proxy.deployTransaction.gasLimit.toString()}, expected address ${proxy.address}`);
     await proxy.deployed();
     const proxyReceipt = await proxy.deployTransaction.wait();
-    log(`📤 ${contractName} created (proxy with admin ${proxyAdminAddress}): ${proxy.address} @tx: ${proxyReceipt.transactionHash}, (gas ${proxyReceipt.cumulativeGasUsed.toString()})`);
+    log(`📤 ${contractName} created (proxy with admin ${proxyAdminAddress}): ${proxy.address} @tx: ${proxyReceipt.transactionHash}, (gas ${proxyReceipt.gasUsed.toString()})`);
     return contractFactory.attach(proxy.address).connect(signer);
   }
   // do not use spread (...) operator here
