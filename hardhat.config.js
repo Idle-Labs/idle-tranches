@@ -295,7 +295,7 @@ module.exports = {
       avax: process.env.AVASCAN_API_KEY,
       tempo: process.env.ETHERSCAN_API_KEY,
       base: process.env.ETHERSCAN_API_KEY,
-      arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY || process.env.ETHERSCAN_API_KEY,
+      arbitrumOne: process.env.ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
       polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
       optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY
