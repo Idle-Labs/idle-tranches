@@ -669,7 +669,7 @@ const getWriteOffEscrowContractName = (chainId) => ({
   10: null,
   137: null,
   1101: null,
-  42161: null,
+  42161: 'IdleCreditVaultWriteOffEscrow',
   8453: 'IdleCreditVaultWriteOffEscrow',
   43114: 'IdleCreditVaultWriteOffEscrow',
 })[chainId];
@@ -1684,7 +1684,7 @@ task("deploy-cv-with-factory", "Deploy IdleCDOEpochVariant with associated strat
     const bufferPeriod = deployToken.bufferPeriod || 43200; // default 12 hour
     console.log(`Setting epoch duration to ${epochDuration}, buffer period to ${bufferPeriod}`);
     const instantWithdrawDelay = deployToken.instantWithdrawDelay || 3600; // default 1 hour
-    const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18); // default 0
+    const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || ONE_TOKEN(18); // default 1 percentage point
     const disableInstantWithdraw = deployToken.disableInstantWithdraw || false; // default false
     console.log(`Setting instant withdraw params disable: ${disableInstantWithdraw}, instant delay: ${instantWithdrawDelay}, instant apr delta ${instantWithdrawAprDelta}`);
     const owner = networkContracts.treasuryMultisig;
@@ -1871,7 +1871,7 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
     const bufferPeriod = deployToken.bufferPeriod || 43200;
     console.log(`Setting epoch duration to ${epochDuration}, buffer period to ${bufferPeriod}`);
     const instantWithdrawDelay = deployToken.instantWithdrawDelay || 3600;
-    const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || BN(1e18);
+    const instantWithdrawAprDelta = deployToken.instantWithdrawAprDelta || ONE_TOKEN(18);
     if (deployToken.disableInstantWithdraw === false) {
       console.log("Programmable borrower mode forces disableInstantWithdraw to true");
     }
@@ -1901,6 +1901,9 @@ task("deploy-revolving-cv-with-factory", "Deploy IdleCDOEpochVariant with IdleCr
 
     let programmableBorrowerImplementation = programmableBorrowerConfig.implementation;
     let deployedProgrammableBorrowerImplementation = false;
+    if (!programmableBorrowerImplementation && hasAddress(copyToken.programmableBorrower)) {
+      programmableBorrowerImplementation = await getImplementationAddress(hre.ethers.provider, copyToken.programmableBorrower);
+    }
     if (!programmableBorrowerImplementation) {
       console.log('Deploying ProgrammableBorrower implementation');
       const programmableBorrowerImpl = await helpers.deployContract('ProgrammableBorrower', [], signer);
@@ -2590,6 +2593,7 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
       console.log(`Transferring ownership to ${args.owner}`);
       await proxyAdmin.transferOwnership(args.owner);
     }
+    return proxyAdmin;
 });
 
 /**
@@ -2597,6 +2601,7 @@ task("deploy-proxy-admin", "Deploy ProxyAdmin")
  * task to deploy IdleCreditVaultFactory
  */
 task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
+  .addOptionalParam('skipverification', 'Skip Etherscan verification', false, types.boolean)
   .setAction(async (args) => {
     // Run compile task
     await run("compile");
@@ -2624,11 +2629,13 @@ task("deploy-cv-factory", "Deploy IdleCreditVaultFactory")
     console.log(`IdleCreditVaultFactory implementation deployed at ${implementation}`);
     console.log(`IdleCreditVaultFactory deployment proxy admin set to ${proxyAdmin}`);
 
-    await run("verify:verify", {
-      constructorArguments: [],
-      address: implementation,
-      contract: "contracts/IdleCreditVaultFactory.sol:IdleCreditVaultFactory"
-    });
+    if (!args.skipverification) {
+      await run("verify:verify", {
+        constructorArguments: [],
+        address: implementation,
+        contract: "contracts/IdleCreditVaultFactory.sol:IdleCreditVaultFactory"
+      });
+    }
 
     return creditVaultFactory;
 });
@@ -2668,6 +2675,116 @@ task("deploy-keyring-whitelist", "Deploy KeyringIdleWhitelist")
 
     return contract.address;
 });
+
+/**
+ * @name deploy-cv-infra
+ * Bootstrap blueprint proxies, a factory and a manager orchestrator on a configured network.
+ */
+task("deploy-cv-infra", "Deploy credit vault blueprints, factory and manager orchestrator")
+  .addParam('operator', 'Account allowed to operate the new orchestrator')
+  .addOptionalParam('underlying', 'Blueprint underlying token; defaults to network USDC', '')
+  .addOptionalParam('vault', 'Optional ERC4626 vault for the programmable borrower blueprint', '')
+  .addOptionalParam('cdoname', 'Blueprint key to print for utils/addresses.js', DEFAULT_CREDIT_VAULT_BLUEPRINT)
+  .addOptionalParam('skipverification', 'Skip Etherscan verification', false, types.boolean)
+  .setAction(async (args, _hre) => {
+    const chainId = await getRuntimeChainId(_hre);
+    const network = await _hre.ethers.provider.getNetwork();
+    if (chainId !== network.chainId) throw new Error('Configured chain ID does not match the RPC');
+    if (!getWriteOffEscrowContractName(chainId)) throw new Error(`Write-off deployment is not configured for chain ${chainId}`);
+    const config = getNetworkContracts(_hre);
+    const tracked = getNetworkCDOs(_hre)[args.cdoname];
+    if (hasAddress(tracked?.cdoAddr)) {
+      throw new Error('Credit vault infrastructure is already configured; use the existing deployment and upgrade tasks');
+    }
+    const underlying = args.underlying || config.USDC;
+    const proxyAdmin = config.proxyAdminWithTimelock || config.proxyAdmin;
+    for (const [label, address] of Object.entries({ operator: args.operator, underlying, treasury: config.treasuryMultisig, proxyAdmin, timelock: config.timelock })) {
+      if (!hasAddress(address)) throw new Error(`Invalid ${label} address`);
+    }
+    const admin = await _hre.ethers.getContractAt('ProxyAdmin', proxyAdmin);
+    if (!sameAddress(await admin.owner(), config.timelock)) throw new Error('Production ProxyAdmin must be owned by the configured timelock');
+    const reuseFactory = hasAddress(config.creditVaultFactoryV3);
+    let factory;
+    if (reuseFactory) {
+      factory = await _hre.ethers.getContractAt('IdleCreditVaultFactory', config.creditVaultFactoryV3);
+      if (!sameAddress(await factory.treasury(), config.treasuryMultisig)) throw new Error('Configured factory treasury does not match this network');
+      if (!sameAddress(await factory.proxyAdmin(), proxyAdmin) || !sameAddress(await getAdminAddress(_hre.ethers.provider, factory.address), proxyAdmin)) {
+        throw new Error('Configured factory must use the production ProxyAdmin');
+      }
+    } else if (!helpers.isEmptyString(config.creditVaultFactoryV3)) {
+      throw new Error('Invalid configured credit vault factory address');
+    }
+    const token = await _hre.ethers.getContractAt('IERC20Detailed', underlying);
+    const decimals = await token.decimals();
+    if (args.vault) {
+      if (!hasAddress(args.vault)) throw new Error('Invalid ERC4626 vault address');
+      const vault = await _hre.ethers.getContractAt('IERC4626', args.vault);
+      if (!sameAddress(await vault.asset(), underlying)) throw new Error('ERC4626 vault asset does not match the blueprint underlying');
+    }
+
+    await _hre.run('compile', { concurrency: 1 });
+    const names = ['IdleCreditVault', 'IdleCDOEpochVariant', 'IdleCDOEpochQueue', 'IdleCreditVaultWriteOffEscrow', 'IdleCreditVaultFactory', 'IdleCreditVaultManagerOrchestrator'];
+    if (args.vault) names.push('ProgrammableBorrower');
+    // Check the entire package before the first deployment, including the CDO optimizer override.
+    for (const name of names) {
+      if (reuseFactory && name === 'IdleCreditVaultFactory') continue;
+      const artifact = await _hre.artifacts.readArtifact(name);
+      if ((artifact.deployedBytecode.length - 2) / 2 > 24576) throw new Error(`${name} exceeds EIP-170`);
+      await _hre.upgrades.validateImplementation(await _hre.ethers.getContractFactory(name), { kind: 'transparent' });
+    }
+    const signer = await helpers.getSigner();
+    const deployer = await signer.getAddress();
+    console.log(`Deploying credit vault infrastructure on chain ${chainId} with ${deployer}`);
+    console.log(`Treasury: ${config.treasuryMultisig}, production ProxyAdmin: ${proxyAdmin}, operator: ${args.operator}`);
+
+    const blueprintAdmin = await _hre.run('deploy-proxy-admin');
+    const strategy = await helpers.deployUpgradableContract('IdleCreditVault', [underlying, deployer, deployer, deployer, 'DummyBlueprint', 0], signer, blueprintAdmin.address);
+    const cdo = await helpers.deployUpgradableContract('IdleCDOEpochVariant', [0, underlying, config.treasuryMultisig, deployer, addr0, strategy.address, FULL_ALLOC], signer, blueprintAdmin.address);
+    await (await strategy.setWhitelistedCDO(cdo.address)).wait();
+    await (await cdo.setFeeParams(config.treasuryMultisig, 0, 0, 0)).wait();
+    // These proxies only supply implementations to the factory; keep the blueprint closed to deposits.
+    await (await cdo.emergencyShutdown()).wait();
+    const queue = await _hre.run('deploy-queue', { cdo: cdo.address, owner: config.treasuryMultisig, proxyAdmin: blueprintAdmin.address });
+    const writeOff = await _hre.run('deploy-writeoff-escrow', { cdo: cdo.address, owner: config.treasuryMultisig, proxyAdmin: blueprintAdmin.address });
+    let programmableBorrower = addr0;
+    if (args.vault) {
+      programmableBorrower = await _hre.run('deploy-programmable-borrower', {
+        cdo: cdo.address, vault: args.vault, manager: deployer, borrower: deployer, borrowerapr: '0', proxyAdmin: blueprintAdmin.address,
+      });
+      const borrower = await _hre.ethers.getContractAt('ProgrammableBorrower', programmableBorrower, signer);
+      await (await borrower.transferOwnership(config.treasuryMultisig)).wait();
+    }
+    await (await strategy.transferOwnership(config.treasuryMultisig)).wait();
+    await (await cdo.transferOwnership(config.treasuryMultisig)).wait();
+    if (reuseFactory) console.log(`Reusing configured credit vault factory ${factory.address}`);
+    else factory = await _hre.run('deploy-cv-factory', { skipverification: true });
+    const orchestrator = await _hre.run('deploy-cv-manager-orchestrator', { operator: args.operator });
+    await (await orchestrator.transferOwnership(config.treasuryMultisig)).wait();
+
+    const blueprint = {
+      name: args.cdoname, decimals, underlying, cdoAddr: cdo.address, proxyAdmin: blueprintAdmin.address,
+      strategyToken: strategy.address, strategy: strategy.address, AATranche: await cdo.AATranche(), BBTranche: await cdo.BBTranche(),
+      keyringWhitelist: addr0, queue, writeOff, programmableBorrower,
+    };
+    const proxies = [strategy.address, cdo.address, queue, writeOff, factory.address, orchestrator.address];
+    if (args.vault) proxies.push(programmableBorrower);
+    const implementations = {};
+    for (let i = 0; i < names.length; i++) implementations[names[i]] = await getImplementationAddress(_hre.ethers.provider, proxies[i]);
+    // Print the complete result before verification so explorer failures cannot hide deployed addresses.
+    const result = { chainId, proxyAdminEOA: blueprintAdmin.address, creditVaultFactoryV3: factory.address, orchestrator: orchestrator.address, blueprint, implementations };
+    console.log(JSON.stringify(result, null, 2));
+    console.log(`Add proxyAdminEOA and creditVaultFactoryV3 to ${getNetworkContractsReferenceName(_hre)}; add this blueprint to the network CDOs:`);
+    console.log(formatCreditVaultAddressesEntry(_hre, blueprint));
+    console.log('The orchestrator has no allowed vaults. Treasury must allow each production CDO and set its strategy manager when onboarding it.');
+    if (!args.skipverification) {
+      // A reused factory may have been built from a different approved release.
+      const deployedImplementations = names.filter(name => !reuseFactory || name !== 'IdleCreditVaultFactory').map(name => implementations[name]);
+      for (const address of [blueprintAdmin.address, ...deployedImplementations]) {
+        await _hre.run('verify-contract', { address });
+      }
+    }
+    return result;
+  });
 
 /**
  * @name deploy-timelock

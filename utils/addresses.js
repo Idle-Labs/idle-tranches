@@ -266,22 +266,23 @@ const optimismContracts = {
 
 const arbitrumContracts = {
   deployer: '0xE5Dab8208c1F4cce15883348B72086dBace3e64B',
-  cdoFactory: '0xe5441efbda7a3613597eb8e2c42ae4c837ea2149',
   rebalancer: '0xB3C8e5534F0063545CBbb7Ce86854Bf42dB8872B',
   feeReceiver: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   treasuryMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   devLeagueMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   proxyAdmin: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
+  proxyAdminEOA: '',
+
   // Same as proxyAdmin
   proxyAdminWithTimelock: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
   timelock: '0xB988641E8D493B5BfF65e63819975b6B33477057',
-  keyring: '0x88e097C960aD0239B4eEC6E8C5B4f74f898eFdA3',
-  keyringWhitelist: '0x98EBa5c607b61aE90Fc29CaD92Ad38A7391f8490',
+  keyring: '0xf26b0F10691ED160734a3A5caf8cA1FCb57eFc9d',
 
   // This is an instance of HypernativeBatchPauser
   pauserMultisig: '0x59CDF902b6A964CD5dB04d28f12b774bFB876Be9',
   // This is generated in hypernative dashboard
   hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
+  creditVaultFactoryV3: '',
 
   ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548',
   WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',

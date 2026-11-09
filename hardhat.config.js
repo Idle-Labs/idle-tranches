@@ -273,7 +273,7 @@ module.exports = {
       chainId: 10
     },
     arbitrum: {
-      url: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      url: process.env.ARBITRUM_RPC_URL || `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       gasPrice: 'auto',
       gas: 'auto',
       gasMultiplier: 1.1,
@@ -295,12 +295,20 @@ module.exports = {
       avax: process.env.AVASCAN_API_KEY,
       tempo: process.env.ETHERSCAN_API_KEY,
       base: process.env.ETHERSCAN_API_KEY,
-      arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY,
+      arbitrumOne: process.env.ARB_ETHERSCAN_API_KEY || process.env.ETHERSCAN_API_KEY,
       polygon: process.env.POLYGON_ETHERSCAN_API_KEY,
       polygonzk: process.env.POLYGON_ZK_ETHERSCAN_API_KEY,
       optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_API_KEY
     },
     customChains: [
+      {
+        network: "arbitrumOne",
+        chainId: 42161,
+        urls: {
+          apiURL: "https://api.etherscan.io/v2/api?chainid=42161",
+          browserURL: "https://arbiscan.io"
+        }
+      },
       {
         network: "mainnet",
         chainId: 1,
