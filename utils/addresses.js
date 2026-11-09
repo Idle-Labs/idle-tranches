@@ -271,7 +271,7 @@ const arbitrumContracts = {
   treasuryMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   devLeagueMultisig: '0xF40d482D7fc94C30b256Dc7E722033bae68EcF90',
   proxyAdmin: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
-  proxyAdminEOA: '',
+  proxyAdminEOA: '0xeAB324e9450d1EfFa087ccE8eff6C1FB476d60Ff',
 
   // Same as proxyAdmin
   proxyAdminWithTimelock: '0x2A6F03A198d245dAF1fdB330D1D50bCC607Eecab',
@@ -282,7 +282,7 @@ const arbitrumContracts = {
   pauserMultisig: '0x59CDF902b6A964CD5dB04d28f12b774bFB876Be9',
   // This is generated in hypernative dashboard
   hypernativePauserEOA: '0x8c3d89334811e607fe488d1a3ac393a8a8445b32',
-  creditVaultFactoryV3: '',
+  creditVaultFactoryV3: '0xbe73A30E9B9aE208Dfe615889bb4eff32a0e9208',
 
   ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548',
   WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
@@ -1747,6 +1747,21 @@ const optimismCDOs = {
 };
 
 const arbitrumCDOs = {
+  creditrevolvingblueprintusdc: {
+    decimals: 6,
+    // Unfunded blueprint proxies used only to source factory implementations.
+    strategyToken: '0xe5E784569193e640c0B03f057e913CD17BE93294',
+    underlying: arbitrumContracts.USDC,
+    cdoAddr: '0x5c9ACa3ce6deC45d21041ED9964c7242Ecd85A83',
+    proxyAdmin: arbitrumContracts.proxyAdminEOA,
+    strategy: '0xe5E784569193e640c0B03f057e913CD17BE93294',
+    AATranche: '0x7Ab1C69B38DC929d18073B9F9EE6631EEa6Ba630',
+    BBTranche: '0x60995911759Cc41B91d2dc17cA2C7efe0EaAFA5E',
+    keyringWhitelist: '0x4Bc77C83DF10d37bEfC6ee766Bc110Ab2dC7872f',
+    queue: '0x1B6fdd5D25b9882bEc7Deb697f60Db5A53892675',
+    writeOff: '0x290C4dC2402CD77643aF42Ba926A15Aba4d3508b',
+    programmableBorrower: '0x8186AbBDF9AF3a1fc59A7C5BC34bab66a2e7bEF2',
+  },
   tfwinusdc: {
     decimals: 6,
     // strategyToken it's the strategy itself here
