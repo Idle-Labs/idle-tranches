@@ -206,23 +206,22 @@ contract IdleCreditVault is
   function setAprs(uint256 _unscaledApr, uint256 _apr) external {
     unscaledApr = _unscaledApr;
     // here we also check that msg.sender is allowed
-    setApr(_apr);
+    _setApr(_apr);
   }
 
   /// @notice set both the unscaled APR and APR scaled by epoch plus buffer duration.
-  /// @dev only CDO and manager can set the APR through `setApr`.
+  /// @dev only CDO and manager can set the APR through `_setApr`.
   /// @param _unscaledApr unscaled APR
   /// @param _duration epoch duration
   /// @param _buffer buffer duration
   function setAprsWithBuffer(uint256 _unscaledApr, uint256 _duration, uint256 _buffer) external {
     unscaledApr = _unscaledApr;
-    setApr(_duration == 0 ? _unscaledApr : _unscaledApr * (_duration + _buffer) / _duration);
+    _setApr(_duration == 0 ? _unscaledApr : _unscaledApr * (_duration + _buffer) / _duration);
   }
 
-  /// @notice set the fixed apr
-  /// @dev only cdo and manager can set the apr. If manager manually set apr from 
-  /// here it will not be scaled to include the buffer period
-  function setApr(uint256 _apr) public {
+  /// @notice Validate and store the scaled APR after a paired setter updates the unscaled APR.
+  /// @param _apr scaled APR
+  function _setApr(uint256 _apr) internal {
     address _cdo = idleCDO;
 
     // if cdo is not yet set we skip the check (this can happen only during the setup)

@@ -22,6 +22,12 @@ error NotAuthorized();
 error Default();
 error Is0();
 
+interface ILegacyCreditVaultApr {
+  /// @notice Call the removed one-argument APR selector to verify it reverts.
+  /// @param _apr scaled APR
+  function setApr(uint256 _apr) external;
+}
+
 contract NonProgrammableBorrower {}
 
 contract TestIdleCreditVault is TestIdleCDOLossMgmt {
@@ -112,7 +118,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // we set the apr again manually for tests because we changed epoch params
     // scaled by the buffer period
     vm.startPrank(cv.manager());
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
   }
 
@@ -1240,7 +1246,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -1273,7 +1279,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -1305,7 +1311,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -1348,7 +1354,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -1396,7 +1402,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -1637,7 +1643,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(amountWei);
 
     vm.startPrank(manager);
-    IdleCreditVault(address(strategy)).setApr(10e18); // 10%
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, 10e18); // 10%
     cdoEpoch.setEpochParams(365 days, 5 days);
     vm.stopPrank();
 
@@ -5522,7 +5528,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositBB(amount);
 
     vm.prank(manager);
-    IdleCreditVault(address(strategy)).setApr(0);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, 0);
 
     uint256 lossBps = 10_000;
     uint256 lossAmount = (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB()) * lossBps / FULL_ALLOC;
@@ -5548,7 +5554,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.assume(depositAmountAARatio <= FULL_ALLOC);
 
     vm.prank(manager);
-    IdleCreditVault(address(strategy)).setApr(0);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, 0);
 
     uint256 amountAA = 10000 * ONE_SCALE * depositAmountAARatio / FULL_ALLOC;
     uint256 amountBB = 10000 * ONE_SCALE * (FULL_ALLOC - depositAmountAARatio) / FULL_ALLOC;
@@ -6097,8 +6103,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 beforeUnscaled = cv.unscaledApr();
     vm.startPrank(manager);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
-    cv.setApr(5e18);
-    vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cv.setAprs(5e18, 6e18);
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     cv.setAprsWithBuffer(5e18, 30 days, 1 days);
@@ -6119,8 +6123,6 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   function testAprGuardBufferSetters() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     vm.startPrank(manager);
-    cv.setApr(5e18);
-    assertEq(cv.lastApr(), 5e18);
     cv.setAprs(6e18, 7e18);
     assertEq(cv.lastApr(), 7e18);
     assertEq(cv.unscaledApr(), 6e18);
@@ -6143,21 +6145,60 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cv.unscaledApr(), 3, 'unscaledApr is wrong');
   }
 
-  function testSetAprRespectsMaxApr() external {
+  /// @notice The removed APR selector cannot change either rate, during or between epochs.
+  function testRemovedSetAprReverts(bool running) external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    idleCDO.depositAA(1000 * ONE_SCALE);
+    if (running) _startEpochAndCheckPrices(0);
+    uint256 beforeScaled = cv.lastApr();
+    uint256 beforeUnscaled = cv.unscaledApr();
+    vm.expectRevert();
+    vm.prank(manager);
+    ILegacyCreditVaultApr(address(cv)).setApr(5e18);
+    assertEq(cv.lastApr(), beforeScaled);
+    assertEq(cv.unscaledApr(), beforeUnscaled);
+  }
+
+  /// @notice Both paired setters update the APR used to select instant withdrawals during the buffer.
+  function testAprDropDuringBufferEnablesInstantWithdraw(bool withBuffer) external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    idleCDO.depositAA(1000 * ONE_SCALE);
+    _startEpochAndCheckPrices(0);
+    _stopEpochAndCheckPrices(0, initialProvidedApr, _expectedFundsEndEpoch());
+    assertEq(cdoEpoch.lastEpochApr(), initialProvidedApr);
+    vm.startPrank(manager);
+    if (withBuffer) {
+      cv.setAprsWithBuffer(5e18, cdoEpoch.epochDuration(), cdoEpoch.bufferPeriod());
+    } else {
+      cv.setAprs(5e18, _scaleAprWithBuffer(5e18));
+    }
+    vm.stopPrank();
+    assertEq(cv.unscaledApr(), 5e18);
+    assertEq(cv.lastApr(), _scaleAprWithBuffer(5e18));
+    uint256 requested = cdoEpoch.requestWithdraw(0, address(AAtranche));
+    assertGt(requested, 0);
+    assertEq(cv.instantWithdrawsRequests(address(this)), requested);
+    assertEq(cv.withdrawsRequests(address(this)), 0);
+  }
+
+  /// @notice The buffer setter enforces the scaled APR cap and rolls back both rates on failure.
+  function testSetAprsWithBufferRespectsMaxApr() external {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
 
     vm.prank(owner);
     cv.setMaxApr(4);
 
     vm.prank(manager);
-    cv.setApr(4);
+    cv.setAprsWithBuffer(2, 1 days, 1 days);
     assertEq(cv.getApr(), 4, 'apr is wrong after capped set');
+    assertEq(cv.unscaledApr(), 2);
 
     vm.expectRevert(abi.encodeWithSelector(NotAllowed.selector));
     vm.prank(manager);
-    cv.setApr(5);
+    cv.setAprsWithBuffer(3, 1 days, 1 days);
 
     assertEq(cv.getApr(), 4, 'apr should stay unchanged after revert');
+    assertEq(cv.unscaledApr(), 2);
   }
 
   function testSetAprsRevertsAndRollsBackWhenScaledAprAboveMaxApr() external {
@@ -6838,7 +6879,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     vm.startPrank(manager);
     cdoEpoch.setEpochParams(365 days, 0);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
     cdoEpoch.startEpoch();
     vm.stopPrank();
 
@@ -7010,7 +7051,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // 10% apr (scaled to 20% when considering buffer)
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7474,7 +7515,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // 10% apr (scaled to 20% when considering buffer)
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7536,7 +7577,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // 10% apr (scaled to 20% when considering buffer)
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7599,7 +7640,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7640,7 +7681,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7683,7 +7724,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7739,7 +7780,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7780,7 +7821,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7823,7 +7864,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     IdleCreditVault cv = IdleCreditVault(address(strategy));
     // 10% apr
     vm.startPrank(manager);
-    cv.setApr(_scaleAprWithBuffer(initialProvidedApr));
+    cv.setAprs(initialProvidedApr, _scaleAprWithBuffer(initialProvidedApr));
     vm.stopPrank();
 
     uint256 amountWei = 10000 * ONE_SCALE;
@@ -7877,7 +7918,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(owner);
     cdoEpoch.setEpochParams(365 days, 0);
     vm.prank(manager);
-    IdleCreditVault(address(strategy)).setApr(initialProvidedApr);
+    IdleCreditVault(address(strategy)).setAprs(initialProvidedApr, initialProvidedApr);
 
     uint256 amount = 10_000 * ONE_SCALE;
     idleCDO.depositAA(amount);
