@@ -6,6 +6,7 @@ const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const vm = require("vm");
+const { rejects } = require("assert");
 const { expect } = require("chai");
 const { ethers } = require("ethers");
 const { getImplementationAddress } = require("@openzeppelin/upgrades-core");
@@ -17,8 +18,8 @@ const ANVIL_BIN = process.env.ANVIL_BIN || "anvil";
 const ANVIL_PORT = 8545;
 const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 const FORK_NETWORK = "mainnetFork";
-// Fork after the latest credit-vault implementation deployments recorded in .openzeppelin/mainnet.json.
-const FORK_BLOCK = 24600000;
+// Includes the current blueprint and the factory-created Axiom, Sentinel and Bedrock vaults.
+const FORK_BLOCK = 26025215;
 const FORK_URL =
   process.env.MAINNET_FORK_URL ||
   (process.env.ALCHEMY_API_KEY ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}` : "") ||
@@ -46,6 +47,8 @@ const TIMELOCK_ABI = [
   "function isOperation(bytes32 id) view returns (bool)",
   "function isOperationPending(bytes32 id) view returns (bool)",
   "function getTimestamp(bytes32 id) view returns (uint256)",
+  "function getMinDelay() view returns (uint256)",
+  "function executeBatch(address[] targets, uint256[] values, bytes[] payloads, bytes32 predecessor, bytes32 salt)",
 ];
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,13 +69,14 @@ const decodeUpgrades = (plan) => {
   });
 };
 
-const loadTaskInternals = () => {
+const loadTaskInternals = (runtimeEthers = ethers) => {
   const taskPath = path.join(REPO_ROOT, "tasks", "tranches-utils.js");
   const source = `${fs.readFileSync(taskPath, "utf8")}
 module.exports = {
   CV_DEFAULT_BLUEPRINT_CDO_NAME,
   assertCvUpgradeReady,
   assertCvUpgradePlanReady,
+  buildCvUpgradePlan,
   getCreditVaultUpgradeBlueprintTarget,
   getCreditVaultUpgradeTarget,
   getRequestedCvUpgradeComponents,
@@ -88,7 +92,7 @@ module.exports = {
     __dirname: path.dirname(taskPath),
     __filename: taskPath,
     console,
-    ethers,
+    ethers: runtimeEthers,
     module: { exports: {} },
     process,
     require: (id) => id === "hardhat/config" ? {} : taskRequire(id),
@@ -189,10 +193,10 @@ describe("credit vault upgrade task helpers", function () {
     ]);
   });
 
-  it("resolves revolving to the programmable borrower proxy", function () {
+  it("resolves revolving to the programmable borrower proxy", async function () {
     const { getCreditVaultUpgradeTarget } = loadTaskInternals();
 
-    const target = getCreditVaultUpgradeTarget(
+    const target = await getCreditVaultUpgradeTarget(
       hreLike,
       addresses.deployTokens,
       addresses.CDOs,
@@ -216,10 +220,10 @@ describe("credit vault upgrade task helpers", function () {
     expect(CV_DEFAULT_BLUEPRINT_CDO_NAME).to.equal("creditrevolvingblueprintusdc");
   });
 
-  it("resolves implementation source proxies from the selected blueprint", function () {
+  it("resolves implementation source proxies from the selected blueprint", async function () {
     const { getCreditVaultUpgradeBlueprintTarget } = loadTaskInternals();
 
-    const target = getCreditVaultUpgradeBlueprintTarget(
+    const target = await getCreditVaultUpgradeBlueprintTarget(
       hreLike,
       addresses.deployTokens,
       addresses.CDOs,
@@ -237,10 +241,10 @@ describe("credit vault upgrade task helpers", function () {
     );
   });
 
-  it("returns null for missing optional components so the caller can skip them", function () {
+  it("returns null for missing optional components so the caller can skip them", async function () {
     const { getCreditVaultUpgradeTarget } = loadTaskInternals();
 
-    const target = getCreditVaultUpgradeTarget(
+    const target = await getCreditVaultUpgradeTarget(
       hreLike,
       addresses.deployTokens,
       addresses.CDOs,
@@ -249,6 +253,160 @@ describe("credit vault upgrade task helpers", function () {
     );
 
     expect(target).to.equal(null);
+  });
+
+  // These live factory deployments intentionally have no deployment recipes.
+  const factoryNames = ["creditaxiomwbtc", "creditbedrockstrategiesusdc", "creditsentinelusdusdc"];
+  const getFactoryPlanContext = (prefunded = false, probeError) => {
+    const blueprint = addresses.CDOs.creditrevolvingblueprintusdc;
+    const admin = addresses.CDOs.creditaxiomwbtc.proxyAdmin;
+    const timelockAddress = addresses.IdleTokens.mainnet.timelock;
+    const oldImplementation = "0x0000000000000000000000000000000000000010";
+    const newImplementations = {
+      [blueprint.strategy.toLowerCase()]: "0x0000000000000000000000000000000000000011",
+      [blueprint.cdoAddr.toLowerCase()]: "0x0000000000000000000000000000000000000012",
+      [blueprint.queue.toLowerCase()]: "0x0000000000000000000000000000000000000013",
+    };
+    const adminSlot = ethers.utils.hexZeroPad(
+      ethers.BigNumber.from(ethers.utils.id("eip1967.proxy.admin")).sub(1).toHexString(), 32
+    );
+    const runtimeEthers = {
+      ...ethers,
+      provider: {
+        getNetwork: async () => ({ chainId: 1 }),
+        send: async (method, [proxy, slot]) => {
+          expect(method).to.equal("eth_getStorageAt");
+          const value = slot === adminSlot ? admin : newImplementations[proxy.toLowerCase()] || oldImplementation;
+          return ethers.utils.hexZeroPad(value, 32);
+        },
+      },
+      getContractAt: async (_abi, proxy) => {
+        if (normalizeAddress(proxy) === normalizeAddress(admin)) {
+          return { owner: async () => timelockAddress, interface: new ethers.utils.Interface(PROXY_ADMIN_ABI) };
+        }
+        if (factoryNames.some(name => addresses.CDOs[name].strategy === proxy)) {
+          return { defaultRecoveryInitialized: async () => true };
+        }
+        return {
+          epochQueue: async () => {
+            if (prefunded) return ethers.constants.AddressZero;
+            throw probeError || Object.assign(new Error("missing epochQueue selector"), { code: "CALL_EXCEPTION", data: "0x" });
+          },
+        };
+      },
+    };
+    return {
+      runtimeEthers,
+      runtime: { ...hreLike, ethers: runtimeEthers },
+      options: {
+        cdoNames: factoryNames,
+        components: ["strategy", "cdo", "queue"],
+        blueprintName: "creditrevolvingblueprintusdc",
+        timelock: {
+          address: timelockAddress,
+          getMinDelay: async () => ethers.BigNumber.from(86400),
+          hashOperationBatch: async (...args) => ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(
+            ["address[]", "uint256[]", "bytes[]", "bytes32", "bytes32"], args
+          )),
+        },
+      },
+    };
+  };
+
+  it("builds strategy-first batches for Axiom, Bedrock and Sentinel without deployTokens entries", async function () {
+    for (const name of factoryNames) expect(addresses.deployTokens[name]).to.equal(undefined);
+    const { runtimeEthers, runtime, options } = getFactoryPlanContext();
+    const { buildCvUpgradePlan } = loadTaskInternals(runtimeEthers);
+    const { plan } = await buildCvUpgradePlan(runtime, options);
+    const axiom = addresses.CDOs.creditaxiomwbtc;
+    const bedrock = addresses.CDOs.creditbedrockstrategiesusdc;
+    const sentinel = addresses.CDOs.creditsentinelusdusdc;
+    const upgrades = decodeUpgrades(plan);
+
+    expect(upgrades.map(row => row.proxyAddress)).to.deep.equal([
+      axiom.strategy, axiom.cdoAddr, axiom.queue,
+      bedrock.strategy, bedrock.cdoAddr,
+      sentinel.strategy, sentinel.cdoAddr, sentinel.queue,
+    ].map(normalizeAddress));
+    expect(upgrades.map(row => row.newImplementation)).to.deep.equal([
+      "0x0000000000000000000000000000000000000011",
+      "0x0000000000000000000000000000000000000012",
+      "0x0000000000000000000000000000000000000013",
+      "0x0000000000000000000000000000000000000011",
+      "0x0000000000000000000000000000000000000012",
+      "0x0000000000000000000000000000000000000011",
+      "0x0000000000000000000000000000000000000012",
+      "0x0000000000000000000000000000000000000013",
+    ]);
+  });
+
+  it("rejects a standard blueprint for a factory prefunded CDO even with an unset queue", async function () {
+    const { runtimeEthers, runtime, options } = getFactoryPlanContext(true);
+    const { buildCvUpgradePlan } = loadTaskInternals(runtimeEthers);
+
+    await rejects(buildCvUpgradePlan(runtime, options), /does not match creditaxiomwbtc\/cdo contract .*IdleCDOEpochVariantPrefunded/);
+  });
+
+  it("builds the Bedrock plan when Hardhat wraps the empty selector revert in a ProviderError", async function () {
+    // Hardhat's live HTTP provider includes the JSON-RPC error; Anvil may return only empty data.
+    const rpcError = Object.assign(new Error("execution reverted"), { name: "ProviderError", code: 3, _isProviderError: true });
+    const probeError = Object.assign(new Error("missing revert data in call exception"), {
+      code: "CALL_EXCEPTION", data: "0x", error: rpcError,
+    });
+    const { runtimeEthers, runtime, options } = getFactoryPlanContext(false, probeError);
+    options.cdoNames = ["creditbedrockstrategiesusdc"];
+    options.components = ["strategy", "cdo"];
+    const { buildCvUpgradePlan } = loadTaskInternals(runtimeEthers);
+    const { plan } = await buildCvUpgradePlan(runtime, options);
+    const bedrock = addresses.CDOs.creditbedrockstrategiesusdc;
+
+    expect(decodeUpgrades(plan).map(row => row.proxyAddress)).to.deep.equal([
+      bedrock.strategy, bedrock.cdoAddr,
+    ].map(normalizeAddress));
+  });
+
+  it("resolves prefunded blueprint types without a deployment recipe", async function () {
+    const { runtime } = getFactoryPlanContext(true);
+    const { getCreditVaultUpgradeBlueprintTarget } = loadTaskInternals();
+    const target = await getCreditVaultUpgradeBlueprintTarget(runtime, {}, addresses.CDOs, "creditrevolvingblueprintusdc", "cdo");
+
+    expect(target.contractName).to.equal("contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded");
+  });
+
+  it("preserves explicitly configured CDO variants", async function () {
+    const { getCreditVaultUpgradeTarget } = loadTaskInternals();
+    const cdoVariant = "contracts/IdleCDOEpochVariantPrefunded.sol:IdleCDOEpochVariantPrefunded";
+    const target = await getCreditVaultUpgradeTarget(
+      hreLike, { factory: { cdoVariant } }, { factory: addresses.CDOs.creditaxiomwbtc }, "factory", "cdo"
+    );
+
+    expect(target.contractName).to.equal(cdoVariant);
+  });
+
+  it("does not classify RPC failures or nonempty reverts as standard factory CDOs", async function () {
+    const { getCreditVaultUpgradeTarget } = loadTaskInternals();
+    for (const fields of [
+      { code: "NETWORK_ERROR" },
+      { code: "CALL_EXCEPTION", data: "0x", error: new Error("RPC unavailable") },
+      { code: "CALL_EXCEPTION", data: "0x", error: { code: 3, message: "execution reverted", data: "0x12345678" } },
+      { code: "CALL_EXCEPTION", data: "0x", error: { code: 3, message: "RPC unavailable" } },
+      { code: "CALL_EXCEPTION", data: "0x12345678" },
+    ]) {
+      const failure = Object.assign(new Error("lookup failed"), fields);
+      const runtime = {
+        ...hreLike,
+        ethers: { getContractAt: async () => ({ epochQueue: async () => { throw failure; } }) },
+      };
+      await rejects(
+        getCreditVaultUpgradeTarget(runtime, {}, addresses.CDOs, "creditaxiomwbtc", "cdo"),
+        error => error === failure
+      );
+    }
+  });
+
+  it("still rejects vaults missing from CDOs", async function () {
+    const { getCreditVaultUpgradeTarget } = loadTaskInternals();
+    await rejects(getCreditVaultUpgradeTarget(hreLike, {}, {}, "missing", "cdo"), /Missing config for missing/);
   });
 
   it("applies the same clean-state preflight to timelock plans", async function () {
@@ -526,6 +684,28 @@ describe("schedule-cv-upgrades-timelock integration", function () {
 
     provider = new ethers.providers.JsonRpcProvider(ANVIL_URL);
     await waitForRpc(provider, anvilState);
+
+    const compilation = spawnSync(HARDHAT_BIN, ["compile"], { cwd: REPO_ROOT, encoding: "utf8" });
+    expect(compilation.status, `${compilation.stdout}${compilation.stderr}`).to.equal(0);
+
+    // Upgrade only the fork's blueprint so scheduling always has distinct candidate implementations.
+    const blueprint = addresses.CDOs.creditrevolvingblueprintusdc;
+    const admin = new ethers.Contract(blueprint.proxyAdmin, ["function owner() view returns (address)", ...PROXY_ADMIN_ABI], provider);
+    const owner = await admin.owner();
+    await provider.send("anvil_impersonateAccount", [owner]);
+    await provider.send("anvil_setBalance", [owner, "0x56BC75E2D63100000"]);
+    const signer = provider.getSigner(owner);
+    for (const [proxy, artifactPath] of [
+      [blueprint.strategy, "contracts/strategies/idle/IdleCreditVault.sol/IdleCreditVault.json"],
+      [blueprint.cdoAddr, "contracts/IdleCDOEpochVariant.sol/IdleCDOEpochVariant.json"],
+      [blueprint.queue, "contracts/IdleCDOEpochQueue.sol/IdleCDOEpochQueue.json"],
+      [blueprint.programmableBorrower, "contracts/strategies/idle/ProgrammableBorrower.sol/ProgrammableBorrower.json"],
+    ]) {
+      const artifact = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "artifacts", artifactPath), "utf8"));
+      const implementation = await new ethers.ContractFactory(artifact.abi, artifact.bytecode, signer).deploy();
+      await implementation.deployed();
+      await (await admin.connect(signer).upgrade(proxy, implementation.address)).wait();
+    }
     snapshotId = await provider.send("evm_snapshot", []);
   });
 
@@ -606,7 +786,7 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     planPath = getPlanPath();
 
     runScheduleTask({
-      cdoNames: "creditgauntlettestusdc,creditl1testusdc",
+      cdoNames: "creditgauntlettestusdc,creditm1capitalusdc",
       components: "cdo,strategy",
       planPath,
     });
@@ -620,8 +800,8 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(decodedUpgrades.map((item) => item.proxyAddress)).to.deep.equal([
       addresses.CDOs.creditgauntlettestusdc.strategy,
       addresses.CDOs.creditgauntlettestusdc.cdoAddr,
-      addresses.CDOs.creditl1testusdc.strategy,
-      addresses.CDOs.creditl1testusdc.cdoAddr,
+      addresses.CDOs.creditm1capitalusdc.strategy,
+      addresses.CDOs.creditm1capitalusdc.cdoAddr,
     ].map(normalizeAddress));
 
     const uniqueNewImplementations = [...new Set(decodedUpgrades.map((item) => item.newImplementation))];
@@ -664,6 +844,37 @@ describe("schedule-cv-upgrades-timelock integration", function () {
     expect(decodedUpgrades.map((item) => item.newImplementation)).to.deep.equal([
       blueprintImplementation,
     ]);
+  });
+
+  it("schedules and executes the Axiom, Bedrock and Sentinel batch without deployment recipes", async function () {
+    const names = ["creditaxiomwbtc", "creditbedrockstrategiesusdc", "creditsentinelusdusdc"];
+    for (const name of names) expect(addresses.deployTokens[name]).to.equal(undefined);
+    planPath = getPlanPath();
+    runScheduleTask({ cdoNames: names.join(","), components: "cdo,strategy,queue", planPath });
+
+    const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
+    const upgrades = decodeUpgrades(plan);
+    expect(upgrades.map(row => row.proxyAddress)).to.deep.equal([
+      addresses.CDOs.creditaxiomwbtc.strategy,
+      addresses.CDOs.creditaxiomwbtc.cdoAddr,
+      addresses.CDOs.creditaxiomwbtc.queue,
+      addresses.CDOs.creditbedrockstrategiesusdc.strategy,
+      addresses.CDOs.creditbedrockstrategiesusdc.cdoAddr,
+      addresses.CDOs.creditsentinelusdusdc.strategy,
+      addresses.CDOs.creditsentinelusdusdc.cdoAddr,
+      addresses.CDOs.creditsentinelusdusdc.queue,
+    ].map(normalizeAddress));
+
+    // Execute only on Anvil, after the actual timelock delay, with its authorized executor.
+    const executor = addresses.IdleTokens.mainnet.deployer;
+    const timelock = new ethers.Contract(plan.timelock, TIMELOCK_ABI, provider.getSigner(executor));
+    await provider.send("anvil_impersonateAccount", [executor]);
+    await provider.send("evm_increaseTime", [(await timelock.getMinDelay()).toNumber() + 1]);
+    await provider.send("evm_mine", []);
+    await (await timelock.executeBatch(plan.targets, plan.values, plan.payloads, plan.predecessor, plan.salt)).wait();
+    for (const upgrade of upgrades) {
+      expect(normalizeAddress(await getImplementationAddress(provider, upgrade.proxyAddress))).to.equal(upgrade.newImplementation);
+    }
   });
 
   it("logs and skips selected components that are not configured on a vault", async function () {

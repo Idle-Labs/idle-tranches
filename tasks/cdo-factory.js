@@ -462,6 +462,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
   const queueAddress = hasAddress(args.queue) ? args.queue : trackedCdo?.queue;
   const writeOffAddress = hasAddress(args.writeoff) ? args.writeoff : getTrackedWriteOff(trackedCdo);
   const orchestratorAddress = hasAddress(args.orchestrator) ? args.orchestrator : trackedCdo?.orchestrator;
+  const programmableBorrowerAddress = hasAddress(args.programmableBorrower) ? args.programmableBorrower : trackedCdo?.programmableBorrower;
 
   return {
     trackedCdo,
@@ -470,6 +471,7 @@ const resolvePrintContractsInfoAddresses = (_hre, args = {}) => {
     queue: hasAddress(queueAddress) ? queueAddress : undefined,
     writeoff: hasAddress(writeOffAddress) ? writeOffAddress : undefined,
     orchestrator: hasAddress(orchestratorAddress) ? orchestratorAddress : undefined,
+    programmableBorrower: hasAddress(programmableBorrowerAddress) ? programmableBorrowerAddress : undefined,
   };
 }
 // IdleCDOStorage.guardian is fixed at slot 208 in the established proxy layout.
@@ -2124,6 +2126,32 @@ task("print-cv-addresses-from-tx", "Print addresses.js CDO entry from a credit v
     console.log(formatCreditVaultAddressesEntry(_hre, entry));
   });
 
+task("print-cv-info-from-tx", "Print current contract info from a credit vault factory deployment transaction")
+  .addParam('txhash', 'Credit vault factory deployment transaction hash')
+  .setAction(async (args, _hre) => {
+    const receipt = await _hre.ethers.provider.getTransactionReceipt(args.txhash);
+    if (!receipt) throw new Error(`Transaction receipt not found for ${args.txhash}`);
+    if (receipt.status !== 1) throw new Error(`Transaction ${args.txhash} failed`);
+
+    const deployment = parseCreditVaultDeploymentReceipt(receipt);
+    console.log(`Deployment transaction: ${receipt.transactionHash}`);
+    console.log(`  Block:   ${receipt.blockNumber}`);
+    console.log(`  Sender:  ${receipt.from}`);
+    console.log(`  Factory: ${deployment.factory}`);
+    console.log(`  Programmable borrower: ${hasAddress(deployment.programmableBorrower) ? deployment.programmableBorrower : 'Not deployed'}`);
+    console.log(`  Keyring whitelist:     ${hasAddress(deployment.keyringWhitelist) ? deployment.keyringWhitelist : 'Not deployed'}`);
+    console.log(`  Queue:                 ${hasAddress(deployment.queue) ? deployment.queue : 'Not deployed'}`);
+    console.log(`  Write-off escrow:      ${hasAddress(deployment.writeOffEscrow) ? deployment.writeOffEscrow : 'Not deployed'}`);
+    console.log();
+    await _hre.run('print-contracts-info', {
+      cdo: deployment.creditVault,
+      strategy: deployment.strategy,
+      queue: hasAddress(deployment.queue) ? deployment.queue : undefined,
+      writeoff: hasAddress(deployment.writeOffEscrow) ? deployment.writeOffEscrow : undefined,
+      programmableBorrower: hasAddress(deployment.programmableBorrower) ? deployment.programmableBorrower : undefined,
+    });
+  });
+
 task("print-cv-epoch-preview", "Print epoch parameters and a hypothetical end date for credit vaults started now")
   .addVariadicPositionalParam('names', 'Credit vault names from utils/addresses.js')
   .setAction(async ({ names }, _hre) => {
@@ -2170,6 +2198,7 @@ task("print-contracts-info", "Prints deployed contracts info")
   .addOptionalParam('queue', 'Queue address')
   .addOptionalParam('writeoff', 'Write-off escrow address')
   .addOptionalParam('orchestrator', 'Credit vault manager orchestrator address')
+  .addOptionalParam('programmableBorrower', 'Programmable borrower proxy address')
   .setAction(async (args) => {
     console.log('Printing contracts info');
     const resolvedAddresses = resolvePrintContractsInfoAddresses(hre, args);
@@ -2183,6 +2212,7 @@ task("print-contracts-info", "Prints deployed contracts info")
     const queue = queueAddress ? await ethers.getContractAt("IdleCDOEpochQueue", queueAddress) : null;
     const writeOffEscrow = writeOffAddress ? await ethers.getContractAt("IdleCreditVaultWriteOffEscrow", writeOffAddress) : null;
     const orchestrator = orchestratorAddress ? await ethers.getContractAt("IdleCreditVaultManagerOrchestrator", orchestratorAddress) : null;
+    const programmableBorrower = resolvedAddresses.programmableBorrower ? await ethers.getContractAt("ProgrammableBorrower", resolvedAddresses.programmableBorrower) : null;
     let cdoPrefundedQueue = null;
     if (cdo) {
       const [
@@ -2345,6 +2375,37 @@ task("print-contracts-info", "Prints deployed contracts info")
       console.log(`  Unscaled APR:   ${unscaledApr}`);
       console.log(`  Max APR:        ${strategyState.maxApr}`);
       console.log(``);
+    }
+    if (programmableBorrower) {
+      const [owner, manager, borrower, vault, epochCdo, underlying, apr, principal, interestAccrued, interestDebt, epochActive] = await Promise.all([
+        programmableBorrower.owner(),
+        programmableBorrower.manager(),
+        programmableBorrower.borrower(),
+        programmableBorrower.vault(),
+        programmableBorrower.idleCDO(),
+        programmableBorrower.underlyingToken(),
+        programmableBorrower.borrowerApr(),
+        programmableBorrower.borrowerPrincipal(),
+        programmableBorrower.borrowerInterestAccrued(),
+        programmableBorrower.borrowerInterestDebt(),
+        programmableBorrower.epochAccountingActive(),
+      ]);
+      const implementation = await getPrintContractsInfoImplementation(ethers.provider, programmableBorrower.address, deployments);
+      console.log(`Programmable borrower at ${programmableBorrower.address}`);
+      console.log(`  Implementation: ${implementation.address}`);
+      console.log(`  Impl deployed:  ${implementation.deployedAt ?? 'Unavailable'}`);
+      console.log(`  Owner:          ${owner}`);
+      console.log(`  Manager:        ${manager}`);
+      console.log(`  Borrower:       ${borrower}`);
+      console.log(`  ERC4626 vault:  ${vault}`);
+      console.log(`  CDO:            ${epochCdo}`);
+      console.log(`  Underlying:     ${underlying}`);
+      console.log(`  Borrower APR:   ${ethers.utils.formatUnits(apr, 18)}% (${apr})`);
+      console.log(`  Principal:      ${principal}`);
+      console.log(`  Accrued interest: ${interestAccrued}`);
+      console.log(`  Interest debt:  ${interestDebt}`);
+      console.log(`  Epoch accounting active: ${epochActive}`);
+      console.log();
     }
     if (orchestrator) {
       const orchestratorState = await getPrintContractsInfoOrchestratorState(
