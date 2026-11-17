@@ -42,15 +42,9 @@ contract TranchesChainlinkOracle is IAggregatorV3Minimal {
   }
 
   /// @notice Returns the tranche virtualPrice reduced by `discount`, in the same units as the virtualPrice.
-  /// @dev Computes the exact floor without intermediate overflow for any uint256 virtualPrice.
-  /// The final int256 conversion is unchanged; nonnegative answers must fit in int256.
+  /// @dev The discounted price is rounded down.
   function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
     uint256 price = cdo.virtualPrice(collateralToken);
-    uint256 multiplier = DISCOUNT_SCALE - discount;
-    // For price = q * scale + r, floor(price * multiplier / scale) = q * multiplier + floor(r * multiplier / scale).
-    // multiplier <= scale: the sum is <= price, and the remainder product is < scale^2 (1e36).
-    uint256 discountedPrice = (price / DISCOUNT_SCALE) * multiplier
-      + (price % DISCOUNT_SCALE) * multiplier / DISCOUNT_SCALE;
-    return (0, int256(discountedPrice), 0, 0, 0);
+    return (0, int256(price * (DISCOUNT_SCALE - discount) / DISCOUNT_SCALE), 0, 0, 0);
   }
 }

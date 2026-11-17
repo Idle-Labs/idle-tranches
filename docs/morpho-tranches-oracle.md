@@ -19,18 +19,11 @@ price = virtualPrice * (1e18 - discount) / 1e18
   (`decimals()` is unchanged). With a 6 decimals loan token, a `virtualPrice` of `1_000_000` (1.0) and a 5% discount returns
   `950_000` (0.95).
 - **Default**: the default discount is zero, which must be passed explicitly (Solidity constructors have no default
-  arguments). With `discount = 0` the oracle returns exactly the original `int256(virtualPrice)` for every input.
+  arguments). With `discount = 0` the tranche is valued at its undiscounted `virtualPrice`.
 - **Bounds**: any discount above `1e18` (100%) reverts the constructor with `DiscountTooHigh()`. A discount of exactly
   `1e18` is accepted and prices the collateral at zero.
 - **Rounding**: the result is rounded down, so the collateral is never valued above the exact discounted price. For
   example a `virtualPrice` of `1` with a 5% discount returns `0`.
-- **Arithmetic**: the calculation splits `virtualPrice = q * 1e18 + r` and computes
-  `q * (1e18 - discount) + r * (1e18 - discount) / 1e18`. This gives the same floor-rounded result without
-  intermediate overflow for any `uint256` price: the remainder product is below `1e36`, and the sum never exceeds
-  the original price. There is no longer an intermediate-product price limit.
-- **Signed answer**: the final `uint256` to `int256` conversion is unchanged from the original adapter. Nonnegative
-  answers require the discounted result to be at most `type(int256).max`; larger results retain the existing
-  two's-complement conversion to negative values. No new range check is introduced.
 
 ## Immutable configuration
 
@@ -61,12 +54,15 @@ forge script ./forge-scripts/DeployMetamorphoVault.s.sol \
 
 ## Tests
 
-`TestTranchesChainlinkOracle` in `test/foundry/MetamorphoIdleVault.t.sol` has an independent mock setup (no fork).
-It covers zero discount, the 5% example, boundary discounts (`0`, `1`, `1e18 - 1`, `1e18`, `1e18 + 1`,
-`type(uint256).max`), floor rounding, large prices above the former multiplication limits, the existing signed
-conversion, deployment-script forwarding and freshly compiled runtime size against EIP-170.
+`TestTranchesChainlinkOracle` in `test/foundry/MetamorphoIdleVault.t.sol` forks mainnet at block `22_525_130`
+using the repository's `mainnet` RPC endpoint (`ETH_RPC_URL`). It exercises the deployed Fasanara USDC and Lido stETH
+CDOs for 6- and 18-decimal pricing and the deployed Morpho factory for deployment-script forwarding and market-oracle
+pricing. Only the exact unit-price, rounding and price-change scenarios mock the CDO's `virtualPrice` return.
 
-Run this contract independently of the existing fork suite:
+Coverage includes zero and 5% discounts, boundary discounts (`0`, `1`, `1e18 - 1`, `1e18`, `1e18 + 1`,
+`type(uint256).max`), floor rounding and freshly compiled runtime size against EIP-170.
+
+Run the oracle suite with `ETH_RPC_URL` configured:
 
 ```
 forge test --offline --evm-version london --match-contract '^TestTranchesChainlinkOracle$'
