@@ -55,10 +55,11 @@ contract DeployMetamorphoVault is Script {
   /// @notice Deploys a tranche adapter and Morpho oracle, using the tranche's underlying as the loan token.
   /// @param collateralToken Tranche token to price.
   /// @param oracleFactory MorphoChainlinkOracleV2 factory on the deployment chain.
+  /// @param discount Discount applied to the tranche virtualPrice, scaled by 1e18 (5e16 = 5%, 0 = none).
   /// @return oracle The oracle to use for a Morpho market.
-  function deployOracle(address collateralToken, IMetaMorphoOracleFactory oracleFactory) external returns (IMorphoChainlinkOracleV2 oracle) {
+  function deployOracle(address collateralToken, IMetaMorphoOracleFactory oracleFactory, uint256 discount) external returns (IMorphoChainlinkOracleV2 oracle) {
     vm.startBroadcast();
-    TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken);
+    TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken, discount);
     console.log('adapter.address ', address(adapter));
     oracle = _createOracle(adapter, IERC20Detailed(collateralToken).decimals(), adapter.loanTokenDecimals(), oracleFactory);
     vm.stopBroadcast();
@@ -105,8 +106,8 @@ contract DeployMetamorphoVault is Script {
 
   function _initializeTrancheMarket(address collateralToken) internal returns (IMorpho.MarketParams memory marketParams, bytes32 id) {
     address loanToken = IIdleCDO(IdleCDOTranche(collateralToken).minter()).token();
-    // 1. Deploy oracle for collateral token
-    TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken);
+    // 1. Deploy oracle for collateral token (no discount, same pricing as before)
+    TranchesChainlinkOracle adapter = new TranchesChainlinkOracle(collateralToken, 0);
     IMorphoChainlinkOracleV2 oracle = _createOracle(adapter, IERC20Detailed(collateralToken).decimals(), IERC20Detailed(loanToken).decimals(), ORACLE_FACTORY);
     // 2. Create market in morpho blue
     marketParams = IMorpho.MarketParams({

@@ -2,6 +2,8 @@
 pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
+import {TranchesChainlinkOracle} from "../../contracts/strategies/morpho/TranchesChainlinkOracle.sol";
+import {IMorphoChainlinkOracleV2} from "../../contracts/interfaces/morpho/IMorphoChainlinkOracleV2.sol";
 import { DeployMetamorphoVault } from "../../forge-scripts/DeployMetamorphoVault.s.sol";
 
 import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
@@ -45,5 +47,186 @@ contract MetamorphoIdleVault is Test, DeployMetamorphoVault {
     // IMMVault(mmVault).acceptOwnership();
     // console.log('vault.address ', address(mmVault));
     // console.log('vault.owner   ', IMMVault(mmVault).owner());
+  }
+}
+
+contract TestTranchesChainlinkOracle is Test {
+  uint256 internal constant SCALE = 1e18;
+  uint256 internal constant ONE = 1e6;
+  uint256 internal constant EIP170_LIMIT = 24576;
+  uint256 internal constant FORK_BLOCK = 22_525_130;
+
+  IIdleCDO internal oracleCdo;
+  address internal trancheToken;
+
+  /// @notice Uses the deployed Fasanara USDC CDO and its AA tranche on the repository's mainnet endpoint.
+  function setUp() public {
+    vm.createSelectFork("mainnet", FORK_BLOCK);
+    oracleCdo = IIdleCDO(0xf6223C567F21E33e859ED7A045773526E9E3c2D5);
+    trancheToken = oracleCdo.AATranche();
+  }
+
+  /// @dev Deploys the oracle with the selected discount and returns its current price.
+  function _price(uint256 discount) internal returns (uint256) {
+    TranchesChainlinkOracle oracle = new TranchesChainlinkOracle(trancheToken, discount);
+    (, int256 answer,,,) = oracle.latestRoundData();
+    return uint256(answer);
+  }
+
+  /// @dev Supplies exact prices unavailable at the pinned fork for deterministic rounding and price-change cases.
+  function _mockVirtualPrice(uint256 virtualPrice) internal {
+    vm.mockCall(
+      address(oracleCdo),
+      abi.encodeWithSelector(IIdleCDO.virtualPrice.selector, trancheToken),
+      abi.encode(virtualPrice)
+    );
+  }
+
+  /// @notice Constructor wires the deployed contracts and preserves the 6-decimal loan token scaling.
+  function testConstructor() external {
+    TranchesChainlinkOracle oracle = new TranchesChainlinkOracle(trancheToken, 5e16);
+    assertEq(oracle.collateralToken(), trancheToken);
+    assertEq(address(oracle.cdo()), address(oracleCdo));
+    assertEq(oracle.loanToken(), oracleCdo.token());
+    assertEq(oracle.loanTokenDecimals(), 6);
+    assertEq(oracle.decimals(), 6);
+    assertEq(oracle.discount(), 5e16);
+    assertEq(oracle.DISCOUNT_SCALE(), SCALE);
+  }
+
+  /// @notice A zero discount returns the deployed CDO's virtualPrice unchanged.
+  function testZeroDiscountReturnsVirtualPrice() external {
+    uint256 virtualPrice = oracleCdo.virtualPrice(trancheToken);
+    assertGt(virtualPrice, 0);
+    assertEq(_price(0), virtualPrice);
+  }
+
+  /// @notice A 5% discount prices the real USDC tranche at 95% of its virtualPrice, rounded down.
+  function testFivePercentDiscount() external {
+    uint256 virtualPrice = oracleCdo.virtualPrice(trancheToken);
+    assertGt(virtualPrice, 0);
+    assertEq(_price(5e16), virtualPrice * 95 / 100);
+  }
+
+  /// @notice The exact 1.0 to 0.95 example uses the deployed token's 6 decimals.
+  function testFivePercentDiscountAtUnitPrice() external {
+    _mockVirtualPrice(ONE);
+    assertEq(_price(5e16), 950_000);
+  }
+
+  /// @notice An existing oracle reads the new virtualPrice when the CDO's price changes.
+  function testDiscountTracksVirtualPrice() external {
+    _mockVirtualPrice(ONE);
+    TranchesChainlinkOracle oracle = new TranchesChainlinkOracle(trancheToken, 5e16);
+    (, int256 beforeAnswer,,,) = oracle.latestRoundData();
+    assertEq(beforeAnswer, 950_000);
+    _mockVirtualPrice(1_100_000);
+    (, int256 afterAnswer,,,) = oracle.latestRoundData();
+    assertEq(afterAnswer, 1_045_000);
+  }
+
+  /// @notice Zero and 5% discounts preserve the deployed Lido tranche's 18-decimal loan token scaling.
+  function testDiscountWith18DecimalsLoanToken() external {
+    // The Lido CDO is registered in utils/addresses.js.
+    IIdleCDO lidoCdo = IIdleCDO(0x34dCd573C5dE4672C8248cd12A99f875Ca112Ad8);
+    address lidoTranche = lidoCdo.AATranche();
+    uint256 virtualPrice = lidoCdo.virtualPrice(lidoTranche);
+    assertGt(virtualPrice, 0);
+
+    TranchesChainlinkOracle oracle = new TranchesChainlinkOracle(lidoTranche, 5e16);
+    (, int256 answer,,,) = oracle.latestRoundData();
+    assertEq(oracle.loanToken(), lidoCdo.token());
+    assertEq(oracle.decimals(), 18);
+    assertEq(uint256(answer), virtualPrice * 95 / 100);
+
+    TranchesChainlinkOracle undiscounted = new TranchesChainlinkOracle(lidoTranche, 0);
+    (, int256 undiscountedAnswer,,,) = undiscounted.latestRoundData();
+    assertEq(uint256(undiscountedAnswer), virtualPrice);
+  }
+
+  /// @notice A 100% discount is accepted and prices the real collateral at zero.
+  function testFullDiscountIsAccepted() external {
+    assertEq(_price(SCALE), 0);
+  }
+
+  /// @notice The smallest discount rounds the real USDC tranche's positive price down by one unit.
+  function testSmallestDiscountRoundsDown() external {
+    uint256 virtualPrice = oracleCdo.virtualPrice(trancheToken);
+    assertGt(virtualPrice, 0);
+    assertLt(virtualPrice, SCALE);
+    assertEq(_price(1), virtualPrice - 1);
+  }
+
+  /// @notice The largest discount below 100% rounds the real USDC tranche's price down to zero.
+  function testLargestDiscountBelowFull() external {
+    assertLt(oracleCdo.virtualPrice(trancheToken), SCALE);
+    assertEq(_price(SCALE - 1), 0);
+  }
+
+  /// @notice Discounts above 100% are rejected.
+  function testDiscountAboveFullReverts() external {
+    vm.expectRevert(TranchesChainlinkOracle.DiscountTooHigh.selector);
+    new TranchesChainlinkOracle(trancheToken, SCALE + 1);
+  }
+
+  /// @notice The maximum uint256 discount is rejected.
+  function testMaxUintDiscountReverts() external {
+    vm.expectRevert(TranchesChainlinkOracle.DiscountTooHigh.selector);
+    new TranchesChainlinkOracle(trancheToken, type(uint256).max);
+  }
+
+  /// @notice Exact fractional prices round down, and exact integer results remain unchanged.
+  function testRoundingDown() external {
+    _mockVirtualPrice(1); // 1 * 0.95 = 0.95 -> 0
+    assertEq(_price(5e16), 0);
+    _mockVirtualPrice(3); // 3 * 0.9 = 2.7 -> 2
+    assertEq(_price(1e17), 2);
+    _mockVirtualPrice(19); // 19 * 0.95 = 18.05 -> 18
+    assertEq(_price(5e16), 18);
+    _mockVirtualPrice(20); // 20 * 0.95 = 19 exactly
+    assertEq(_price(5e16), 19);
+  }
+
+  /// @notice The freshly compiled oracle runtime fits within the EIP-170 contract size limit.
+  function testRuntimeSizeBelowEip170() external {
+    TranchesChainlinkOracle oracle = new TranchesChainlinkOracle(trancheToken, 5e16);
+    assertGt(address(oracle).code.length, 0);
+    assertLe(address(oracle).code.length, EIP170_LIMIT);
+  }
+
+  /// @notice The script forwards the discount into a working Morpho oracle deployed through the real factory.
+  function testDeployOracleScriptForwardsDiscount() external {
+    DeployMetamorphoVault deployer = new DeployMetamorphoVault();
+    assertGt(address(deployer.ORACLE_FACTORY()).code.length, 0);
+    IMorphoChainlinkOracleV2 marketOracle = deployer.deployOracle(trancheToken, deployer.ORACLE_FACTORY(), 5e16);
+    assertGt(address(marketOracle).code.length, 0);
+
+    TranchesChainlinkOracle adapter = TranchesChainlinkOracle(address(marketOracle.BASE_FEED_1()));
+    assertEq(adapter.discount(), 5e16);
+    assertEq(adapter.collateralToken(), trancheToken);
+    assertEq(adapter.loanTokenDecimals(), 6);
+    assertEq(IERC20Detailed(trancheToken).decimals(), 18);
+    // Morpho scales the 6-decimal feed for an 18-decimal collateral and a 6-decimal loan token.
+    assertEq(marketOracle.SCALE_FACTOR(), 1e18);
+    uint256 expectedPrice = oracleCdo.virtualPrice(trancheToken) * 95 / 100;
+    (, int256 answer,,,) = adapter.latestRoundData();
+    assertEq(uint256(answer), expectedPrice);
+    assertEq(marketOracle.price(), expectedPrice * 1e18);
+  }
+
+  /// @notice Any valid discount on the deployed tranche agrees with subtracting the rounded-up discount.
+  function testFuzzDiscountedPrice(uint256 discount) external {
+    discount = bound(discount, 0, SCALE);
+    uint256 virtualPrice = oracleCdo.virtualPrice(trancheToken);
+    uint256 reduction = virtualPrice * discount;
+    uint256 expectedPrice = virtualPrice - reduction / SCALE - (reduction % SCALE == 0 ? 0 : 1);
+    assertEq(_price(discount), expectedPrice);
+  }
+
+  /// @notice Any discount above 100% is rejected.
+  function testFuzzDiscountAboveFullReverts(uint256 discount) external {
+    discount = bound(discount, SCALE + 1, type(uint256).max);
+    vm.expectRevert(TranchesChainlinkOracle.DiscountTooHigh.selector);
+    new TranchesChainlinkOracle(trancheToken, discount);
   }
 }
