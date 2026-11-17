@@ -1712,6 +1712,34 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     assertEq(cdo.unclaimedFees(), 0, "fees not settled");
   }
 
+  /// @notice Earned vault yield and repaid borrower interest do not enter CDO backing before settlement.
+  function test_unsettledProgrammableInterestStaysOutsideCDOBacking() external {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 100000, 1000);
+    _start(0);
+    uint256 backing = strategy.balanceOf(address(cdo));
+    vm.prank(borrower);
+    facility.borrow(100e18);
+    vault.addGain(20e18);
+    vm.warp(block.timestamp + 182.5 days);
+    deal(address(asset), borrower, 105e18, true);
+    vm.startPrank(borrower);
+    asset.approve(address(facility), 105e18);
+    facility.repay(0);
+    vm.stopPrank();
+    assertEq(facility.totalInterestDueNow(), 25e18, "20 vault yield plus 5 repaid interest");
+    assertEq(strategy.balanceOf(address(cdo)), backing, "earned yield is still outside CDO backing");
+    assertEq(cdo.virtualPrice(address(aa)), 0.995e18, "virtual price includes only elapsed management fees");
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 5e18, "checkpoint books only management fees");
+    assertEq(strategy.balanceOf(address(cdo)), backing);
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), 1.018e18, "projection includes net earned interest");
+    _stop(false);
+    assertEq(strategy.balanceOf(address(cdo)), backing + 25e18, "settlement realizes interest once");
+    _assertBacking();
+  }
+
   /// @notice The first programmable settlement waives both receipt and active management fees.
   function test_firstProgrammableEpochWaivesManagementFees() external {
     stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));

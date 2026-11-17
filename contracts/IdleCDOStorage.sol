@@ -131,8 +131,8 @@ contract IdleCDOStorage {
   bool public isBBDepositEnabled;
   /// @notice Management fees accrued but not yet allocated to the saved tranche NAVs.
   uint256 public pendingManagementFees;
-  /// @notice Unclaimed fees carried into the running epoch, excluded from its interest-bearing principal.
-  uint256 internal openingUnclaimedFees;
+  /// @notice Unclaimed fees carried into the running epoch, already allocated to saved NAV.
+  uint256 public openingUnclaimedFees;
   // uint256 public test;
 
 

@@ -242,6 +242,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Remove raw donated underlyings before calculating epoch interest or borrower transfer amounts.
     _skimDonatedAssets();
 
+    // Opening carried fees must already be reflected in saved NAV.
+    _updateAccounting();
     openingUnclaimedFees = unclaimedFees;
     isEpochRunning = true;
     // prevent deposits
@@ -431,6 +433,10 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
         _transferUnderlyings(address(_strategy), _totBorrowed);
       }
 
+      // Charge performance fees on active interest minus all management fees booked this epoch.
+      // Exclude carried fees and calculate before adding pending receipt fees below.
+      // Emergency asset removals do not reduce this interest-based fee base.
+      unclaimedFees += _performanceFee(_grossInterest - _pendingWithdrawFees, unclaimedFees - openingUnclaimedFees);
       if (_mintInterest) {
         // if interest is not transferred we mint strategy tokens equal to the full epoch interest
         if (_grossInterest != 0) _mintStrategyTokens(_grossInterest);
@@ -727,6 +733,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   }
 
   /// @notice Project ending tranche NAV using the same allocation as settlement.
+  /// @dev Called after accounting clears pendingManagementFees; unclaimedFees minus the opening snapshot is the epoch expense.
   /// @param interest Expected active interest, excluding pending receipt fees.
   /// @param tranche Tranche receiving the optional deposit.
   /// @param amount Additional principal credited to the tranche.
@@ -735,6 +742,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     uint256 nav = lastNAVAA + lastNAVBB + amount;
     uint256 trancheNAV = _lastSavedNAV(tranche) + amount;
     uint256 managementFees = _calculateManagementFee(nav, epochEndDate - block.timestamp);
+    interest -= _performanceFee(interest, managementFees + unclaimedFees - openingUnclaimedFees);
     (, int256 gain) = _virtualPriceAux(tranche, nav + interest - managementFees, nav, trancheNAV, managementFees);
     return uint256(int256(trancheNAV) + gain);
   }
@@ -918,7 +926,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function _totalWithdrawFees(uint256 _principal, uint256 _interest) private view returns (uint256) {
     uint256 _mgmtFee = _calculateManagementFee(_principal, _withdrawRequestManagementFeeDuration());
     // Performance fees apply only to interest remaining after management fees.
-    return _mgmtFee >= _interest ? _mgmtFee : _mgmtFee + _performanceFee(_interest - _mgmtFee);
+    return _mgmtFee + _performanceFee(_interest, _mgmtFee);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user

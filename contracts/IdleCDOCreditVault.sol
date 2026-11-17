@@ -169,6 +169,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @notice calculates the current tranches price considering the interest/loss that is yet to be splitted
   /// ie the interest/loss generated since the last update of priceAA and priceBB (done on depositXX/withdrawXX)
   /// @dev Includes elapsed management fees without checkpointing storage.
+  /// Excludes unsettled epoch interest, whose performance fee is booked at successful settlement.
   /// @param _tranche address of the requested tranche
   /// @return _virtualPrice tranche price considering all interest/losses
   function virtualPrice(address _tranche) public virtual view returns (uint256 _virtualPrice) {
@@ -228,12 +229,9 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     uint256 _lastNAVAA = lastNAVAA;
     uint256 _lastNAVBB = lastNAVBB;
     uint256 _lastNAV = _lastNAVAA + _lastNAVBB;
-    // NAV already excludes accrued management fees, which are included in unclaimedFees.
+    // Checkpoints accrue management fees; stopEpoch books the performance fee separately.
+    // getContractValue already excludes both through unclaimedFees.
     uint256 nav = getContractValue();
-    // If gain is > 0, then collect some performance fees in `unclaimedFees`
-    if (nav > _lastNAV) {
-      unclaimedFees += _performanceFee(nav - _lastNAV);
-    }
     (uint256 _priceAA, int256 _totalAAGain) = _virtualPriceAux(AATranche, nav, _lastNAV, _lastNAVAA, pendingManagementFees);
     (uint256 _priceBB, int256 _totalBBGain) = _virtualPriceAux(BBTranche, nav, _lastNAV, _lastNAVBB, pendingManagementFees);
     lastNAVAA = uint256(int256(_lastNAVAA) + _totalAAGain);
@@ -280,7 +278,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @notice Calculates the current tranche price and gain or loss since the last accounting update.
   /// @dev Gains follow `trancheAPRSplitRatio`; ordinary losses exhaust BB before reducing AA.
   /// @param _tranche address of the requested tranche
-  /// @param _nav current NAV
+  /// @param _nav current NAV after performance fees
   /// @param _lastNAV last saved NAV
   /// @param _lastTrancheNAV last saved tranche NAV
   /// @param _managementFees Management expenses not yet allocated to the supplied NAVs.
@@ -309,12 +307,6 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     // Ordinary zero-delta interactions keep their saved price for compatibility. Forced
     // accounting recomputes NAV per share, which is required after discounted mid-epoch deposits.
     if (totalGain == 0 && _managementFees == 0 && !skipDefaultCheck) return (_tranchePrice(_tranche), 0);
-
-    // Remove performance fee for gains
-    if (totalGain > 0) {
-      // MAX_FEE bounds the fee by this positive gain; multiplication remains checked in the helper.
-      unchecked { totalGain -= int256(_performanceFee(uint256(totalGain))); }
-    }
 
     // Split investment PnL independently of management expenses, which follow saved NAV.
     totalGain += int256(_managementFees);
@@ -544,7 +536,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
 
   /// @dev Check that the msg.sender is the either the owner or the guardian
   function _checkOnlyOwnerOrGuardian() internal view {
-    _checkNotAuthorized(msg.sender != guardian && msg.sender != owner());
+    if (msg.sender != guardian) _checkOnlyOwner();
   }
 
   /// @notice returns the current balance of this contract for a specific token
@@ -563,11 +555,14 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     latestHarvestBlock = block.timestamp;
   }
 
-  /// @notice Calculate the performance fee on a positive gain net of management expenses.
-  /// @param gain Gain subject to the configured performance fee.
-  /// @return Fee in underlying units.
-  function _performanceFee(uint256 gain) internal view returns (uint256) {
-    return gain * fee / FULL_ALLOC;
+  /// @notice Calculate the performance fee on interest remaining after management expenses.
+  /// @param interest Gross interest before fees.
+  /// @param managementFees Management expenses deductible from this interest.
+  /// @return fees Fee in underlying units.
+  function _performanceFee(uint256 interest, uint256 managementFees) internal view returns (uint256 fees) {
+    if (managementFees < interest) {
+      fees = (interest - managementFees) * fee / FULL_ALLOC;
+    }
   }
 
   /// @notice calculate annualized management fee for a balance over a duration

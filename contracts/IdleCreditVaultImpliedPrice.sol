@@ -34,7 +34,15 @@ contract IdleCreditVaultImpliedPrice {
     uint256 managedNav = strategyBalance > unpaidFees ? strategyBalance - unpaidFees : 0;
     uint256 elapsedFee = IdleCreditVault(cdo.strategy()).epochNumber() == 0 ? 0 :
       managedNav * cdo.managementFee() * (block.timestamp - cdo.latestHarvestBlock()) / (FULL_ALLOC * 365 days);
-    uint256 projectedAssets = managedNav + _accruedGain(cdo);
+    uint256 projectedAssets;
+    {
+      uint256 interest = _accruedGain(cdo);
+      // Match settlement: subtract all this epoch's management expenses from the fee base,
+      // whether earlier checkpoints have already allocated them to tranche NAV or not.
+      uint256 epochFees = unpaidFees - cdo.openingUnclaimedFees() + elapsedFee;
+      if (interest > epochFees) interest -= (interest - epochFees) * cdo.fee() / FULL_ALLOC;
+      projectedAssets = managedNav + interest;
+    }
     if (elapsedFee >= projectedAssets) return 0;
     price = _projectedNAV(cdo, isAATranche, projectedAssets - elapsedFee, cdo.pendingManagementFees() + elapsedFee) * ONE_TRANCHE_TOKEN / trancheSupply;
   }
@@ -77,7 +85,7 @@ contract IdleCreditVaultImpliedPrice {
   /// @notice Project settlement NAV using the CDO's yield, fee and credit-loss allocation rules.
   /// @param cdo Vault whose saved NAV is the projection's starting point.
   /// @param senior Whether the requested tranche is AA.
-  /// @param nav Total net assets including accrued interest and management expenses.
+  /// @param nav Total net assets including accrued interest, after management and performance fees.
   /// @param managementFees Accrued management expenses not yet reflected in saved NAV.
   /// @return Projected tranche NAV in underlying units.
   function _projectedNAV(IdleCDOEpochVariant cdo, bool senior, uint256 nav, uint256 managementFees) private view returns (uint256) {
@@ -86,7 +94,6 @@ contract IdleCreditVaultImpliedPrice {
     uint256 savedNav = aaNav + bbNav;
     if (savedNav == 0) return 0;
     int256 gain = int256(nav) - int256(savedNav);
-    if (gain > 0) gain -= gain * int256(cdo.fee()) / int256(FULL_ALLOC);
     gain += int256(managementFees);
     uint256 bbFee = managementFees * bbNav / savedNav;
     int256 bbGain;

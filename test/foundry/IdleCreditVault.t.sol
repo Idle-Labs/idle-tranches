@@ -3,6 +3,7 @@ pragma solidity 0.8.10;
 
 import "./TestIdleCDOLossMgmt.sol";
 
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {
   ITransparentUpgradeableProxy,
@@ -1066,6 +1067,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _setManagementFee(1_000);
     if (running) _toggleEpoch(true, 0, 0);
     uint256 checkpoint = cdoEpoch.latestHarvestBlock();
+    uint256 bookedFees = cdoEpoch.unclaimedFees();
     vm.warp(block.timestamp + 7 days);
     uint256 accrued = _calcManagementFee(cdoEpoch.getContractValue(), 1_000, block.timestamp - checkpoint);
     uint256 juniorFee = accrued * cdoEpoch.lastNAVBB() / (cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB());
@@ -1074,7 +1076,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(aaPrice, (cdoEpoch.lastNAVAA() - accrued + juniorFee) * ONE_TRANCHE / AAtranche.totalSupply());
     if (withBB) assertEq(bbPrice, (cdoEpoch.lastNAVBB() - juniorFee) * ONE_TRANCHE / BBtranche.totalSupply());
     assertLt(aaPrice, cdoEpoch.priceAA(), 'elapsed fee missing');
-    assertEq(cdoEpoch.unclaimedFees(), 0, 'view booked fees');
+    assertEq(cdoEpoch.unclaimedFees(), bookedFees, 'view booked fees');
     assertEq(cdoEpoch.pendingManagementFees(), 0, 'view allocated fees');
     assertEq(cdoEpoch.latestHarvestBlock(), checkpoint, 'view checkpointed fees');
     vm.prank(owner);
@@ -1541,17 +1543,18 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 expectedPrincipal = principal - expectedMgmtFee;
     uint256 requested = cdoEpoch.requestWithdraw(trancheReq, address(AAtranche));
     uint256 poolPrincipal = cdoEpoch.getContractValue();
-    uint256 expectedLiveMgmtFee = _calcManagementFee(poolPrincipal, mgmtFeeRate, cdoEpoch.bufferPeriod() + cdoEpoch.epochDuration());
 
     assertEq(requested, expectedPrincipal, "apr0 receipt principal should be haircut by management fee");
     assertEq(cdoEpoch.pendingWithdrawFees(), expectedMgmtFee, "apr0 management fee should be booked in pending withdraw fees");
     assertEq(IdleCreditVault(address(strategy)).apr0TotalPrincipal(), expectedPrincipal, "apr0 principal bucket should be net of management fee");
 
     _startEpochAndCheckPrices(1);
+    poolPrincipal = cdoEpoch.getContractValue();
 
     uint256 feeReceiverBalPre = underlying.balanceOf(TL_MULTISIG);
     uint256 grossInterest = poolInterest + expectedMgmtFee;
     vm.warp(cdoEpoch.epochEndDate() + 1);
+    uint256 expectedLiveMgmtFee = cdoEpoch.unclaimedFees() + _calcManagementFee(poolPrincipal, mgmtFeeRate, block.timestamp - cdoEpoch.latestHarvestBlock());
     uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
     deal(defaultUnderlying, borrower, grossInterest + pendingWithdraws + amount);
     vm.prank(manager);
@@ -1999,7 +2002,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertApproxEqAbs(oldDepositorValue, exp.expectedExistingFinal, 1000, 'old depositor tranche value is wrong');
   }
 
-  /// @notice Mid-epoch projections match settlement below, at and above the remaining management-fee threshold.
+  /// @notice Mid-epoch projections match settlement across the full epoch's management-fee threshold.
   /// @param regime Selects gross existing interest of 5, 9.9 or 20 against 9.9 of future management fees.
   /// @param minted Whether fees are settled with tranche shares instead of available borrower cash.
   function testDepositDuringEpochProjectionAtFeeThreshold(uint256 regime, bool minted) external {
@@ -2023,9 +2026,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     exp.expectedInterest = regime == 0 ? 5_000_000 : regime == 1 ? 9_900_000 : 20_000_000;
     // First-half fees are 10. Remaining fees are 9.9 before entry and 19.9 after entry.
     exp.expectedExistingFinal = 990_000_000 + exp.expectedInterest - 9_900_000;
-    if (exp.expectedInterest > 9_900_000) exp.expectedExistingFinal -= (exp.expectedInterest - 9_900_000) / 10;
+    if (exp.expectedInterest > 19_900_000) exp.expectedExistingFinal -= (exp.expectedInterest - 19_900_000) / 10;
     uint256 gross = exp.expectedInterest + exp.expectedInterest / 2;
-    uint256 performance = gross > 19_900_000 ? (gross - 19_900_000) / 10 : 0;
+    uint256 performance = gross > 29_900_000 ? (gross - 29_900_000) / 10 : 0;
     exp.expectedTotalFinal = 1_990_000_000 + gross - 19_900_000 - performance;
     exp.expectedUserFinal = exp.expectedTotalFinal - exp.expectedExistingFinal;
     exp.expectedFees = 29_900_000 + performance;
@@ -2183,9 +2186,9 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 existingFutureMgmtFee = _calcManagementFee(exp.navAfterCheckpoint, mgmtFeeRate, remaining);
     uint256 totalFutureMgmtFee = _calcManagementFee(exp.navAfterCheckpoint + depositAmount, mgmtFeeRate, remaining);
     uint256 existingGain = exp.expectedInterest - existingFutureMgmtFee;
-    exp.expectedExistingFinal = exp.navAfterCheckpoint + existingGain - (existingGain * perfFeeRate / FULL_ALLOC);
+    exp.expectedExistingFinal = exp.navAfterCheckpoint + existingGain - ((existingGain - exp.accruedMgmtFee) * perfFeeRate / FULL_ALLOC);
     uint256 totalGain = exp.expectedInterest + exp.expectedDepositInterest - totalFutureMgmtFee;
-    uint256 perfFee = totalGain * perfFeeRate / FULL_ALLOC;
+    uint256 perfFee = (totalGain - exp.accruedMgmtFee) * perfFeeRate / FULL_ALLOC;
     exp.expectedTotalFinal = exp.navAfterCheckpoint + depositAmount + totalGain - perfFee;
     exp.expectedUserFinal = exp.expectedTotalFinal - exp.expectedExistingFinal;
     exp.expectedFees = exp.accruedMgmtFee + totalFutureMgmtFee + perfFee;
@@ -6619,6 +6622,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.warp(cdoEpoch.epochEndDate() + 1);
 
     uint256 activeNavBeforeManagementFee = cdoEpoch.getContractValue();
+    uint256 carriedFees = cdoEpoch.unclaimedFees();
     uint256 accruedManagementFee = _calcManagementFee(activeNavBeforeManagementFee, managementFeeRate, block.timestamp - cdoEpoch.latestHarvestBlock());
     uint256 expectedClaim = _expectedLossAdjustedClaim(
       activeNavBeforeManagementFee - accruedManagementFee,
@@ -6638,7 +6642,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(pendingUser);
     cdoEpoch.claimWithdrawRequest();
     assertApproxEqAbs(underlying.balanceOf(pendingUser) - balancePre, expectedClaim, 5, 'cash loss basis did not match management/performance fee ordering');
-    assertEq(cdoEpoch.unclaimedFees(), accruedManagementFee, 'active management fees must carry forward');
+    assertEq(cdoEpoch.unclaimedFees(), carriedFees + accruedManagementFee, 'active management fees must carry forward');
     assertEq(cdoEpoch.lastEpochInterest(), 0, 'loss stop distributed active interest');
   }
 
@@ -7196,10 +7200,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(manager);
     cdoEpoch.stopEpoch(initialProvidedApr, 0);
 
-    // Management: 100 + 74.625. Performance: (1,502.5 - 74.625) * 10%.
-    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, 317_412_500, 'combined fee payment wrong');
-    assertEq(cdoEpoch.lastEpochInterest(), 1_185_087_500, 'combined fees produced wrong net interest');
-    assertEq(cdoEpoch.getContractValue(), 16_210_087_500, 'combined fee NAV wrong');
+    // Management: 100 + 74.625. Performance: (1,502.5 - 100 - 74.625) * 10%.
+    assertEq(underlying.balanceOf(TL_MULTISIG) - feeBalanceBefore, 307_412_500, 'combined fee payment wrong');
+    assertEq(cdoEpoch.lastEpochInterest(), 1_195_087_500, 'combined fees produced wrong net interest');
+    assertEq(cdoEpoch.getContractValue(), 16_220_087_500, 'combined fee NAV wrong');
     assertEq(cdoEpoch.unclaimedFees(), 0, 'combined fees remain unpaid');
   }
 
@@ -8225,5 +8229,1151 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(credit.borrower());
     vault.writeOffDeposit(shares, tranche);
     assertGe(_settleWriteOffFork(vault), baseline, 'write-off reduced remaining holder price');
+  }
+}
+
+/// @notice Six-decimal test asset for production-scale rounding in fee allocation.
+contract FeeAllocationAsset is ERC20 {
+  /// @notice Name the deterministic test asset.
+  constructor() ERC20("Fee allocation USD", "faUSD") {}
+
+  /// @notice Use USDC precision for dust and fee rounding scenarios.
+  function decimals() public pure override returns (uint8) {
+    return 6;
+  }
+}
+
+/// @notice Exercise real CDO and strategy proxies locally, without unrelated fork dependencies.
+contract CreditVaultManagementFeeAllocationTest is Test {
+  using stdStorage for StdStorage;
+
+  uint256 internal constant UNIT = 1e6;
+  address internal owner = address(0xA0);
+  address internal manager = address(0xA1);
+  address internal borrower = address(0xA2);
+  address internal alice = address(0xB1);
+  address internal bob = address(0xB2);
+  address internal carol = address(0xB3);
+  FeeAllocationAsset internal asset;
+  IdleCreditVault internal strategy;
+  IdleCDOEpochVariant internal cdo;
+  ProxyAdmin internal proxyAdmin;
+
+  /// @notice Initialize an adaptive 90/10 TVL vault with a 1% annual management fee.
+  function setUp() public {
+    _deploy(true, 100000, 900 * UNIT, 100 * UNIT);
+  }
+
+  /// @notice Deploy real proxies and seed the requested capital distribution.
+  /// @param adaptive Whether the vault recalculates its yield split on deposits.
+  /// @param split Fixed yield split when adaptive allocation is disabled.
+  /// @param aaAmount Initial AA principal.
+  /// @param bbAmount Initial BB principal, or zero for an AA-only vault.
+  function _deploy(bool adaptive, uint256 split, uint256 aaAmount, uint256 bbAmount) internal {
+    vm.warp(1700000000);
+    asset = new FeeAllocationAsset();
+    proxyAdmin = new ProxyAdmin();
+    strategy = IdleCreditVault(address(new TransparentUpgradeableProxy(address(new IdleCreditVault()), address(proxyAdmin), "")));
+    strategy.initialize(address(asset), owner, manager, borrower, "Fee allocation", 10e18);
+    // Existing allocation scenarios model a vault after its first successful settlement.
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(1);
+    cdo = IdleCDOEpochVariant(address(new TransparentUpgradeableProxy(address(new IdleCDOEpochVariant()), address(proxyAdmin), "")));
+    cdo.initialize(0, address(asset), owner, owner, address(0), address(strategy), split);
+    vm.startPrank(owner);
+    strategy.setWhitelistedCDO(address(cdo));
+    cdo.setFeeParams(owner, 0, 0, 1000);
+    cdo.setBBDepositEnabled(true);
+    cdo.setIsAYSActive(adaptive);
+    vm.stopPrank();
+    vm.startPrank(manager);
+    cdo.setEpochParams(365 days, 0);
+    strategy.setAprs(10e18, 10e18);
+    cdo.setIsDepositDuringEpochDisabled(false);
+    vm.stopPrank();
+    _deposit(alice, true, aaAmount);
+    if (bbAmount != 0) _deposit(carol, false, bbAmount);
+  }
+
+  /// @notice Fund and execute an ordinary tranche deposit.
+  function _deposit(address account, bool senior, uint256 amount) internal {
+    deal(address(asset), account, amount, true);
+    vm.startPrank(account);
+    asset.approve(address(cdo), amount);
+    if (senior) cdo.depositAA(amount);
+    else cdo.depositBB(amount);
+    vm.stopPrank();
+  }
+
+  /// @notice Start a fully configured fixed-rate epoch.
+  function _start() internal {
+    vm.prank(manager);
+    cdo.startEpoch();
+  }
+
+  /// @notice Settle the epoch with full borrower funding and an optional interest override.
+  function _stop(uint256 overrideInterest) internal {
+    vm.warp(cdo.epochEndDate());
+    deal(address(asset), borrower, 1000000 * UNIT, true);
+    vm.prank(borrower);
+    asset.approve(address(cdo), type(uint256).max);
+    vm.prank(manager);
+    cdo.stopEpoch(overrideInterest == 0 ? 10e18 : 0, overrideInterest);
+  }
+
+  /// @notice Cash and minted-interest launches waive pre-launch and first-epoch fees without a later catch-up.
+  function testFuzz_firstEpochManagementFeeWaiver(bool minted) public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    vm.startPrank(owner);
+    cdo.setIsInterestMinted(minted);
+    vm.warp(block.timestamp + 365 days);
+    cdo.updateAccounting();
+    cdo.setFeeParams(owner, 0, 0, 2000);
+    vm.stopPrank();
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(cdo.pendingManagementFees(), 0);
+    assertEq(cdo.lastNAVAA(), 1000 * UNIT);
+    assertEq(cdo.latestHarvestBlock(), block.timestamp);
+
+    vm.warp(block.timestamp + 30 days);
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.priceAA(), UNIT);
+    assertEq(cdo.unclaimedFees(), 0);
+    _start();
+    vm.warp(block.timestamp + 100 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 0);
+    _stop(0);
+    assertEq(strategy.epochNumber(), 1);
+    assertEq(cdo.lastNAVAA(), 1210 * UNIT);
+    assertEq(cdo.lastEpochInterest(), 110 * UNIT);
+    assertEq(cdo.latestHarvestBlock(), block.timestamp);
+    assertEq(cdo.managementFee(), 2000);
+
+    vm.warp(block.timestamp + 30 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    uint256 accrued = 1210 * UNIT * 2000 * 30 days / 3153600000000;
+    assertEq(cdo.unclaimedFees(), accrued);
+    assertEq(cdo.lastNAVAA(), 1210 * UNIT - accrued);
+  }
+
+  /// @notice Both adaptive tranches waive launch fees, then pay fees by NAV after the first stop.
+  /// @param minted Whether epoch interest is minted instead of paid in cash.
+  function testFuzz_firstEpochWaiverWithBothTranches(bool minted) public {
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    vm.startPrank(owner);
+    cdo.setIsInterestMinted(minted);
+    vm.warp(block.timestamp + 365 days);
+    cdo.updateAccounting();
+    vm.stopPrank();
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(cdo.lastNAVAA(), 900 * UNIT);
+    assertEq(cdo.lastNAVBB(), 100 * UNIT);
+    assertEq(cdo.trancheAPRSplitRatio(), 81000);
+
+    _start();
+    vm.warp(block.timestamp + 100 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 0);
+    _stop(0);
+    assertEq(strategy.epochNumber(), 1);
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(cdo.pendingManagementFees(), 0);
+    assertEq(cdo.lastNAVAA(), 981 * UNIT);
+    assertEq(cdo.lastNAVBB(), 119 * UNIT);
+    assertEq(cdo.latestHarvestBlock(), block.timestamp);
+
+    // Only the post-stop interval is charged, using NAV rather than the adaptive yield split.
+    vm.warp(block.timestamp + 30 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    uint256 accrued = 1100 * UNIT * 1000 * 30 days / 3153600000000;
+    uint256 juniorFee = accrued * 119 / 1100;
+    assertEq(cdo.unclaimedFees(), accrued);
+    assertEq(cdo.lastNAVAA(), 981 * UNIT - accrued + juniorFee);
+    assertEq(cdo.lastNAVBB(), 119 * UNIT - juniorFee);
+  }
+
+  /// @notice First-epoch mid-entry minting and the implied price omit management expenses consistently.
+  function test_firstEpochMidDepositAndImpliedPrice() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    IdleCreditVaultImpliedPrice helper = new IdleCreditVaultImpliedPrice();
+    _start();
+    vm.warp(block.timestamp + 365 days / 2);
+    assertEq(helper.impliedVirtualPrice(cdo.AATranche()), 1050000);
+    deal(address(asset), bob, 100 * UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), 100 * UNIT);
+    uint256 shares = cdo.depositDuringEpoch(100 * UNIT, cdo.AATranche());
+    vm.stopPrank();
+    assertEq(shares, uint256(105 * UNIT) * 1000e18 / (1100 * UNIT));
+    assertEq(cdo.unclaimedFees(), 0);
+    vm.warp(cdo.epochEndDate());
+    uint256 projected = helper.impliedVirtualPrice(cdo.AATranche());
+    _stop(0);
+    assertEq(cdo.priceAA(), projected);
+    assertEq(cdo.lastEpochInterest(), 105 * UNIT);
+    assertEq(cdo.unclaimedFees(), 0);
+  }
+
+  /// @notice First-epoch receipts waive management fees while retaining performance fees and exact previews.
+  function test_firstEpochWithdrawalFeeWaiver() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    address tranche = cdo.AATranche();
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    vm.prank(alice);
+    ERC20(tranche).transfer(bob, 500e18);
+    vm.warp(block.timestamp + 30 days);
+    assertEq(cdo.maxWithdrawable(bob, tranche), 545 * UNIT);
+    vm.prank(bob);
+    uint256 receipt = cdo.requestWithdraw(0, tranche);
+    assertEq(receipt, 545 * UNIT);
+    assertEq(cdo.pendingWithdrawFees(), 5 * UNIT);
+    assertEq(cdo.unclaimedFees(), 0);
+    _start();
+    _stop(0);
+    assertEq(asset.balanceOf(owner), 10 * UNIT);
+    vm.prank(bob);
+    cdo.claimWithdrawRequest();
+    assertEq(asset.balanceOf(bob), receipt);
+  }
+
+  /// @notice A delayed zero-interest stop activates fees at execution, not the scheduled epoch end.
+  function test_firstZeroInterestStopActivatesManagementFees() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    vm.prank(manager);
+    strategy.setAprs(0, 0);
+    _start();
+    vm.warp(cdo.epochEndDate() + 30 days);
+    vm.prank(manager);
+    cdo.stopEpoch(0, 0);
+    assertEq(strategy.epochNumber(), 1);
+    assertEq(cdo.latestHarvestBlock(), block.timestamp);
+    assertEq(cdo.lastEpochInterest(), 0);
+    assertEq(cdo.lastNAVAA(), 1000 * UNIT);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+  }
+
+  /// @notice A successful first stop with an explicit loss still activates fees only on the remaining NAV.
+  function test_firstLossStopActivatesManagementFees() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    vm.prank(manager);
+    strategy.setAprs(0, 0);
+    _start();
+    vm.warp(cdo.epochEndDate());
+    vm.prank(manager);
+    cdo.stopEpochWithDuration(0, 0, 365 days, 100 * UNIT);
+    assertFalse(cdo.defaulted());
+    assertEq(strategy.epochNumber(), 1);
+    assertEq(cdo.unclaimedFees(), 0);
+    assertEq(cdo.lastNAVAA(), 900 * UNIT);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 9 * UNIT);
+  }
+
+  /// @notice A reverted stop or first-epoch borrower default cannot activate management fees.
+  function test_firstFailedStopDoesNotActivateManagementFees() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    _start();
+    vm.prank(manager);
+    vm.expectRevert(bytes4(keccak256("NotAllowed()")));
+    cdo.stopEpoch(10e18, 0);
+    assertEq(strategy.epochNumber(), 0);
+    vm.warp(cdo.epochEndDate());
+    // The borrower has not approved repayment, so this stop takes the hard-default path.
+    vm.prank(manager);
+    cdo.stopEpoch(10e18, 0);
+    assertTrue(cdo.defaulted());
+    assertEq(strategy.epochNumber(), 0);
+    assertEq(cdo.unclaimedFees(), 0);
+  }
+
+  /// @notice An upgrade-time first-epoch exemption preserves fees already booked by the old implementation.
+  function test_firstEpochWaiverPreservesBookedFees() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    // Model a legacy first-epoch vault that accrued fees before receiving this policy.
+    stdstore.target(address(strategy)).sig(strategy.epochNumber.selector).checked_write(uint256(0));
+    proxyAdmin.upgrade(ITransparentUpgradeableProxy(address(cdo)), address(new IdleCDOEpochVariant()));
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    assertEq(cdo.lastNAVAA(), 990 * UNIT);
+    _start();
+    _stop(0);
+    assertEq(asset.balanceOf(owner), 10 * UNIT);
+    assertEq(cdo.lastNAVAA(), 1089 * UNIT);
+  }
+
+  /// @notice Fees follow 90/10 NAV even though the adaptive yield split is 81/19.
+  function test_managementFeeUsesNAVInsteadOfYieldOrLossSplit() public {
+    assertEq(cdo.trancheAPRSplitRatio(), 81000);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVAA(), 891 * UNIT);
+    assertEq(cdo.lastNAVBB(), 99 * UNIT);
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    assertFalse(cdo.paused());
+    assertFalse(cdo.defaulted());
+  }
+
+  /// @notice Buffer deposits charge the existing positions their proportional elapsed expenses.
+  function test_bufferDepositWithAYSChargesBothTranches() public {
+    _start();
+    _stop(0);
+    vm.prank(manager);
+    cdo.setEpochParams(365 days, 5 days);
+    uint256 aaBefore = cdo.lastNAVAA();
+    uint256 bbBefore = cdo.lastNAVBB();
+    uint256 totalBefore = aaBefore + bbBefore;
+    uint256 accrued = totalBefore * 1000 * 2 days / 3153600000000;
+    uint256 bbFee = accrued * bbBefore / totalBefore;
+    vm.warp(block.timestamp + 2 days);
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.lastNAVAA(), aaBefore - (accrued - bbFee) + 100 * UNIT);
+    assertEq(cdo.lastNAVBB(), bbBefore - bbFee);
+    assertEq(cdo.unclaimedFees(), accrued);
+  }
+
+  /// @notice Fees accrued by a setter remain correctly classified by views and the next accounting call.
+  function test_feeRateChangesDoNotLosePendingFeeClassification() public {
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 2000);
+    assertEq(cdo.virtualPrice(cdo.AATranche()), 990000);
+    assertEq(cdo.virtualPrice(cdo.BBTranche()), 990000);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVAA(), 873180000);
+    assertEq(cdo.lastNAVBB(), 97020000);
+    assertEq(cdo.unclaimedFees(), 29800000);
+  }
+
+  /// @notice Withdrawal requests checkpoint the same proportional fee before removing principal.
+  function test_bufferWithdrawalChargesBothTranches() public {
+    vm.warp(block.timestamp + 36.5 days);
+    address junior = cdo.BBTranche();
+    uint256 shares = ERC20(junior).balanceOf(carol) / 2;
+    vm.prank(carol);
+    cdo.requestWithdraw(shares, junior);
+    assertEq(cdo.lastNAVAA(), 899100000);
+    assertApproxEqAbs(cdo.lastNAVBB(), 49950000, 1);
+  }
+
+  /// @notice Settlement splits gross yield independently from proportional management expenses.
+  function test_stopAllocatesManagementFeeByNAV() public {
+    _start();
+    _stop(0);
+    assertEq(cdo.lastNAVAA(), 972 * UNIT);
+    assertEq(cdo.lastNAVBB(), 118 * UNIT);
+    assertEq(cdo.unclaimedFees(), 0);
+  }
+
+  /// @notice Performance fees remain assessed on aggregate gains net of management expenses.
+  function test_stopPreservesPerformanceFeeBase() public {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    _start();
+    _stop(0);
+    assertEq(cdo.lastNAVAA(), 964710000);
+    assertEq(cdo.lastNAVBB(), 116290000);
+    assertEq(asset.balanceOf(owner), 19 * UNIT);
+  }
+
+  /// @notice Normal mid-epoch actions change backing only by principal, even while interest accrues.
+  function testFuzz_unsettledInterestDoesNotEnterBacking(uint8 steps, uint256 seed, bool minted) public {
+    _deploy(false, 80000, 900 * UNIT, 100 * UNIT);
+    vm.startPrank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    cdo.setIsInterestMinted(minted);
+    vm.stopPrank();
+    _start();
+    steps = uint8(bound(steps, 1, 8));
+    uint256 start = block.timestamp;
+    uint256 backing = strategy.balanceOf(address(cdo));
+    for (uint256 i; i < steps; i++) {
+      vm.warp(start + (i + 1) * 365 days / (uint256(steps) + 1));
+      uint256 choice = uint256(keccak256(abi.encode(seed, i)));
+      uint256 feesBefore = cdo.unclaimedFees();
+      uint256 accruedFee = (backing - feesBefore) * 1000 * (block.timestamp - cdo.latestHarvestBlock()) / (100000 * 365 days);
+      backing = uint256(int256(backing) + _unsettledInterestAction(choice % 5, choice));
+      assertEq(strategy.balanceOf(address(cdo)), backing, "only principal changes backing");
+      assertEq(cdo.unclaimedFees(), feesBefore + (choice % 5 == 4 ? 0 : accruedFee), "only management fees booked");
+      assertEq(backing + cdo.pendingManagementFees(), cdo.lastNAVAA() + cdo.lastNAVBB() + cdo.unclaimedFees(), "backing reconciles with saved NAV");
+    }
+    // Skim any last raw donation before checking settlement against the independent fee formula.
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(strategy.balanceOf(address(cdo)), backing);
+    assertGt(cdo.expectedEpochInterest(), 0, "interest exists but is not minted yet");
+    _assertEpochFeeSettlement(0, minted);
+  }
+
+  /// @notice Execute a normal action and return its independently calculated principal change.
+  /// @param action Checkpoint, fee setter, deposit, write-off, or raw donation.
+  /// @param seed Select amounts and the deposit tranche.
+  /// @return delta Signed principal minted or burned by this action.
+  function _unsettledInterestAction(uint256 action, uint256 seed) internal returns (int256 delta) {
+    if (action == 0) {
+      vm.prank(owner);
+      cdo.updateAccounting();
+    } else if (action == 1) {
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 10000, 0, 1000);
+    } else if (action == 2) {
+      uint256 amount = (seed % 1000 + 1) * UNIT;
+      address tranche = seed % 2 == 0 ? cdo.AATranche() : cdo.BBTranche();
+      deal(address(asset), bob, amount, true);
+      vm.startPrank(bob);
+      asset.approve(address(cdo), amount);
+      cdo.depositDuringEpoch(amount, tranche);
+      vm.stopPrank();
+      delta = int256(amount);
+    } else if (action == 3) {
+      vm.prank(owner);
+      cdo.updateAccounting();
+      ERC20 tranche = ERC20(cdo.AATranche());
+      uint256 shares = tranche.balanceOf(alice) / 2;
+      delta = -int256(shares * cdo.lastNAVAA() / tranche.totalSupply());
+      vm.prank(alice);
+      tranche.transfer(borrower, shares);
+      vm.prank(borrower);
+      cdo.writeOffDeposit(shares, address(tranche));
+    } else {
+      uint256 priceBefore = cdo.virtualPrice(cdo.AATranche());
+      uint256 amount = (seed % 1000 + 1) * UNIT;
+      deal(address(asset), bob, amount * 2, true);
+      vm.startPrank(bob);
+      asset.transfer(address(cdo), amount);
+      asset.transfer(address(strategy), amount);
+      vm.stopPrank();
+      assertEq(cdo.virtualPrice(cdo.AATranche()), priceBefore, "raw donations do not enter virtual price");
+    }
+  }
+
+  /// @notice Receipt holders cannot donate strategy tokens or call the CDO-only minting entrypoints.
+  function test_unsettledInterestCannotEnterThroughStrategyEntrypoints() public {
+    address tranche = cdo.AATranche();
+    vm.prank(alice);
+    cdo.requestWithdraw(100e18, tranche);
+    assertGt(strategy.balanceOf(alice), 0, "user owns real receipt tokens");
+    vm.startPrank(alice);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.transfer(address(cdo), 1);
+    strategy.approve(bob, 1);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.mintStrategyTokens(1);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.deposit(1);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.burnStrategyTokens(1);
+    vm.stopPrank();
+    vm.prank(bob);
+    vm.expectRevert(NotAllowed.selector);
+    strategy.transferFrom(alice, address(cdo), 1);
+  }
+
+  /// @notice Recovery is a deliberate exception: above-par backing can be minted while active fees are waived.
+  function test_defaultRecoveryIncreasesBackingOutsideSuccessfulSettlement() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    _start();
+    uint256 epoch = strategy.epochNumber();
+    uint256 backing = strategy.balanceOf(address(cdo));
+    vm.warp(cdo.epochEndDate());
+    // No borrower payment occurs, so the epoch defaults without minting its interest.
+    vm.prank(manager);
+    cdo.stopEpoch(0, 0);
+    assertTrue(cdo.defaulted());
+    assertEq(strategy.balanceOf(address(cdo)), backing);
+    assertEq(cdo.unclaimedFees(), 10 * UNIT, "only management fees before recovery");
+    deal(address(asset), bob, 1200 * UNIT, true);
+    vm.prank(bob);
+    asset.approve(address(strategy), 1200 * UNIT);
+    vm.prank(manager);
+    cdo.finalizeDefault(1200 * UNIT, bob);
+    assertEq(strategy.epochNumber(), epoch, "no successful epoch settlement");
+    assertGt(strategy.balanceOf(address(cdo)), backing, "recovery minted additional backing");
+    assertApproxEqAbs(cdo.lastNAVAA(), 1200 * UNIT, 1);
+    assertEq(cdo.fee(), 0, "recovery disables performance fees");
+    assertEq(cdo.unclaimedFees(), 0, "recovery waives accrued fees");
+  }
+
+  /// @notice Allocating management expenses early must not increase the performance-fee base.
+  function testFuzz_epochPerformanceFeeCheckpoints(uint8 checkpoints, bool pendingOnly, bool minted) public {
+    checkpoints = uint8(bound(checkpoints, 0, 3));
+    vm.startPrank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    cdo.setIsInterestMinted(minted);
+    vm.stopPrank();
+    _start();
+    uint256 start = block.timestamp;
+    for (uint256 i; i < checkpoints; i++) {
+      vm.warp(start + (i + 1) * 365 days / (uint256(checkpoints) + 1));
+      vm.startPrank(owner);
+      cdo.setFeeParams(owner, 10000, 0, 1000);
+      if (!pendingOnly) cdo.updateAccounting();
+      vm.stopPrank();
+    }
+    _assertEpochFeeSettlement(0, minted);
+  }
+
+  /// @notice Positive interest below, equal to, or above all epoch expenses uses a clamped fee base.
+  function test_epochPerformanceFeeThresholdAfterCheckpoint() public {
+    uint256[4] memory rates = [uint256(0), 0.7e18, 0.9975e18, 10e18];
+    for (uint256 i; i < rates.length; i++) {
+      _deploy(false, 100000, 1000 * UNIT, 0);
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 10000, 0, 1000);
+      vm.prank(manager);
+      strategy.setAprs(rates[i], rates[i]);
+      _start();
+      vm.warp(block.timestamp + 182.5 days);
+      vm.prank(owner);
+      cdo.updateAccounting();
+      _assertEpochFeeSettlement(0, false);
+    }
+  }
+
+  /// @notice A new deposit pays only its marginal performance fee when prior expenses absorb existing yield.
+  function test_epochPerformanceFeeMidDepositCrossesThreshold() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 2000);
+    vm.prank(manager);
+    strategy.setAprs(1e18, 1e18);
+    _start();
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 0);
+    deal(address(asset), bob, 1000 * UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), 1000 * UNIT);
+    uint256 shares = cdo.depositDuringEpoch(1000 * UNIT, cdo.AATranche());
+    vm.stopPrank();
+    assertEq(shares, 1004.5e18);
+    _assertEpochFeeSettlement(0, false);
+    uint256 supply = ERC20(cdo.AATranche()).totalSupply();
+    assertApproxEqAbs(shares * cdo.lastNAVAA() / supply, 1004500000, 1, "entrant net entitlement");
+    assertApproxEqAbs((supply - shares) * cdo.lastNAVAA() / supply, 1000 * UNIT, 1, "incumbent net entitlement");
+  }
+
+  /// @notice Recalling principal with the close sentinel charges the same fees as normal settlement.
+  function test_epochPerformanceFeeClosingMatchesNormalStop() public {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    _start();
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    vm.warp(cdo.epochEndDate());
+    uint256 snapshot = vm.snapshot();
+    _assertEpochFeeSettlement(0, false);
+    uint256 totalFees = asset.balanceOf(owner);
+    uint256 aaNAV = cdo.lastNAVAA();
+    uint256 bbNAV = cdo.lastNAVBB();
+    vm.revertTo(snapshot);
+    deal(address(asset), borrower, 1000000 * UNIT, true);
+    vm.prank(borrower);
+    asset.approve(address(cdo), type(uint256).max);
+    vm.prank(manager);
+    cdo.stopEpoch(0, 1);
+    assertEq(asset.balanceOf(owner), totalFees);
+    assertEq(cdo.lastNAVAA(), aaNAV);
+    assertEq(cdo.lastNAVBB(), bbNAV);
+    assertEq(cdo.unclaimedFees(), 0);
+  }
+
+  /// @notice Prior unpaid and buffer-booked fees are excluded by the opening snapshot exactly once.
+  function test_epochPerformanceFeeCarriedFeesAndOpeningCheckpoint() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    vm.prank(manager);
+    strategy.setAprs(0, 0);
+    _start();
+    _assertEpochFeeSettlement(0, false);
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    assertEq(cdo.pendingManagementFees(), 4950000);
+    uint256 openingFees = cdo.unclaimedFees();
+    _start();
+    assertEq(cdo.pendingManagementFees(), 0, "opening fees must already be allocated");
+    assertEq(cdo.lastNAVAA(), 985050000);
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    _assertEpochFeeSettlement(openingFees, false);
+  }
+
+  /// @notice Starting the epoch allocates buffer fees identically with or without a prior setter checkpoint.
+  function test_epochPerformanceFeeOpeningCheckpointBookingOrder() public {
+    for (uint256 mode; mode < 2; mode++) {
+      _deploy(false, 100000, 1000 * UNIT, 0);
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 10000, 0, 1000);
+      vm.warp(block.timestamp + 182.5 days);
+      if (mode != 0) {
+        vm.prank(owner);
+        cdo.setFeeParams(owner, 10000, 0, 1000);
+      }
+      _start();
+      assertEq(cdo.openingUnclaimedFees(), 5 * UNIT);
+      assertEq(cdo.pendingManagementFees(), 0);
+      assertEq(cdo.lastNAVAA(), 995 * UNIT);
+      _assertEpochFeeSettlement(5 * UNIT, false);
+      assertEq(asset.balanceOf(owner), 23905000);
+      assertEq(cdo.lastNAVAA(), 1075595000);
+    }
+  }
+
+  /// @notice Fixed receipt fees neither inflate nor reduce the active pool's performance-fee base.
+  function testFuzz_epochPerformanceFeeWithPendingReceipts(bool minted) public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.startPrank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    cdo.setIsInterestMinted(minted);
+    vm.stopPrank();
+    vm.startPrank(alice);
+    cdo.requestWithdraw(100e18, cdo.AATranche());
+    vm.stopPrank();
+    assertEq(cdo.pendingWithdrawFees(), 1900000);
+    uint256 receipt = strategy.withdrawsRequests(alice);
+    _start();
+    vm.warp(block.timestamp + 182.5 days);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    _assertEpochFeeSettlement(0, minted);
+    assertEq(strategy.withdrawsRequests(alice), receipt, "fixed receipt changed");
+    vm.prank(alice);
+    cdo.claimWithdrawRequest();
+    assertEq(asset.balanceOf(alice), receipt);
+  }
+
+  /// @notice Write-offs retain incurred expenses even after discounted entries or a complete LP exit.
+  function testFuzz_epochPerformanceFeeAfterWriteOff(bool minted, bool exitAll, bool withDeposit) public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.startPrank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    cdo.setIsInterestMinted(minted);
+    vm.stopPrank();
+    _start();
+    vm.warp(block.timestamp + 91.25 days);
+    if (withDeposit) {
+      deal(address(asset), bob, 500 * UNIT, true);
+      vm.startPrank(bob);
+      asset.approve(address(cdo), 500 * UNIT);
+      cdo.depositDuringEpoch(500 * UNIT, cdo.AATranche());
+      vm.stopPrank();
+    }
+    vm.warp(cdo.epochEndDate() - 182.5 days);
+    ERC20 tranche = ERC20(cdo.AATranche());
+    uint256 shares = tranche.balanceOf(alice);
+    vm.prank(alice);
+    tranche.transfer(borrower, exitAll ? shares : shares / 2);
+    if (exitAll) {
+      vm.startPrank(address(1));
+      tranche.transfer(borrower, tranche.balanceOf(address(1)));
+      vm.stopPrank();
+      vm.startPrank(bob);
+      tranche.transfer(borrower, tranche.balanceOf(bob));
+      vm.stopPrank();
+    }
+    vm.startPrank(borrower);
+    cdo.writeOffDeposit(tranche.balanceOf(borrower), address(tranche));
+    vm.stopPrank();
+    assertGt(cdo.unclaimedFees(), 0, "write-off waived incurred management fees");
+    _assertEpochFeeSettlement(0, minted);
+  }
+
+  /// @notice A last-lender write-off leaves locked minimum shares, and carried fees stay separate next epoch.
+  function test_epochPerformanceFeeAfterLastLenderWriteOff() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    _start();
+    vm.warp(block.timestamp + 182.5 days);
+    ERC20 tranche = ERC20(cdo.AATranche());
+    uint256 shares = tranche.balanceOf(alice);
+    vm.prank(alice);
+    tranche.transfer(borrower, shares);
+    vm.prank(borrower);
+    cdo.writeOffDeposit(shares, address(tranche));
+    // The locked minimum-liquidity shares cannot be transferred by the exiting lender.
+    assertGt(cdo.lastNAVAA(), 0, "locked shares retain NAV");
+    _assertEpochFeeSettlement(0, false);
+    uint256 openingFees = cdo.unclaimedFees();
+    _start();
+    _assertEpochFeeSettlement(openingFees, false);
+  }
+
+  /// @notice Compare independent fee totals, tranche NAV and projected prices against funded settlement.
+  /// @param openingFees Fees carried into the epoch, already allocated to saved NAV.
+  /// @param minted Whether the fee receiver is paid with AA shares instead of cash.
+  function _assertEpochFeeSettlement(uint256 openingFees, bool minted) internal {
+    vm.warp(cdo.epochEndDate());
+    vm.startPrank(owner);
+    cdo.setFeeParams(owner, cdo.fee(), 0, cdo.managementFee());
+    vm.stopPrank();
+    uint256 management = cdo.unclaimedFees() - openingFees;
+    // Ordinary flows reconcile backing with saved NAV; only unallocated fees remain between them.
+    assertEq(cdo.getContractValue() + cdo.pendingManagementFees(), cdo.lastNAVAA() + cdo.lastNAVBB(), "ordinary NAV reconciliation");
+    uint256 interest = cdo.expectedEpochInterest() - cdo.pendingWithdrawFees();
+    uint256 performance = interest > management ? (interest - management) * cdo.fee() / 100000 : 0;
+    uint256 totalFees = openingFees + management + performance + cdo.pendingWithdrawFees();
+    uint256 finalNAV = cdo.lastNAVAA() + cdo.lastNAVBB() == 0 ? 0 : cdo.getContractValue() + interest - performance;
+    uint256 paidBefore = asset.balanceOf(owner);
+    IdleCreditVaultImpliedPrice helper = new IdleCreditVaultImpliedPrice();
+    uint256 aaPrice = helper.impliedVirtualPrice(cdo.AATranche());
+    uint256 bbPrice = helper.impliedVirtualPrice(cdo.BBTranche());
+    _stop(0);
+    assertFalse(cdo.defaulted());
+    assertEq(cdo.pendingManagementFees(), 0);
+    assertApproxEqAbs(cdo.lastNAVAA() + cdo.lastNAVBB(), finalNAV + (minted ? totalFees : 0), 1, "settled NAV");
+    if (minted) {
+      uint256 feeValue = ERC20(cdo.AATranche()).balanceOf(owner) * cdo.lastNAVAA() / ERC20(cdo.AATranche()).totalSupply();
+      assertApproxEqAbs(feeValue, totalFees, 1, "minted fees");
+      assertEq(cdo.unclaimedFees(), 0);
+    } else {
+      assertEq(asset.balanceOf(owner) - paidBefore + cdo.unclaimedFees(), totalFees, "cash and carried fees");
+    }
+    // An empty tranche has no incumbent price to preserve if fee shares initialize it.
+    if (aaPrice != 0) assertEq(cdo.priceAA(), aaPrice, "AA implied price");
+    assertEq(cdo.priceBB(), bbPrice, "BB implied price");
+  }
+
+  /// @notice Fees greater than interest are still expenses shared by NAV and carried if unpaid.
+  function test_lowInterestDoesNotChargeAllFeesToBB() public {
+    _start();
+    _stop(5 * UNIT);
+    assertEq(cdo.lastNAVAA(), 895050000);
+    assertEq(cdo.lastNAVBB(), 99950000);
+    assertEq(cdo.unclaimedFees(), 5 * UNIT);
+    assertFalse(cdo.defaulted());
+  }
+
+  /// @notice Equal total interest and fees still redistribute NAV because their allocation rules differ.
+  function test_zeroNetGainStillAllocatesManagementFeesByNAV() public {
+    _start();
+    _stop(10 * UNIT);
+    assertEq(cdo.lastNAVAA(), 899100000);
+    assertEq(cdo.lastNAVBB(), 100900000);
+    assertEq(cdo.unclaimedFees(), 0);
+  }
+
+  /// @notice A one-microdollar BB position cannot block AA deposits merely by being smaller than total fees.
+  function test_tinyBBDoesNotBlockMidEpochAADeposit() public {
+    _deploy(false, 100000, 1000 * UNIT, 1);
+    _start();
+    vm.warp(block.timestamp + 1 days);
+    deal(address(asset), bob, 1000 * UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), 1000 * UNIT);
+    cdo.depositDuringEpoch(1000 * UNIT, cdo.AATranche());
+    vm.stopPrank();
+    assertGt(cdo.unclaimedFees(), 1);
+    assertEq(cdo.lastNAVBB(), 1);
+    assertFalse(cdo.defaulted());
+    _stop(0);
+    assertFalse(cdo.defaulted());
+  }
+
+  /// @notice Splitting fees by NAV leaves genuine investment losses junior-first.
+  function test_creditLossRemainsBBFirstAfterManagementFee() public {
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 1000);
+    vm.prank(address(cdo));
+    strategy.burnStrategyTokens(20 * UNIT);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVAA(), 891 * UNIT);
+    assertEq(cdo.lastNAVBB(), 79 * UNIT);
+  }
+
+  /// @notice Credit losses that exhaust BB still reject ordinary deposits and support forced shutdown.
+  function test_realCreditLossStillTriggersDefaultGuard() public {
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 1000);
+    vm.prank(address(cdo));
+    strategy.burnStrategyTokens(99 * UNIT);
+    deal(address(asset), bob, UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), UNIT);
+    vm.expectRevert(IdleCDOCreditVault.Default.selector);
+    cdo.depositAA(UNIT);
+    vm.stopPrank();
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVAA(), 891 * UNIT);
+    assertEq(cdo.lastNAVBB(), 0);
+    assertTrue(cdo.paused());
+  }
+
+  /// @notice Even the maximum fee leaves positive BB NAV one second before the 50-year boundary.
+  function test_managementFeesLeaveBBDustBeforeFiftyYears() public {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 2000);
+    vm.warp(block.timestamp + 50 * 365 days - 1);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    // The final underlying unit belongs to BB because its fee share rounds down.
+    assertEq(cdo.unclaimedFees(), 1000 * UNIT - 1);
+    assertEq(cdo.lastNAVBB(), 1);
+    assertEq(cdo.getContractValue(), 1);
+    assertFalse(cdo.paused());
+  }
+
+  /// @notice Fee-only checkpoints shrink the next accrual base without resetting saved tranche NAV.
+  function test_feeCheckpointsDelayFeeOnlyWipe() public {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 2000);
+    for (uint256 i; i < 2; i++) {
+      vm.warp(block.timestamp + 25 * 365 days);
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 0, 0, 2000);
+    }
+    // The two 25-year periods charge $500 and then $250, not $500 twice.
+    assertEq(cdo.pendingManagementFees(), 750 * UNIT);
+    assertEq(cdo.lastNAVAA() + cdo.lastNAVBB(), 1000 * UNIT);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVBB(), 25 * UNIT);
+    assertFalse(cdo.paused());
+  }
+
+  /// @notice Rate changes and fee-only checkpoints cannot accelerate a BB wipe before 50 years.
+  /// @param elapsed Total time since saved NAV was last reconciled.
+  /// @param checkpoint Time of an intermediate fee-only checkpoint.
+  /// @param firstRate Annual fee before the checkpoint, capped at 2%.
+  /// @param secondRate Annual fee after the checkpoint, capped at 2%.
+  function testFuzz_feeCheckpointsCannotWipeBBBeforeFiftyYears(uint256 elapsed, uint256 checkpoint, uint256 firstRate, uint256 secondRate) public {
+    elapsed = bound(elapsed, 1, 50 * 365 days - 1);
+    checkpoint = bound(checkpoint, 0, elapsed);
+    firstRate = bound(firstRate, 0, 2000);
+    secondRate = bound(secondRate, 0, 2000);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, firstRate);
+    vm.warp(block.timestamp + checkpoint);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, secondRate);
+    vm.warp(block.timestamp + elapsed - checkpoint);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, secondRate);
+
+    uint256 pendingFee = cdo.pendingManagementFees();
+    uint256 savedNAV = cdo.lastNAVAA() + cdo.lastNAVBB();
+    assertLe(pendingFee, savedNAV * 2000 * elapsed / 3153600000000);
+    assertLt(pendingFee, savedNAV);
+    vm.prank(owner);
+    cdo.updateAccounting();
+    assertEq(cdo.lastNAVBB(), 100 * UNIT - pendingFee / 10);
+    assertGt(cdo.lastNAVBB(), 0);
+    assertFalse(cdo.paused());
+  }
+
+  /// @notice An extreme fee-only BB wipe rejects a normal stop and requires explicit shutdown.
+  function test_extremeManagementFeeWipeTriggersDefaultGuard() public {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 2000);
+    _start();
+    // At the maximum 2% annual rate, 50 uncheckpointed years consume the saved NAV.
+    // Two units of interest round BB's AYS gain to zero while leaving AA positive.
+    vm.warp(block.timestamp + 50 * 365 days);
+    deal(address(asset), borrower, 2, true);
+    vm.prank(borrower);
+    asset.approve(address(cdo), 2);
+    vm.prank(manager);
+    vm.expectRevert(IdleCDOCreditVault.Default.selector);
+    cdo.stopEpoch(0, 2);
+    assertEq(cdo.lastNAVAA(), 900 * UNIT);
+    assertEq(cdo.lastNAVBB(), 100 * UNIT);
+    assertEq(cdo.pendingManagementFees(), 0);
+
+    // The existing emergency flow can crystallize the wipe and keeps operations closed.
+    vm.prank(owner);
+    cdo.emergencyShutdown();
+    vm.prank(manager);
+    cdo.stopEpoch(0, 2);
+    assertEq(cdo.lastNAVAA(), 2);
+    assertEq(cdo.lastNAVBB(), 0);
+    assertFalse(cdo.isEpochRunning());
+    assertTrue(cdo.paused());
+    assertFalse(cdo.allowAAWithdrawRequest());
+    assertFalse(cdo.allowBBWithdrawRequest());
+  }
+
+  /// @notice Both mid-epoch tranche deposits receive their prorated yield less their own NAV-based fee.
+  /// @param senior Whether to deposit into AA rather than BB.
+  /// @param withPerf Whether a 10% performance fee is also enabled.
+  function testFuzz_midEpochDepositSettlesProjectedEntitlement(bool senior, bool withPerf) public {
+    _deploy(false, 80000, 1000 * UNIT, 100 * UNIT);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, withPerf ? 10000 : 0, 0, 1000);
+    _start();
+    vm.warp(block.timestamp + 182.5 days);
+    address tranche = senior ? cdo.AATranche() : cdo.BBTranche();
+    deal(address(asset), bob, 1000 * UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), 1000 * UNIT);
+    uint256 minted = cdo.depositDuringEpoch(1000 * UNIT, tranche);
+    vm.stopPrank();
+    _assertEpochFeeSettlement(0, false);
+    uint256 endingValue = minted * cdo.tranchePrice(tranche) / 1e18;
+    // Half-year deposit: $50 gross yield, a $5 management fee, and $4.50 additional
+    // performance fee when enabled. Only yield and performance fees follow the 80/20 split.
+    uint256 expected = senior ? (withPerf ? 1031400000 : 1035000000) : (withPerf ? 1004100000 : 1005000000);
+    uint256 trancheNav = senior ? cdo.lastNAVAA() : cdo.lastNAVBB();
+    uint256 entitlement = minted * trancheNav / ERC20(tranche).totalSupply();
+    assertApproxEqAbs(entitlement, expected, 2, "entrant entitlement changed at settlement");
+    // A six-decimal stored price rounds down before being multiplied by the holder's shares.
+    assertGe(entitlement, endingValue);
+    assertLe(entitlement - endingValue, minted / 1e18 + 1, "payout exceeds stored-price rounding bound");
+    assertEq(cdo.pendingManagementFees(), 0);
+  }
+
+  /// @notice Implied prices use the same NAV-based fee allocation as actual settlement.
+  function test_impliedPricesMatchBothTranchesAtSettlement() public {
+    IdleCreditVaultImpliedPrice helper = new IdleCreditVaultImpliedPrice();
+    _start();
+    vm.warp(cdo.epochEndDate());
+    uint256 aaPrice = helper.impliedVirtualPrice(cdo.AATranche());
+    uint256 bbPrice = helper.impliedVirtualPrice(cdo.BBTranche());
+    _stop(0);
+    assertEq(cdo.priceAA(), aaPrice);
+    assertEq(cdo.priceBB(), bbPrice);
+  }
+
+  /// @notice Fixed receipts charge no performance fee until projected interest exceeds management fees.
+  function test_withdrawFeesAroundInterestBoundary() public {
+    uint256[3] memory aprs = [uint256(0.5e18), 1e18, 1.5e18];
+    uint256[3] memory receipts = [uint256(99500000), 100000000, 100450000];
+    uint256[3] memory fees = [uint256(1000000), 1000000, 1050000];
+    for (uint256 i; i < aprs.length; i++) {
+      _deploy(false, 100000, 1000 * UNIT, 0);
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 10000, 0, 1000);
+      vm.prank(manager);
+      strategy.setAprs(aprs[i], aprs[i]);
+      // A $100 request owes $1 management fee; gross interest is $0.50, $1 or $1.50.
+      address tranche = cdo.AATranche();
+      vm.roll(block.number + 1);
+      vm.prank(alice);
+      assertEq(cdo.requestWithdraw(100e18, tranche), receipts[i]);
+      assertEq(cdo.pendingWithdrawFees(), fees[i]);
+      assertEq(strategy.pendingWithdraws(), receipts[i]);
+      _start();
+      _stop(0);
+      vm.prank(alice);
+      cdo.claimWithdrawRequest();
+      assertEq(asset.balanceOf(alice), receipts[i], "claim changed the fixed receipt");
+    }
+  }
+
+  /// @notice Negative net interest reduces the entrant's payout without diluting existing AA holders.
+  function test_midEpochDepositWhenManagementFeesExceedInterest() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 2000);
+    vm.prank(manager);
+    strategy.setAprs(0.5e18, 0.5e18);
+    _start();
+    uint256 openingSupply = ERC20(cdo.AATranche()).totalSupply();
+    vm.warp(block.timestamp + 182.5 days);
+    deal(address(asset), bob, 1000 * UNIT, true);
+    vm.startPrank(bob);
+    asset.approve(address(cdo), 1000 * UNIT);
+    uint256 minted = cdo.depositDuringEpoch(1000 * UNIT, cdo.AATranche());
+    vm.stopPrank();
+    _stop(0);
+    uint256 finalSupply = ERC20(cdo.AATranche()).totalSupply();
+    // Existing capital pays $10 at entry and $9.90 at stop, earning $5 interest.
+    // The entrant earns $2.50 and pays $10. Neither position owes a performance fee.
+    assertEq(cdo.lastNAVAA(), 1977600000);
+    assertApproxEqAbs(openingSupply * cdo.lastNAVAA() / finalSupply, 985100000, 1);
+    assertApproxEqAbs(minted * cdo.lastNAVAA() / finalSupply, 992500000, 1);
+    assertEq(asset.balanceOf(owner) + cdo.unclaimedFees(), 29900000);
+    assertEq(cdo.pendingManagementFees(), 0);
+  }
+
+  /// @notice Implied prices fall below principal when management expenses exceed the epoch's yield.
+  function test_impliedPricesIncludeManagementFeesAboveInterest() public {
+    IdleCreditVaultImpliedPrice helper = new IdleCreditVaultImpliedPrice();
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 10000, 0, 1000);
+    vm.prank(manager);
+    strategy.setAprs(0.5e18, 0.5e18);
+    _start();
+    vm.warp(cdo.epochEndDate());
+    // AYS splits $5 yield 81/19, while the $10 fee follows the 90/10 capital ratio.
+    uint256 aaPrice = helper.impliedVirtualPrice(cdo.AATranche());
+    uint256 bbPrice = helper.impliedVirtualPrice(cdo.BBTranche());
+    assertEq(aaPrice, 994500);
+    assertEq(bbPrice, 999500);
+    _stop(0);
+    assertEq(cdo.priceAA(), aaPrice);
+    assertEq(cdo.priceBB(), bbPrice);
+    assertFalse(cdo.defaulted());
+  }
+
+  /// @notice Booked expenses affect projections exactly once whether allocated mid-epoch or at settlement.
+  function test_impliedPricesMatchSettlementAcrossFeeCheckpointTiming() public {
+    IdleCreditVaultImpliedPrice helper = new IdleCreditVaultImpliedPrice();
+    for (uint256 mode; mode < 2; mode++) {
+      _deploy(true, 100000, 900 * UNIT, 100 * UNIT);
+      _start();
+      vm.warp(block.timestamp + 182.5 days);
+      vm.prank(owner);
+      cdo.setFeeParams(owner, 0, 0, 2000);
+      if (mode == 1) {
+        vm.prank(owner);
+        cdo.updateAccounting();
+      }
+      uint256 pendingFee = mode == 0 ? 5 * UNIT : 0;
+      assertEq(cdo.pendingManagementFees(), pendingFee);
+      vm.warp(cdo.epochEndDate());
+      uint256 aaPrice = helper.impliedVirtualPrice(cdo.AATranche());
+      uint256 bbPrice = helper.impliedVirtualPrice(cdo.BBTranche());
+      assertEq(cdo.pendingManagementFees(), pendingFee, "price view changed pending fees");
+      // The two half-years charge $5 and $9.95. The $14.95 expense follows NAV;
+      // the $100 interest follows AYS, regardless of when the first fee is allocated.
+      _stop(0);
+      assertEq(cdo.lastNAVAA(), 967545000);
+      assertEq(cdo.lastNAVBB(), 117505000);
+      assertEq(asset.balanceOf(owner), 14950000);
+      assertEq(cdo.priceAA(), aaPrice);
+      assertEq(cdo.priceBB(), bbPrice);
+      assertEq(cdo.pendingManagementFees(), 0);
+    }
+  }
+
+  /// @notice A plain upgrade preserves allocated unpaid fees and accrues elapsed fees on the next deposit.
+  function test_plainUpgradePreservesUnpaidAndElapsedFees() public {
+    ITransparentUpgradeableProxy proxy = ITransparentUpgradeableProxy(address(cdo));
+    address candidate = address(new IdleCDOEpochVariant());
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 1000);
+    // Emulate the legacy implementation, which had no fee-classification slot.
+    vm.store(address(cdo), bytes32(uint256(243)), bytes32(0));
+    assertEq(cdo.getContractValue(), 990 * UNIT);
+    assertEq(cdo.lastNAVAA() + cdo.lastNAVBB(), 1000 * UNIT);
+    // A normal legacy deposit accounts the previously booked fee BB-first.
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.lastNAVAA(), 1000 * UNIT);
+    assertEq(cdo.lastNAVBB(), 90 * UNIT);
+    uint256 checkpoint = cdo.latestHarvestBlock();
+    vm.warp(block.timestamp + 365 days);
+    // Read-only preflight passes with both unpaid and elapsed, unbooked fees.
+    assertEq(strategy.balanceOf(address(cdo)) - cdo.unclaimedFees(), cdo.lastNAVAA() + cdo.lastNAVBB());
+    proxyAdmin.upgrade(proxy, candidate);
+    assertEq(proxyAdmin.getProxyImplementation(proxy), candidate);
+    assertEq(cdo.lastNAVAA(), 1000 * UNIT);
+    assertEq(cdo.lastNAVBB(), 90 * UNIT);
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    assertEq(cdo.latestHarvestBlock(), checkpoint);
+    assertEq(cdo.pendingManagementFees(), 0);
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.lastNAVAA(), 1090 * UNIT);
+    assertEq(cdo.lastNAVBB(), 89100000);
+    assertEq(cdo.unclaimedFees(), 20900000);
+    assertEq(cdo.pendingManagementFees(), 0);
+  }
+
+  /// @notice An AA-only vault can upgrade with unallocated legacy fees because AA bears the whole expense.
+  function test_plainAAOnlyUpgradeAcceptsUnallocatedLegacyFees() public {
+    _deploy(false, 100000, 1000 * UNIT, 0);
+    vm.warp(block.timestamp + 365 days);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, 1000);
+    // Emulate booked legacy fees without the new classification slot or a NAV checkpoint.
+    vm.store(address(cdo), bytes32(uint256(243)), bytes32(0));
+    assertEq(cdo.lastNAVAA(), 1000 * UNIT);
+    assertEq(cdo.lastNAVBB(), 0);
+    assertEq(cdo.getContractValue(), 990 * UNIT);
+    proxyAdmin.upgrade(ITransparentUpgradeableProxy(address(cdo)), address(new IdleCDOEpochVariant()));
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    assertEq(cdo.pendingManagementFees(), 0);
+    assertEq(cdo.virtualPrice(cdo.AATranche()), 990000);
+    // The next ordinary deposit charges the old $10 to AA once and adds $100 of principal.
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.lastNAVAA(), 1090 * UNIT);
+    assertEq(cdo.lastNAVBB(), 0);
+    assertEq(cdo.unclaimedFees(), 10 * UNIT);
+    assertEq(cdo.pendingManagementFees(), 0);
+    assertFalse(cdo.paused());
+    assertFalse(cdo.defaulted());
+  }
+
+  /// @notice A routine epoch stop leaves the vault ready for a plain upgrade with no migration action.
+  function test_plainUpgradeAfterNormalEpochStop() public {
+    _start();
+    _stop(0);
+    uint256 aaBefore = cdo.lastNAVAA();
+    uint256 bbBefore = cdo.lastNAVBB();
+    uint256 checkpoint = cdo.latestHarvestBlock();
+    vm.warp(block.timestamp + 365 days);
+    assertEq(strategy.balanceOf(address(cdo)) - cdo.unclaimedFees(), aaBefore + bbBefore);
+    address candidate = address(new IdleCDOEpochVariant());
+    proxyAdmin.upgrade(ITransparentUpgradeableProxy(address(cdo)), candidate);
+    assertEq(cdo.lastNAVAA(), aaBefore);
+    assertEq(cdo.lastNAVBB(), bbBefore);
+    assertEq(cdo.latestHarvestBlock(), checkpoint);
+    assertEq(cdo.pendingManagementFees(), 0);
+    _deposit(bob, true, 100 * UNIT);
+    assertEq(cdo.lastNAVAA(), 1062280000);
+    assertEq(cdo.lastNAVBB(), 116820000);
+    assertEq(cdo.unclaimedFees(), 10900000);
+    assertEq(cdo.pendingManagementFees(), 0);
+  }
+
+  /// @notice Across capital ratios and durations, fees conserve NAV and cannot use BB as a loss buffer.
+  /// @param aaAmount Initial senior capital in underlying units.
+  /// @param bbAmount Initial junior capital in underlying units.
+  /// @param rate Annual management fee in FULL_ALLOC units.
+  /// @param elapsed Time until an ordinary deposit checkpoints fees.
+  function testFuzz_managementExpensesConserveNAV(uint256 aaAmount, uint256 bbAmount, uint256 rate, uint256 elapsed) public {
+    aaAmount = bound(aaAmount, 1, 1000000 * UNIT);
+    bbAmount = bound(bbAmount, 1, 1000000 * UNIT);
+    rate = bound(rate, 1, 2000);
+    elapsed = bound(elapsed, 1, 365 days);
+    _deploy(false, 100000, aaAmount, bbAmount);
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 0, rate);
+    uint256 expectedFee = (aaAmount + bbAmount) * rate * elapsed / 3153600000000;
+    uint256 bbFee = expectedFee * bbAmount / (aaAmount + bbAmount);
+    vm.warp(block.timestamp + elapsed);
+    // AA pays the final rounding unit, which can consume a one-unit AA position.
+    // Deposit into BB so the test isolates fee allocation from minting into a wiped class.
+    _deposit(bob, false, 1);
+    assertEq(cdo.lastNAVAA(), aaAmount - (expectedFee - bbFee));
+    assertEq(cdo.lastNAVBB(), bbAmount - bbFee + 1);
+    assertEq(cdo.unclaimedFees(), expectedFee);
+    assertEq(cdo.getContractValue(), cdo.lastNAVAA() + cdo.lastNAVBB());
+    assertFalse(cdo.paused());
   }
 }
