@@ -1850,7 +1850,9 @@ const baseCDOs = {
     orchestrator: '0x77F0B2d4A916Bf0aaD0336A8B206B7E7E6f51293',
 
     // morpho
-    morphoOracle: '0xd3efd95dfec364e954435ac6e71d831407eb242b'
+    morphoOracle: '0xd3efd95dfec364e954435ac6e71d831407eb242b',
+    // morpho discounted oracle
+    morphoDiscountedOracle: '0xC4A8e81366d800DDB92F4EC58b8C38EF9eb4f864'
   },
 };
 
