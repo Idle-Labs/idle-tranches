@@ -632,6 +632,7 @@ contract IdleCreditVaultFactoryTest is Test {
   }
 
   function testDeployCreditVaultWiresAncillaryContracts() external {
+    vm.createSelectFork("mainnet", 26290277);
     vm.warp(100 days);
 
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
@@ -852,6 +853,7 @@ contract IdleCreditVaultFactoryTest is Test {
   }
 
   function testDeployCreditVaultDeploysKeyringWithNormalQueue() external {
+    vm.createSelectFork("mainnet", 26290277);
     vm.warp(100 days);
 
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
@@ -1012,6 +1014,7 @@ contract IdleCreditVaultFactoryTest is Test {
   }
 
   function testWriteOffEscrowFeeReceiverCanBeUpdatedByOwner() external {
+    vm.createSelectFork("mainnet", 26290277);
     vm.warp(100 days);
 
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);

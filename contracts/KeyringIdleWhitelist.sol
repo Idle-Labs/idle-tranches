@@ -16,9 +16,14 @@ interface Keyring {
   function checkCredential(uint256 policyId, address entity) external view returns (bool);
 }
 
+interface IChainalysisSanctionsList {
+  /// @notice Returns whether Chainalysis lists the given entity as sanctioned.
+  function isSanctioned(address entity) external view returns (bool);
+}
+
 /**
  * @title KeyringIdleWhitelist
- * @dev A contract to manage an administrative whitelist, allowing entities to bypass Keyring credential checks.
+ * @dev Screens entities before allowing the administrative whitelist or Keyring credentials.
  */
 contract KeyringIdleWhitelist {
   /* ERRORS */
@@ -29,7 +34,16 @@ contract KeyringIdleWhitelist {
    */
   error NotAdmin(address account);
 
+  /// @notice No Chainalysis oracle has been configured for this network.
+  error UnsupportedSanctionsNetwork(uint256 chainId);
+
+  /// @notice The Chainalysis oracle reverted during the deployment probe.
+  error SanctionsOracleUnavailable();
+
   /* EVENTS */
+
+  /// @notice Emitted when an entity's blacklist status changes.
+  event Blacklist(address indexed entity, bool indexed status);
 
   /**
    * @notice Emitted when an entity's whitelist status is updated.
@@ -47,6 +61,9 @@ contract KeyringIdleWhitelist {
 
   /* STATE VARIABLES */
 
+  /// @notice Chainalysis sanctions oracle on Ethereum and Arbitrum One.
+  address private constant CHAINALYSIS_SANCTIONS = 0x40C57923924B5c5c5455c48D93317139ADDaC8fb;
+
   /// @notice The address of the deployed Keyring contract.
   address public keyring;
 
@@ -56,13 +73,24 @@ contract KeyringIdleWhitelist {
   /// @notice Mapping to track whitelist status of entities (true if whitelisted, false otherwise).
   mapping(address => bool) public whitelist;
 
+  /// @notice Tracks entities denied by the local admin.
+  mapping(address => bool) public blacklist;
+
   /* CONSTRUCTOR */
 
   /**
-   * @notice Initializes the contract with the Keyring contract address and sets the deployer as the admin.
+   * @notice Deploys the adapter on a supported network with a responsive Chainalysis oracle.
    * @param keyring_ The address of the Keyring contract.
+   * @param admin_ The initial administrator.
    */
   constructor(address keyring_, address admin_) {
+    if (block.chainid != 1 && block.chainid != 42161) {
+      revert UnsupportedSanctionsNetwork(block.chainid);
+    }
+    // A typed probe requires the configured oracle to return a valid bool at deployment.
+    try IChainalysisSanctionsList(CHAINALYSIS_SANCTIONS).isSanctioned(address(0)) returns (bool) {} catch {
+      revert SanctionsOracleUnavailable();
+    }
     keyring = keyring_;
     admin = admin_;
   }
@@ -70,13 +98,59 @@ contract KeyringIdleWhitelist {
   /* FUNCTIONS */
 
   /**
-   * @notice Checks if an entity meets a policy's credentials or is whitelisted.
+   * @notice Checks whether an unblocked entity is whitelisted or meets a policy's credentials.
    * @param policyId The ID of the policy to check against.
    * @param entity The address of the entity being checked.
-   * @return bool True if the entity is whitelisted or meets the policy's credentials; otherwise, false.
+   * @return bool True if the entity passes screening and is whitelisted or meets the policy's credentials.
    */
   function checkCredential(uint256 policyId, address entity) external view returns(bool) {
+    if (_isBlocked(entity)) {
+      return false;
+    }
     return whitelist[entity] || Keyring(keyring).checkCredential(policyId, entity);
+  }
+
+  /**
+   * @notice Updates the local blacklist and clears the whitelist flag when blocking an entity.
+   * @param entity The address whose blacklist status is being updated.
+   * @param status True to blacklist the entity, false to remove it from the blacklist.
+   * @dev Only callable by the admin. Removing a blacklist entry does not restore an earlier whitelist grant.
+   */
+  function setBlacklistStatus(address entity, bool status) external {
+    if (msg.sender != admin) {
+      revert NotAdmin(msg.sender);
+    }
+    if (blacklist[entity] == status) {
+      return;
+    }
+    blacklist[entity] = status;
+    if (status) {
+      _setWhitelistStatus(entity, false);
+    }
+    emit Blacklist(entity, status);
+  }
+
+  /**
+   * @notice Clears the stored whitelist flag if Chainalysis currently lists the entity as sanctioned.
+   * @param entity The address to screen.
+   * @dev Anyone can submit this transaction. The read-only credential check denies sanctions immediately.
+   */
+  function syncSanctions(address entity) external {
+    if (whitelist[entity] && _isSanctioned(entity)) {
+      _setWhitelistStatus(entity, false);
+    }
+  }
+
+  /// @notice Screens against the local blacklist before querying Chainalysis.
+  /// @param entity The address to screen.
+  function _isBlocked(address entity) private view returns (bool) {
+    return blacklist[entity] || _isSanctioned(entity);
+  }
+
+  /// @notice Returns whether the Chainalysis oracle currently lists the entity as sanctioned.
+  /// @param entity The address to screen.
+  function _isSanctioned(address entity) private view returns (bool) {
+    return IChainalysisSanctionsList(CHAINALYSIS_SANCTIONS).isSanctioned(entity);
   }
 
   /**
@@ -97,12 +171,19 @@ contract KeyringIdleWhitelist {
    * @notice Sets or updates the whitelist status of a given entity.
    * @param entity The address of the entity whose whitelist status is to be updated.
    * @param status The new whitelist status (true to whitelist, false to remove from whitelist).
-   * @dev Only callable by the current admin. Emits a {Whitelist} event if status changes.
+   * @dev Only the admin can update grants. Positive grants require both screens to pass. Revocation skips screening.
    */
   function setWhitelistStatus(address entity, bool status) external {
     if (msg.sender != admin) {
       revert NotAdmin(msg.sender);
     }
+    _setWhitelistStatus(entity, status && !_isBlocked(entity));
+  }
+
+  /// @notice Stores a whitelist update and emits {Whitelist} only when the flag changes.
+  /// @param entity The address whose whitelist status is being updated.
+  /// @param status The new stored whitelist flag.
+  function _setWhitelistStatus(address entity, bool status) private {
     bool oldStatus = whitelist[entity];
     if (oldStatus == status) {
       return; // No change in status, so no event emission.
