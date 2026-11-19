@@ -1212,7 +1212,7 @@ contract TestProgrammableBorrowerCreditVault is Test {
     cdoEpoch.setIsInterestMinted(true);
 
     idleCDO.depositAA(amount);
-    // Request half, leaving ~5k available after reservation
+    // Request half the position before the facility sets aside its liquidity reserve.
     cdoEpoch.requestWithdraw(aaTranche.balanceOf(address(this)) / 2, address(aaTranche));
     _startEpochAndCheckPrices(0);
 
@@ -1779,6 +1779,31 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     assertApproxEqAbs(asset.balanceOf(lender), 495e18 + pendingInterest, 495, "wrong withdrawal payout");
   }
 
+  /// @notice Consecutive draws leave both pending principal and the 3% reserve available for a monthly settlement.
+  function testFullDrawFundsMonthlyWithdrawalInterest() external {
+    vm.prank(owner);
+    cdo.setFeeParams(owner, 0, 100000, 0);
+    vm.startPrank(manager);
+    facility.setBorrowerApr(36e18);
+    cdo.setEpochParams(30 days, 0);
+    vm.stopPrank();
+    _start(100e18);
+    assertEq(facility.availableToBorrow(), 870e18, "100 pending plus 30 reserve");
+
+    vm.startPrank(borrower);
+    facility.borrow(400e18);
+    assertEq(facility.availableToBorrow(), 470e18, "reserve shrank after first draw");
+    facility.borrow(0);
+    vm.stopPrank();
+    assertEq(facility.availableToBorrow(), 0, "reserve still borrowable");
+
+    _stop(false);
+    uint256 interest = 870e18 * 36 * uint256(30) / (100 * 365);
+    vm.prank(lender);
+    cdo.claimWithdrawRequest();
+    assertApproxEqAbs(asset.balanceOf(lender), 100e18 + interest / 10, 100, "withdrawal payout");
+  }
+
   /// @notice Active management fees continue to work when no withdrawals are pending.
   function test_noPendingWithdrawalsPreservesBacking() external {
     _start(0);
@@ -2012,7 +2037,7 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     _start(500e18);
     if (drawn) {
       vm.prank(borrower);
-      facility.borrow(tiny ? 10 : 500e18);
+      facility.borrow(tiny ? 10 : 400e18);
     } else {
       vault.addGain(tiny ? 1 : 100e18);
     }

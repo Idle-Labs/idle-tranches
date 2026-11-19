@@ -520,11 +520,12 @@ contract ProgrammableBorrowerAccountingInvariant is StdInvariant, Test {
     );
   }
 
-  /// @notice The borrowable liquidity should always equal total assets minus reserved withdraws.
+  /// @notice Draws leave pending withdrawals and 3% of facility assets available, rounded down.
   function invariant_availableToBorrowMatchesFreeAssets() external view {
     uint256 totalAssets = underlying.balanceOf(address(borrowerContract)) + vault.convertToAssets(borrowerContract.vaultSharesBalance());
-    uint256 reserved = borrowerContract.epochPendingWithdraws();
-    uint256 expectedAvailable = totalAssets <= reserved ? 0 : totalAssets - reserved;
+    uint256 principal = handler.modelBorrowerPrincipal();
+    uint256 reserved = handler.modelEpochPendingWithdraws() + (totalAssets + principal) * 3 / 100;
+    uint256 expectedAvailable = totalAssets > reserved ? totalAssets - reserved : 0;
     assertEq(borrowerContract.availableToBorrow(), expectedAvailable, "available to borrow mismatch");
   }
 
@@ -648,6 +649,38 @@ contract ProgrammableBorrowerIdleCashRegressionTest is Test {
     borrowerContract.repay(partialRepayment);
 
     assertEq(borrowerContract.totalInterestDueNow(), 0, "old idle cash should stay principal");
+  }
+
+  /// @notice Redeeming during the buffer preserves vault gains and losses exactly once, including across rotation.
+  /// @param change Gain or loss on the old vault in whole underlying tokens.
+  /// @param rotate Whether to redeem the remaining shares and switch vaults before the next epoch.
+  function testFuzzBufferRedemptionPreservesVaultPnL(int8 change, bool rotate) external {
+    _startEpoch(1_000e18);
+    vm.prank(idleCDO);
+    borrowerContract.onStopEpoch(0, false);
+
+    int256 delta = int256(change) * 1e18;
+    if (delta > 0) vault.addGain(uint256(delta));
+    if (delta < 0) vault.applyLoss(uint256(-delta));
+    borrowerContract.emergencyExitVault(500e18);
+    if (rotate) {
+      borrowerContract.emergencyExitVault(0);
+      borrowerContract.setVault(address(new MockInvariantVault(address(underlying))));
+    }
+
+    // New cash arriving between epochs is principal and must stay out of the old vault's return.
+    underlying.mint(address(borrowerContract), 10e18);
+    vm.prank(idleCDO);
+    borrowerContract.onStartEpoch(0);
+    assertEq(borrowerContract.bufferedVaultDelta(), delta, "buffer return");
+    assertEq(borrowerContract.totalInterestDueNow(), delta > 0 ? uint256(delta) : 0, "buffer gain");
+    assertEq(borrowerContract.vaultLoss(), delta < 0 ? uint256(-delta) : 0, "buffer loss");
+
+    vm.prank(idleCDO);
+    borrowerContract.onStopEpoch(0, false);
+    vm.prank(idleCDO);
+    borrowerContract.onStartEpoch(0);
+    assertEq(borrowerContract.bufferedVaultDelta(), 0, "buffer return counted twice");
   }
 
   /// @notice Buffer-accrued borrower interest repaid while inactive must remain pool-facing yield.
