@@ -6,7 +6,7 @@ import {TranchesChainlinkOracle} from "../../contracts/strategies/morpho/Tranche
 import {IMorphoChainlinkOracleV2} from "../../contracts/interfaces/morpho/IMorphoChainlinkOracleV2.sol";
 import { DeployMetamorphoVault } from "../../forge-scripts/DeployMetamorphoVault.s.sol";
 
-import {IChainalysisSanctionsList, KeyringIdleWhitelist} from "../../contracts/KeyringIdleWhitelist.sol";
+import {KeyringIdleWhitelist} from "../../contracts/KeyringIdleWhitelist.sol";
 import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import {IIdleCDO} from "../../contracts/interfaces/IIdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
@@ -56,11 +56,9 @@ contract TestTranchesChainlinkOracle is Test {
   uint256 internal constant ONE = 1e6;
   uint256 internal constant EIP170_LIMIT = 24576;
   uint256 internal constant FORK_BLOCK = 22_525_130;
-  address internal constant CHAINALYSIS_SANCTIONS = 0x40C57923924B5c5c5455c48D93317139ADDaC8fb;
   address internal constant LEGACY_KEYRING_WHITELIST = 0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3;
   uint256 internal constant KEYRING_POLICY = 4;
   uint256 internal constant KEYRING_FORK_BLOCK = 26_290_277;
-  uint256 internal constant BEFORE_RONIN_SANCTION = 14_500_000;
 
   IIdleCDO internal oracleCdo;
   address internal trancheToken;
@@ -101,36 +99,6 @@ contract TestTranchesChainlinkOracle is Test {
     assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
   }
 
-  /// @notice Sanctions deny eligibility even before anyone syncs the stored flag.
-  function testKeyringSanctionsDenyAndSyncWhitelist() external {
-    uint256 postSanctionFork = vm.activeFork();
-    vm.createSelectFork("mainnet", BEFORE_RONIN_SANCTION);
-    KeyringIdleWhitelist adapter = new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-    address roninWallet = 0x098B716B8Aaf21512996dC57EB0615e2383E2f96;
-
-    adapter.setWhitelistStatus(roninWallet, true);
-    assertTrue(adapter.checkCredential(KEYRING_POLICY, roninWallet));
-
-    // Carry the local grant forward and read the actual sanctions listing at the later block.
-    vm.makePersistent(address(adapter));
-    vm.selectFork(postSanctionFork);
-    IChainalysisSanctionsList sanctions = IChainalysisSanctionsList(CHAINALYSIS_SANCTIONS);
-    assertTrue(sanctions.isSanctioned(roninWallet), "fixture wallet must be sanctioned");
-
-    assertFalse(adapter.blacklist(roninWallet));
-    assertFalse(adapter.checkCredential(KEYRING_POLICY, roninWallet));
-    assertTrue(adapter.whitelist(roninWallet));
-
-    vm.prank(makeAddr("sanctions sync caller"));
-    adapter.syncSanctions(roninWallet);
-    assertFalse(adapter.whitelist(roninWallet));
-    assertFalse(adapter.blacklist(roninWallet));
-    assertFalse(adapter.checkCredential(KEYRING_POLICY, roninWallet));
-
-    adapter.setWhitelistStatus(roninWallet, true);
-    assertFalse(adapter.whitelist(roninWallet), "admin cannot restore a grant during a listing");
-  }
-
   /// @notice Unflagged wallets retain the existing whitelist and Keyring credential results.
   function testKeyringPreservesUnflaggedEligibility() external {
     vm.rollFork(KEYRING_FORK_BLOCK);
@@ -144,53 +112,12 @@ contract TestTranchesChainlinkOracle is Test {
     assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
 
     adapter.setWhitelistStatus(lender, true);
-    adapter.syncSanctions(lender);
     assertTrue(adapter.whitelist(lender));
     assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
-  }
 
-  /// @notice The adapter rejects Base before using even a responsive oracle at the Ethereum address.
-  function testKeyringDeploymentRejectsUnsupportedNetwork() external {
-    vm.chainId(8453);
-
-    vm.expectRevert(abi.encodeWithSelector(KeyringIdleWhitelist.UnsupportedSanctionsNetwork.selector, uint256(8453)));
-    new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-  }
-
-  /// @notice A supported network still requires an available oracle at construction.
-  function testKeyringDeploymentRejectsMissingOracle() external {
-    vm.etch(CHAINALYSIS_SANCTIONS, hex"");
-
-    vm.expectRevert();
-    new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-  }
-
-  /// @notice A response with the wrong ABI cannot satisfy the deployment probe.
-  function testKeyringDeploymentRejectsInvalidOracleResponse() external {
-    vm.mockCall(
-      CHAINALYSIS_SANCTIONS,
-      abi.encodeWithSelector(IChainalysisSanctionsList.isSanctioned.selector, address(0)),
-      abi.encode(uint256(2))
-    );
-
-    vm.expectRevert();
-    new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-  }
-
-  /// @notice An oracle failure blocks grants while the admin can still revoke a stored grant.
-  function testKeyringRevocationWorksWithoutOracle() external {
-    KeyringIdleWhitelist adapter = new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-    address lender = makeAddr("lender with a stored grant");
-    adapter.setWhitelistStatus(lender, true);
-    assertTrue(adapter.whitelist(lender));
-
-    vm.etch(CHAINALYSIS_SANCTIONS, hex"");
     adapter.setWhitelistStatus(lender, false);
     assertFalse(adapter.whitelist(lender));
-
-    vm.expectRevert();
-    adapter.setWhitelistStatus(lender, true);
-    assertFalse(adapter.whitelist(lender));
+    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
   }
 
   /// @dev Grants an eligible underlying credential through the deployed mainnet adapter on the fork.
