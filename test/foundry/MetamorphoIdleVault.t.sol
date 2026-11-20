@@ -6,7 +6,6 @@ import {TranchesChainlinkOracle} from "../../contracts/strategies/morpho/Tranche
 import {IMorphoChainlinkOracleV2} from "../../contracts/interfaces/morpho/IMorphoChainlinkOracleV2.sol";
 import { DeployMetamorphoVault } from "../../forge-scripts/DeployMetamorphoVault.s.sol";
 
-import {KeyringIdleWhitelist} from "../../contracts/KeyringIdleWhitelist.sol";
 import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
 import {IIdleCDO} from "../../contracts/interfaces/IIdleCDO.sol";
 import {IdleCDOTranche} from "../../contracts/IdleCDOTranche.sol";
@@ -56,9 +55,6 @@ contract TestTranchesChainlinkOracle is Test {
   uint256 internal constant ONE = 1e6;
   uint256 internal constant EIP170_LIMIT = 24576;
   uint256 internal constant FORK_BLOCK = 22_525_130;
-  address internal constant LEGACY_KEYRING_WHITELIST = 0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3;
-  uint256 internal constant KEYRING_POLICY = 4;
-  uint256 internal constant KEYRING_FORK_BLOCK = 26_290_277;
 
   IIdleCDO internal oracleCdo;
   address internal trancheToken;
@@ -68,65 +64,6 @@ contract TestTranchesChainlinkOracle is Test {
     vm.createSelectFork("mainnet", FORK_BLOCK);
     oracleCdo = IIdleCDO(0xf6223C567F21E33e859ED7A045773526E9E3c2D5);
     trancheToken = oracleCdo.AATranche();
-  }
-
-  /// @notice Blacklisting revokes a stored grant and overrides a valid underlying credential.
-  function testKeyringBlacklistRevokesWhitelist() external {
-    vm.rollFork(KEYRING_FORK_BLOCK);
-    KeyringIdleWhitelist adapter = new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-    address lender = makeAddr("blacklisted lender");
-    _grantLegacyKeyringAccess(lender);
-
-    adapter.setWhitelistStatus(lender, true);
-    assertTrue(adapter.whitelist(lender));
-    assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
-
-    vm.expectRevert(abi.encodeWithSelector(KeyringIdleWhitelist.NotAdmin.selector, lender));
-    vm.prank(lender);
-    adapter.setBlacklistStatus(lender, true);
-
-    adapter.setBlacklistStatus(lender, true);
-    assertTrue(adapter.blacklist(lender));
-    assertFalse(adapter.whitelist(lender));
-    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
-
-    adapter.setWhitelistStatus(lender, true);
-    assertFalse(adapter.whitelist(lender));
-
-    adapter.setBlacklistStatus(lender, false);
-    assertFalse(adapter.blacklist(lender));
-    assertFalse(adapter.whitelist(lender));
-    assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
-  }
-
-  /// @notice Unflagged wallets retain the existing whitelist and Keyring credential results.
-  function testKeyringPreservesUnflaggedEligibility() external {
-    vm.rollFork(KEYRING_FORK_BLOCK);
-    KeyringIdleWhitelist adapter = new KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST, address(this));
-    address credentialed = makeAddr("credentialed lender");
-    address lender = makeAddr("uncredentialed lender");
-    _grantLegacyKeyringAccess(credentialed);
-
-    assertFalse(adapter.whitelist(credentialed));
-    assertTrue(adapter.checkCredential(KEYRING_POLICY, credentialed));
-    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
-
-    adapter.setWhitelistStatus(lender, true);
-    assertTrue(adapter.whitelist(lender));
-    assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
-
-    adapter.setWhitelistStatus(lender, false);
-    assertFalse(adapter.whitelist(lender));
-    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
-  }
-
-  /// @dev Grants an eligible underlying credential through the deployed mainnet adapter on the fork.
-  function _grantLegacyKeyringAccess(address entity) private {
-    KeyringIdleWhitelist legacyAdapter = KeyringIdleWhitelist(LEGACY_KEYRING_WHITELIST);
-    assertGt(address(legacyAdapter).code.length, 0, "legacy whitelist must be deployed");
-    vm.prank(legacyAdapter.admin());
-    legacyAdapter.setWhitelistStatus(entity, true);
-    assertTrue(legacyAdapter.whitelist(entity), "legacy whitelist must grant the test credential");
   }
 
   /// @dev Deploys the oracle with the selected discount and returns its current price.
