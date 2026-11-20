@@ -698,13 +698,13 @@ contract TestIdleCDOEpochQueue is Test {
     queue.processWithdrawRequests();
 
     // process withdraw requests, claims will be done in epoch #3
+    uint256 pendingClaims = (tranches1 + tranches2) * cdoEpoch.lastNAVAA() / tranche.totalSupply();
     vm.prank(manager);
     queue.processWithdrawRequests();
     
     // tranche tokens are burned in exchange for strategyTokens
     assertEq(tranche.balanceOf(address(queue)), 0, 'tranche balance of queue contract is wrong');
     uint256 tranchePrice = cdoEpoch.virtualPrice(address(tranche));
-    uint256 pendingClaims = (tranches1 + tranches2) * tranchePrice / ONE_TRANCHE;
     // This credit vault has apr set to 0 so on withdraw requests the interest is not accrued during the waiting epoch. Deposits however got some interest at stopEpoch
     assertEq(IERC20Detailed(address(strategy)).balanceOf(address(queue)), pendingClaims, 'strategy token balance of queue contract is wrong');
     assertApproxEqAbs(queue.epochWithdrawPrice(2), tranchePrice, 1, 'pending withdraw is wrong');
@@ -815,12 +815,12 @@ contract TestIdleCDOEpochQueue is Test {
     vm.warp(cdoEpoch.epochEndDate() + 1);
 
     uint256 pendingBasis = strategy.pendingWithdraws();
-    uint256 activeBasis = cdoEpoch.getContractValue() + cdoEpoch.expectedEpochInterest();
+    // Explicit-loss stops waive the expected active interest before splitting the loss.
+    uint256 activeBasis = cdoEpoch.getContractValue();
     uint256 totalBasis = activeBasis + pendingBasis;
     uint256 totalRecovery = totalBasis / 100_000;
     uint256 lossAmount = totalBasis - totalRecovery;
-    (uint256 pendingToFund, ) = strategy.previewLossAdjustedWithdrawFunds(lossAmount);
-    uint256 fundsToRepay = cdoEpoch.expectedEpochInterest() + pendingToFund;
+    uint256 fundsToRepay = pendingBasis - lossAmount * pendingBasis / totalBasis;
     deal(address(underlying), strategy.borrower(), fundsToRepay, true);
     vm.prank(strategy.borrower());
     underlying.approve(address(cdoEpoch), fundsToRepay);
@@ -978,11 +978,10 @@ contract TestIdleCDOEpochQueue is Test {
     uint256 epoch = strategy.epochNumber();
 
     // process withdraw requests, claims will be available at epoch #4
+    uint256 pendingClaims = (tranches1 + tranches2) * cdoEpoch.lastNAVAA() / tranche.totalSupply();
     vm.prank(manager);
     queue.processWithdrawRequests();
 
-    uint256 tranchePrice = cdoEpoch.virtualPrice(address(tranche));
-    uint256 pendingClaims = (tranches1 + tranches2) * tranchePrice / ONE_TRANCHE;
     // epoch number for claim is #2 as instant withdrawal claims will be available in current epoch
     assertEq(queue.epochPendingClaims(2), pendingClaims, 'pending claims is wrong');
 
@@ -1292,11 +1291,10 @@ contract TestIdleCDOEpochQueue is Test {
     uint256 epoch = strategy.epochNumber();
 
     // process withdraw requests, claims will be available at epoch #4
+    uint256 pendingClaims = (tranches1 + tranches2) * cdoEpoch.lastNAVAA() / tranche.totalSupply();
     vm.prank(manager);
     queue.processWithdrawRequests();
 
-    uint256 tranchePrice = cdoEpoch.virtualPrice(address(tranche));
-    uint256 pendingClaims = (tranches1 + tranches2) * tranchePrice / ONE_TRANCHE;
     // epoch number for claim is #2 as instant withdrawal claims will be available in current epoch
     assertEq(queue.epochPendingClaims(2), pendingClaims, 'pending claims is wrong');
 

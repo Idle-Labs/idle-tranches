@@ -83,7 +83,7 @@ contract IdleCDOEpochVariantPrefunded is IdleCDOEpochVariant {
     // Mint tranche shares at the post-stop price and mirror the same amount in strategy tokens,
     // so the queue can later distribute shares to users at the epoch price.
     uint256 _prefundedMinted = _mintSharesAtCurrPrice(_prefunded, _queue, AATranche);
-    IdleCreditVault(strategy).mintStrategyTokens(_prefunded);
+    _mintStrategyTokens(_prefunded);
     // Finalize the prefunded epoch in the queue by storing the epoch price and clearing state.
     _epochQueue.processPrefundedDeposits(_prefundedMinted);
   }

@@ -3,6 +3,8 @@ pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IdleCDOCreditVault} from "./IdleCDOCreditVault.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOEpochVariantPrefunded} from "./IdleCDOEpochVariantPrefunded.sol";
@@ -13,14 +15,30 @@ import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {ProgrammableBorrower} from "./strategies/idle/ProgrammableBorrower.sol";
 
 contract IdleCreditVaultFactory is Initializable {
+  using SafeERC20 for IERC20;
+
   uint256 public constant FULL_ALLOC = 100_000;
-  uint256 public constant DEFAULT_FEE_SPLIT = 50_000;
-  uint256 public constant MIN_PERFORMANCE_FEE = 5_000;
-  uint256 public constant MIN_MANAGEMENT_FEE = 500;
+  uint256 public constant DEFAULT_FEE_SPLIT = 0;
+  /// @notice Deployment allowance that is never decremented.
+  uint256 public constant UNLIMITED_DEPLOYMENTS = type(uint256).max;
+  /// @notice Pareto deployer wallet authorized to manage deployment permissions alongside treasury.
+  address public constant DEPLOYER = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
 
   address public treasury;
+  /// @notice Share of collected fees sent to the vault's configured feeReceiver (100000 = 100%).
+  /// @dev The remainder goes to the vault owner, initially treasury. The feeReceiver need not be the manager.
   uint256 public feeSplit;
   address public proxyAdmin;
+  /// @notice Wallets that use a deployment allowance in either deployment flow.
+  mapping(address => bool) public whitelist;
+  uint256 private minPerformanceFee;
+  uint256 private minManagementFee;
+  // Unconfigured proxies use the default floors after a plain implementation upgrade.
+  bool private minimumFeesSet;
+  /// @notice Remaining deployments shared by both flows; UNLIMITED_DEPLOYMENTS never decreases.
+  mapping(address => uint256) public remainingDeployments;
+  /// @notice USDC charged on each unlisted deployment, in six-decimal units. Zero disables paid access.
+  uint256 public deploymentFee;
 
   event CreditVaultDeployed(
     address creditVault,
@@ -31,10 +49,17 @@ contract IdleCreditVaultFactory is Initializable {
     address writeOffEscrow
   );
 
+  event DeploymentFeeSet(uint256 fee);
+
   error AmountTooHigh();
   error FeesTooLow();
   error Is0();
   error OnlyTreasury();
+  error OnlyTreasuryOrDeployer();
+  error NotWhitelisted();
+  error DeploymentLimitReached();
+  error UnsupportedDeploymentFeeNetwork();
+  error LengthMismatch();
   error WriteOffUnsupported();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -47,6 +72,10 @@ contract IdleCreditVaultFactory is Initializable {
     treasury = _treasury;
     proxyAdmin = _proxyAdmin;
     _setFeeSplit(DEFAULT_FEE_SPLIT);
+    whitelist[_treasury] = true;
+    whitelist[DEPLOYER] = true;
+    remainingDeployments[_treasury] = UNLIMITED_DEPLOYMENTS;
+    remainingDeployments[DEPLOYER] = UNLIMITED_DEPLOYMENTS;
   }
 
   struct StrategyData {
@@ -94,6 +123,7 @@ contract IdleCreditVaultFactory is Initializable {
     StrategyData memory strategyData,
     AncillaryParams memory ancillaryParams
   ) external {
+    _authorizeDeployment();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
     if (manager == address(0)) revert Is0();
@@ -129,6 +159,7 @@ contract IdleCreditVaultFactory is Initializable {
     ProgrammableBorrowerParams memory programmableBorrowerParams,
     AncillaryParams memory ancillaryParams
   ) external {
+    _authorizeDeployment();
     if (ancillaryParams.writeOffImplementation != address(0)) revert WriteOffUnsupported();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
@@ -306,10 +337,81 @@ contract IdleCreditVaultFactory is Initializable {
     strategy.setWhitelistedCDO(address(cv));
   }
 
-  function _checkMinimumFees(CreditVaultParams memory cvParams) internal pure {
-    if (cvParams.fees < MIN_PERFORMANCE_FEE && cvParams.managementFee < MIN_MANAGEMENT_FEE) revert FeesTooLow();
+  /// @notice Require at least one fee to meet its configured minimum.
+  function _checkMinimumFees(CreditVaultParams memory cvParams) internal view {
+    if (cvParams.fees < MIN_PERFORMANCE_FEE() && cvParams.managementFee < MIN_MANAGEMENT_FEE()) revert FeesTooLow();
   }
 
+  /// @notice Effective minimum performance fee, with 100000 representing 100%.
+  /// @dev Preserves the legacy getter and defaults to 5% until treasury configures the floors.
+  function MIN_PERFORMANCE_FEE() public view returns (uint256) {
+    return minimumFeesSet ? minPerformanceFee : 5_000;
+  }
+
+  /// @notice Effective minimum annual management fee, with 100000 representing 100%.
+  /// @dev Preserves the legacy getter and defaults to 0.2% until treasury configures the floors.
+  function MIN_MANAGEMENT_FEE() public view returns (uint256) {
+    return minimumFeesSet ? minManagementFee : 200;
+  }
+
+  /// @notice Update the deployment fee floors; only treasury may call this function.
+  /// @dev Either floor suffices, so setting either to zero permits deployments with both fees zero.
+  /// @param performanceFee Minimum performance fee, capped at the vault maximum of 20%.
+  /// @param managementFee Minimum annual management fee, capped at the vault maximum of 2%.
+  function setMinimumFees(uint256 performanceFee, uint256 managementFee) external {
+    if (msg.sender != treasury) revert OnlyTreasury();
+    if (performanceFee > 20_000 || managementFee > 2_000) revert AmountTooHigh();
+    minPerformanceFee = performanceFee;
+    minManagementFee = managementFee;
+    minimumFeesSet = true;
+  }
+
+  /// @notice Set remaining deployment allowances and whitelist status for multiple wallets.
+  /// @dev Only treasury or the Pareto deployer may call this. Values replace remaining allowances, not add to them.
+  /// @param wallets Wallets whose deployment permissions are updated.
+  /// @param allowances Remaining deployments per wallet; zero removes the wallet from the whitelist.
+  function setDeploymentAllowances(address[] calldata wallets, uint256[] calldata allowances) external {
+    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
+    if (wallets.length != allowances.length) revert LengthMismatch();
+    for (uint256 i = 0; i < wallets.length; i++) {
+      remainingDeployments[wallets[i]] = allowances[i];
+      whitelist[wallets[i]] = allowances[i] != 0;
+    }
+  }
+
+  /// @notice Set the USDC fee for unlisted callers. Only treasury may call this function.
+  /// @param fee USDC in six-decimal units. Set to zero to disable paid deployments.
+  function setDeploymentFee(uint256 fee) external {
+    if (msg.sender != treasury) revert OnlyTreasury();
+    if (fee != 0 && address(deploymentFeeToken()) == address(0)) revert UnsupportedDeploymentFeeNetwork();
+    deploymentFee = fee;
+    emit DeploymentFeeSet(fee);
+  }
+
+  /// @notice Return native USDC on supported factory networks, or zero on other networks.
+  function deploymentFeeToken() public view returns (IERC20) {
+    if (block.chainid == 1) return IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    if (block.chainid == 8453) return IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
+    if (block.chainid == 42161) return IERC20(0xaf88d065e77c8cC2239327C5EDb3A432268e5831);
+    return IERC20(address(0));
+  }
+
+  /// @notice Consume a whitelisted caller's quota or collect one USDC fee from an unlisted caller.
+  /// @dev Both flows authorize once. A reverted deployment rolls back quota consumption and payment.
+  function _authorizeDeployment() internal {
+    if (!whitelist[msg.sender]) {
+      uint256 fee = deploymentFee;
+      if (fee == 0) revert NotWhitelisted();
+      deploymentFeeToken().safeTransferFrom(msg.sender, treasury, fee);
+      return;
+    }
+    uint256 remaining = remainingDeployments[msg.sender];
+    if (remaining == 0) revert DeploymentLimitReached();
+    if (remaining != UNLIMITED_DEPLOYMENTS) remainingDeployments[msg.sender] = remaining - 1;
+  }
+
+  /// @notice Set the fee receiver's share for future vault deployments; only treasury may call this.
+  /// @param _feeSplit Share sent to feeReceiver; e.g. 70000 sends 70% to feeReceiver and 30% to the vault owner.
   function setFeeSplit(uint256 _feeSplit) external {
     if (msg.sender != treasury) revert OnlyTreasury();
     _setFeeSplit(_feeSplit);
