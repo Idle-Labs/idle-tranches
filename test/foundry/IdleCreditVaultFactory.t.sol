@@ -3,6 +3,7 @@ pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ITransparentUpgradeableProxy, TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
@@ -135,6 +136,13 @@ contract IdleCreditVaultFactoryTest is Test {
   uint256 internal constant DEFAULT_FACTORY_FEE_SPLIT = 0;
   uint256 internal constant CDO_SLOT_GOVERNANCE_RECOVERY_FUND = 202;
   uint256 internal constant CDO_SLOT_GUARDIAN = 208;
+  uint256 internal constant DEPLOYMENT_FEE = 5_000e6;
+  IERC20 internal constant MAINNET_FEE_USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+  IERC20 internal constant BASE_FEE_USDC = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
+  IERC20 internal constant ARBITRUM_FEE_USDC = IERC20(0xaf88d065e77c8cC2239327C5EDb3A432268e5831);
+  address internal constant MAINNET_FEE_TREASURY = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
+  address internal constant BASE_FEE_TREASURY = 0xFDbB4d606C199F091143BD604C85c191a526fbd0;
+  address internal constant ARBITRUM_FEE_TREASURY = 0xF40d482D7fc94C30b256Dc7E722033bae68EcF90;
 
   struct AncillaryDeployment {
     address cv;
@@ -152,6 +160,7 @@ contract IdleCreditVaultFactoryTest is Test {
   address internal realBorrower = makeAddr("realBorrower");
   address internal proxyAdmin = makeAddr("proxyAdmin");
   address internal factoryProxyAdmin = makeAddr("factoryProxyAdmin");
+  address internal feePayer = makeAddr("factoryFeePayer");
 
   /// @notice Treasury and the Pareto deployer can independently grant and revoke deployment access.
   function testWhitelistAdminsCanGrantAndRevokeAccess() external {
@@ -1299,5 +1308,235 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(programmableBorrower.manager(), manager, "programmable borrower manager");
     assertEq(programmableBorrower.borrower(), realBorrower, "real borrower");
     assertEq(programmableBorrower.borrowerApr(), 365e18, "borrower apr");
+  }
+
+  /// @notice Standard and revolving deployments each charge the same unlisted wallet one fee.
+  function testFactoryChargesEachPaidDeployment() external {
+    vm.createSelectFork("mainnet", 26290277);
+    IdleCreditVaultFactory factory = _upgradeFactoryForFeeTest(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
+    IERC20 usdc = MAINNET_FEE_USDC;
+    address recipient = MAINNET_FEE_TREASURY;
+    assertEq(factory.treasury(), recipient);
+    assertEq(address(factory.deploymentFeeToken()), address(usdc));
+    vm.prank(recipient);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+
+    (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
+      _factoryFeeTestParams(usdc);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    IdleCreditVaultFactory.ProgrammableBorrowerParams memory borrowerParams = IdleCreditVaultFactory.ProgrammableBorrowerParams({
+      implementation: deployCode("ProgrammableBorrower.sol:ProgrammableBorrower"),
+      vault: 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB,
+      borrower: makeAddr("revolvingFeeTestBorrower"),
+      borrowerApr: 12e18
+    });
+
+    deal(address(usdc), feePayer, 2 * DEPLOYMENT_FEE, true);
+    uint256 treasuryBalance = usdc.balanceOf(recipient);
+    uint256 factoryBalance = usdc.balanceOf(address(factory));
+    vm.startPrank(feePayer);
+    usdc.approve(address(factory), DEPLOYMENT_FEE);
+    vm.recordLogs();
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    address standardVault = _assertRecordedVaultDeployment().cv;
+    assertEq(usdc.balanceOf(feePayer), DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance + DEPLOYMENT_FEE);
+    assertEq(usdc.allowance(feePayer, address(factory)), 0);
+
+    vm.expectRevert();
+    factory.deployRevolvingCreditVault(cvParams, strategyData, borrowerParams, ancillaryParams);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance + DEPLOYMENT_FEE);
+    usdc.approve(address(factory), DEPLOYMENT_FEE);
+    vm.recordLogs();
+    factory.deployRevolvingCreditVault(cvParams, strategyData, borrowerParams, ancillaryParams);
+    vm.stopPrank();
+    AncillaryDeployment memory revolving = _assertRecordedVaultDeployment();
+    assertTrue(revolving.cv != standardVault, "distinct vaults");
+    assertGt(revolving.programmableBorrower.code.length, 0, "programmable borrower deployed");
+    assertEq(ProgrammableBorrower(revolving.programmableBorrower).idleCDO(), revolving.cv);
+    assertEq(usdc.balanceOf(feePayer), 0);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance + 2 * DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(address(factory)), factoryBalance);
+    assertEq(usdc.allowance(feePayer, address(factory)), 0);
+    assertFalse(factory.whitelist(feePayer));
+    assertEq(factory.remainingDeployments(feePayer), 0);
+  }
+
+  /// @notice Base fees go to Base treasury, roll back on failure, and use the latest treasury quote.
+  function testFactoryPaidDeploymentRollbackAndFeeChangeOnBase() external {
+    vm.createSelectFork("base", 53194953);
+    IdleCreditVaultFactory factory = _upgradeFactoryForFeeTest(0x4220714A44EAF70810AB8742a8875FAcEe2De004);
+    IERC20 usdc = BASE_FEE_USDC;
+    address recipient = BASE_FEE_TREASURY;
+    assertEq(factory.treasury(), recipient);
+    assertEq(address(factory.deploymentFeeToken()), address(usdc));
+    vm.prank(recipient);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+
+    uint256 updatedFee = DEPLOYMENT_FEE + 1_000e6;
+    address protocolDeployer = factory.DEPLOYER();
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasury.selector);
+    vm.prank(protocolDeployer);
+    factory.setDeploymentFee(updatedFee);
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasury.selector);
+    vm.prank(feePayer);
+    factory.setDeploymentFee(updatedFee);
+    assertEq(factory.deploymentFee(), DEPLOYMENT_FEE);
+
+    (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
+      _factoryFeeTestParams(usdc);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    uint256 treasuryBalance = usdc.balanceOf(recipient);
+    deal(address(usdc), feePayer, DEPLOYMENT_FEE - 1, true);
+    vm.startPrank(feePayer);
+    usdc.approve(address(factory), DEPLOYMENT_FEE);
+    vm.expectRevert();
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.stopPrank();
+    assertEq(usdc.balanceOf(feePayer), DEPLOYMENT_FEE - 1);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance);
+
+    // The zero fee receiver reverts during vault configuration, after fee collection and proxy creation.
+    deal(address(usdc), feePayer, DEPLOYMENT_FEE, true);
+    cvParams.feeReceiver = address(0);
+    vm.expectRevert(IdleCreditVaultFactory.Is0.selector);
+    vm.prank(feePayer);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    assertEq(usdc.balanceOf(feePayer), DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance);
+    assertEq(usdc.allowance(feePayer, address(factory)), DEPLOYMENT_FEE);
+
+    vm.prank(recipient);
+    factory.setDeploymentFee(updatedFee);
+    cvParams.feeReceiver = feePayer;
+    deal(address(usdc), feePayer, updatedFee, true);
+    vm.startPrank(feePayer);
+    vm.expectRevert();
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    usdc.approve(address(factory), updatedFee);
+    vm.recordLogs();
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.stopPrank();
+    _assertRecordedVaultDeployment();
+    assertEq(usdc.balanceOf(feePayer), 0);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance + updatedFee);
+  }
+
+  /// @notice Paid access is opt-in and leaves the existing whitelist quota and fee exemption intact.
+  function testFactoryPaidAccessPreservesWhitelistQuota() external {
+    vm.createSelectFork("mainnet", 26290277);
+    IdleCreditVaultFactory factory = _upgradeFactoryForFeeTest(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
+    address recipient = MAINNET_FEE_TREASURY;
+    IERC20 usdc = MAINNET_FEE_USDC;
+    assertEq(factory.deploymentFee(), 0);
+    (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
+      _factoryFeeTestParams(usdc);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    deal(address(usdc), feePayer, DEPLOYMENT_FEE, true);
+    vm.startPrank(feePayer);
+    usdc.approve(address(factory), DEPLOYMENT_FEE);
+    vm.expectRevert(IdleCreditVaultFactory.NotWhitelisted.selector);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.stopPrank();
+
+    vm.prank(recipient);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+    _setDeploymentAllowance(factory, recipient, feePayer, 1);
+    uint256 treasuryBalance = usdc.balanceOf(recipient);
+
+    vm.startPrank(feePayer);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.expectRevert(IdleCreditVaultFactory.DeploymentLimitReached.selector);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.stopPrank();
+    assertEq(factory.remainingDeployments(feePayer), 0);
+    assertEq(usdc.balanceOf(feePayer), DEPLOYMENT_FEE);
+    assertEq(usdc.allowance(feePayer, address(factory)), DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance);
+
+    vm.prank(recipient);
+    factory.setDeploymentFee(0);
+    assertEq(factory.deploymentFee(), 0);
+  }
+
+  /// @notice A paid deployment on Arbitrum One transfers native USDC to the registered treasury.
+  function testArbitrumFactoryPaidDeployment() external {
+    vm.createSelectFork("arbitrum");
+    assertEq(block.chainid, 42161, "Arbitrum One fork");
+    IdleCreditVaultFactory factory = _upgradeFactoryForFeeTest(0xbe73A30E9B9aE208Dfe615889bb4eff32a0e9208);
+    IERC20 usdc = ARBITRUM_FEE_USDC;
+    address recipient = ARBITRUM_FEE_TREASURY;
+    assertEq(factory.treasury(), recipient);
+    assertEq(address(factory.deploymentFeeToken()), address(usdc));
+    assertFalse(factory.whitelist(feePayer));
+    vm.prank(recipient);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+
+    (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
+      _factoryFeeTestParams(usdc);
+    // Use the maximum valid performance fee so the live factory's configured floor cannot affect this test.
+    cvParams.fees = 20_000;
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    deal(address(usdc), feePayer, 2 * DEPLOYMENT_FEE, true);
+    uint256 treasuryBalance = usdc.balanceOf(recipient);
+    uint256 factoryBalance = usdc.balanceOf(address(factory));
+
+    vm.startPrank(feePayer);
+    usdc.approve(address(factory), DEPLOYMENT_FEE);
+    vm.recordLogs();
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    vm.stopPrank();
+
+    _assertRecordedVaultDeployment();
+    assertEq(usdc.balanceOf(feePayer), DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(recipient), treasuryBalance + DEPLOYMENT_FEE);
+    assertEq(usdc.balanceOf(address(factory)), factoryBalance);
+    assertEq(usdc.allowance(feePayer, address(factory)), 0);
+  }
+
+  /// @notice An unsupported chain has no deployment fee token and rejects fee activation by treasury.
+  function testFactoryRejectsPaidAccessOnUnsupportedNetwork() external {
+    vm.chainId(31337);
+    IdleCreditVaultFactory factory = _deployFactory();
+    assertEq(address(factory.deploymentFeeToken()), address(0));
+    vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
+    vm.prank(owner);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFee(), 0);
+  }
+
+  /// @dev Check that a successful call emitted exactly one deployment event for a vault with code.
+  function _assertRecordedVaultDeployment() internal returns (AncillaryDeployment memory deployment) {
+    Vm.Log[] memory entries = vm.getRecordedLogs();
+    assertEq(_countEvent(entries, CREDIT_VAULT_DEPLOYED), 1, "single deployment event");
+    deployment = _findDeployment(entries);
+    assertGt(deployment.cv.code.length, 0, "vault deployed");
+  }
+
+  /// @dev Rehearse a plain upgrade via the live ProxyAdmin and check the freshly compiled factory runtime size.
+  function _upgradeFactoryForFeeTest(address factoryAddress) internal returns (IdleCreditVaultFactory factory) {
+    ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(factoryAddress, EIP1967_ADMIN_SLOT)))));
+    address implementation = deployCode("IdleCreditVaultFactory.sol:IdleCreditVaultFactory");
+    assertLt(implementation.code.length, 24_576, "factory EIP-170 runtime size");
+    vm.prank(admin.owner());
+    admin.upgrade(ITransparentUpgradeableProxy(factoryAddress), implementation);
+    factory = IdleCreditVaultFactory(factoryAddress);
+  }
+
+  /// @dev Deploy real vault and strategy implementations to exercise the current factory's full configuration path.
+  function _factoryFeeTestParams(IERC20 usdc) internal returns (
+    IdleCreditVaultFactory.CreditVaultParams memory cvParams,
+    IdleCreditVaultFactory.StrategyData memory strategyData
+  ) {
+    cvParams.implementation = deployCode("IdleCDOEpochVariant.sol:IdleCDOEpochVariant");
+    cvParams.underlying = address(usdc);
+    cvParams.epochDuration = 7 days;
+    cvParams.bufferPeriod = 1 days;
+    cvParams.feeReceiver = feePayer;
+    cvParams.fees = 5_000;
+    strategyData.implementation = deployCode("IdleCreditVault.sol:IdleCreditVault");
+    strategyData.manager = makeAddr("factoryFeeTestManager");
+    strategyData.borrower = makeAddr("factoryFeeTestBorrower");
+    strategyData.borrowerName = "Factory Fee Test";
   }
 }
