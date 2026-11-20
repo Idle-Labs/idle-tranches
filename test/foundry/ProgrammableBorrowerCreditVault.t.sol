@@ -1923,6 +1923,9 @@ contract ProgrammableBorrowerManagementFeeTest is Test {
     vault.addGain(gain);
     vm.warp(cdo.epochEndDate());
     uint256 projectedPrice = priceHelper.impliedVirtualPrice(address(aa));
+    // Settlement skims raw underlying before splitting interest between active LPs and pending receipts.
+    asset.mint(address(cdo), 1e18);
+    assertEq(priceHelper.impliedVirtualPrice(address(aa)), projectedPrice, "raw underlying changed the projection");
     _stop(false);
     _assertBacking();
     assertEq(projectedPrice, cdo.priceAA(), "implied price differs from settlement");
