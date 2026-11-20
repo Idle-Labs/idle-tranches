@@ -18,7 +18,7 @@ interface Keyring {
 
 /**
  * @title KeyringIdleWhitelist
- * @dev A contract to manage an administrative whitelist, allowing entities to bypass Keyring credential checks.
+ * @dev Denies locally blacklisted entities before checking the administrative whitelist or Keyring credentials.
  */
 contract KeyringIdleWhitelist {
   /* ERRORS */
@@ -30,6 +30,9 @@ contract KeyringIdleWhitelist {
   error NotAdmin(address account);
 
   /* EVENTS */
+
+  /// @notice Emitted when an entity's blacklist status changes.
+  event Blacklist(address indexed entity, bool indexed status);
 
   /**
    * @notice Emitted when an entity's whitelist status is updated.
@@ -56,11 +59,15 @@ contract KeyringIdleWhitelist {
   /// @notice Mapping to track whitelist status of entities (true if whitelisted, false otherwise).
   mapping(address => bool) public whitelist;
 
+  /// @notice Tracks entities denied by the local admin.
+  mapping(address => bool) public blacklist;
+
   /* CONSTRUCTOR */
 
   /**
-   * @notice Initializes the contract with the Keyring contract address and sets the deployer as the admin.
+   * @notice Initializes the adapter with the Keyring contract address and admin.
    * @param keyring_ The address of the Keyring contract.
+   * @param admin_ The initial administrator.
    */
   constructor(address keyring_, address admin_) {
     keyring = keyring_;
@@ -70,13 +77,28 @@ contract KeyringIdleWhitelist {
   /* FUNCTIONS */
 
   /**
-   * @notice Checks if an entity meets a policy's credentials or is whitelisted.
+   * @notice Checks whether an entity outside the local blacklist is whitelisted or meets a policy's credentials.
    * @param policyId The ID of the policy to check against.
    * @param entity The address of the entity being checked.
-   * @return bool True if the entity is whitelisted or meets the policy's credentials; otherwise, false.
+   * @return bool Whether the entity is eligible for the policy.
    */
   function checkCredential(uint256 policyId, address entity) external view returns(bool) {
-    return whitelist[entity] || Keyring(keyring).checkCredential(policyId, entity);
+    return !blacklist[entity] && (whitelist[entity] || Keyring(keyring).checkCredential(policyId, entity));
+  }
+
+  /**
+   * @notice Updates the local blacklist and clears the whitelist flag when blocking an entity.
+   * @param entity The address whose blacklist status is being updated.
+   * @param status True to blacklist the entity, false to remove it from the blacklist.
+   * @dev Only callable by the admin. Removing a blacklist entry does not restore an earlier whitelist grant.
+   */
+  function setBlacklistStatus(address entity, bool status) external {
+    if (msg.sender != admin) revert NotAdmin(msg.sender);
+    if (blacklist[entity] == status) return;
+
+    blacklist[entity] = status;
+    if (status) _setWhitelistStatus(entity, false);
+    emit Blacklist(entity, status);
   }
 
   /**
@@ -97,16 +119,18 @@ contract KeyringIdleWhitelist {
    * @notice Sets or updates the whitelist status of a given entity.
    * @param entity The address of the entity whose whitelist status is to be updated.
    * @param status The new whitelist status (true to whitelist, false to remove from whitelist).
-   * @dev Only callable by the current admin. Emits a {Whitelist} event if status changes.
+   * @dev Only the admin can update grants. Blacklisted entities always have a false whitelist flag.
    */
   function setWhitelistStatus(address entity, bool status) external {
-    if (msg.sender != admin) {
-      revert NotAdmin(msg.sender);
-    }
-    bool oldStatus = whitelist[entity];
-    if (oldStatus == status) {
-      return; // No change in status, so no event emission.
-    }
+    if (msg.sender != admin) revert NotAdmin(msg.sender);
+    _setWhitelistStatus(entity, status && !blacklist[entity]);
+  }
+
+  /// @notice Stores a whitelist update and emits {Whitelist} only when the flag changes.
+  /// @param entity The address whose whitelist status is being updated.
+  /// @param status The new stored whitelist flag.
+  function _setWhitelistStatus(address entity, bool status) private {
+    if (whitelist[entity] == status) return;
     whitelist[entity] = status;
     emit Whitelist(entity, status);
   }

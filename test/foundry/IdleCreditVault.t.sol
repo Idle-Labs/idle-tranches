@@ -17,6 +17,7 @@ import {IdleCDOEpochVariantPrefunded} from "../../contracts/IdleCDOEpochVariantP
 import {IdleCreditVaultImpliedPrice} from "../../contracts/IdleCreditVaultImpliedPrice.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import {IKeyring} from "../../contracts/interfaces/keyring/IKeyring.sol";
+import {KeyringIdleWhitelist} from "../../contracts/KeyringIdleWhitelist.sol";
 
 error NotAllowed();
 error NotAuthorized();
@@ -9375,5 +9376,63 @@ contract CreditVaultManagementFeeAllocationTest is Test {
     assertEq(cdo.unclaimedFees(), expectedFee);
     assertEq(cdo.getContractValue(), cdo.lastNAVAA() + cdo.lastNAVBB());
     assertFalse(cdo.paused());
+  }
+}
+
+contract TestKeyringIdleWhitelist is Test {
+  uint256 internal constant KEYRING_POLICY = 4;
+
+  /// @notice Blacklisting revokes a stored grant and overrides a valid underlying credential.
+  function testKeyringBlacklistRevokesWhitelist() external {
+    address credentialed = makeAddr("credentialed lender");
+    KeyringIdleWhitelist adapter = _deployAdapter(credentialed);
+    adapter.setWhitelistStatus(credentialed, true);
+    assertTrue(adapter.whitelist(credentialed));
+    assertTrue(adapter.checkCredential(KEYRING_POLICY, credentialed));
+
+    vm.expectRevert(abi.encodeWithSelector(KeyringIdleWhitelist.NotAdmin.selector, credentialed));
+    vm.prank(credentialed);
+    adapter.setBlacklistStatus(credentialed, true);
+
+    adapter.setBlacklistStatus(credentialed, true);
+    assertTrue(adapter.blacklist(credentialed));
+    assertFalse(adapter.whitelist(credentialed));
+    assertFalse(adapter.checkCredential(KEYRING_POLICY, credentialed));
+
+    adapter.setWhitelistStatus(credentialed, true);
+    assertFalse(adapter.whitelist(credentialed));
+
+    adapter.setBlacklistStatus(credentialed, false);
+    assertFalse(adapter.blacklist(credentialed));
+    assertFalse(adapter.whitelist(credentialed));
+    assertTrue(adapter.checkCredential(KEYRING_POLICY, credentialed));
+  }
+
+  /// @notice Unflagged wallets retain the existing whitelist and Keyring credential results.
+  function testKeyringPreservesUnflaggedEligibility() external {
+    address credentialed = makeAddr("credentialed lender");
+    KeyringIdleWhitelist adapter = _deployAdapter(credentialed);
+    address lender = makeAddr("uncredentialed lender");
+    assertFalse(adapter.whitelist(credentialed));
+    assertTrue(adapter.checkCredential(KEYRING_POLICY, credentialed));
+    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
+
+    adapter.setWhitelistStatus(lender, true);
+    assertTrue(adapter.whitelist(lender));
+    assertTrue(adapter.checkCredential(KEYRING_POLICY, lender));
+
+    adapter.setWhitelistStatus(lender, false);
+    assertFalse(adapter.whitelist(lender));
+    assertFalse(adapter.checkCredential(KEYRING_POLICY, lender));
+  }
+
+  /// @dev Selects the mainnet fork for this test and grants the lender access through the deployed whitelist.
+  /// @param credentialed The lender to authorize in the underlying whitelist.
+  function _deployAdapter(address credentialed) private returns (KeyringIdleWhitelist) {
+    vm.createSelectFork("mainnet", 26_290_277);
+    KeyringIdleWhitelist legacy = KeyringIdleWhitelist(0x6a6A91c7c7C05f9f6B8bC9F6e5eA231e460450e3);
+    vm.prank(legacy.admin());
+    legacy.setWhitelistStatus(credentialed, true);
+    return new KeyringIdleWhitelist(address(legacy), address(this));
   }
 }
