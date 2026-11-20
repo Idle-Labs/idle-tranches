@@ -83,10 +83,7 @@ contract KeyringIdleWhitelist {
    * @return bool Whether the entity is eligible for the policy.
    */
   function checkCredential(uint256 policyId, address entity) external view returns(bool) {
-    if (blacklist[entity]) {
-      return false;
-    }
-    return whitelist[entity] || Keyring(keyring).checkCredential(policyId, entity);
+    return !blacklist[entity] && (whitelist[entity] || Keyring(keyring).checkCredential(policyId, entity));
   }
 
   /**
@@ -96,16 +93,11 @@ contract KeyringIdleWhitelist {
    * @dev Only callable by the admin. Removing a blacklist entry does not restore an earlier whitelist grant.
    */
   function setBlacklistStatus(address entity, bool status) external {
-    if (msg.sender != admin) {
-      revert NotAdmin(msg.sender);
-    }
-    if (blacklist[entity] == status) {
-      return;
-    }
+    if (msg.sender != admin) revert NotAdmin(msg.sender);
+    if (blacklist[entity] == status) return;
+
     blacklist[entity] = status;
-    if (status) {
-      _setWhitelistStatus(entity, false);
-    }
+    if (status) _setWhitelistStatus(entity, false);
     emit Blacklist(entity, status);
   }
 
@@ -130,9 +122,7 @@ contract KeyringIdleWhitelist {
    * @dev Only the admin can update grants. Blacklisted entities always have a false whitelist flag.
    */
   function setWhitelistStatus(address entity, bool status) external {
-    if (msg.sender != admin) {
-      revert NotAdmin(msg.sender);
-    }
+    if (msg.sender != admin) revert NotAdmin(msg.sender);
     _setWhitelistStatus(entity, status && !blacklist[entity]);
   }
 
@@ -140,10 +130,7 @@ contract KeyringIdleWhitelist {
   /// @param entity The address whose whitelist status is being updated.
   /// @param status The new stored whitelist flag.
   function _setWhitelistStatus(address entity, bool status) private {
-    bool oldStatus = whitelist[entity];
-    if (oldStatus == status) {
-      return; // No change in status, so no event emission.
-    }
+    if (whitelist[entity] == status) return;
     whitelist[entity] = status;
     emit Whitelist(entity, status);
   }
