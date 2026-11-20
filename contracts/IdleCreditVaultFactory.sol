@@ -23,6 +23,8 @@ contract IdleCreditVaultFactory is Initializable {
   uint256 public constant UNLIMITED_DEPLOYMENTS = type(uint256).max;
   /// @notice Pareto deployer wallet authorized to manage deployment permissions alongside treasury.
   address public constant DEPLOYER = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
+  /// @notice Duration of one paid subscription month.
+  uint256 public constant SUBSCRIPTION_PERIOD = 30 days;
 
   address public treasury;
   /// @notice Share of collected fees sent to the vault's configured feeReceiver (100000 = 100%).
@@ -39,6 +41,11 @@ contract IdleCreditVaultFactory is Initializable {
   mapping(address => uint256) public remainingDeployments;
   /// @notice USDC charged on each unlisted deployment, in six-decimal units. Zero disables paid access.
   uint256 public deploymentFee;
+  /// @notice USDC charged per subscription month for each wallet, in six-decimal units.
+  /// @dev Unset and zero rates are equivalent: no subscription is due.
+  mapping(address => uint256) public monthlySubscriptionFee;
+  /// @notice Timestamp until which each wallet's subscription is paid; zero if never paid.
+  mapping(address => uint256) public subscriptionPaidUntil;
 
   event CreditVaultDeployed(
     address creditVault,
@@ -50,6 +57,7 @@ contract IdleCreditVaultFactory is Initializable {
   );
 
   event DeploymentFeeSet(uint256 fee);
+  event SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil);
 
   error AmountTooHigh();
   error FeesTooLow();
@@ -122,7 +130,7 @@ contract IdleCreditVaultFactory is Initializable {
     CreditVaultParams memory cvParams,
     StrategyData memory strategyData,
     AncillaryParams memory ancillaryParams
-  ) external {
+  ) public {
     _authorizeDeployment();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
@@ -158,7 +166,7 @@ contract IdleCreditVaultFactory is Initializable {
     StrategyData memory strategyData,
     ProgrammableBorrowerParams memory programmableBorrowerParams,
     AncillaryParams memory ancillaryParams
-  ) external {
+  ) public {
     _authorizeDeployment();
     if (ancillaryParams.writeOffImplementation != address(0)) revert WriteOffUnsupported();
     _checkMinimumFees(cvParams);
@@ -194,6 +202,42 @@ contract IdleCreditVaultFactory is Initializable {
       keyringWhitelist,
       address(0)
     );
+  }
+
+  /// @notice Pay `months` of the caller's subscription, then deploy a standard credit vault in the same transaction.
+  /// @dev The caller approves the subscription amount plus any deployment fee; any failure reverts both payments.
+  /// Whitelisted callers pay no subscription and only use their deployment quota.
+  /// @param cvParams Credit vault parameters, as in `deployCreditVault`.
+  /// @param strategyData Strategy parameters, as in `deployCreditVault`.
+  /// @param ancillaryParams Optional contract parameters, as in `deployCreditVault`.
+  /// @param months Number of subscription months to pay; must be nonzero for an unlisted wallet with a nonzero rate.
+  function deployCreditVaultWithSubscription(
+    CreditVaultParams memory cvParams,
+    StrategyData memory strategyData,
+    AncillaryParams memory ancillaryParams,
+    uint256 months
+  ) external {
+    _paySubscription(months);
+    deployCreditVault(cvParams, strategyData, ancillaryParams);
+  }
+
+  /// @notice Pay `months` of the caller's subscription, then deploy a revolving credit vault in the same transaction.
+  /// @dev The caller approves the subscription amount plus any deployment fee; any failure reverts both payments.
+  /// Whitelisted callers pay no subscription and only use their deployment quota.
+  /// @param cvParams Credit vault parameters, as in `deployRevolvingCreditVault`.
+  /// @param strategyData Strategy parameters, as in `deployRevolvingCreditVault`.
+  /// @param programmableBorrowerParams Programmable borrower parameters, as in `deployRevolvingCreditVault`.
+  /// @param ancillaryParams Optional contract parameters, as in `deployRevolvingCreditVault`.
+  /// @param months Number of subscription months to pay; must be nonzero for an unlisted wallet with a nonzero rate.
+  function deployRevolvingCreditVaultWithSubscription(
+    CreditVaultParams memory cvParams,
+    StrategyData memory strategyData,
+    ProgrammableBorrowerParams memory programmableBorrowerParams,
+    AncillaryParams memory ancillaryParams,
+    uint256 months
+  ) external {
+    _paySubscription(months);
+    deployRevolvingCreditVault(cvParams, strategyData, programmableBorrowerParams, ancillaryParams);
   }
 
   function _deployKeyring(AncillaryParams memory ancillaryParams) internal returns (address) {
@@ -379,6 +423,39 @@ contract IdleCreditVaultFactory is Initializable {
     }
   }
 
+  /// @notice Set monthly subscription rates for multiple wallets.
+  /// @dev Only treasury or the Pareto deployer may call this. New rates apply to future payments;
+  /// already paid periods are unchanged. Nonzero rates require a supported fee network.
+  /// @param wallets Wallets whose monthly rates are updated.
+  /// @param monthlyFees USDC per month in six-decimal units; zero means no subscription is due.
+  function setMonthlySubscriptionFees(address[] calldata wallets, uint256[] calldata monthlyFees) external {
+    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
+    if (wallets.length != monthlyFees.length) revert LengthMismatch();
+    bool unsupported = address(deploymentFeeToken()) == address(0);
+    for (uint256 i = 0; i < wallets.length; i++) {
+      if (unsupported && monthlyFees[i] != 0) revert UnsupportedDeploymentFeeNetwork();
+      monthlySubscriptionFee[wallets[i]] = monthlyFees[i];
+    }
+  }
+
+  /// @notice Pay `months` subscription months for the caller in `deploymentFeeToken()`.
+  /// @dev Coverage extends from the later of now and the current `subscriptionPaidUntil`.
+  /// Whitelisted callers are exempt: the call returns without charging, extending, or emitting.
+  /// Otherwise reverts with `Is0` when `months` or the caller's rate is zero.
+  /// @param months Number of `SUBSCRIPTION_PERIOD` months to pay.
+  function paySubscription(uint256 months) external {
+    _paySubscription(months);
+  }
+
+  /// @notice Return whether the UI should prompt `wallet` to pay its subscription.
+  /// @dev False for whitelisted wallets and zero-rate wallets; otherwise true once `subscriptionPaidUntil` is reached.
+  /// @param wallet Wallet to check.
+  function isSubscriptionDue(address wallet) external view returns (bool) {
+    return !whitelist[wallet] &&
+      monthlySubscriptionFee[wallet] != 0 &&
+      subscriptionPaidUntil[wallet] <= block.timestamp;
+  }
+
   /// @notice Set the USDC fee for unlisted callers. Only treasury may call this function.
   /// @param fee USDC in six-decimal units. Set to zero to disable paid deployments.
   function setDeploymentFee(uint256 fee) external {
@@ -408,6 +485,22 @@ contract IdleCreditVaultFactory is Initializable {
     uint256 remaining = remainingDeployments[msg.sender];
     if (remaining == 0) revert DeploymentLimitReached();
     if (remaining != UNLIMITED_DEPLOYMENTS) remainingDeployments[msg.sender] = remaining - 1;
+  }
+
+  /// @notice Charge the caller `months` times its monthly rate and extend its paid-through timestamp.
+  /// @dev Whitelisted callers are exempt and return early, keeping their configured rate for use after delisting.
+  /// Renewals before expiry stack on the current expiry; lapsed subscriptions restart from now.
+  /// @param months Number of `SUBSCRIPTION_PERIOD` months to pay.
+  function _paySubscription(uint256 months) internal {
+    if (whitelist[msg.sender]) return;
+    uint256 amount = monthlySubscriptionFee[msg.sender] * months;
+    if (amount == 0) revert Is0();
+    uint256 paidUntil = subscriptionPaidUntil[msg.sender];
+    uint256 start = paidUntil > block.timestamp ? paidUntil : block.timestamp;
+    uint256 newPaidUntil = start + months * SUBSCRIPTION_PERIOD;
+    subscriptionPaidUntil[msg.sender] = newPaidUntil;
+    deploymentFeeToken().safeTransferFrom(msg.sender, treasury, amount);
+    emit SubscriptionPaid(msg.sender, months, amount, newPaidUntil);
   }
 
   /// @notice Set the fee receiver's share for future vault deployments; only treasury may call this.
