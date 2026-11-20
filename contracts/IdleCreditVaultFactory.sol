@@ -3,6 +3,8 @@ pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IdleCDOCreditVault} from "./IdleCDOCreditVault.sol";
 import {IdleCDOEpochVariant} from "./IdleCDOEpochVariant.sol";
 import {IdleCDOEpochVariantPrefunded} from "./IdleCDOEpochVariantPrefunded.sol";
@@ -13,6 +15,8 @@ import {IdleCreditVault} from "./strategies/idle/IdleCreditVault.sol";
 import {ProgrammableBorrower} from "./strategies/idle/ProgrammableBorrower.sol";
 
 contract IdleCreditVaultFactory is Initializable {
+  using SafeERC20 for IERC20;
+
   uint256 public constant FULL_ALLOC = 100_000;
   uint256 public constant DEFAULT_FEE_SPLIT = 0;
   /// @notice Deployment allowance that is never decremented.
@@ -25,7 +29,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @dev The remainder goes to the vault owner, initially treasury. The feeReceiver need not be the manager.
   uint256 public feeSplit;
   address public proxyAdmin;
-  /// @notice Wallets allowed to deploy credit vaults through either deployment flow.
+  /// @notice Wallets that use a deployment allowance in either deployment flow.
   mapping(address => bool) public whitelist;
   uint256 private minPerformanceFee;
   uint256 private minManagementFee;
@@ -33,6 +37,8 @@ contract IdleCreditVaultFactory is Initializable {
   bool private minimumFeesSet;
   /// @notice Remaining deployments shared by both flows; UNLIMITED_DEPLOYMENTS never decreases.
   mapping(address => uint256) public remainingDeployments;
+  /// @notice USDC charged on each unlisted deployment, in six-decimal units. Zero disables paid access.
+  uint256 public deploymentFee;
 
   event CreditVaultDeployed(
     address creditVault,
@@ -43,6 +49,8 @@ contract IdleCreditVaultFactory is Initializable {
     address writeOffEscrow
   );
 
+  event DeploymentFeeSet(uint256 fee);
+
   error AmountTooHigh();
   error FeesTooLow();
   error Is0();
@@ -50,6 +58,7 @@ contract IdleCreditVaultFactory is Initializable {
   error OnlyTreasuryOrDeployer();
   error NotWhitelisted();
   error DeploymentLimitReached();
+  error UnsupportedDeploymentFeeNetwork();
   error LengthMismatch();
   error WriteOffUnsupported();
 
@@ -114,7 +123,7 @@ contract IdleCreditVaultFactory is Initializable {
     StrategyData memory strategyData,
     AncillaryParams memory ancillaryParams
   ) external {
-    _consumeDeploymentAllowance();
+    _authorizeDeployment();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
     if (manager == address(0)) revert Is0();
@@ -150,7 +159,7 @@ contract IdleCreditVaultFactory is Initializable {
     ProgrammableBorrowerParams memory programmableBorrowerParams,
     AncillaryParams memory ancillaryParams
   ) external {
-    _consumeDeploymentAllowance();
+    _authorizeDeployment();
     if (ancillaryParams.writeOffImplementation != address(0)) revert WriteOffUnsupported();
     _checkMinimumFees(cvParams);
     address manager = strategyData.manager;
@@ -360,7 +369,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @notice Set remaining deployment allowances and whitelist status for multiple wallets.
   /// @dev Only treasury or the Pareto deployer may call this. Values replace remaining allowances, not add to them.
   /// @param wallets Wallets whose deployment permissions are updated.
-  /// @param allowances Remaining deployments per wallet; zero revokes access and UNLIMITED_DEPLOYMENTS is unlimited.
+  /// @param allowances Remaining deployments per wallet; zero removes the wallet from the whitelist.
   function setDeploymentAllowances(address[] calldata wallets, uint256[] calldata allowances) external {
     if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
     if (wallets.length != allowances.length) revert LengthMismatch();
@@ -370,10 +379,32 @@ contract IdleCreditVaultFactory is Initializable {
     }
   }
 
-  /// @notice Consume one deployment from the caller's allowance before any external interaction.
-  /// @dev Both deployment flows share this counter; a reverted deployment rolls back consumption.
-  function _consumeDeploymentAllowance() internal {
-    if (!whitelist[msg.sender]) revert NotWhitelisted();
+  /// @notice Set the USDC fee for unlisted callers. Only treasury may call this function.
+  /// @param fee USDC in six-decimal units. Set to zero to disable paid deployments.
+  function setDeploymentFee(uint256 fee) external {
+    if (msg.sender != treasury) revert OnlyTreasury();
+    if (fee != 0 && address(deploymentFeeToken()) == address(0)) revert UnsupportedDeploymentFeeNetwork();
+    deploymentFee = fee;
+    emit DeploymentFeeSet(fee);
+  }
+
+  /// @notice Return native USDC on supported factory networks, or zero on other networks.
+  function deploymentFeeToken() public view returns (IERC20) {
+    if (block.chainid == 1) return IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    if (block.chainid == 8453) return IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
+    if (block.chainid == 42161) return IERC20(0xaf88d065e77c8cC2239327C5EDb3A432268e5831);
+    return IERC20(address(0));
+  }
+
+  /// @notice Consume a whitelisted caller's quota or collect one USDC fee from an unlisted caller.
+  /// @dev Both flows authorize once. A reverted deployment rolls back quota consumption and payment.
+  function _authorizeDeployment() internal {
+    if (!whitelist[msg.sender]) {
+      uint256 fee = deploymentFee;
+      if (fee == 0) revert NotWhitelisted();
+      deploymentFeeToken().safeTransferFrom(msg.sender, treasury, fee);
+      return;
+    }
     uint256 remaining = remainingDeployments[msg.sender];
     if (remaining == 0) revert DeploymentLimitReached();
     if (remaining != UNLIMITED_DEPLOYMENTS) remainingDeployments[msg.sender] = remaining - 1;
