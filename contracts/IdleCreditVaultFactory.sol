@@ -25,6 +25,8 @@ contract IdleCreditVaultFactory is Initializable {
   address public constant DEPLOYER = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
   /// @notice Duration of one paid subscription month.
   uint256 public constant SUBSCRIPTION_PERIOD = 30 days;
+  /// @notice Monthly subscription fee for wallets without an override: 500 USDC in six-decimal units.
+  uint256 public constant DEFAULT_MONTHLY_SUBSCRIPTION_FEE = 500e6;
 
   address public treasury;
   /// @notice Share of collected fees sent to the vault's configured feeReceiver (100000 = 100%).
@@ -41,9 +43,10 @@ contract IdleCreditVaultFactory is Initializable {
   mapping(address => uint256) public remainingDeployments;
   /// @notice USDC charged on each unlisted deployment, in six-decimal units. Zero disables paid access.
   uint256 public deploymentFee;
-  /// @notice USDC charged per subscription month for each wallet, in six-decimal units.
-  /// @dev Unset and zero rates are equivalent: no subscription is due.
-  mapping(address => uint256) public monthlySubscriptionFee;
+  // Admin-set monthly fee, used only when hasMonthlySubscriptionFeeOverride is true for the wallet.
+  mapping(address => uint256) private monthlySubscriptionFeeOverride;
+  /// @notice Whether an admin set the wallet's monthly fee; otherwise DEFAULT_MONTHLY_SUBSCRIPTION_FEE applies.
+  mapping(address => bool) public hasMonthlySubscriptionFeeOverride;
   /// @notice Timestamp until which each wallet's subscription is paid; zero if never paid.
   mapping(address => uint256) public subscriptionPaidUntil;
 
@@ -423,19 +426,30 @@ contract IdleCreditVaultFactory is Initializable {
     }
   }
 
-  /// @notice Set monthly subscription rates for multiple wallets.
+  /// @notice Override monthly subscription rates for multiple wallets.
   /// @dev Only treasury or the Pareto deployer may call this. New rates apply to future payments;
   /// already paid periods are unchanged. Nonzero rates require a supported fee network.
-  /// @param wallets Wallets whose monthly rates are updated.
-  /// @param monthlyFees USDC per month in six-decimal units; zero means no subscription is due.
+  /// @param wallets Wallets whose monthly rates are overridden.
+  /// @param monthlyFees USDC per month in six-decimal units; zero exempts the wallet from the subscription.
   function setMonthlySubscriptionFees(address[] calldata wallets, uint256[] calldata monthlyFees) external {
     if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
     if (wallets.length != monthlyFees.length) revert LengthMismatch();
     bool unsupported = address(deploymentFeeToken()) == address(0);
     for (uint256 i = 0; i < wallets.length; i++) {
       if (unsupported && monthlyFees[i] != 0) revert UnsupportedDeploymentFeeNetwork();
-      monthlySubscriptionFee[wallets[i]] = monthlyFees[i];
+      monthlySubscriptionFeeOverride[wallets[i]] = monthlyFees[i];
+      hasMonthlySubscriptionFeeOverride[wallets[i]] = true;
     }
+  }
+
+  /// @notice Effective monthly subscription fee for `wallet`, in six-decimal USDC units.
+  /// @dev Wallets without an override pay DEFAULT_MONTHLY_SUBSCRIPTION_FEE. Returns zero on networks without
+  /// a fee token, where subscriptions cannot be paid.
+  /// @param wallet Wallet to check.
+  function monthlySubscriptionFee(address wallet) public view returns (uint256) {
+    if (address(deploymentFeeToken()) == address(0)) return 0;
+    if (hasMonthlySubscriptionFeeOverride[wallet]) return monthlySubscriptionFeeOverride[wallet];
+    return DEFAULT_MONTHLY_SUBSCRIPTION_FEE;
   }
 
   /// @notice Pay `months` subscription months for the caller in `deploymentFeeToken()`.
@@ -452,7 +466,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @param wallet Wallet to check.
   function isSubscriptionDue(address wallet) external view returns (bool) {
     return !whitelist[wallet] &&
-      monthlySubscriptionFee[wallet] != 0 &&
+      monthlySubscriptionFee(wallet) != 0 &&
       subscriptionPaidUntil[wallet] <= block.timestamp;
   }
 
@@ -493,7 +507,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @param months Number of `SUBSCRIPTION_PERIOD` months to pay.
   function _paySubscription(uint256 months) internal {
     if (whitelist[msg.sender]) return;
-    uint256 amount = monthlySubscriptionFee[msg.sender] * months;
+    uint256 amount = monthlySubscriptionFee(msg.sender) * months;
     if (amount == 0) revert Is0();
     uint256 paidUntil = subscriptionPaidUntil[msg.sender];
     uint256 start = paidUntil > block.timestamp ? paidUntil : block.timestamp;

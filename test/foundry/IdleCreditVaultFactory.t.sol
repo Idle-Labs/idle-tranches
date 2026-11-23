@@ -145,6 +145,7 @@ contract IdleCreditVaultFactoryTest is Test {
   address internal constant ARBITRUM_FEE_TREASURY = 0xF40d482D7fc94C30b256Dc7E722033bae68EcF90;
   uint256 internal constant SUBSCRIPTION_FEE = 100e6;
   uint256 internal constant OTHER_SUBSCRIPTION_FEE = 250e6;
+  uint256 internal constant DEFAULT_SUBSCRIPTION_FEE = 500e6;
   uint256 internal constant SUBSCRIPTION_MONTH = 30 days;
 
   event SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil);
@@ -1515,7 +1516,8 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(factory.deploymentFee(), 0);
   }
 
-  /// @notice Only treasury or the Pareto deployer set subscription rates; unset, zero-rate and whitelisted wallets are never due.
+  /// @notice Only treasury or the Pareto deployer override rates; unset wallets owe the 500 USDC default,
+  /// while zero-override and whitelisted wallets are never due.
   function testSubscriptionRateAccessAndDueStatus() external {
     vm.chainId(1);
     vm.warp(100 days);
@@ -1525,6 +1527,7 @@ contract IdleCreditVaultFactoryTest is Test {
     address zeroRateWallet = makeAddr("zeroRateWallet");
     address unsetRateWallet = makeAddr("unsetRateWallet");
     assertEq(factory.SUBSCRIPTION_PERIOD(), SUBSCRIPTION_MONTH, "30-day month");
+    assertEq(factory.DEFAULT_MONTHLY_SUBSCRIPTION_FEE(), DEFAULT_SUBSCRIPTION_FEE, "500 USDC default");
 
     // Deployment permission alone does not allow a creator to set rates.
     address[2] memory unauthorized = [creator, manager];
@@ -1532,7 +1535,8 @@ contract IdleCreditVaultFactoryTest is Test {
       vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
       _setMonthlySubscriptionFee(factory, unauthorized[i], feePayer, SUBSCRIPTION_FEE);
     }
-    assertEq(factory.monthlySubscriptionFee(feePayer), 0, "unauthorized rate not set");
+    assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE, "unauthorized override not set");
+    assertFalse(factory.hasMonthlySubscriptionFeeOverride(feePayer), "no unauthorized override");
 
     address[] memory wallets = new address[](2);
     uint256[] memory monthlyFees = new uint256[](1);
@@ -1555,22 +1559,29 @@ contract IdleCreditVaultFactoryTest is Test {
 
     assertEq(factory.monthlySubscriptionFee(feePayer), SUBSCRIPTION_FEE, "subscriber rate");
     assertEq(factory.monthlySubscriptionFee(otherSubscriber), OTHER_SUBSCRIPTION_FEE, "other rate");
-    assertEq(factory.monthlySubscriptionFee(zeroRateWallet), 0, "explicit zero rate");
-    assertEq(factory.monthlySubscriptionFee(unsetRateWallet), 0, "unset rate reads as zero");
+    assertEq(factory.monthlySubscriptionFee(zeroRateWallet), 0, "explicit zero override");
+    assertEq(factory.monthlySubscriptionFee(unsetRateWallet), DEFAULT_SUBSCRIPTION_FEE, "unset wallet owes the default");
     assertEq(factory.monthlySubscriptionFee(creator), SUBSCRIPTION_FEE, "deployer-set rate");
+    assertTrue(factory.hasMonthlySubscriptionFeeOverride(zeroRateWallet), "zero override recorded");
+    assertFalse(factory.hasMonthlySubscriptionFeeOverride(unsetRateWallet), "unset wallet has no override");
 
     assertTrue(factory.isSubscriptionDue(feePayer), "never-paid subscriber due");
     assertTrue(factory.isSubscriptionDue(otherSubscriber), "never-paid other subscriber due");
-    assertFalse(factory.isSubscriptionDue(zeroRateWallet), "zero rate never due");
-    assertFalse(factory.isSubscriptionDue(unsetRateWallet), "unset rate never due");
+    assertTrue(factory.isSubscriptionDue(unsetRateWallet), "unset wallet due at the default");
+    assertFalse(factory.isSubscriptionDue(zeroRateWallet), "zero override never due");
     assertFalse(factory.isSubscriptionDue(creator), "whitelisted creator exempt despite a rate");
     assertFalse(factory.isSubscriptionDue(owner), "treasury exempt");
     assertEq(factory.subscriptionPaidUntil(feePayer), 0, "never paid");
 
-    // Zero and unset rates have nothing to collect.
+    // A zero override has nothing to collect.
     vm.expectRevert(IdleCreditVaultFactory.Is0.selector);
     vm.prank(zeroRateWallet);
     factory.paySubscription(1);
+
+    // The admin can exempt a previously unset wallet by overriding it to zero.
+    _setMonthlySubscriptionFee(factory, deployer, unsetRateWallet, 0);
+    assertEq(factory.monthlySubscriptionFee(unsetRateWallet), 0, "unset wallet overridden to zero");
+    assertFalse(factory.isSubscriptionDue(unsetRateWallet), "exempted wallet not due");
     vm.expectRevert(IdleCreditVaultFactory.Is0.selector);
     vm.prank(unsetRateWallet);
     factory.paySubscription(1);
@@ -1588,13 +1599,16 @@ contract IdleCreditVaultFactoryTest is Test {
     assertFalse(factory.isSubscriptionDue(feePayer), "rate reset to zero");
   }
 
-  /// @notice Without a fee token, nonzero subscription rates are rejected while zero rates remain configurable.
+  /// @notice Without a fee token, subscriptions read as zero: the default does not apply and nonzero overrides revert.
   function testSubscriptionRatesRequireSupportedNetwork() external {
     vm.chainId(31337);
     IdleCreditVaultFactory factory = _deployFactory();
+    assertEq(factory.monthlySubscriptionFee(feePayer), 0, "no default without a fee token");
+    assertFalse(factory.isSubscriptionDue(feePayer), "nothing due without a fee token");
     vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
     _setMonthlySubscriptionFee(factory, owner, feePayer, SUBSCRIPTION_FEE);
     _setMonthlySubscriptionFee(factory, owner, feePayer, 0);
+    assertTrue(factory.hasMonthlySubscriptionFeeOverride(feePayer), "zero override recorded");
     assertEq(factory.monthlySubscriptionFee(feePayer), 0);
     assertFalse(factory.isSubscriptionDue(feePayer));
   }
@@ -1653,6 +1667,22 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(MAINNET_FEE_USDC.balanceOf(otherSubscriber), 0, "other rate charged");
     assertEq(MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY), treasuryBalance + 6 * SUBSCRIPTION_FEE + OTHER_SUBSCRIPTION_FEE);
 
+    // A wallet without an override pays the 500 USDC default.
+    address defaultSubscriber = makeAddr("defaultSubscriber");
+    assertTrue(factory.isSubscriptionDue(defaultSubscriber), "default subscriber due");
+    deal(address(MAINNET_FEE_USDC), defaultSubscriber, 2 * DEFAULT_SUBSCRIPTION_FEE, true);
+    vm.startPrank(defaultSubscriber);
+    MAINNET_FEE_USDC.approve(address(factory), 2 * DEFAULT_SUBSCRIPTION_FEE);
+    factory.paySubscription(2);
+    vm.stopPrank();
+    assertEq(factory.subscriptionPaidUntil(defaultSubscriber), block.timestamp + 2 * SUBSCRIPTION_MONTH, "default expiry");
+    assertEq(MAINNET_FEE_USDC.balanceOf(defaultSubscriber), 0, "default rate charged");
+    assertEq(
+      MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY),
+      treasuryBalance + 6 * SUBSCRIPTION_FEE + OTHER_SUBSCRIPTION_FEE + 2 * DEFAULT_SUBSCRIPTION_FEE,
+      "treasury received default payment"
+    );
+
     // A rate change applies only to future payments, and a failed transfer leaves the expiry unchanged.
     uint256 paidUntil = factory.subscriptionPaidUntil(feePayer);
     _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, OTHER_SUBSCRIPTION_FEE);
@@ -1668,12 +1698,13 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(MAINNET_FEE_USDC.balanceOf(feePayer), 4 * SUBSCRIPTION_FEE - OTHER_SUBSCRIPTION_FEE, "new rate charged");
   }
 
-  /// @notice A zero-rate wallet still pays the deployment fee, and subscription status does not gate deployment.
+  /// @notice A wallet overridden to zero still pays the deployment fee, and subscription status does not gate deployment.
   function testZeroRateWalletPaysDeploymentFeeWithoutSubscription() external {
     IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
     address zeroRateWallet = makeAddr("zeroRateWallet");
     vm.prank(MAINNET_FEE_TREASURY);
     factory.setDeploymentFee(DEPLOYMENT_FEE);
+    assertTrue(factory.isSubscriptionDue(zeroRateWallet), "unset wallet owes the default");
     _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, zeroRateWallet, 0);
     _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, SUBSCRIPTION_FEE);
     (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
@@ -1864,12 +1895,14 @@ contract IdleCreditVaultFactoryTest is Test {
     strategyData.borrowerName = "Factory Fee Test";
   }
 
-  /// @dev Fork mainnet at the fee-test block and upgrade the production factory, which starts without subscriptions.
+  /// @dev Fork mainnet at the fee-test block and upgrade the production factory, which starts with the default
+  /// rate for every wallet, no overrides and no paid periods.
   function _upgradeMainnetFactoryForSubscriptionTest() internal returns (IdleCreditVaultFactory factory) {
     vm.createSelectFork("mainnet", 26290277);
     factory = _upgradeFactoryForFeeTest(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
     assertEq(factory.treasury(), MAINNET_FEE_TREASURY, "mainnet treasury");
-    assertEq(factory.monthlySubscriptionFee(feePayer), 0, "no rate after upgrade");
+    assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE, "default rate after upgrade");
+    assertFalse(factory.hasMonthlySubscriptionFeeOverride(feePayer), "no override after upgrade");
     assertEq(factory.subscriptionPaidUntil(feePayer), 0, "no expiry after upgrade");
     assertFalse(factory.whitelist(feePayer), "fee payer unlisted");
   }
