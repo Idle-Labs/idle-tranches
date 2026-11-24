@@ -137,6 +137,8 @@ contract IdleCreditVaultFactoryTest is Test {
   uint256 internal constant CDO_SLOT_GOVERNANCE_RECOVERY_FUND = 202;
   uint256 internal constant CDO_SLOT_GUARDIAN = 208;
   uint256 internal constant DEPLOYMENT_FEE = 5_000e6;
+  uint256 internal constant USE_DEFAULT = type(uint256).max;
+  uint256 internal constant CUSTOM_DEPLOYMENT_FEE = 2_000e6;
   IERC20 internal constant MAINNET_FEE_USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
   IERC20 internal constant BASE_FEE_USDC = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
   IERC20 internal constant ARBITRUM_FEE_USDC = IERC20(0xaf88d065e77c8cC2239327C5EDb3A432268e5831);
@@ -381,14 +383,14 @@ contract IdleCreditVaultFactoryTest is Test {
     factory.setDeploymentAllowances(wallets, allowances);
   }
 
-  /// @notice Set one wallet's monthly subscription rate through the batch API.
-  function _setMonthlySubscriptionFee(IdleCreditVaultFactory factory, address admin, address wallet, uint256 monthlyFee) internal {
+  /// @notice Apply both fee terms to one wallet through the batch API.
+  function _setWalletFees(IdleCreditVaultFactory factory, address admin, address wallet, uint256 deployment, uint256 monthly) internal {
     address[] memory wallets = new address[](1);
     wallets[0] = wallet;
-    uint256[] memory monthlyFees = new uint256[](1);
-    monthlyFees[0] = monthlyFee;
+    IdleCreditVaultFactory.WalletFees[] memory fees = new IdleCreditVaultFactory.WalletFees[](1);
+    fees[0] = IdleCreditVaultFactory.WalletFees(deployment, monthly);
     vm.prank(admin);
-    factory.setMonthlySubscriptionFees(wallets, monthlyFees);
+    factory.setWalletFees(wallets, fees);
   }
 
   /// @notice Complete a standard deployment as the test creator to exercise successful quota consumption.
@@ -1433,7 +1435,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(usdc.balanceOf(recipient), treasuryBalance + updatedFee);
   }
 
-  /// @notice Paid access is opt-in and leaves the existing whitelist quota and fee exemption intact.
+  /// @notice Enabling paid access after a plain upgrade preserves the existing whitelist quota and fee exemption.
   function testFactoryPaidAccessPreservesWhitelistQuota() external {
     vm.createSelectFork("mainnet", 26290277);
     IdleCreditVaultFactory factory = _upgradeFactoryForFeeTest(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
@@ -1505,6 +1507,87 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(usdc.allowance(feePayer, address(factory)), 0);
   }
 
+  /// @notice New factories charge 5,000 USDC on supported chains until treasury changes or disables the fee.
+  function testNewFactoryDeploymentFee() external {
+    uint256[3] memory chains = [uint256(1), 8453, 42161];
+    for (uint256 i = 0; i < chains.length; i++) {
+      vm.chainId(chains[i]);
+      IdleCreditVaultFactory factory = _deployFactory();
+      assertEq(factory.deploymentFee(), DEPLOYMENT_FEE);
+      vm.prank(owner);
+      factory.setDeploymentFee(0);
+      _assertDeploymentNotWhitelisted(factory, feePayer);
+    }
+  }
+
+  /// @notice Only pricing admins can set or clear custom terms. Clearing follows future default changes.
+  function testWalletDeploymentFeeOverrides() external {
+    vm.chainId(1);
+    IdleCreditVaultFactory factory = _deployFactory();
+    address deployer = factory.DEPLOYER();
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    _setWalletFees(factory, feePayer, feePayer, 0, USE_DEFAULT);
+    assertEq(factory.deploymentFeeFor(feePayer), DEPLOYMENT_FEE);
+
+    _setWalletFees(factory, deployer, feePayer, CUSTOM_DEPLOYMENT_FEE, USE_DEFAULT);
+    vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
+    _setWalletFees(factory, feePayer, feePayer, USE_DEFAULT, USE_DEFAULT);
+    assertEq(factory.deploymentFeeFor(feePayer), CUSTOM_DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFeeFor(manager), DEPLOYMENT_FEE);
+    assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE);
+
+    vm.prank(owner);
+    factory.setDeploymentFee(0);
+    assertEq(factory.deploymentFeeFor(feePayer), 0);
+    _assertDeploymentNotWhitelisted(factory, feePayer);
+    vm.prank(owner);
+    factory.setDeploymentFee(SUBSCRIPTION_FEE);
+    assertEq(factory.deploymentFeeFor(feePayer), CUSTOM_DEPLOYMENT_FEE);
+    _setWalletFees(factory, owner, feePayer, USE_DEFAULT, USE_DEFAULT);
+    assertEq(factory.deploymentFeeFor(feePayer), SUBSCRIPTION_FEE);
+    vm.prank(owner);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFeeFor(feePayer), DEPLOYMENT_FEE);
+  }
+
+  /// @notice The highest custom price, a waiver, and the default round-trip distinctly through the batch API.
+  function testWalletFeeEncoding() external {
+    vm.chainId(1);
+    IdleCreditVaultFactory factory = _deployFactory();
+    uint256[3] memory prices = [USE_DEFAULT - 1, 0, USE_DEFAULT];
+    for (uint256 i = 0; i < prices.length; i++) {
+      uint256 price = prices[i];
+      _setWalletFees(factory, owner, feePayer, price, price);
+      IdleCreditVaultFactory.WalletFees memory terms = factory.walletFees(feePayer);
+      assertEq(terms.deploymentFee, price);
+      assertEq(terms.monthlyFee, price);
+      assertEq(factory.deploymentFeeFor(feePayer), price == USE_DEFAULT ? DEPLOYMENT_FEE : price);
+      assertEq(factory.monthlySubscriptionFee(feePayer), price == USE_DEFAULT ? DEFAULT_SUBSCRIPTION_FEE : price);
+    }
+  }
+
+  /// @notice An unlisted wallet with a deployment waiver can deploy without USDC and still owes its subscription.
+  function testWalletDeploymentFeeWaiver() external {
+    IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, 0, USE_DEFAULT);
+    _assertDeploymentNotWhitelisted(factory, feePayer);
+    vm.prank(MAINNET_FEE_TREASURY);
+    factory.setDeploymentFee(DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFeeFor(feePayer), 0);
+    assertFalse(factory.whitelist(feePayer));
+    assertEq(MAINNET_FEE_USDC.allowance(feePayer, address(factory)), 0);
+    (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
+      _factoryFeeTestParams(MAINNET_FEE_USDC);
+    IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
+    uint256 treasuryBalance = MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY);
+    vm.recordLogs();
+    vm.prank(feePayer);
+    factory.deployCreditVault(cvParams, strategyData, ancillaryParams);
+    _assertRecordedVaultDeployment();
+    assertEq(MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY), treasuryBalance);
+    assertTrue(factory.isSubscriptionDue(feePayer));
+  }
+
   /// @notice An unsupported chain has no deployment fee token and rejects fee activation by treasury.
   function testFactoryRejectsPaidAccessOnUnsupportedNetwork() external {
     vm.chainId(31337);
@@ -1513,6 +1596,8 @@ contract IdleCreditVaultFactoryTest is Test {
     vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
     vm.prank(owner);
     factory.setDeploymentFee(DEPLOYMENT_FEE);
+    vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
+    _setWalletFees(factory, owner, feePayer, CUSTOM_DEPLOYMENT_FEE, USE_DEFAULT);
     assertEq(factory.deploymentFee(), 0);
   }
 
@@ -1533,37 +1618,35 @@ contract IdleCreditVaultFactoryTest is Test {
     address[2] memory unauthorized = [creator, manager];
     for (uint256 i = 0; i < unauthorized.length; i++) {
       vm.expectRevert(IdleCreditVaultFactory.OnlyTreasuryOrDeployer.selector);
-      _setMonthlySubscriptionFee(factory, unauthorized[i], feePayer, SUBSCRIPTION_FEE);
+      _setWalletFees(factory, unauthorized[i], feePayer, USE_DEFAULT, SUBSCRIPTION_FEE);
     }
     assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE, "unauthorized override not set");
-    assertFalse(factory.hasMonthlySubscriptionFeeOverride(feePayer), "no unauthorized override");
+    assertEq(factory.walletFees(feePayer).monthlyFee, USE_DEFAULT, "no unauthorized override");
 
-    address[] memory wallets = new address[](2);
-    uint256[] memory monthlyFees = new uint256[](1);
-    vm.expectRevert(IdleCreditVaultFactory.LengthMismatch.selector);
-    vm.prank(owner);
-    factory.setMonthlySubscriptionFees(wallets, monthlyFees);
-
-    // Treasury sets distinct rates and an explicit zero in one batch; the deployer sets the whitelisted creator's rate.
-    wallets = new address[](3);
-    monthlyFees = new uint256[](3);
+    // Set custom, default and waived fees independently for several wallets in the same transaction.
+    address[] memory wallets = new address[](3);
     wallets[0] = feePayer;
-    monthlyFees[0] = SUBSCRIPTION_FEE;
     wallets[1] = otherSubscriber;
-    monthlyFees[1] = OTHER_SUBSCRIPTION_FEE;
     wallets[2] = zeroRateWallet;
-    monthlyFees[2] = 0;
+    IdleCreditVaultFactory.WalletFees[] memory fees = new IdleCreditVaultFactory.WalletFees[](3);
+    fees[0] = IdleCreditVaultFactory.WalletFees(CUSTOM_DEPLOYMENT_FEE, SUBSCRIPTION_FEE);
+    fees[1] = IdleCreditVaultFactory.WalletFees(USE_DEFAULT, OTHER_SUBSCRIPTION_FEE);
+    fees[2] = IdleCreditVaultFactory.WalletFees(0, 0);
     vm.prank(owner);
-    factory.setMonthlySubscriptionFees(wallets, monthlyFees);
-    _setMonthlySubscriptionFee(factory, deployer, creator, SUBSCRIPTION_FEE);
+    factory.setWalletFees(wallets, fees);
+    assertEq(factory.USE_DEFAULT_FEE(), USE_DEFAULT);
+    assertEq(factory.deploymentFeeFor(feePayer), CUSTOM_DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFeeFor(otherSubscriber), DEPLOYMENT_FEE);
+    assertEq(factory.deploymentFeeFor(zeroRateWallet), 0);
+    _setWalletFees(factory, deployer, creator, USE_DEFAULT, SUBSCRIPTION_FEE);
 
     assertEq(factory.monthlySubscriptionFee(feePayer), SUBSCRIPTION_FEE, "subscriber rate");
     assertEq(factory.monthlySubscriptionFee(otherSubscriber), OTHER_SUBSCRIPTION_FEE, "other rate");
     assertEq(factory.monthlySubscriptionFee(zeroRateWallet), 0, "explicit zero override");
     assertEq(factory.monthlySubscriptionFee(unsetRateWallet), DEFAULT_SUBSCRIPTION_FEE, "unset wallet owes the default");
     assertEq(factory.monthlySubscriptionFee(creator), SUBSCRIPTION_FEE, "deployer-set rate");
-    assertTrue(factory.hasMonthlySubscriptionFeeOverride(zeroRateWallet), "zero override recorded");
-    assertFalse(factory.hasMonthlySubscriptionFeeOverride(unsetRateWallet), "unset wallet has no override");
+    assertEq(factory.walletFees(zeroRateWallet).monthlyFee, 0, "zero override recorded");
+    assertEq(factory.walletFees(unsetRateWallet).monthlyFee, USE_DEFAULT, "unset wallet has no override");
 
     assertTrue(factory.isSubscriptionDue(feePayer), "never-paid subscriber due");
     assertTrue(factory.isSubscriptionDue(otherSubscriber), "never-paid other subscriber due");
@@ -1579,7 +1662,7 @@ contract IdleCreditVaultFactoryTest is Test {
     factory.paySubscription(1);
 
     // The admin can exempt a previously unset wallet by overriding it to zero.
-    _setMonthlySubscriptionFee(factory, deployer, unsetRateWallet, 0);
+    _setWalletFees(factory, deployer, unsetRateWallet, USE_DEFAULT, 0);
     assertEq(factory.monthlySubscriptionFee(unsetRateWallet), 0, "unset wallet overridden to zero");
     assertFalse(factory.isSubscriptionDue(unsetRateWallet), "exempted wallet not due");
     vm.expectRevert(IdleCreditVaultFactory.Is0.selector);
@@ -1595,7 +1678,7 @@ contract IdleCreditVaultFactoryTest is Test {
     _setDeploymentAllowance(factory, deployer, creator, 0);
     assertEq(factory.monthlySubscriptionFee(creator), SUBSCRIPTION_FEE, "rate preserved after delisting");
     assertTrue(factory.isSubscriptionDue(creator), "delisted creator due");
-    _setMonthlySubscriptionFee(factory, owner, feePayer, 0);
+    _setWalletFees(factory, owner, feePayer, USE_DEFAULT, 0);
     assertFalse(factory.isSubscriptionDue(feePayer), "rate reset to zero");
   }
 
@@ -1606,10 +1689,50 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(factory.monthlySubscriptionFee(feePayer), 0, "no default without a fee token");
     assertFalse(factory.isSubscriptionDue(feePayer), "nothing due without a fee token");
     vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
-    _setMonthlySubscriptionFee(factory, owner, feePayer, SUBSCRIPTION_FEE);
-    _setMonthlySubscriptionFee(factory, owner, feePayer, 0);
-    assertTrue(factory.hasMonthlySubscriptionFeeOverride(feePayer), "zero override recorded");
+    _setWalletFees(factory, owner, feePayer, USE_DEFAULT, SUBSCRIPTION_FEE);
+    _setWalletFees(factory, owner, feePayer, USE_DEFAULT, 0);
+    assertEq(factory.walletFees(feePayer).monthlyFee, 0, "zero override recorded");
     assertEq(factory.monthlySubscriptionFee(feePayer), 0);
+    assertFalse(factory.isSubscriptionDue(feePayer));
+  }
+
+  /// @notice A rejected entry leaves both fee settings of every earlier wallet in the batch untouched.
+  function testWalletFeeBatchRollbackOnUnsupportedNetwork() external {
+    vm.chainId(31337);
+    IdleCreditVaultFactory factory = _deployFactory();
+    address[] memory wallets = new address[](2);
+    wallets[0] = feePayer;
+    wallets[1] = manager;
+    IdleCreditVaultFactory.WalletFees[] memory fees = new IdleCreditVaultFactory.WalletFees[](2);
+    fees[0] = IdleCreditVaultFactory.WalletFees(0, 0);
+    fees[1] = IdleCreditVaultFactory.WalletFees(USE_DEFAULT, SUBSCRIPTION_FEE);
+    vm.expectRevert(IdleCreditVaultFactory.LengthMismatch.selector);
+    vm.prank(owner);
+    factory.setWalletFees(wallets, new IdleCreditVaultFactory.WalletFees[](1));
+    vm.expectRevert(IdleCreditVaultFactory.UnsupportedDeploymentFeeNetwork.selector);
+    vm.prank(owner);
+    factory.setWalletFees(wallets, fees);
+    IdleCreditVaultFactory.WalletFees memory terms = factory.walletFees(feePayer);
+    assertEq(terms.deploymentFee, USE_DEFAULT);
+    assertEq(terms.monthlyFee, USE_DEFAULT);
+  }
+
+  /// @notice Resetting both prices after a real subscription payment preserves the purchased period.
+  function testResetWalletFeesPreservesPaidPeriod() external {
+    IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, 0, SUBSCRIPTION_FEE);
+    deal(address(MAINNET_FEE_USDC), feePayer, SUBSCRIPTION_FEE, true);
+    vm.startPrank(feePayer);
+    MAINNET_FEE_USDC.approve(address(factory), SUBSCRIPTION_FEE);
+    factory.paySubscription(1);
+    vm.stopPrank();
+
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, USE_DEFAULT, USE_DEFAULT);
+    IdleCreditVaultFactory.WalletFees memory terms = factory.walletFees(feePayer);
+    assertEq(terms.deploymentFee, USE_DEFAULT);
+    assertEq(terms.monthlyFee, USE_DEFAULT);
+    assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE);
+    assertEq(factory.subscriptionPaidUntil(feePayer), block.timestamp + SUBSCRIPTION_MONTH);
     assertFalse(factory.isSubscriptionDue(feePayer));
   }
 
@@ -1617,8 +1740,8 @@ contract IdleCreditVaultFactoryTest is Test {
   function testSubscriptionPaymentsChargeRateAndExtendExpiry() external {
     IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
     address otherSubscriber = makeAddr("otherSubscriber");
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, SUBSCRIPTION_FEE);
-    _setMonthlySubscriptionFee(factory, factory.DEPLOYER(), otherSubscriber, OTHER_SUBSCRIPTION_FEE);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, USE_DEFAULT, SUBSCRIPTION_FEE);
+    _setWalletFees(factory, factory.DEPLOYER(), otherSubscriber, USE_DEFAULT, OTHER_SUBSCRIPTION_FEE);
     deal(address(MAINNET_FEE_USDC), feePayer, 10 * SUBSCRIPTION_FEE, true);
     deal(address(MAINNET_FEE_USDC), otherSubscriber, OTHER_SUBSCRIPTION_FEE, true);
     uint256 treasuryBalance = MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY);
@@ -1685,7 +1808,7 @@ contract IdleCreditVaultFactoryTest is Test {
 
     // A rate change applies only to future payments, and a failed transfer leaves the expiry unchanged.
     uint256 paidUntil = factory.subscriptionPaidUntil(feePayer);
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, OTHER_SUBSCRIPTION_FEE);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, USE_DEFAULT, OTHER_SUBSCRIPTION_FEE);
     assertEq(factory.subscriptionPaidUntil(feePayer), paidUntil, "paid period unchanged");
     vm.expectRevert();
     vm.prank(feePayer);
@@ -1705,8 +1828,8 @@ contract IdleCreditVaultFactoryTest is Test {
     vm.prank(MAINNET_FEE_TREASURY);
     factory.setDeploymentFee(DEPLOYMENT_FEE);
     assertTrue(factory.isSubscriptionDue(zeroRateWallet), "unset wallet owes the default");
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, zeroRateWallet, 0);
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, SUBSCRIPTION_FEE);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, zeroRateWallet, USE_DEFAULT, 0);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, USE_DEFAULT, SUBSCRIPTION_FEE);
     (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
       _factoryFeeTestParams(MAINNET_FEE_USDC);
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
@@ -1746,13 +1869,13 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
     vm.prank(MAINNET_FEE_TREASURY);
     factory.setDeploymentFee(DEPLOYMENT_FEE);
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, feePayer, SUBSCRIPTION_FEE);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, feePayer, CUSTOM_DEPLOYMENT_FEE, SUBSCRIPTION_FEE);
     (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
       _factoryFeeTestParams(MAINNET_FEE_USDC);
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
     IdleCreditVaultFactory.ProgrammableBorrowerParams memory borrowerParams = _mainnetRevolvingBorrowerParams();
-    uint256 total = DEPLOYMENT_FEE + 3 * SUBSCRIPTION_FEE;
-    uint256 funded = total + DEPLOYMENT_FEE + SUBSCRIPTION_FEE;
+    uint256 total = CUSTOM_DEPLOYMENT_FEE + 3 * SUBSCRIPTION_FEE;
+    uint256 funded = total + CUSTOM_DEPLOYMENT_FEE + SUBSCRIPTION_FEE;
     uint256 treasuryBalance = MAINNET_FEE_USDC.balanceOf(MAINNET_FEE_TREASURY);
     deal(address(MAINNET_FEE_USDC), feePayer, funded, true);
 
@@ -1795,7 +1918,7 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(MAINNET_FEE_USDC.allowance(feePayer, address(factory)), SUBSCRIPTION_FEE, "revolving failure keeps allowance");
 
     // With enough allowance, the revolving combined call renews from the current expiry.
-    MAINNET_FEE_USDC.approve(address(factory), DEPLOYMENT_FEE + SUBSCRIPTION_FEE);
+    MAINNET_FEE_USDC.approve(address(factory), CUSTOM_DEPLOYMENT_FEE + SUBSCRIPTION_FEE);
     vm.recordLogs();
     factory.deployRevolvingCreditVaultWithSubscription(cvParams, strategyData, borrowerParams, ancillaryParams, 1);
     vm.stopPrank();
@@ -1812,8 +1935,9 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory factory = _upgradeMainnetFactoryForSubscriptionTest();
     vm.prank(MAINNET_FEE_TREASURY);
     factory.setDeploymentFee(DEPLOYMENT_FEE);
+    _setWalletFees(factory, MAINNET_FEE_TREASURY, creator, CUSTOM_DEPLOYMENT_FEE, OTHER_SUBSCRIPTION_FEE);
     _setDeploymentAllowance(factory, MAINNET_FEE_TREASURY, creator, 2);
-    _setMonthlySubscriptionFee(factory, MAINNET_FEE_TREASURY, creator, OTHER_SUBSCRIPTION_FEE);
+    assertEq(factory.deploymentFeeFor(creator), 0, "whitelist uses quota");
     (IdleCreditVaultFactory.CreditVaultParams memory cvParams, IdleCreditVaultFactory.StrategyData memory strategyData) =
       _factoryFeeTestParams(MAINNET_FEE_USDC);
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
@@ -1854,6 +1978,7 @@ contract IdleCreditVaultFactoryTest is Test {
     _setDeploymentAllowance(factory, MAINNET_FEE_TREASURY, creator, 0);
     assertEq(factory.monthlySubscriptionFee(creator), OTHER_SUBSCRIPTION_FEE, "rate preserved");
     assertTrue(factory.isSubscriptionDue(creator), "due after delisting");
+    assertEq(factory.deploymentFeeFor(creator), CUSTOM_DEPLOYMENT_FEE, "deployment price after delisting");
     vm.prank(creator);
     factory.paySubscription(1);
     assertEq(factory.subscriptionPaidUntil(creator), block.timestamp + SUBSCRIPTION_MONTH, "delisted expiry");
@@ -1902,7 +2027,9 @@ contract IdleCreditVaultFactoryTest is Test {
     factory = _upgradeFactoryForFeeTest(0xd6C6f31091Bf6E4a6a48C91cfA4C341f1BaB44ff);
     assertEq(factory.treasury(), MAINNET_FEE_TREASURY, "mainnet treasury");
     assertEq(factory.monthlySubscriptionFee(feePayer), DEFAULT_SUBSCRIPTION_FEE, "default rate after upgrade");
-    assertFalse(factory.hasMonthlySubscriptionFeeOverride(feePayer), "no override after upgrade");
+    IdleCreditVaultFactory.WalletFees memory terms = factory.walletFees(feePayer);
+    assertEq(terms.deploymentFee, USE_DEFAULT, "no deployment override after upgrade");
+    assertEq(terms.monthlyFee, USE_DEFAULT, "no subscription override after upgrade");
     assertEq(factory.subscriptionPaidUntil(feePayer), 0, "no expiry after upgrade");
     assertFalse(factory.whitelist(feePayer), "fee payer unlisted");
   }

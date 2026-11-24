@@ -4,8 +4,8 @@ The Credit Vault factory supports paid access on Ethereum mainnet, Base, and Arb
 
 ## Deploying from an unlisted wallet
 
-1. Read `deploymentFeeToken()` and `deploymentFee()` from the factory proxy. The fee uses six-decimal USDC units, so `5_000_000_000` represents 5,000 USDC.
-2. Approve the factory proxy to spend the fee in that USDC token.
+1. Read `deploymentFee()` from the factory proxy. A zero global fee closes unlisted deployments, including for wallets with custom prices.
+2. Read `deploymentFeeFor(wallet)` for the calling wallet. If the quote is positive, approve the factory proxy to spend that amount of `deploymentFeeToken()` in six-decimal USDC units. A zero quote while unlisted deployments are open means the wallet has a waiver.
 3. Call the factory's standard or revolving deployment function. Both entry points use the fee in effect when the transaction executes.
 
 Each deployment uses a separate fee from the caller's balance and allowance. Insufficient balance or allowance reverts the transaction. If vault setup reverts after the transfer, the USDC balances and allowance are restored along with the rest of the transaction state.
@@ -14,13 +14,33 @@ Whitelisted callers continue to use their deployment quotas without paying USDC.
 
 ## Configuring paid access
 
-The factory treasury can call `setDeploymentFee(uint256)` to enable paid access or change the fee for future deployments. Set the fee to zero to disable paid access. New factories start with a zero fee. A plain implementation upgrade preserves the stored `deploymentFee()`: it is zero after upgrading a factory that never had paid access and keeps any fee treasury already configured. On other networks, `deploymentFeeToken()` returns the zero address and setting a positive fee reverts.
+New factories on Ethereum mainnet, Base, and Arbitrum One start at 5,000 USDC per unlisted deployment. A plain implementation upgrade preserves the proxy's stored fee. For an existing V3 proxy upgrading from the whitelist-only implementation, the treasury Safe must call `setDeploymentFee(5000000000)` on the factory proxy after the upgrade to enable the 5,000 USDC fee. The treasury can change the fee later or set it to zero to disable paid deployments. On other networks the fee starts at zero and setting a positive fee reverts.
+
+Treasury or the Pareto deployer can update several wallets in one transaction with `setWalletFees(address[] wallets, WalletFees[] fees)`. The factory stores both prices together under the wallet address. Each fee pair contains only `(deploymentFee, monthlyFee)`, in six-decimal USDC units. Both arrays must have the same length, and `fees[i]` applies to `wallets[i]`.
+
+| Fee pair for a wallet | Deployment price | Monthly subscription |
+| --- | --- | --- |
+| `(2000000000, 250000000)` | 2,000 USDC | 250 USDC |
+| `(USE_DEFAULT_FEE, 0)` | Current factory default | Waived |
+| `(USE_DEFAULT_FEE, USE_DEFAULT_FEE)` | Current factory default | Current factory default |
+
+For example, in ethers.js, this batch gives the first wallet custom prices and waives only the second wallet's subscription.
+
+```js
+const useDefault = await factory.USE_DEFAULT_FEE()
+await factory.setWalletFees(
+  [firstWallet, secondWallet],
+  [[2_000_000_000, 250_000_000], [useDefault, 0]]
+)
+```
+
+Each update replaces both prices for that wallet. Read `walletFees(wallet)` to retrieve its current terms before changing just one. The getter returns `USE_DEFAULT_FEE()` for a price that follows the default and `0` for a waiver. For the price charged at deployment, use `deploymentFeeFor(wallet)`, which also accounts for the whitelist and the global deployment setting.
 
 ## Monthly subscriptions
 
 The factory also records a per-wallet monthly subscription, paid in the same USDC token as the deployment fee and sent directly to `treasury()`. A subscription month is `SUBSCRIPTION_PERIOD()`, a fixed 30 days (2,592,000 seconds), not a calendar month.
 
-Every wallet without an admin override owes `DEFAULT_MONTHLY_SUBSCRIPTION_FEE()`, a fixed 500 USDC (`500_000_000`) per month. The admin can override any wallet's rate, including setting it to zero so that the wallet never has to approve or pay a subscription. New factories and factories upgraded to this implementation start with no overrides and no paid periods, so every unlisted wallet is due at the default rate until it pays or receives an override. On networks without a fee token, `monthlySubscriptionFee(wallet)` returns zero for every wallet and no subscription is due.
+On a supported network, an unlisted wallet without an override pays the default of 500 USDC (`500_000_000`) per 30 days. On upgrade from the whitelist-only V3 factory, both wallet prices start at their defaults and the paid-through timestamp starts at zero. Subsequent fee changes preserve any time the wallet has paid for. A zero override exempts the wallet from the subscription. On networks without a fee token, `monthlySubscriptionFee(wallet)` returns zero and no subscription is due.
 
 The subscription is separate from deployment authorization. The factory does not require an active subscription to deploy. The plain `deployCreditVault` and `deployRevolvingCreditVault` calls neither pay nor extend a subscription, so they leave `subscriptionPaidUntil(wallet)` untouched. The UI decides whether to prompt for payment.
 
@@ -33,7 +53,7 @@ Whitelisted wallets (`whitelist(wallet)` is true) are exempt from subscriptions.
 | Not whitelisted, default or nonzero override rate, and never paid or `subscriptionPaidUntil(wallet) <= block.timestamp` | `true` |
 | Not whitelisted, default or nonzero override rate, and `subscriptionPaidUntil(wallet) > block.timestamp` | `false` |
 
-A wallet overridden to zero has no subscription to pay, but it still pays `deploymentFee()` for each deployment unless it is whitelisted.
+A wallet with a zero monthly rate has no subscription to pay. Its deployment price is given by `deploymentFeeFor(wallet)`.
 
 ### Reading subscription status
 
@@ -41,10 +61,10 @@ All read calls are `view` functions on the factory proxy.
 
 | Call | Input | Output (ABI type) |
 | --- | --- | --- |
+| `walletFees(address wallet)` | Wallet to check | `(uint256 deploymentFee, uint256 monthlyFee)` in six-decimal USDC units, including any default markers. |
 | `isSubscriptionDue(address wallet)` | Wallet to check | `bool`: whether to prompt the wallet to pay. |
 | `subscriptionPaidUntil(address wallet)` | Wallet to check | `uint256`: Unix timestamp in seconds when the paid period ends; `0` if never paid. |
 | `monthlySubscriptionFee(address wallet)` | Wallet to check | `uint256`: effective USDC per month in six-decimal units: the override if one is set, otherwise the 500 USDC default; `0` for zero overrides and on networks without a fee token. |
-| `hasMonthlySubscriptionFeeOverride(address wallet)` | Wallet to check | `bool`: whether an admin set the wallet's rate. |
 | `whitelist(address wallet)` | Wallet to check | `bool`: whether the wallet is exempt. |
 | `DEFAULT_MONTHLY_SUBSCRIPTION_FEE()` | None | `uint256`: rate for wallets without an override (`500000000`). |
 | `SUBSCRIPTION_PERIOD()` | None | `uint256`: seconds per paid month (`2592000`). |
@@ -71,10 +91,10 @@ For a wallet that is not whitelisted, `paySubscription` reverts with `Is0()` whe
 
 The combined calls have no return value. On success, read the deployed addresses from the `CreditVaultDeployed` event and the new expiry from the `SubscriptionPaid` event, which is emitted only when a subscription was charged.
 
-For an unlisted wallet, approve `monthlySubscriptionFee(wallet) * months + deploymentFee()`. If either payment or any deployment step fails, the whole transaction reverts, including the subscription payment. The combined calls revert with `Is0()` for an unlisted wallet overridden to zero or zero `months`; use `deployCreditVault` or `deployRevolvingCreditVault` instead.
+For an unlisted wallet, approve `monthlySubscriptionFee(wallet) * months + deploymentFeeFor(wallet)`. If either payment or any deployment step fails, the whole transaction reverts, including the subscription payment. If the wallet has a zero monthly rate or chooses zero months, use `deployCreditVault` or `deployRevolvingCreditVault`. The combined calls would revert with `Is0()`.
 
 For a whitelisted wallet, the combined calls charge no subscription and no deployment fee and set no expiry, whatever `months` is. They consume one deployment from the wallet's quota exactly like the plain deployment calls: a finite quota decreases by one, an `UNLIMITED_DEPLOYMENTS()` quota never decreases, and an exhausted quota reverts with `DeploymentLimitReached()`.
 
 ### Configuring subscription rates
 
-The factory treasury or the Pareto deployer can call `setMonthlySubscriptionFees(address[] wallets, uint256[] monthlyFees)`. Each value sets an override in six-decimal USDC units and marks the wallet in `hasMonthlySubscriptionFeeOverride`. Set a wallet to `0` to exempt it from the subscription; set it to `500000000` to charge the default amount again. A new rate applies to future payments and does not change a paid period. On networks without a fee token, a nonzero override reverts with `UnsupportedDeploymentFeeNetwork()`.
+Use the monthly fee field of the same `setWalletFees` entry described under [Configuring paid access](#configuring-paid-access). Rate changes apply to future payments. A wallet keeps the time it has already paid for, including when it returns to the default. On networks without a fee token, a positive custom price in either field reverts the entire batch.

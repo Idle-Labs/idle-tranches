@@ -23,6 +23,10 @@ contract IdleCreditVaultFactory is Initializable {
   uint256 public constant UNLIMITED_DEPLOYMENTS = type(uint256).max;
   /// @notice Pareto deployer wallet authorized to manage deployment permissions alongside treasury.
   address public constant DEPLOYER = 0xE5Dab8208c1F4cce15883348B72086dBace3e64B;
+  /// @notice Initial fee for an unlisted deployment on a supported USDC network.
+  uint256 public constant DEFAULT_DEPLOYMENT_FEE = 5_000e6;
+  /// @notice Pass this value for either wallet fee to use the factory default for that fee.
+  uint256 public constant USE_DEFAULT_FEE = type(uint256).max;
   /// @notice Duration of one paid subscription month.
   uint256 public constant SUBSCRIPTION_PERIOD = 30 days;
   /// @notice Monthly subscription fee for wallets without an override: 500 USDC in six-decimal units.
@@ -41,14 +45,18 @@ contract IdleCreditVaultFactory is Initializable {
   bool private minimumFeesSet;
   /// @notice Remaining deployments shared by both flows; UNLIMITED_DEPLOYMENTS never decreases.
   mapping(address => uint256) public remainingDeployments;
-  /// @notice USDC charged on each unlisted deployment, in six-decimal units. Zero disables paid access.
+  /// @notice Default fee per unlisted deployment in six-decimal USDC units. Zero disables all unlisted deployments.
   uint256 public deploymentFee;
-  // Admin-set monthly fee, used only when hasMonthlySubscriptionFeeOverride is true for the wallet.
-  mapping(address => uint256) private monthlySubscriptionFeeOverride;
-  /// @notice Whether an admin set the wallet's monthly fee; otherwise DEFAULT_MONTHLY_SUBSCRIPTION_FEE applies.
-  mapping(address => bool) public hasMonthlySubscriptionFeeOverride;
   /// @notice Timestamp until which each wallet's subscription is paid; zero if never paid.
   mapping(address => uint256) public subscriptionPaidUntil;
+  // Each stored price is zero for the default, or the custom price plus one (one is a waiver).
+  mapping(address => WalletFees) private walletFeeOverrides;
+
+  /// @notice Both prices for one wallet, in six-decimal USDC units. Zero waives a fee.
+  struct WalletFees {
+    uint256 deploymentFee;
+    uint256 monthlyFee;
+  }
 
   event CreditVaultDeployed(
     address creditVault,
@@ -60,6 +68,7 @@ contract IdleCreditVaultFactory is Initializable {
   );
 
   event DeploymentFeeSet(uint256 fee);
+  event WalletFeesSet(address indexed wallet, uint256 deploymentFee, uint256 monthlyFee);
   event SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil);
 
   error AmountTooHigh();
@@ -73,6 +82,12 @@ contract IdleCreditVaultFactory is Initializable {
   error LengthMismatch();
   error WriteOffUnsupported();
 
+  /// @notice Restrict wallet permission and pricing changes to treasury or the Pareto deployer.
+  modifier onlyTreasuryOrDeployer() {
+    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
+    _;
+  }
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
     _disableInitializers();
@@ -83,6 +98,10 @@ contract IdleCreditVaultFactory is Initializable {
     treasury = _treasury;
     proxyAdmin = _proxyAdmin;
     _setFeeSplit(DEFAULT_FEE_SPLIT);
+    if (address(deploymentFeeToken()) != address(0)) {
+      deploymentFee = DEFAULT_DEPLOYMENT_FEE;
+      emit DeploymentFeeSet(DEFAULT_DEPLOYMENT_FEE);
+    }
     whitelist[_treasury] = true;
     whitelist[DEPLOYER] = true;
     remainingDeployments[_treasury] = UNLIMITED_DEPLOYMENTS;
@@ -417,8 +436,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @dev Only treasury or the Pareto deployer may call this. Values replace remaining allowances, not add to them.
   /// @param wallets Wallets whose deployment permissions are updated.
   /// @param allowances Remaining deployments per wallet; zero removes the wallet from the whitelist.
-  function setDeploymentAllowances(address[] calldata wallets, uint256[] calldata allowances) external {
-    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
+  function setDeploymentAllowances(address[] calldata wallets, uint256[] calldata allowances) external onlyTreasuryOrDeployer {
     if (wallets.length != allowances.length) revert LengthMismatch();
     for (uint256 i = 0; i < wallets.length; i++) {
       remainingDeployments[wallets[i]] = allowances[i];
@@ -426,20 +444,46 @@ contract IdleCreditVaultFactory is Initializable {
     }
   }
 
-  /// @notice Override monthly subscription rates for multiple wallets.
-  /// @dev Only treasury or the Pareto deployer may call this. New rates apply to future payments;
-  /// already paid periods are unchanged. Nonzero rates require a supported fee network.
-  /// @param wallets Wallets whose monthly rates are overridden.
-  /// @param monthlyFees USDC per month in six-decimal units; zero exempts the wallet from the subscription.
-  function setMonthlySubscriptionFees(address[] calldata wallets, uint256[] calldata monthlyFees) external {
-    if (msg.sender != treasury && msg.sender != DEPLOYER) revert OnlyTreasuryOrDeployer();
-    if (wallets.length != monthlyFees.length) revert LengthMismatch();
-    bool unsupported = address(deploymentFeeToken()) == address(0);
+  /// @notice Replace both prices for each wallet. Only treasury or the Pareto deployer may call this.
+  /// @dev Zero waives the individual fee. USE_DEFAULT_FEE clears its override. Paid periods keep their expiry.
+  /// @param wallets Wallets to update, in the same order as fees.
+  /// @param fees Deployment and monthly prices in six-decimal USDC units, one pair per wallet.
+  function setWalletFees(address[] calldata wallets, WalletFees[] calldata fees) external onlyTreasuryOrDeployer {
+    if (wallets.length != fees.length) revert LengthMismatch();
+    bool supported = address(deploymentFeeToken()) != address(0);
     for (uint256 i = 0; i < wallets.length; i++) {
-      if (unsupported && monthlyFees[i] != 0) revert UnsupportedDeploymentFeeNetwork();
-      monthlySubscriptionFeeOverride[wallets[i]] = monthlyFees[i];
-      hasMonthlySubscriptionFeeOverride[wallets[i]] = true;
+      address wallet = wallets[i];
+      WalletFees calldata terms = fees[i];
+      walletFeeOverrides[wallet] = WalletFees(
+        _encodeWalletFee(terms.deploymentFee, supported),
+        _encodeWalletFee(terms.monthlyFee, supported)
+      );
+      emit WalletFeesSet(wallet, terms.deploymentFee, terms.monthlyFee);
     }
+  }
+
+  /// @notice Encode a price so an untouched storage slot inherits the default and zero USDC is an explicit waiver.
+  /// @param price Custom USDC price or USE_DEFAULT_FEE to inherit the default.
+  /// @param supported Whether the network has a fee token.
+  function _encodeWalletFee(uint256 price, bool supported) internal pure returns (uint256) {
+    if (price == USE_DEFAULT_FEE) return 0;
+    if (!supported && price != 0) revert UnsupportedDeploymentFeeNetwork();
+    return price + 1;
+  }
+
+  /// @notice Resolve an encoded wallet price, including an explicit zero waiver.
+  /// @param stored Price as stored in walletFeeOverrides.
+  /// @param defaultFee Value to return when the wallet inherits the default.
+  function _decodeWalletFee(uint256 stored, uint256 defaultFee) internal pure returns (uint256) {
+    return stored == 0 ? defaultFee : stored - 1;
+  }
+
+  /// @notice Read both configured prices, returning USE_DEFAULT_FEE for each price that follows its default.
+  /// @param wallet Wallet whose pricing terms are requested.
+  function walletFees(address wallet) external view returns (WalletFees memory terms) {
+    terms = walletFeeOverrides[wallet];
+    terms.deploymentFee = _decodeWalletFee(terms.deploymentFee, USE_DEFAULT_FEE);
+    terms.monthlyFee = _decodeWalletFee(terms.monthlyFee, USE_DEFAULT_FEE);
   }
 
   /// @notice Effective monthly subscription fee for `wallet`, in six-decimal USDC units.
@@ -448,8 +492,7 @@ contract IdleCreditVaultFactory is Initializable {
   /// @param wallet Wallet to check.
   function monthlySubscriptionFee(address wallet) public view returns (uint256) {
     if (address(deploymentFeeToken()) == address(0)) return 0;
-    if (hasMonthlySubscriptionFeeOverride[wallet]) return monthlySubscriptionFeeOverride[wallet];
-    return DEFAULT_MONTHLY_SUBSCRIPTION_FEE;
+    return _decodeWalletFee(walletFeeOverrides[wallet].monthlyFee, DEFAULT_MONTHLY_SUBSCRIPTION_FEE);
   }
 
   /// @notice Pay `months` subscription months for the caller in `deploymentFeeToken()`.
@@ -470,13 +513,21 @@ contract IdleCreditVaultFactory is Initializable {
       subscriptionPaidUntil[wallet] <= block.timestamp;
   }
 
-  /// @notice Set the USDC fee for unlisted callers. Only treasury may call this function.
+  /// @notice Set the default USDC fee for unlisted callers. Only treasury may call this function.
   /// @param fee USDC in six-decimal units. Set to zero to disable paid deployments.
   function setDeploymentFee(uint256 fee) external {
     if (msg.sender != treasury) revert OnlyTreasury();
     if (fee != 0 && address(deploymentFeeToken()) == address(0)) revert UnsupportedDeploymentFeeNetwork();
     deploymentFee = fee;
     emit DeploymentFeeSet(fee);
+  }
+
+  /// @notice Quote the deployment fee for a wallet in six-decimal USDC units.
+  /// @dev Returns zero for whitelist quota deployments and when unlisted deployments are disabled.
+  /// @param wallet The wallet that will call the factory.
+  function deploymentFeeFor(address wallet) public view returns (uint256) {
+    if (deploymentFee == 0 || whitelist[wallet]) return 0;
+    return _decodeWalletFee(walletFeeOverrides[wallet].deploymentFee, deploymentFee);
   }
 
   /// @notice Return native USDC on supported factory networks, or zero on other networks.
@@ -491,9 +542,9 @@ contract IdleCreditVaultFactory is Initializable {
   /// @dev Both flows authorize once. A reverted deployment rolls back quota consumption and payment.
   function _authorizeDeployment() internal {
     if (!whitelist[msg.sender]) {
-      uint256 fee = deploymentFee;
-      if (fee == 0) revert NotWhitelisted();
-      deploymentFeeToken().safeTransferFrom(msg.sender, treasury, fee);
+      if (deploymentFee == 0) revert NotWhitelisted();
+      uint256 fee = deploymentFeeFor(msg.sender);
+      if (fee != 0) deploymentFeeToken().safeTransferFrom(msg.sender, treasury, fee);
       return;
     }
     uint256 remaining = remainingDeployments[msg.sender];
