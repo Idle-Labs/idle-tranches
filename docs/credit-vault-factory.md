@@ -58,7 +58,10 @@ Prompt the user when `isSubscriptionDue(wallet)` returns `true`. Show `subscript
 2. Approve the factory proxy to spend `amount` of `deploymentFeeToken()`.
 3. Call `paySubscription(uint256 months)` from the wallet. It always pays for `msg.sender`.
 
-`paySubscription` has no return value. On a successful payment it emits `SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil)`, where `paidUntil` is the new expiry. The new expiry is `max(block.timestamp, subscriptionPaidUntil(wallet)) + months * SUBSCRIPTION_PERIOD()`. Renewing before expiry extends the current paid period. Renewing after expiry starts from the payment time, so the lapsed gap is not charged.
+`paySubscription` has no return value. On a successful payment it emits `SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil)`, where `paidUntil` is the new expiry. The new expiry is `max(block.timestamp, subscriptionPaidUntil(wallet)) + months * SUBSCRIPTION_PERIOD()`:
+
+- Paying before expiry extends from the current expiry, so the remaining paid days are kept. With an expiry of March 30, one month paid on March 20 runs to about April 29 (March 30 plus 30 days).
+- Paying on or after expiry adds the months from the payment time. With an expiry of March 30, one month paid on April 10 runs to about May 10. The lapsed gap is not charged.
 
 For a wallet that is not whitelisted, `paySubscription` reverts with `Is0()` when `months` is zero or the caller's rate is overridden to zero. Insufficient balance or allowance reverts without changing the expiry. For a whitelisted wallet, the call succeeds without charging, extending, or emitting an event, so the UI should not offer it.
 

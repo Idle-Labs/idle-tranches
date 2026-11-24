@@ -453,9 +453,9 @@ contract IdleCreditVaultFactory is Initializable {
   }
 
   /// @notice Pay `months` subscription months for the caller in `deploymentFeeToken()`.
-  /// @dev Coverage extends from the later of now and the current `subscriptionPaidUntil`.
-  /// Whitelisted callers are exempt: the call returns without charging, extending, or emitting.
-  /// Otherwise reverts with `Is0` when `months` or the caller's rate is zero.
+  /// @dev An early renewal adds `months * SUBSCRIPTION_PERIOD` to the current `subscriptionPaidUntil`; a late
+  /// payment adds it to the payment time. Whitelisted callers are exempt: the call returns without charging,
+  /// extending, or emitting. Otherwise reverts with `Is0` when `months` or the caller's rate is zero.
   /// @param months Number of `SUBSCRIPTION_PERIOD` months to pay.
   function paySubscription(uint256 months) external {
     _paySubscription(months);
@@ -503,7 +503,9 @@ contract IdleCreditVaultFactory is Initializable {
 
   /// @notice Charge the caller `months` times its monthly rate and extend its paid-through timestamp.
   /// @dev Whitelisted callers are exempt and return early, keeping their configured rate for use after delisting.
-  /// Renewals before expiry stack on the current expiry; lapsed subscriptions restart from now.
+  /// Paying before expiry extends from the current expiry, so no paid time is lost: with an expiry of March 30,
+  /// one month paid on March 20 runs to about April 29. Paying on or after expiry adds the months from the
+  /// payment time; the lapsed gap is not charged.
   /// @param months Number of `SUBSCRIPTION_PERIOD` months to pay.
   function _paySubscription(uint256 months) internal {
     if (whitelist[msg.sender]) return;
