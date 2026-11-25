@@ -1052,7 +1052,23 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log("🛑 strategyAddress must be specified or available in CDO config");
       return;
     }
-    let strategy = await ethers.getContractAt(args.strategyName, strategyAddress, signer);
+    const strategy = await ethers.getContractAt(args.strategyName, strategyAddress, signer);
+    const isCreditVaultStrategy = args.strategyName.split(':').pop() === 'IdleCreditVault';
+    const reuseCDO = hasAddress(cdoConfig.cdoAddr);
+    // IdleCreditVault accepts one CDO binding, so validate it before any deployment or configuration write.
+    let isStrategyBound = false;
+    if (isCreditVaultStrategy) {
+      const boundCDO = await strategy.idleCDO();
+      if (hasAddress(boundCDO)) {
+        if (!reuseCDO) {
+          throw new Error(`Strategy ${strategyAddress} is already bound to CDO ${boundCDO} and cannot be bound to a new CDO`);
+        }
+        if (!sameAddress(boundCDO, cdoConfig.cdoAddr)) {
+          throw new Error(`Strategy ${strategyAddress} is bound to CDO ${boundCDO}, not to the configured CDO ${cdoConfig.cdoAddr}`);
+        }
+        isStrategyBound = true;
+      }
+    }
     const creator = await signer.getAddress();
     let networkCDOName = isMatic ? 'IdleCDOPolygon' : 'IdleCDO';
     if (isPolygonZK) {
@@ -1072,7 +1088,7 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       console.log("ProxyAdmin override:     ", proxyAdminAddress);
     }
 
-    if (hasAddress(cdoConfig.cdoAddr)) {
+    if (reuseCDO) {
       idleCDOAddress = cdoConfig.cdoAddr;
       console.log("Using existing CDO:      ", idleCDOAddress);
     } else if (helpers.isEmptyString(cdoProxyAddressToClone)) {
@@ -1110,6 +1126,12 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
     }
 
     const idleCDO = await ethers.getContractAt(contractName, idleCDOAddress, signer);
+    if (isCreditVaultStrategy && reuseCDO) {
+      const cdoStrategyAddress = await idleCDO.strategy();
+      if (!sameAddress(cdoStrategyAddress, strategy.address)) {
+        throw new Error(`CDO ${idleCDOAddress} uses strategy ${cdoStrategyAddress}, expected ${strategy.address}`);
+      }
+    }
     console.log('owner idleCDO', await idleCDO.owner());
 
     const AAaddr = await idleCDO.AATranche();
@@ -1128,7 +1150,13 @@ task("deploy-with-factory", "Deploy IdleCDO with CDOFactory, IdleStrategy and St
       }
     }
 
-    if (strategy.setWhitelistedCDO && (await strategy.idleCDO())?.toLowerCase() != idleCDO.address.toLowerCase()) {
+    if (isCreditVaultStrategy) {
+      // The preflight above already rejected bindings to any other CDO; bind only an unset strategy.
+      if (!isStrategyBound) {
+        console.log("Binding strategy to CDO");
+        await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
+      }
+    } else if (strategy.setWhitelistedCDO && (await strategy.idleCDO())?.toLowerCase() != idleCDO.address.toLowerCase()) {
       console.log("Setting whitelisted CDO");
       await strategy.connect(signer).setWhitelistedCDO(idleCDO.address);
     }
