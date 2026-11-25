@@ -364,6 +364,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       expectedEpochInterest = _pendingWithdrawFees;
     }
 
+    // Cap realized yield before APR-zero settlement splits it between active and withdrawing lenders.
+    if (!_isRequestingAllFunds && _interest > 1) {
+      uint256 _maxApr = _strategy.maxApr();
+      _checkNotAllowed(_maxApr != 0 && _interest >
+        _calcInterestWithApr(getContractValue() + _strategy.apr0TotalPrincipal(), _maxApr) + _pendingWithdrawFees);
+    }
+
     // Base interest for stopEpoch: explicit override (>1) or precomputed expected epoch interest.
     uint256 _expectedInterest;
     // Strategy finalizes APR0 bucket state and returns adjusted stopEpoch values.
@@ -371,6 +378,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Pending withdraws may be increased during APR0 settlement, so read after prepareStopEpochWithApr0.
     uint256 _pendingWithdraws = _pendingWithdrawals();
 
+    uint256 _grossInterest = _expectedInterest;
     // special case where we get everything back from the borrower
     if (_isRequestingAllFunds) {
       // Recall gross strategy-token principal, including fee backing excluded from net CDO NAV.
@@ -378,14 +386,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _totBorrowed += _contractTokenBalance(strategyToken);
       _expectedInterest += _totBorrowed;
     }
-    uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
     bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
     // In minted mode IdleCDO only needs cash for withdraw requests, not for epoch interest itself.
     uint256 _amountToPullFromBorrower = _mintInterest ? 0 : _expectedInterest;
-    if (_mintInterest && _interest > 1) {
-      uint256 _maxApr = _strategy.maxApr();
-      _checkNotAllowed(_maxApr != 0 && _grossInterest > _calcInterestWithApr(getContractValue(), _maxApr) + _pendingWithdrawFees);
-    }
 
     // Checkpoint management fees before borrower funds are pulled in so the elapsed-period
     // accrual applies only to the pre-stop live NAV, not to newly received epoch interest.

@@ -1517,7 +1517,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
   function testApr0RequestChargesManagementFeeUpfront() external {
     uint256 amount = 10_000 * ONE_SCALE;
-    uint256 poolInterest = 1_000 * ONE_SCALE;
+    uint256 poolInterest = 100 * ONE_SCALE;
     uint256 mgmtFeeRate = 1_000; // 1%
 
     _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, cdoEpoch.managementFee());
@@ -2732,6 +2732,50 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.stopEpoch(0, overrideInterest);
   }
 
+  /// @notice A Fasanara-style cash settlement caps realized yield on active and pending APR-zero principal together.
+  /// @param allPending Whether all principal is waiting for withdrawal at settlement.
+  function testCashInterestCapWithPendingApr0Withdrawals(bool allPending) external {
+    IdleCreditVault cv = IdleCreditVault(address(strategy));
+    assertFalse(cdoEpoch.isInterestMinted());
+    vm.prank(owner);
+    cv.setMaxApr(12e18);
+    vm.prank(manager);
+    cv.setAprs(0, 0);
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    _transferBurnedTrancheTokens(address(this), true);
+    _startEpochAndCheckPrices(0);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+
+    _setManagementFee(1_000);
+    uint256 shares = AAtranche.balanceOf(address(this));
+    uint256 receipt = cdoEpoch.requestWithdraw(allPending ? shares : shares / 2, address(AAtranche));
+    uint256 fees = cdoEpoch.pendingWithdrawFees();
+    assertGt(fees, 0, "receipt fees must be funded separately");
+    assertEq(cv.apr0TotalPrincipal(), receipt, "pending APR-zero principal");
+    _startEpochAndCheckPrices(1);
+    vm.warp(cdoEpoch.epochEndDate());
+
+    uint256 active = cdoEpoch.getContractValue();
+    assertEq(active == 0, allPending, "active NAV after withdrawal request");
+    uint256 cap = _calcInterestAtApr(active + receipt, cv.maxApr());
+    uint256 payment = cap + fees;
+    deal(defaultUnderlying, borrower, receipt + payment + 1, true);
+    vm.startPrank(manager);
+    vm.expectRevert(NotAllowed.selector);
+    cdoEpoch.stopEpoch(0, payment + 1);
+    // Retry at the exact cap, including fee backing and the pending receipt's share of yield.
+    cdoEpoch.stopEpoch(0, payment);
+    vm.stopPrank();
+
+    assertEq(underlying.balanceOf(borrower), 1, "borrower paid cash interest and pending principal");
+    uint256 balanceBefore = underlying.balanceOf(address(this));
+    cdoEpoch.claimWithdrawRequest();
+    assertApproxEqAbs(underlying.balanceOf(address(this)) - balanceBefore, receipt + cap * receipt / (active + receipt), 1);
+  }
+
   function testStopEpochMintInterestWithPendingWithdraws() external {
     _setFeeParams(TL_MULTISIG, 10000, FULL_ALLOC, cdoEpoch.managementFee()); // 10%
     vm.prank(owner);
@@ -3303,7 +3347,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     _startEpochAndCheckPrices(1);
 
     // stop epoch 1 with override interest (pool interest)
-    uint256 poolInterest = 1000 * ONE_SCALE;
+    uint256 poolInterest = 100 * ONE_SCALE;
     vm.warp(cdoEpoch.epochEndDate() + 1);
     uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
     deal(defaultUnderlying, borrower, poolInterest + pendingWithdraws + amount);
@@ -3348,7 +3392,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _startEpochAndCheckPrices(1);
 
-    uint256 poolInterest = 1000 * ONE_SCALE;
+    uint256 poolInterest = 100 * ONE_SCALE;
     vm.warp(cdoEpoch.epochEndDate() + 1);
     uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
     deal(defaultUnderlying, borrower, poolInterest + pendingWithdraws + amount);
@@ -3406,14 +3450,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
         uint256 poolPrincipal = cdoEpoch.getContractValue();
         uint256 apr0Principal = principalThis + principalUser1;
 
-        expectedThisInterest = _calcApr0NetForPrincipal(1500 * ONE_SCALE, poolPrincipal, apr0Principal, principalThis, cdoEpoch.fee());
-        expectedUser1Interest = _calcApr0NetForPrincipal(1500 * ONE_SCALE, poolPrincipal, apr0Principal, principalUser1, cdoEpoch.fee());
+        expectedThisInterest = _calcApr0NetForPrincipal(150 * ONE_SCALE, poolPrincipal, apr0Principal, principalThis, cdoEpoch.fee());
+        expectedUser1Interest = _calcApr0NetForPrincipal(150 * ONE_SCALE, poolPrincipal, apr0Principal, principalUser1, cdoEpoch.fee());
       }
 
       _startEpochAndCheckPrices(1);
 
       {
-        uint256 poolInterest = 1500 * ONE_SCALE;
+        uint256 poolInterest = 150 * ONE_SCALE;
         vm.warp(cdoEpoch.epochEndDate() + 1);
         uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
         deal(defaultUnderlying, borrower, poolInterest + pendingWithdraws + amountThis + amountUser1);
@@ -3438,12 +3482,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     }
 
     // request and claim the remaining balances so both users fully exit
-    _runApr0RemainingWithdrawRound(user1, 2, 600 * ONE_SCALE, amountThis + amountUser1);
+    _runApr0RemainingWithdrawRound(user1, 2, 60 * ONE_SCALE, amountThis + amountUser1);
 
     uint256 totalClaimThis = underlying.balanceOf(address(this)) - balThisStart;
     uint256 totalClaimUser1 = underlying.balanceOf(user1) - balUser1Start;
-    assertApproxEqAbs(totalClaimThis - amountThis, 1400 * ONE_SCALE, 2, "total gain wrong for user this");
-    assertApproxEqAbs(totalClaimUser1 - amountUser1, 700 * ONE_SCALE, 2, "total gain wrong for user1");
+    assertApproxEqAbs(totalClaimThis - amountThis, 140 * ONE_SCALE, 2, "total gain wrong for user this");
+    assertApproxEqAbs(totalClaimUser1 - amountUser1, 70 * ONE_SCALE, 2, "total gain wrong for user1");
 
     assertEq(IERC20(AAtranche).balanceOf(address(this)), 0, "user this should have no AA left");
     assertEq(IERC20(AAtranche).balanceOf(user1), 0, "user1 should have no AA left");
@@ -3486,13 +3530,13 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
       uint256 poolPrincipal = cdoEpoch.getContractValue();
       uint256 apr0Principal = principalAA + principalBB;
-      expectedAAInterest = _calcApr0NetForPrincipal(900 * ONE_SCALE, poolPrincipal, apr0Principal, principalAA, cdoEpoch.fee());
-      expectedBBInterest = _calcApr0NetForPrincipal(900 * ONE_SCALE, poolPrincipal, apr0Principal, principalBB, cdoEpoch.fee());
+      expectedAAInterest = _calcApr0NetForPrincipal(90 * ONE_SCALE, poolPrincipal, apr0Principal, principalAA, cdoEpoch.fee());
+      expectedBBInterest = _calcApr0NetForPrincipal(90 * ONE_SCALE, poolPrincipal, apr0Principal, principalBB, cdoEpoch.fee());
     }
 
     _startEpochAndCheckPrices(1);
 
-    uint256 poolInterest = 900 * ONE_SCALE;
+    uint256 poolInterest = 90 * ONE_SCALE;
     vm.warp(cdoEpoch.epochEndDate() + 1);
     uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
     deal(defaultUnderlying, borrower, poolInterest + pendingWithdraws + amountAA + amountBB);
@@ -3660,7 +3704,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
       _startEpochAndCheckPrices(1);
 
-      uint256 poolInterest1 = 900 * ONE_SCALE;
+      uint256 poolInterest1 = 90 * ONE_SCALE;
       vm.warp(cdoEpoch.epochEndDate() + 1);
       uint256 pendingWithdraws1 = IdleCreditVault(address(strategy)).pendingWithdraws();
       deal(defaultUnderlying, borrower, poolInterest1 + pendingWithdraws1 + amount);
@@ -3674,7 +3718,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
       _startEpochAndCheckPrices(2);
 
-      uint256 poolInterest2 = 700 * ONE_SCALE;
+      uint256 poolInterest2 = 70 * ONE_SCALE;
       vm.warp(cdoEpoch.epochEndDate() + 1);
       uint256 pendingWithdraws2 = IdleCreditVault(address(strategy)).pendingWithdraws();
       deal(defaultUnderlying, borrower, poolInterest2 + pendingWithdraws2 + amount);
@@ -3715,7 +3759,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _startEpochAndCheckPrices(1);
 
-    uint256 poolInterest1 = 1000 * ONE_SCALE;
+    uint256 poolInterest1 = 100 * ONE_SCALE;
     vm.warp(cdoEpoch.epochEndDate() + 1);
     uint256 pendingWithdraws = IdleCreditVault(address(strategy)).pendingWithdraws();
     deal(defaultUnderlying, borrower, poolInterest1 + pendingWithdraws + amount);
@@ -3726,14 +3770,14 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _startEpochAndCheckPrices(2);
     vm.warp(cdoEpoch.epochEndDate() + 1);
-    uint256 poolInterest2 = 500 * ONE_SCALE;
+    uint256 poolInterest2 = 50 * ONE_SCALE;
     deal(defaultUnderlying, borrower, poolInterest2 + amount);
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, poolInterest2);
 
     _startEpochAndCheckPrices(3);
     vm.warp(cdoEpoch.epochEndDate() + 1);
-    uint256 poolInterest3 = 300 * ONE_SCALE;
+    uint256 poolInterest3 = 30 * ONE_SCALE;
     deal(defaultUnderlying, borrower, poolInterest3 + amount);
     vm.prank(manager);
     cdoEpoch.stopEpoch(0, poolInterest3);
@@ -4886,7 +4930,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 expectedPendingBasis;
     uint256 expectedActiveInterest;
     {
-      uint256 poolInterest = 1_000 * ONE_SCALE;
+      uint256 poolInterest = 100 * ONE_SCALE;
       uint256 expectedApr0Interest = _calcApr0NetForPrincipal(poolInterest, cdoEpoch.getContractValue(), principal, principal, cdoEpoch.fee());
       expectedPendingBasis = principal + expectedApr0Interest;
       expectedActiveInterest = poolInterest - expectedApr0Interest;
@@ -4895,7 +4939,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     deal(defaultUnderlying, borrower, 0);
     vm.warp(cdoEpoch.epochEndDate() + 1);
     vm.prank(manager);
-    cdoEpoch.stopEpoch(0, 1_000 * ONE_SCALE);
+    cdoEpoch.stopEpoch(0, 100 * ONE_SCALE);
     _checkDefault();
     assertEq(cdoEpoch.expectedEpochInterest(), expectedActiveInterest, 'active default interest basis not stored');
     assertEq(creditVault.defaultPendingClaimBasis(), expectedPendingBasis, 'apr0 pending basis not adjusted');
@@ -8171,6 +8215,63 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(cdoEpoch.lastNAVAA(), aaNav + interest - juniorYield, 'AA settlement wrong');
     assertEq(cdoEpoch.lastNAVBB(), bbNav + juniorYield, 'BB settlement wrong');
     assertEq(cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB(), backing - retired + interest, 'settlement does not conserve value');
+  }
+
+  /// @notice Upgrading both Fasanara proxies enforces the cash cap with an actual lender's APR-zero withdrawal.
+  function testFasanaraForkCashInterestCapAfterUpgrade() external {
+    // The live CDO has just settled epoch 103. The manager holds AA and can request in this buffer.
+    vm.createSelectFork("mainnet", 26_479_487);
+    IdleCDOEpochVariant vault = IdleCDOEpochVariant(0xf6223C567F21E33e859ED7A045773526E9E3c2D5);
+    IdleCreditVault credit = IdleCreditVault(vault.strategy());
+    assertFalse(vault.isEpochRunning());
+    assertFalse(vault.isInterestMinted());
+    assertEq(credit.unscaledApr(), 0);
+    assertEq(credit.maxApr(), 0);
+    {
+      bytes32 adminSlot = bytes32(uint256(keccak256("eip1967.proxy.admin")) - 1);
+      ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(address(vault), adminSlot)))));
+      IdleCDOEpochVariant implementation = new IdleCDOEpochVariant();
+      assertLe(address(implementation).code.length, 24_576, 'CDO exceeds EIP-170');
+      vm.prank(admin.owner());
+      admin.upgrade(ITransparentUpgradeableProxy(address(vault)), address(implementation));
+      ProxyAdmin strategyAdmin = ProxyAdmin(address(uint160(uint256(vm.load(address(credit), adminSlot)))));
+      IdleCreditVault strategyImplementation = new IdleCreditVault();
+      vm.prank(strategyAdmin.owner());
+      strategyAdmin.upgrade(ITransparentUpgradeableProxy(address(credit)), address(strategyImplementation));
+    }
+    vm.prank(credit.owner());
+    credit.setMaxApr(12e18);
+
+    address operator = credit.manager();
+    address aa = vault.AATranche();
+    vm.prank(operator);
+    uint256 receipt = vault.requestWithdraw(1e18, aa);
+    assertGt(receipt, 0);
+    assertEq(credit.apr0TotalPrincipal(), receipt);
+    skip(vault.bufferPeriod());
+    vm.prank(operator);
+    vault.startEpoch();
+    vm.warp(vault.epochEndDate());
+
+    uint256 principal = vault.getContractValue() + receipt;
+    uint256 interest = principal * 12 * vault.epochDuration() / (365 days * 100) + vault.pendingWithdrawFees();
+    uint256 cashDue = interest + credit.pendingWithdraws();
+    address payer = credit.borrower();
+    IERC20Detailed usdc = IERC20Detailed(USDC);
+    uint256 balanceBefore = usdc.balanceOf(payer);
+    assertGe(balanceBefore, cashDue + 1);
+    vm.prank(payer);
+    usdc.approve(address(vault), cashDue + 1);
+
+    vm.startPrank(operator);
+    vm.expectRevert(NotAllowed.selector);
+    vault.stopEpoch(0, interest + 1);
+    vault.stopEpoch(0, interest);
+    vm.stopPrank();
+    assertFalse(vault.defaulted());
+    assertFalse(vault.isEpochRunning());
+    assertEq(credit.epochNumber(), 105);
+    assertEq(balanceBefore - usdc.balanceOf(payer), cashDue);
   }
 
   /// @notice Fund a pinned-fork settlement and return exact AA NAV per 1e18 shares.

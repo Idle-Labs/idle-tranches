@@ -543,7 +543,7 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
   /// @param _token token address
   /// @return balance of `_token` for this contract
   function _contractTokenBalance(address _token) internal view returns (uint256) {
-    return IERC20Detailed(_token).balanceOf(address(this));
+    return _userTrancheBal(address(this), _token);
   }
 
   /// @notice Checkpoint accrued management fees into `unclaimedFees`.
