@@ -960,17 +960,25 @@ contract IdleCreditVault is
     canTransfer = false;
   }
 
-  /// @notice allow to update whitelisted address
+  /// @notice Bind the strategy to its CDO. The binding can be set only once.
+  /// @dev The bound CDO can mint strategy tokens and receive strategy-held underlying, so a
+  /// nonzero `idleCDO` can never be replaced, not even with the same address. Upgraded proxies
+  /// keep their stored binding.
+  /// @param _cdo address of the CDO
   function setWhitelistedCDO(address _cdo) external onlyOwner {
+    if (idleCDO != address(0)) revert NotAllowed();
     require(_cdo != address(0), "IS_0");
     idleCDO = _cdo;
   }
 
-  /// @notice Emergency method to rescue funds
+  /// @notice Emergency method to rescue tokens other than the underlying
+  /// @dev The underlying backs funded withdraw claims and the default recovery reserve, so it
+  /// can leave the strategy only through the CDO-driven accounting flows.
   /// @param _token address of the token to transfer
   /// @param value amount of `_token` to transfer
   /// @param _to receiver address
   function transferToken(address _token, uint256 value, address _to) external onlyOwner {
+    if (_token == token) revert NotAllowed();
     IERC20Detailed(_token).safeTransfer(_to, value);
   }
 

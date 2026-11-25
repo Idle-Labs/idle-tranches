@@ -98,3 +98,18 @@ For a whitelisted wallet, the combined calls charge no subscription and no deplo
 ### Configuring subscription rates
 
 Use the monthly fee field of the same `setWalletFees` entry described under [Configuring paid access](#configuring-paid-access). Rate changes apply to future payments. A wallet keeps the time it has already paid for, including when it returns to the default. On networks without a fee token, a positive custom price in either field reverts the entire batch.
+
+## Strategy CDO binding and token rescue
+
+Each `IdleCreditVault` strategy serves exactly one credit vault, stored in `idleCDO()`. Only that vault can mint and burn strategy tokens, move the strategy's underlying through deposits, withdrawal funding and claims, and finalize default recovery.
+
+| Strategy owner call | Behavior |
+| --- | --- |
+| `setWhitelistedCDO(address cdo)` | While `idleCDO()` is zero, binds the strategy to a nonzero `cdo` and reverts with `"IS_0"` if `cdo` is the zero address. Once `idleCDO()` is set, every call reverts with `NotAllowed()`, whatever `cdo` is: the zero address, the bound address or another address. |
+| `transferToken(address token, uint256 value, address to)` | Rescues an ERC-20 sent to the strategy. Reverts with `NotAllowed()` when `token` is the strategy's underlying, `token()`. |
+
+The strategy's underlying backs funded withdrawal claims and the default recovery reserve, so it leaves the strategy only through the vault's claim, epoch and recovery flows. The restriction applies to the strategy only. The credit vault's own `transferToken`, which sends tokens to its governance recovery fund, is unchanged.
+
+Both `deployCreditVault` and `deployRevolvingCreditVault` deploy a fresh strategy proxy owned by the factory. During setup they set the strategy APR and then bind the strategy to the new vault, before transferring ownership of both to `treasury()`. The revolving flow sets the APR to zero. After deployment, treasury cannot rebind the strategy.
+
+The binding lives in the proxy's existing `idleCDO` storage slot, and a plain `ProxyAdmin.upgrade` does not change it. After the upgrade, a proxy that was already bound keeps its vault and rejects every later `setWhitelistedCDO` call with `NotAllowed()`, including zero-address calls. A proxy that was still unbound can be bound once by its owner, and a zero-address attempt reverts with `"IS_0"` until then. A wrong binding can no longer be corrected through the setter, so confirm that `idleCDO()` returns the intended vault before upgrading a live strategy.

@@ -149,6 +149,12 @@ contract IdleCreditVaultFactoryTest is Test {
   uint256 internal constant OTHER_SUBSCRIPTION_FEE = 250e6;
   uint256 internal constant DEFAULT_SUBSCRIPTION_FEE = 500e6;
   uint256 internal constant SUBSCRIPTION_MONTH = 30 days;
+  bytes32 internal constant EIP1967_IMPLEMENTATION_SLOT =
+    0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+  // Live Ethereum USDC credit vault and its strategy proxy.
+  address internal constant LIVE_CREDIT_VAULT = 0x433D5B175148dA32Ffe1e1A37a939E1b7e79be4d;
+  address internal constant LIVE_CREDIT_VAULT_STRATEGY = 0x17E9Ab2992dfecBe779a06A92a6cDB9fE6aEeEf3;
+  address internal constant MAINNET_DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
   event SubscriptionPaid(address indexed wallet, uint256 months, uint256 amount, uint256 paidUntil);
 
@@ -394,10 +400,11 @@ contract IdleCreditVaultFactoryTest is Test {
   }
 
   /// @notice Complete a standard deployment as the test creator to exercise successful quota consumption.
-  function _deployStandardCreditVault(IdleCreditVaultFactory factory) internal {
+  /// @return deployment addresses emitted by the deployment
+  function _deployStandardCreditVault(IdleCreditVaultFactory factory) internal returns (AncillaryDeployment memory deployment) {
     MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
     IdleCreditVaultFactory.AncillaryParams memory ancillaryParams;
-    _deployCreditVaultWithConfig(
+    deployment = _deployCreditVaultWithConfig(
       factory, underlying, address(new IdleCDOEpochVariant()), _makeCreditVaultParams(creatorFeeReceiver), ancillaryParams
     );
   }
@@ -616,6 +623,7 @@ contract IdleCreditVaultFactoryTest is Test {
     IdleCreditVaultFactory factory = _deployFactory();
     (address cvProxy, address strategyProxy, address programmableBorrowerProxy) = _deployRevolvingCreditVault(factory, underlying, vault);
     _assertDeployment(cvProxy, strategyProxy, programmableBorrowerProxy, address(underlying), address(vault));
+    _assertStrategyBindingLocked(IdleCreditVault(strategyProxy), owner, cvProxy);
   }
 
   function testInitializeProgrammableBorrowerSetsBorrowerAndApr() external {
@@ -685,6 +693,11 @@ contract IdleCreditVaultFactoryTest is Test {
     _assertProxyAdmin(deployment.queue);
     _assertProxyAdmin(deployment.writeOffEscrow);
     assertEq(strategy.manager(), manager, "strategy manager");
+    // The factory sets the APR before binding the fresh strategy to the new vault.
+    assertEq(strategy.idleCDO(), deployment.cv, "strategy cdo");
+    assertEq(strategy.unscaledApr(), 12e18, "strategy apr");
+    assertEq(strategy.getApr(), uint256(12e18) * (7 days + 1 days) / 7 days, "scaled strategy apr");
+    _assertStrategyBindingLocked(strategy, owner, deployment.cv);
     assertEq(queue.owner(), owner, "queue owner");
     assertEq(writeOffEscrow.owner(), owner, "write-off owner");
     assertEq(cv.keyring(), deployment.keyringWhitelist, "deployed keyring");
@@ -1063,6 +1076,147 @@ contract IdleCreditVaultFactoryTest is Test {
     assertEq(writeOffEscrow.feeReceiver(), newFeeReceiver, "write-off fee receiver");
   }
 
+  /// @notice The strategy implementation used by factory deployments fits within the EIP-170 runtime limit.
+  function testStrategyRuntimeSizeWithinLimit() external pure {
+    assertLe(type(IdleCreditVault).runtimeCode.length, 24_576, "IdleCreditVault exceeds EIP-170");
+  }
+
+  /// @notice An unbound strategy proxy accepts one nonzero owner binding, then rejects every rebinding.
+  function testStrategySetWhitelistedCDOBindsOnlyOnce() external {
+    MockFactoryERC20 underlying = new MockFactoryERC20("Mock USDC", "mUSDC", 6);
+    IdleCreditVault strategy = _deployUnboundStrategy(address(underlying));
+    address cv = makeAddr("boundCDO");
+    assertEq(strategy.idleCDO(), address(0), "fresh strategy already bound");
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    vm.prank(creator);
+    strategy.setWhitelistedCDO(cv);
+
+    vm.expectRevert(bytes("IS_0"));
+    vm.prank(owner);
+    strategy.setWhitelistedCDO(address(0));
+
+    vm.prank(owner);
+    strategy.setWhitelistedCDO(cv);
+    assertEq(strategy.idleCDO(), cv, "first binding not stored");
+    _assertStrategyBindingLocked(strategy, owner, cv);
+  }
+
+  /// @notice A plain proxy upgrade keeps a factory strategy's binding locked and its vault authorized.
+  function testFactoryStrategyBindingSurvivesProxyUpgrade() external {
+    vm.warp(100 days);
+    AncillaryDeployment memory deployment = _deployStandardCreditVault(_deployFactory());
+    IdleCreditVault strategy = IdleCreditVault(deployment.strategy);
+    address implementation = address(new IdleCreditVault());
+
+    vm.prank(proxyAdmin);
+    ITransparentUpgradeableProxy(deployment.strategy).upgradeTo(implementation);
+    assertEq(
+      address(uint160(uint256(vm.load(deployment.strategy, EIP1967_IMPLEMENTATION_SLOT)))),
+      implementation,
+      "strategy not upgraded"
+    );
+
+    assertEq(strategy.idleCDO(), deployment.cv, "binding lost on upgrade");
+    _assertStrategyBindingLocked(strategy, owner, deployment.cv);
+
+    // The bound vault keeps its vault-only authority after the upgrade.
+    uint256 balanceBefore = strategy.balanceOf(deployment.cv);
+    vm.prank(deployment.cv);
+    strategy.mintStrategyTokens(1e6);
+    assertEq(strategy.balanceOf(deployment.cv), balanceBefore + 1e6, "bound vault lost minting authority");
+  }
+
+  /// @notice The strategy owner cannot sweep underlying that backs a funded claim, which still pays in full.
+  function testFactoryStrategyRejectsUnderlyingRescueWithFundedClaim() external {
+    vm.warp(100 days);
+    AncillaryDeployment memory deployment = _deployStandardCreditVault(_deployFactory());
+    IdleCDOEpochVariant cv = IdleCDOEpochVariant(deployment.cv);
+    IdleCreditVault strategy = IdleCreditVault(deployment.strategy);
+    MockFactoryERC20 underlying = MockFactoryERC20(strategy.token());
+    address lender = makeAddr("fundedClaimLender");
+    uint256 claim = _requestFundedClaim(cv, strategy, underlying, lender);
+    uint256 held = underlying.balanceOf(address(strategy));
+    assertGe(held, claim, "strategy does not hold the funded claim");
+
+    // Treasury already received its fee share in underlying, so sweep to a separate address.
+    address sweepRecipient = makeAddr("sweepRecipient");
+    vm.expectRevert(NOT_ALLOWED);
+    vm.prank(owner);
+    strategy.transferToken(address(underlying), held, sweepRecipient);
+    assertEq(underlying.balanceOf(address(strategy)), held, "strategy underlying moved");
+    assertEq(underlying.balanceOf(sweepRecipient), 0, "recipient received underlying");
+    assertEq(strategy.withdrawsRequests(lender), claim, "claim accounting changed");
+    assertEq(strategy.defaultRecoveryReserve(), 0, "reserve accounting changed");
+
+    vm.prank(lender);
+    cv.claimWithdrawRequest();
+    assertEq(underlying.balanceOf(lender), claim, "funded claim not paid in full");
+    assertEq(strategy.withdrawsRequests(lender), 0, "claim not cleared");
+  }
+
+  /// @notice Only the strategy owner can rescue tokens other than the underlying.
+  function testFactoryStrategyOwnerRescuesOtherTokens() external {
+    vm.warp(100 days);
+    IdleCreditVault strategy = IdleCreditVault(_deployStandardCreditVault(_deployFactory()).strategy);
+    MockFactoryERC20 other = new MockFactoryERC20("Other token", "OTH", 18);
+    address recipient = makeAddr("rescueRecipient");
+    other.mint(address(strategy), 1_000e18);
+
+    vm.expectRevert(bytes("Ownable: caller is not the owner"));
+    vm.prank(creator);
+    strategy.transferToken(address(other), 1_000e18, creator);
+
+    vm.prank(owner);
+    strategy.transferToken(address(other), 1_000e18, recipient);
+    assertEq(other.balanceOf(recipient), 1_000e18, "rescued token not received");
+    assertEq(other.balanceOf(address(strategy)), 0, "rescued token left in strategy");
+  }
+
+  /// @notice A plain upgrade of the live Ethereum USDC strategy keeps its binding locked and blocks underlying rescue.
+  /// @dev Requires the `mainnet` RPC endpoint at the pinned historical block.
+  function testLiveStrategyUpgradeKeepsBindingAndBlocksUnderlyingRescue() external {
+    vm.createSelectFork("mainnet", 26272200);
+    IdleCreditVault live = IdleCreditVault(LIVE_CREDIT_VAULT_STRATEGY);
+    assertEq(IdleCDOEpochVariant(LIVE_CREDIT_VAULT).strategy(), LIVE_CREDIT_VAULT_STRATEGY, "unexpected live strategy");
+    assertEq(live.idleCDO(), LIVE_CREDIT_VAULT, "live strategy bound elsewhere");
+    assertEq(live.token(), address(MAINNET_FEE_USDC), "unexpected live underlying");
+
+    address liveOwner = live.owner();
+    uint256 supplyBefore = live.totalSupply();
+    uint256 vaultBalanceBefore = live.balanceOf(LIVE_CREDIT_VAULT);
+    ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(LIVE_CREDIT_VAULT_STRATEGY, EIP1967_ADMIN_SLOT)))));
+    address adminOwner = admin.owner();
+    address implementation = address(new IdleCreditVault());
+    vm.prank(adminOwner);
+    admin.upgrade(ITransparentUpgradeableProxy(LIVE_CREDIT_VAULT_STRATEGY), implementation);
+    assertEq(
+      admin.getProxyImplementation(ITransparentUpgradeableProxy(LIVE_CREDIT_VAULT_STRATEGY)),
+      implementation,
+      "live strategy not upgraded"
+    );
+
+    assertEq(live.idleCDO(), LIVE_CREDIT_VAULT, "live binding changed on upgrade");
+    assertEq(live.owner(), liveOwner, "live owner changed on upgrade");
+    assertEq(live.totalSupply(), supplyBefore, "strategy supply changed on upgrade");
+    assertEq(live.balanceOf(LIVE_CREDIT_VAULT), vaultBalanceBefore, "vault position changed on upgrade");
+    _assertStrategyBindingLocked(live, liveOwner, LIVE_CREDIT_VAULT);
+
+    // Add cash on top of any live balance so the blocked sweep always has something to take.
+    uint256 held = MAINNET_FEE_USDC.balanceOf(LIVE_CREDIT_VAULT_STRATEGY) + 1_000e6;
+    deal(address(MAINNET_FEE_USDC), LIVE_CREDIT_VAULT_STRATEGY, held, true);
+    vm.expectRevert(NOT_ALLOWED);
+    vm.prank(liveOwner);
+    live.transferToken(address(MAINNET_FEE_USDC), held, liveOwner);
+    assertEq(MAINNET_FEE_USDC.balanceOf(LIVE_CREDIT_VAULT_STRATEGY), held, "live underlying moved");
+
+    address recipient = makeAddr("liveRescueRecipient");
+    deal(MAINNET_DAI, LIVE_CREDIT_VAULT_STRATEGY, 1e18);
+    vm.prank(liveOwner);
+    live.transferToken(MAINNET_DAI, 1e18, recipient);
+    assertEq(IERC20(MAINNET_DAI).balanceOf(recipient), 1e18, "live owner cannot rescue other tokens");
+  }
+
   function _findDeployment(Vm.Log[] memory entries) internal pure returns (AncillaryDeployment memory deployment) {
     for (uint256 i = 0; i < entries.length; i++) {
       if (entries[i].topics[0] == CREDIT_VAULT_DEPLOYED) {
@@ -1090,6 +1244,95 @@ contract IdleCreditVaultFactoryTest is Test {
 
   function _assertProxyAdmin(address proxy) internal view {
     assertEq(address(uint160(uint256(vm.load(proxy, EIP1967_ADMIN_SLOT)))), proxyAdmin, "proxy admin");
+  }
+
+  /// @notice Assert a bound strategy rejects every rebinding and its replacement candidate stays unauthorized.
+  /// @param strategy bound strategy
+  /// @param strategyOwner current strategy owner, which is treasury for factory deployments
+  /// @param cv vault stored at binding time
+  function _assertStrategyBindingLocked(IdleCreditVault strategy, address strategyOwner, address cv) internal {
+    address otherCDO = makeAddr("otherCDO");
+    address[3] memory targets = [cv, otherCDO, address(0)];
+    for (uint256 i = 0; i < targets.length; i++) {
+      vm.expectRevert(NOT_ALLOWED);
+      vm.prank(strategyOwner);
+      strategy.setWhitelistedCDO(targets[i]);
+    }
+    assertEq(strategy.idleCDO(), cv, "strategy binding changed");
+
+    vm.expectRevert(NOT_ALLOWED);
+    vm.prank(otherCDO);
+    strategy.mintStrategyTokens(1);
+  }
+
+  /// @notice Deploy an initialized strategy proxy owned by treasury with no vault bound.
+  /// @param underlying strategy underlying token
+  /// @return strategy unbound strategy proxy
+  function _deployUnboundStrategy(address underlying) internal returns (IdleCreditVault strategy) {
+    strategy = IdleCreditVault(address(new TransparentUpgradeableProxy(
+      address(new IdleCreditVault()),
+      proxyAdmin,
+      abi.encodeWithSelector(
+        IdleCreditVault.initialize.selector,
+        underlying,
+        owner,
+        manager,
+        realBorrower,
+        "Unbound",
+        12e18
+      )
+    )));
+  }
+
+  /// @notice Deposit for `lender`, settle an epoch, request half the position, then settle the epoch that funds it.
+  /// @param cv factory-deployed vault
+  /// @param strategy vault strategy
+  /// @param underlying mintable vault underlying
+  /// @param lender depositor whose withdraw receipt is funded
+  /// @return claim funded withdraw receipt amount
+  function _requestFundedClaim(
+    IdleCDOEpochVariant cv,
+    IdleCreditVault strategy,
+    MockFactoryERC20 underlying,
+    address lender
+  ) internal returns (uint256 claim) {
+    // Read the tranche before pranking so the prank applies to the request itself.
+    address tranche = cv.AATranche();
+    vm.prank(realBorrower);
+    underlying.approve(address(cv), type(uint256).max);
+    underlying.mint(lender, 10_000e6);
+    vm.startPrank(lender);
+    underlying.approve(address(cv), 10_000e6);
+    uint256 shares = cv.depositAA(10_000e6);
+    vm.stopPrank();
+    _runFundedEpoch(cv, strategy, underlying);
+
+    vm.roll(block.number + 1);
+    vm.prank(lender);
+    claim = cv.requestWithdraw(shares / 2, tranche);
+    assertGt(claim, 0, "empty claim");
+    assertEq(strategy.withdrawsRequests(lender), claim, "request is not a normal receipt");
+
+    // The next successful stop moves the claim's underlying into the strategy.
+    _runFundedEpoch(cv, strategy, underlying);
+    assertEq(strategy.pendingWithdraws(), 0, "receipt not funded");
+  }
+
+  /// @notice Start an epoch, then stop it with the borrower funding its interest and pending receipts.
+  /// @param cv factory-deployed vault
+  /// @param strategy vault strategy
+  /// @param underlying mintable vault underlying
+  function _runFundedEpoch(IdleCDOEpochVariant cv, IdleCreditVault strategy, MockFactoryERC20 underlying) internal {
+    // A factory vault can carry a past epoch end date before its first epoch, so only move time forward.
+    uint256 nextStart = cv.epochEndDate() + cv.bufferPeriod() + 1;
+    if (nextStart > block.timestamp) vm.warp(nextStart);
+    vm.prank(manager);
+    cv.startEpoch();
+    vm.warp(cv.epochEndDate() + 1);
+    underlying.mint(realBorrower, cv.expectedEpochInterest() + strategy.pendingWithdraws());
+    vm.prank(manager);
+    cv.stopEpoch(12e18, 0);
+    assertFalse(cv.defaulted(), "funded stop defaulted");
   }
 
   /// @notice Deploy a factory with unlimited admin allowances, then grant the test creator two deployments.
