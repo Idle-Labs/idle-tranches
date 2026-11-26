@@ -261,9 +261,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // of all withdrawal requests. We add the fee that we should get for normal pending withdraws
     // we also add/remove the over/under performance caused by withdraw requests.
     // Pending fees remain due even if fixed-APR requests exhaust active interest.
-    int256 adjustedActiveInterest = int256(_calcInterest(getContractValue())) + interestForOverUnderPerformance;
-    if (adjustedActiveInterest < 0) adjustedActiveInterest = 0;
-    expectedEpochInterest = pendingWithdrawFees + uint256(adjustedActiveInterest);
+    expectedEpochInterest = pendingWithdrawFees + _availableInterest(_calcInterest(getContractValue()));
     interestForOverUnderPerformance = 0;
 
     // set expected epoch end date
@@ -481,7 +479,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _strategy.deposit(_mintInterest ? 0 : netInterest);
 
       // save last apr, unscaled
-      lastEpochApr = _strategy.unscaledApr();
+      lastEpochApr = _getUnscaledApr(_strategy);
       // set apr for next epoch
       _setScaledApr(_newApr);
 
@@ -777,7 +775,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
     // we compare unscaled aprs
     if (_isInstantWithdrawEnabled()) {
-      uint256 currentApr = creditVault.unscaledApr();
+      uint256 currentApr = _getUnscaledApr(creditVault);
       if (lastEpochApr > (currentApr + instantWithdrawAprDelta)) {
         // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
@@ -795,10 +793,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += totalFees;
 
-    /// if there is an AA withdrawal the overperformance that the amount withdrawed would have generated for BB tranches
-    /// is saved in interestForOverUnderPerformance. This is used to calculate the interest that should be added to the
-    /// expectedEpochInterest at the startEpoch.
-    /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
+    // Reconcile the fixed receipt against principal interest so later requests
+    // and startEpoch use only the interest that remains available.
     interestForOverUnderPerformance += diff;
 
     // The receipt is fixed now and leaves live NAV. Charge management fees upfront
@@ -889,29 +885,30 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _amount Amount of underlyings
   /// @param _tranche Tranche to withdraw from
   /// @return _interest Interest for the given amount and given tranche
-  /// @return _diff over/under performance that this withdraw will cause to the other tranche
+  /// @return _diff Principal-based interest less the interest fixed in the receipt.
   function _calcInterestWithdrawRequest(uint256 _amount, address _tranche) internal view returns (uint256 _interest, int256 _diff) {
     uint256 _duration = epochDuration;
-    if (_duration == 0) {
+    // The strategy records APR-zero receipts as principal, with interest resolved at settlement.
+    if (_duration == 0 || _getUnscaledApr(IdleCreditVault(strategy)) == 0) {
       return (_interest, _diff);
     }
 
-    uint256 _buffer = bufferPeriod;
-    // calculate total vault interest (they don't get the interest for the buffer period for withdraw requests so 
-    // we scale it back since _calcInterest is scaling the interest with tht buffer period),
-    uint256 totInterest = _calcInterest(_managedContractValue()) * _duration / (_duration + _buffer);
-    // calculate total tranche interest for the whole tranche supply
-    uint256 totTrancheInterest = _calcTrancheInterestShare(totInterest, _tranche);
-    // calculate interest for the given tranche and given amount
+    uint256 _totalDuration = _duration + bufferPeriod;
+    // Withdrawal receipts earn epoch interest excluding the buffer.
+    uint256 totTrancheInterest = _calcTrancheInterestShare(
+      _availableInterest(_calcInterest(_managedContractValue()) * _duration / _totalDuration), _tranche
+    );
     uint256 _trancheBal = _lastSavedNAV(_tranche);
     _interest = _trancheBal == 0 ? 0 : _amount * totTrancheInterest / _trancheBal;
-    // calculate the interest that the _amount would have received if there was no split ratio (ie interest split based only on tvl).
-    // This is used to calculate the interest that should be added to the expectedEpochInterest when 
-    // withdrawing an AA tranche or the interest that should be removed from expectedEpochInterest when
-    // withdrawing a BB tranche
-    uint256 interestWithoutSplitRatio = _calcInterest(_amount) * _duration / (_duration + _buffer);
-    // difference between total interest and tranche interest (positive for AA, negative for BB)
-    _diff = int256(interestWithoutSplitRatio) - int256(_interest);
+    uint256 principalInterest = _calcInterest(_amount) * _duration / _totalDuration;
+    _diff = int256(principalInterest) - int256(_interest);
+  }
+
+  /// @notice Read the strategy APR before adjusting for the buffer.
+  /// @param credit The credit vault strategy.
+  /// @return The unscaled APR.
+  function _getUnscaledApr(IdleCreditVault credit) private view returns (uint256) {
+    return credit.unscaledApr();
   }
 
   /// @notice Calculate the tranche share of the total interest for the epoch
@@ -920,6 +917,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   function _calcTrancheInterestShare(uint256 _totalInterest, address _tranche) internal view returns (uint256) {
     uint256 ratio = trancheAPRSplitRatio;
     return _totalInterest * (_tranche == AATranche ? ratio : FULL_ALLOC - ratio) / FULL_ALLOC;
+  }
+
+  /// @notice Return projected interest left after earlier fixed withdrawal receipts.
+  /// @param grossInterest Interest projected on the remaining principal.
+  /// @return availableInterest Interest available to current tranche holders.
+  function _availableInterest(uint256 grossInterest) internal view returns (uint256) {
+    int256 adjustedInterest = int256(grossInterest) + interestForOverUnderPerformance;
+    return adjustedInterest > 0 ? uint256(adjustedInterest) : 0;
   }
 
   /// @notice Calculate total fees charged on a withdrawal request.

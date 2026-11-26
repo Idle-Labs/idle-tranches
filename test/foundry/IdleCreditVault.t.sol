@@ -3181,7 +3181,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     // AARatio 50%
     uint256 mintedAA = idleCDO.depositAA(amountWei);
-    uint256 mintedBB = idleCDO.depositBB(amountWei);
+    idleCDO.depositBB(amountWei);
     _transferBurnedTrancheTokens(address(this), true);
     _transferBurnedTrancheTokens(address(this), false);
 
@@ -3226,8 +3226,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     maxAA = cdoEpoch.maxWithdrawable(address(this), idleCDO.AATranche());
     strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
     strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
-    // recalculate interest as trancheAPRSplitRatio changed
-    (netInterest,) = _calcInterestForTranche(address(AAtranche), mintedAA / 2);
+    lastNAVAA = cdoEpoch.lastNAVAA();
 
     uint256 requestedAA2 = cdoEpoch.requestWithdraw(0, address(AAtranche));
 
@@ -3242,7 +3241,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
     assertEq(
       strategyTokenBalCDO - IERC20Detailed(address(strategy)).balanceOf(address(cdoEpoch)),
-      requestedAA2 - netInterest,
+      lastNAVAA - cdoEpoch.lastNAVAA(),
       'strategyTokens for cdo not burned properly on second request'
     );
     assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2, 'pendingWithdraws for AA is wrong');
@@ -3250,8 +3249,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     strategyTokenBalUser = IERC20Detailed(strategyToken).balanceOf(address(this));
     strategyTokenBalCDO = IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch));
-    // recalculate interest as trancheAPRSplitRatio changed
-    (netInterest,) = _calcInterestForTranche(address(BBtranche), mintedBB);
+    uint256 lastNAVBB = cdoEpoch.lastNAVBB();
     uint256 maxBB = cdoEpoch.maxWithdrawable(address(this), idleCDO.BBTranche());
     uint256 requestedBB = cdoEpoch.requestWithdraw(0, address(BBtranche));
     // approximated because of different decimals between tranche token and underlying
@@ -3262,7 +3260,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     );
     assertEq(
       strategyTokenBalCDO - IERC20Detailed(strategyToken).balanceOf(address(cdoEpoch)),
-      requestedBB - netInterest,
+      lastNAVBB - cdoEpoch.lastNAVBB(),
       'strategyTokens for cdo not burned properly on BB request'
     );
     assertEq(_strategy.pendingWithdraws(), requestedAA1 + requestedAA2 + requestedBB, 'pendingWithdraws for BB request is wrong');
@@ -7456,7 +7454,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
 
     _depositWithUser(firstRequester, 5 * ONE_SCALE, true);
     _depositWithUser(secondRequester, 5 * ONE_SCALE, true);
-    _depositWithUser(borrower, ONE_SCALE, true);
+    _depositWithUser(borrower, ONE_SCALE, false);
+    _transferBurnedTrancheTokens(borrower, false);
     _depositWithUser(bbProvider, 990 * ONE_SCALE, false);
     vm.prank(borrower);
     underlying.approve(address(cdoEpoch), type(uint256).max);
@@ -7466,6 +7465,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     vm.prank(secondRequester);
     cdoEpoch.requestWithdraw(0, address(AAtranche));
 
+    // Existing fixed receipts remain payable when the next APR drops; this
+    // leaves pending fees as the only expected epoch interest.
+    vm.prank(manager);
+    IdleCreditVault(address(strategy)).setAprs(1, 1);
     assertGt(cdoEpoch.pendingWithdrawFees(), 0, 'requests must book fees');
     vm.prank(owner);
     cdoEpoch.startEpoch();
@@ -7479,7 +7482,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 feeBalanceBefore = underlying.balanceOf(cdoEpoch.feeReceiver());
 
     vm.prank(borrower);
-    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(BBtranche));
     assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'write-off must preserve pending fees');
 
     deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
@@ -7504,7 +7507,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 pendingFees = cdoEpoch.pendingWithdrawFees();
 
     vm.prank(borrower);
-    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(BBtranche));
     assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'thin fees must remain reserved');
 
     deal(defaultUnderlying, borrower, _expectedFundsEndEpoch(), true);
@@ -7526,7 +7529,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     uint256 accruedFee = _calcManagementFee(cdoEpoch.getContractValue(), 1_000, 10 days);
     vm.warp(block.timestamp + 10 days);
     vm.prank(borrower);
-    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(AAtranche));
+    cdoEpoch.writeOffDeposit(ONE_TRANCHE, address(BBtranche));
     assertEq(cdoEpoch.unclaimedFees(), accruedFee, 'floor write-off missed elapsed fees');
     assertEq(cdoEpoch.expectedEpochInterest(), pendingFees, 'write-off consumed pending fees');
     accruedFee += _calcManagementFee(cdoEpoch.getContractValue(), 1_000, cdoEpoch.epochEndDate() - block.timestamp);
@@ -7961,7 +7964,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     assertEq(priceBB, (500000 + 69446) * ONE_SCALE / 500000, 'BB price after stop epoch is wrong');
   }
 
-  /// @notice Fixed-APR request order cannot turn negative active interest into a wrapped uint.
+  /// @notice AYS repricing cannot promise more receipt and active interest than the borrower APR funds.
   function testFixedAprWithdrawOrderCannotWrapExpectedInterest() external {
     _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
     vm.prank(owner);
@@ -7989,7 +7992,65 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     cdoEpoch.startEpoch();
 
     assertFalse(cdoEpoch.defaulted(), 'healthy borrower should not default');
-    assertEq(cdoEpoch.expectedEpochInterest(), 0, 'negative active interest should floor at zero');
+    uint256 activePrincipal = cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB();
+    uint256 pendingPrincipal = 2 * amount - activePrincipal;
+    uint256 pendingInterest = IdleCreditVault(address(strategy)).pendingWithdraws() - pendingPrincipal;
+    assertLe(pendingInterest + cdoEpoch.expectedEpochInterest(), 2_000 * ONE_SCALE, 'borrower interest exceeds fixed APR');
+    assertLe(_expectedFundsEndEpoch(), 2 * amount + 2_000 * ONE_SCALE, 'borrower cash due exceeds principal plus APR');
+
+    deal(defaultUnderlying, borrower, 2 * amount + 2_000 * ONE_SCALE, true);
+    vm.warp(cdoEpoch.epochEndDate());
+    vm.prank(manager);
+    cdoEpoch.stopEpoch(0, 0);
+    assertFalse(cdoEpoch.defaulted(), 'funded borrower should settle');
+  }
+
+  /// @notice A deposit after a fixed receipt adds its own interest without reopening spent interest.
+  function testFixedAprRequestsAfterBufferDepositStayWithinBorrowerApr() external {
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    uint256 amount = 10_000 * ONE_SCALE;
+    idleCDO.depositAA(amount);
+    idleCDO.depositBB(amount);
+
+    cdoEpoch.requestWithdraw(BBtranche.balanceOf(address(this)) * 9 / 10, address(BBtranche));
+    vm.roll(block.number + 1);
+    idleCDO.depositAA(1_000 * ONE_SCALE);
+    for (uint256 i = 0; i < 2; i++) {
+      cdoEpoch.requestWithdraw(BBtranche.balanceOf(address(this)) * 9 / 10, address(BBtranche));
+      cdoEpoch.requestWithdraw(AAtranche.balanceOf(address(this)) * 9 / 10, address(AAtranche));
+    }
+
+    vm.prank(manager);
+    cdoEpoch.startEpoch();
+
+    uint256 principal = 2 * amount + 1_000 * ONE_SCALE;
+    uint256 activePrincipal = cdoEpoch.lastNAVAA() + cdoEpoch.lastNAVBB();
+    uint256 pendingPrincipal = principal - activePrincipal;
+    uint256 pendingInterest = IdleCreditVault(address(strategy)).pendingWithdraws() - pendingPrincipal;
+    // Only active principal earns buffer interest. Both groups earn epoch interest.
+    uint256 principalTime = principal * cdoEpoch.epochDuration() + activePrincipal * cdoEpoch.bufferPeriod();
+    uint256 budget = principalTime * initialProvidedApr / (100 * ONE_TRANCHE * 365 days);
+    // Five requests each round the scaled interest, then round again when removing the buffer.
+    assertApproxEqAbs(pendingInterest + cdoEpoch.expectedEpochInterest(), budget, 12, 'epoch interest did not reconcile');
+  }
+
+  /// @notice An APR-zero receipt records principal even when the fixed-APR ledger has interest left.
+  function testApr0RequestAfterFixedAprReceiptRecordsOnlyPrincipal() external {
+    _setFeeParams(TL_MULTISIG, 0, FULL_ALLOC, 0);
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    idleCDO.depositBB(10_000 * ONE_SCALE);
+
+    // At equal NAV, AYS gives AA less than its principal-based share of interest.
+    uint256 fixedReceipt = cdoEpoch.requestWithdraw(AAtranche.balanceOf(address(this)) / 2, address(AAtranche));
+    IdleCreditVault credit = IdleCreditVault(address(strategy));
+    vm.prank(manager);
+    credit.setAprs(0, 0);
+
+    uint256 principal = _navForShares(address(BBtranche), BBtranche.balanceOf(address(this)));
+    assertEq(cdoEpoch.maxWithdrawable(address(this), address(BBtranche)), principal, 'APR-zero preview includes interest');
+    assertEq(cdoEpoch.requestWithdraw(0, address(BBtranche)), principal, 'APR-zero receipt includes interest');
+    assertEq(credit.apr0TotalPrincipal(), principal, 'APR-zero principal includes interest');
+    assertEq(credit.withdrawsRequests(address(this)), fixedReceipt, 'fixed receipt changed after APR update');
   }
 
   /// @notice An uninitialized BB tranche reports zero APR when AA owns the entire vault.
