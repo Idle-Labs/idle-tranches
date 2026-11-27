@@ -65,7 +65,8 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     limit = _limit;
   }
 
-  /// @notice Send eligible tokens to the governance recovery fund in an emergency.
+  /// @notice Emergency method, tokens gets transferred to the governanceRecoveryFund address
+  /// @dev Reverts for the strategy token, which backs the vault's positions
   /// @param _token address of the token to transfer
   /// @param _value amount to transfer
   function transferToken(address _token, uint256 _value) external {

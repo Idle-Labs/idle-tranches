@@ -155,8 +155,10 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _createLoss(uint256 _loss) internal override {
-    // Burning backing reduces tranche prices without changing the strategy price.
+    // NOTE: this will decrease tranche prices but not the strategy price so no
+    // automatic default can be triggered
     uint256 loss = cdoEpoch.getContractValue() * _loss / FULL_ALLOC;
+    // To create loss we burn strategyTokens held by IdleCDO (transferToken blocks them)
     uint256 bal = strategyToken.balanceOf(address(cdoEpoch));
     require(bal >= loss, "test: loss is too large");
     vm.prank(address(cdoEpoch));
