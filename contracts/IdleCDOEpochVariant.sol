@@ -201,6 +201,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Default recovery should not keep accruing fees or leave old fee claims senior to LP recovery.
     fee = 0;
     managementFee = 0;
+    pendingManagementFees = 0;
     unclaimedFees = 0;
     latestHarvestBlock = block.timestamp;
 
@@ -241,6 +242,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // Remove raw donated underlyings before calculating epoch interest or borrower transfer amounts.
     _skimDonatedAssets();
 
+    // Opening carried fees must already be reflected in saved NAV.
+    _updateAccounting();
+    openingUnclaimedFees = unclaimedFees;
     isEpochRunning = true;
     // prevent deposits
     _pause();
@@ -257,9 +261,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // of all withdrawal requests. We add the fee that we should get for normal pending withdraws
     // we also add/remove the over/under performance caused by withdraw requests.
     // Pending fees remain due even if fixed-APR requests exhaust active interest.
-    int256 adjustedActiveInterest = int256(_calcInterest(getContractValue())) + interestForOverUnderPerformance;
-    if (adjustedActiveInterest < 0) adjustedActiveInterest = 0;
-    expectedEpochInterest = pendingWithdrawFees + uint256(adjustedActiveInterest);
+    expectedEpochInterest = pendingWithdrawFees + _availableInterest(_calcInterest(getContractValue()));
     interestForOverUnderPerformance = 0;
 
     // set expected epoch end date
@@ -278,7 +280,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // if there is any surplus then we send those to the borrower
     uint256 pendingInstant = _pendingInstant();
     uint256 totUnderlyings = _contractTokenBalance(token);
-    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    uint256 _pendingWithdraws = _pendingWithdrawals();
     _strategy.collectInstantWithdrawFunds(pendingInstant > totUnderlyings ? totUnderlyings : pendingInstant);
 
     // if there are more requests than the current underlyings we simply send all underlyings
@@ -345,9 +347,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _pendingInstant() != 0 ||
       // Check that overridden interest, if passed (ie > 1), is greater than pending withdraw fees and the apr is 0 
       // otherwise withdrawal requests may not be fullfilled as they consider also the interest gained in the next epoch 
-      (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0)) ||
-      // Closing already recalls all principal, so applying a separate loss burn would strand returned cash.
-      (_isRequestingAllFunds && _lossAmount != 0)
+      (_interest > 1 && (_interest < _pendingWithdrawFees || _newApr != 0))
     );
 
     uint256 _totBorrowed = _beforeStopEpoch(_isRequestingAllFunds);
@@ -355,14 +355,28 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _skimDonatedAssets();
 
     _interest = _resolveStopEpochInterest(_interest);
+    if (_lossAmount != 0) {
+      // Reject close, positive fixed-borrower input, or positive calculated programmable interest.
+      _checkNotAllowed(_isRequestingAllFunds || _interest != (isProgrammableBorrower ? _pendingWithdrawFees : 0));
+      // A fixed-borrower zero input now resolves to receipt fees only, including a zero/one-unit fee floor.
+      expectedEpochInterest = _pendingWithdrawFees;
+    }
+
+    // Cap realized yield before APR-zero settlement splits it between active and withdrawing lenders.
+    if (!_isRequestingAllFunds && _interest > 1) {
+      uint256 _maxApr = _strategy.maxApr();
+      _checkNotAllowed(_maxApr != 0 && _interest >
+        _calcInterestWithApr(getContractValue() + _strategy.apr0TotalPrincipal(), _maxApr) + _pendingWithdrawFees);
+    }
 
     // Base interest for stopEpoch: explicit override (>1) or precomputed expected epoch interest.
     uint256 _expectedInterest;
     // Strategy finalizes APR0 bucket state and returns adjusted stopEpoch values.
-    (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest);
+    (_expectedInterest, _pendingWithdrawFees) = _strategy.prepareStopEpochWithApr0(_interest, isProgrammableBorrower);
     // Pending withdraws may be increased during APR0 settlement, so read after prepareStopEpochWithApr0.
-    uint256 _pendingWithdraws = _strategy.pendingWithdraws();
+    uint256 _pendingWithdraws = _pendingWithdrawals();
 
+    uint256 _grossInterest = _expectedInterest;
     // special case where we get everything back from the borrower
     if (_isRequestingAllFunds) {
       // Recall gross strategy-token principal, including fee backing excluded from net CDO NAV.
@@ -370,14 +384,9 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _totBorrowed += _contractTokenBalance(strategyToken);
       _expectedInterest += _totBorrowed;
     }
-    uint256 _grossInterest = _isRequestingAllFunds ? _expectedInterest - _totBorrowed : _expectedInterest;
     bool _mintInterest = isInterestMinted && !_isRequestingAllFunds;
     // In minted mode IdleCDO only needs cash for withdraw requests, not for epoch interest itself.
     uint256 _amountToPullFromBorrower = _mintInterest ? 0 : _expectedInterest;
-    if (_mintInterest && _interest > 1) {
-      uint256 _maxApr = _strategy.maxApr();
-      _checkNotAllowed(_maxApr != 0 && _grossInterest > _calcInterestWithApr(getContractValue(), _maxApr) + _pendingWithdrawFees);
-    }
 
     // Checkpoint management fees before borrower funds are pulled in so the elapsed-period
     // accrual applies only to the pre-stop live NAV, not to newly received epoch interest.
@@ -425,9 +434,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
         _transferUnderlyings(address(_strategy), _totBorrowed);
       }
 
+      // Charge performance fees on active interest minus all management fees booked this epoch.
+      // Exclude carried fees and calculate before adding pending receipt fees below.
+      // Emergency asset removals do not reduce this interest-based fee base.
+      unclaimedFees += _performanceFee(_grossInterest - _pendingWithdrawFees, unclaimedFees - openingUnclaimedFees);
       if (_mintInterest) {
         // if interest is not transferred we mint strategy tokens equal to the full epoch interest
-        if (_grossInterest != 0) _strategy.mintStrategyTokens(_grossInterest);
+        if (_grossInterest != 0) _mintStrategyTokens(_grossInterest);
         // and increase unclaimedFees by pending withdraw fees before _updateAccounting
         unclaimedFees += _pendingWithdrawFees;
       }
@@ -466,7 +479,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
       _strategy.deposit(_mintInterest ? 0 : netInterest);
 
       // save last apr, unscaled
-      lastEpochApr = _strategy.unscaledApr();
+      lastEpochApr = _getUnscaledApr(_strategy);
       // set apr for next epoch
       _setScaledApr(_newApr);
 
@@ -494,7 +507,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
       emit AccrueInterest(_expectedInterest - _totBorrowed, _totalFees);
       if (_lossAmount != 0) {
-        _strategy.burnStrategyTokens(_lossAmount);
+        _burnStrategyTokens(_lossAmount);
         // Realize the active loss immediately through the ordinary BB-first waterfall.
         _forceUpdateAccounting();
       }
@@ -508,6 +521,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Stop epoch and set new duration
   /// @dev see stopEpoch and setEpochParams for more details, bufferPeriod is not modified
   /// Loss accounting policy for `_lossAmount`:
+  /// - nonzero loss requires `_interest == 0` and settles zero active interest, preserving pending withdrawal fees
+  /// - programmable borrowers must also have zero calculated interest
   /// - pending receipts share the pending portion of the loss pro rata because tranche identity is not stored
   /// - the remaining active-position loss uses the ordinary BB-first tranche waterfall
   /// - hard borrower defaults instead apply one aggregate recovery multiplier to active and pending claims
@@ -698,38 +713,39 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
     uint256 expectedInt = expectedEpochInterest;
     uint256 pendingFees = pendingWithdrawFees;
-    uint256 trancheExpected;
     // existing holders' share of net expected interest for the epoch (pre-deposit)
     // (exclude pendingWithdrawFees since they go to fee receivers, not tranche holders)
-    if (expectedInt > pendingFees) {
-      trancheExpected = _calcTrancheInterestShare(
-        _netGainAfterFees(expectedInt - pendingFees, _calculateManagementFee(lastNAVAA + lastNAVBB, remaining)),
-        _tranche
-      );
-    }
-    // interest this deposit will earn for the tranche over the remaining time (net of fees)
-    uint256 trancheInterest = _calcTrancheInterestShare(
-      _netGainAfterFees(interest, _calculateManagementFee(_amount, remaining)),
-      _tranche
-    );
+    expectedInt = expectedInt > pendingFees ? expectedInt - pendingFees : 0;
     // pre-deposit expected final NAV for existing holders.
-    // This won't ever be zero as we checked _trancheTotSupply and we seed initial NAV at tranche creation
-    uint256 expectedFinal = _lastSavedNAV(_tranche) + trancheExpected;
+    // This must remain positive to price the deposit after projected fees.
+    uint256 expectedFinal = _projectedTrancheNAV(expectedInt, _tranche, 0);
 
-    // mint at a discounted price so depositor gets principal + its prorated interest at epoch end
-    // A mid‑epoch depositor should get _amount + trancheInterest at epoch end.
-    // So they need minted = (amount + trancheInterest) / priceEnd.
-    // priceEnd = expectedFinal / _trancheTotSupply
-    // so minted = (amount + trancheInterest) * _trancheTotSupply / expectedFinal
-    _minted = (_amount + trancheInterest) * _trancheTotSupply / expectedFinal;
+    // The deposit's entitlement is the increase in projected ending NAV, net of fees.
+    // Minted shares = incremental entitlement / (expectedFinal / _trancheTotSupply).
+    _minted = (_projectedTrancheNAV(expectedInt + interest, _tranche, _amount) - expectedFinal) * _trancheTotSupply / expectedFinal;
     _mintShares(_tranche, msg.sender, _minted, _amount);
 
     // update expected epoch interest
     expectedEpochInterest += interest;
     // mint strategy tokens to this contract
-    IdleCreditVault(strategy).mintStrategyTokens(_amount);
+    _mintStrategyTokens(_amount);
     // transfer underlyings to the borrower
     _transferUnderlyings(_borrower(), _amount);
+  }
+
+  /// @notice Project ending tranche NAV using the same allocation as settlement.
+  /// @dev Called after accounting clears pendingManagementFees; unclaimedFees minus the opening snapshot is the epoch expense.
+  /// @param interest Expected active interest, excluding pending receipt fees.
+  /// @param tranche Tranche receiving the optional deposit.
+  /// @param amount Additional principal credited to the tranche.
+  /// @return Projected tranche NAV at epoch end, after fees.
+  function _projectedTrancheNAV(uint256 interest, address tranche, uint256 amount) internal view returns (uint256) {
+    uint256 nav = lastNAVAA + lastNAVBB + amount;
+    uint256 trancheNAV = _lastSavedNAV(tranche) + amount;
+    uint256 managementFees = _calculateManagementFee(nav, epochEndDate - block.timestamp);
+    interest -= _performanceFee(interest, managementFees + unclaimedFees - openingUnclaimedFees);
+    (, int256 gain) = _virtualPriceAux(tranche, nav + interest - managementFees, nav, trancheNAV, managementFees);
+    return uint256(int256(trancheNAV) + gain);
   }
 
   /// @notice Request a withdraw from the vault
@@ -759,7 +775,7 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // If apr decresed wrt last epoch, request instant withdraw and burn tranche tokens directly
     // we compare unscaled aprs
     if (_isInstantWithdrawEnabled()) {
-      uint256 currentApr = creditVault.unscaledApr();
+      uint256 currentApr = _getUnscaledApr(creditVault);
       if (lastEpochApr > (currentApr + instantWithdrawAprDelta)) {
         // burn strategy tokens from cdo and mint an equal amount to msg.sender as receipt
         creditVault.requestInstantWithdraw(_underlyings, msg.sender);
@@ -777,10 +793,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     // add expected fees to pending withdraw fees counter
     pendingWithdrawFees += totalFees;
 
-    /// if there is an AA withdrawal the overperformance that the amount withdrawed would have generated for BB tranches
-    /// is saved in interestForOverUnderPerformance. This is used to calculate the interest that should be added to the
-    /// expectedEpochInterest at the startEpoch.
-    /// If there is a BB withdrawal this amount is subtracted from the expectedEpochInterest
+    // Reconcile the fixed receipt against principal interest so later requests
+    // and startEpoch use only the interest that remains available.
     interestForOverUnderPerformance += diff;
 
     // The receipt is fixed now and leaves live NAV. Charge management fees upfront
@@ -793,6 +807,18 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @notice Transfer donated assets to the feeReceiver
   function _skimDonatedAssets() internal {
     _transferUnderlyings(feeReceiver, _contractTokenBalance(token));
+  }
+
+  /// @notice Mint strategy tokens for deposited principal or minted interest.
+  /// @param amount Strategy tokens to mint in underlying units.
+  function _mintStrategyTokens(uint256 amount) internal {
+    IdleCreditVault(strategy).mintStrategyTokens(amount);
+  }
+
+  /// @notice Burn strategy tokens for realized loss or borrower write-off.
+  /// @param amount Underlying-denominated strategy tokens to burn.
+  function _burnStrategyTokens(uint256 amount) internal {
+    IdleCreditVault(strategy).burnStrategyTokens(amount);
   }
 
   /// @notice Calculate the interest of an epoch for the given amount
@@ -813,7 +839,8 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _tranche Tranche to get the value for
   /// @return Value of the tranche tokens in underlyings
   function _trancheToUnderlyings(uint256 _amount, address _tranche) internal view returns (uint256) {
-    return _amount * _tranchePrice(_tranche) / ONE_TRANCHE_TOKEN;
+    // Round only the final underlying amount, not the per-share price.
+    return _amount == 0 ? 0 : _amount * _lastSavedNAV(_tranche) / _trancheSupply(_tranche);
   }
 
   /// @notice Revert unless an address is one of this vault's tranche tokens.
@@ -826,6 +853,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @return borrower address
   function _borrower() internal view returns (address) {
     return IdleCreditVault(strategy).borrower();
+  }
+
+  /// @notice Get pending normal withdrawals from the strategy.
+  /// @return Pending normal withdrawals in underlying units.
+  function _pendingWithdrawals() internal view returns (uint256) {
+    return IdleCreditVault(strategy).pendingWithdraws();
   }
 
   /// @notice Get pending instant withdraws from strategy.
@@ -852,29 +885,30 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @param _amount Amount of underlyings
   /// @param _tranche Tranche to withdraw from
   /// @return _interest Interest for the given amount and given tranche
-  /// @return _diff over/under performance that this withdraw will cause to the other tranche
+  /// @return _diff Principal-based interest less the interest fixed in the receipt.
   function _calcInterestWithdrawRequest(uint256 _amount, address _tranche) internal view returns (uint256 _interest, int256 _diff) {
     uint256 _duration = epochDuration;
-    if (_duration == 0) {
+    // The strategy records APR-zero receipts as principal, with interest resolved at settlement.
+    if (_duration == 0 || _getUnscaledApr(IdleCreditVault(strategy)) == 0) {
       return (_interest, _diff);
     }
 
-    uint256 _buffer = bufferPeriod;
-    // calculate total vault interest (they don't get the interest for the buffer period for withdraw requests so 
-    // we scale it back since _calcInterest is scaling the interest with tht buffer period),
-    uint256 totInterest = _calcInterest(_managedContractValue()) * _duration / (_duration + _buffer);
-    // calculate total tranche interest for the whole tranche supply
-    uint256 totTrancheInterest = _calcTrancheInterestShare(totInterest, _tranche);
-    // calculate interest for the given tranche and given amount
+    uint256 _totalDuration = _duration + bufferPeriod;
+    // Withdrawal receipts earn epoch interest excluding the buffer.
+    uint256 totTrancheInterest = _calcTrancheInterestShare(
+      _availableInterest(_calcInterest(_managedContractValue()) * _duration / _totalDuration), _tranche
+    );
     uint256 _trancheBal = _lastSavedNAV(_tranche);
     _interest = _trancheBal == 0 ? 0 : _amount * totTrancheInterest / _trancheBal;
-    // calculate the interest that the _amount would have received if there was no split ratio (ie interest split based only on tvl).
-    // This is used to calculate the interest that should be added to the expectedEpochInterest when 
-    // withdrawing an AA tranche or the interest that should be removed from expectedEpochInterest when
-    // withdrawing a BB tranche
-    uint256 interestWithoutSplitRatio = _calcInterest(_amount) * _duration / (_duration + _buffer);
-    // difference between total interest and tranche interest (positive for AA, negative for BB)
-    _diff = int256(interestWithoutSplitRatio) - int256(_interest);
+    uint256 principalInterest = _calcInterest(_amount) * _duration / _totalDuration;
+    _diff = int256(principalInterest) - int256(_interest);
+  }
+
+  /// @notice Read the strategy APR before adjusting for the buffer.
+  /// @param credit The credit vault strategy.
+  /// @return The unscaled APR.
+  function _getUnscaledApr(IdleCreditVault credit) private view returns (uint256) {
+    return credit.unscaledApr();
   }
 
   /// @notice Calculate the tranche share of the total interest for the epoch
@@ -885,12 +919,12 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     return _totalInterest * (_tranche == AATranche ? ratio : FULL_ALLOC - ratio) / FULL_ALLOC;
   }
 
-  /// @notice Apply projected management and performance fees to a positive gain.
-  function _netGainAfterFees(uint256 _gain, uint256 _managementFee) private view returns (uint256 netGain) {
-    if (_managementFee >= _gain) return netGain;
-    // remove mgmt fee and performance fee
-    _gain -= _managementFee;
-    return _gain - _gain * fee / FULL_ALLOC;
+  /// @notice Return projected interest left after earlier fixed withdrawal receipts.
+  /// @param grossInterest Interest projected on the remaining principal.
+  /// @return availableInterest Interest available to current tranche holders.
+  function _availableInterest(uint256 grossInterest) internal view returns (uint256) {
+    int256 adjustedInterest = int256(grossInterest) + interestForOverUnderPerformance;
+    return adjustedInterest > 0 ? uint256(adjustedInterest) : 0;
   }
 
   /// @notice Calculate total fees charged on a withdrawal request.
@@ -899,13 +933,14 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
   /// @return Total management and performance fees to subtract from principal plus projected interest.
   function _totalWithdrawFees(uint256 _principal, uint256 _interest) private view returns (uint256) {
     uint256 _mgmtFee = _calculateManagementFee(_principal, _withdrawRequestManagementFeeDuration());
-    // When interest covers management fees, interest - netGain equals management fee plus performance fee.
-    return _mgmtFee >= _interest ?
-      _mgmtFee :
-      _interest - _netGainAfterFees(_interest, _mgmtFee);
+    // Performance fees apply only to interest remaining after management fees.
+    return _mgmtFee + _performanceFee(_interest, _mgmtFee);
   }
 
   /// @notice Get the max amount of underlyings that can be withdrawn by user
+  /// @dev Approximate normal-withdrawal estimate: does not allocate pendingManagementFees or account for instant mode.
+  /// Unbooked gains/losses, stale NAV inputs and rounding can also make the actual request amount differ.
+  /// For a quote when requests are enabled, simulate requestWithdraw via eth_call from the lender.
   /// @param _user User address
   /// @param _tranche Tranche to withdraw from
   function maxWithdrawable(address _user, address _tranche) external view returns (uint256 currentUnderlyings) {
@@ -939,27 +974,29 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
     _checkTranche(_tranche);
     // Remove raw donations so write-off interest math only sees accounted vault value.
     _skimDonatedAssets();
+    // Accrue management fees and update the net tranche price before burning.
+    _updateAccounting();
 
     // Calculate tranche tokens value with current tranche price
     uint256 _underlyings = _trancheToUnderlyings(_amount, _tranche);
-    // We now calculate how much interest + fee the tranche would have generated in the current epoch
-    (uint256 interest, int256 diff) = _calcInterestWithdrawRequest(_underlyings, _tranche);
-    // given that _calcInterestWithdrawRequest returns an interest and diff value meant to be used in requestWithdraw
-    // it does not include the buffer period but given that the epoch is running expectedEpochInterest was
-    // calculated with the buffer period included, so we need to scale the interest
-    uint256 _epochDuration = epochDuration;
-
-    // (interest + diff) gives the interest based on tvl as write off debt won't follow senior/junior interest split ratio
-    // diff is positive for AA and negative for BB (in this case it won't be > of interest)
-    interest = uint256(int256(interest) + diff) * (_epochDuration + bufferPeriod) / _epochDuration;
+    // Fees accrued this epoch move value from NAV to the fee reserve without changing the
+    // interest-bearing base. Mid-epoch entries add full principal but only prorated interest.
+    uint256 expectedInterest = expectedEpochInterest;
+    uint256 feeFloor = pendingWithdrawFees;
+    uint256 interest = _underlyings == 0 || expectedInterest <= feeFloor ? 0 : _underlyings * (expectedInterest - feeFloor) /
+      (lastNAVAA + lastNAVBB + unclaimedFees - openingUnclaimedFees);
 
     // Burn tranche tokens and decrease lastNAV
     _withdrawOps(_amount, _underlyings, _tranche);
     // Burn strategy tokens and decrease NAV (1:1 with underlyings)
-    IdleCreditVault(strategy).burnStrategyTokens(_underlyings);
+    _burnStrategyTokens(_underlyings);
 
-    // remove the interest + fee from expectedEpochInterest
-    expectedEpochInterest -= interest;
+    // Pending withdrawal fees are already owed; a write-off can only remove active interest.
+    if (expectedInterest <= feeFloor || interest >= expectedInterest - feeFloor) {
+      expectedEpochInterest = feeFloor;
+    } else {
+      expectedEpochInterest = expectedInterest - interest;
+    }
   }
 
   /// @notice Claim a withdraw request from the vault. Can be done when at least 1 epoch passed
@@ -996,12 +1033,13 @@ contract IdleCDOEpochVariant is IdleCDOCreditVault {
 
   /// @notice Resolve the stop-epoch interest value, optionally sourcing it from a programmable borrower.
   /// @dev Programmable borrowers are always the source of truth for epoch interest.
-  /// In that mode `_interest` values `0` and `1` both resolve to the realized epoch interest,
+  /// In that mode `_interest` values `0` and `1` both resolve to realized interest plus pending fee backing,
   /// while `1` still separately signals the close-pool path to the caller.
   function _resolveStopEpochInterest(uint256 _interest) internal view returns (uint256 _resolvedInterest) {
     if (isProgrammableBorrower) {
       _checkNotAllowed(_interest > 1);
-      return IProgrammableBorrower(_borrower()).totalInterestDueNow();
+      // Restore the fee principal deducted from APR0 withdrawal receipts at request time.
+      return IProgrammableBorrower(_borrower()).totalInterestDueNow() + pendingWithdrawFees;
     }
 
     _resolvedInterest = _interest;

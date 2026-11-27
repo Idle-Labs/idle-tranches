@@ -45,8 +45,8 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     cdoEpoch.setKeyringParams(address(0), 1);
   }
 
-  function testContractSize() public view {
-    bytes memory runtime = vm.getDeployedCode("out/IdleCDOEpochVariantPrefunded.sol/IdleCDOEpochVariantPrefunded.json");
+  function testContractSize() public pure {
+    bytes memory runtime = type(IdleCDOEpochVariantPrefunded).runtimeCode;
     console2.log('size', runtime.length);
     assertLt(runtime.length, 24_576, "IdleCDOEpochVariantPrefunded deployed bytecode too large");
   }
@@ -356,7 +356,7 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
   /// @notice A successful explicit loss is realized before next-epoch prefunded AA enters.
   function testPrefundedDepositEntersAfterSuccessfulPartialLoss() external {
     uint256 amount = 3e6;
-    uint256 interest = 1000 * 1e6;
+    uint256 interest = 0;
     address user = makeAddr("partial-loss-prefund-user");
 
     vm.startPrank(cdoEpoch.owner());
@@ -486,7 +486,7 @@ contract TestIdleCDOEpochVariantPrefunded is Test {
     vm.prank(manager);
     queue.processDepositsToBorrower();
 
-    uint256 interest = 1000 * 1e6;
+    uint256 interest = 0;
     uint256 pendingWithdraw = strategy.pendingWithdraws();
     address borrower = strategy.borrower();
     uint256 toRepay = interest + pendingWithdraw;

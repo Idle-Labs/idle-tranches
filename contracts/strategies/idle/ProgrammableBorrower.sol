@@ -31,6 +31,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
 
   uint256 internal constant ONE_TRANCHE_TOKEN = 1e18;
   uint256 internal constant YEAR = 365 days;
+  uint256 internal constant LIQUIDITY_RESERVE_PERCENT = 3;
 
   /// @notice underlying token (must match the vault asset)
   IERC20Detailed public underlyingToken;
@@ -67,8 +68,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
   uint256 public epochPendingWithdraws;
   /// @notice allowed to operate routine facility admin actions
   address public manager;
-  /// @notice vault assets left invested when the previous epoch stopped
-  /// @dev Used to measure vault PnL generated during the buffer so it is carried into the next epoch.
+  /// @notice vault assets at the previous stop still to be recovered from the ERC4626 position
   uint256 public bufferStartVaultAssets;
   /// @notice net vault PnL earned during the buffer and not yet realized by IdleCDO
   /// @dev Positive values represent gains, negative values represent losses.
@@ -207,7 +207,7 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     uint256 bufferStartAssets = bufferStartVaultAssets;
     // Carry vault PnL generated while the pool was in the buffer into the new active epoch so it
     // is eventually realized in tranche prices at the next stopEpoch.
-    bufferedVaultDelta = int256(currentVaultAssets) - int256(bufferStartAssets);
+    bufferedVaultDelta += int256(currentVaultAssets) - int256(bufferStartAssets);
     bufferStartVaultAssets = 0;
     // Snapshot total assets before re-depositing idle cash so the epoch principal baseline uses the
     // exact pre-deposit amount instead of a post-deposit share-conversion round-down.
@@ -346,12 +346,14 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     }
   }
 
-  /// @notice current borrowable liquidity excluding reserved withdraw requests
+  /// @notice Liquidity available to draw after reserving pending withdrawals and 3% of facility assets.
   function availableToBorrow() public view returns (uint256) {
     uint256 totalAssets = underlyingToken.balanceOf(address(this)) + _currentVaultAssets();
-    // Interest is minted (not pulled as cash), so only pending withdraw requests need reservation.
-    uint256 reserved = epochPendingWithdraws;
-    return totalAssets <= reserved ? 0 : totalAssets - reserved;
+    if (totalAssets <= epochPendingWithdraws) return 0;
+    uint256 freeAssets = totalAssets - epochPendingWithdraws;
+    // Include outstanding principal so successive draws cannot shrink the reserve for withdrawal interest.
+    uint256 reserve = (totalAssets + borrowerPrincipal) * LIQUIDITY_RESERVE_PERCENT / 100;
+    return freeAssets > reserve ? freeAssets - reserve : 0;
   }
 
   /// @notice Emergency escape: redeem vault shares back to this contract.
@@ -367,6 +369,11 @@ contract ProgrammableBorrower is Initializable, OwnableUpgradeable, ReentrancyGu
     assets = vault.redeem(_shares, address(this), address(this));
     if (epochAccountingActive) {
       epochWithdrawnFromVault += assets;
+    } else {
+      // Buffer redemptions recover the opening position first. Only the excess is realized gain.
+      uint256 principal = assets < bufferStartVaultAssets ? assets : bufferStartVaultAssets;
+      bufferStartVaultAssets -= principal;
+      bufferedVaultDelta += int256(assets - principal);
     }
     emit RedeemedFromVault(_shares, assets, address(this));
   }

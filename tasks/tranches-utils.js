@@ -1386,6 +1386,36 @@ task("schedule-cv-upgrades-timelock", "Schedule a timelock batch to upgrade sele
   });
 
 /**
+ * @name execute-timelock
+ * Execute a single scheduled operation from a Safe JSON using the deployer EOA.
+ */
+task("execute-timelock", "Execute a scheduled timelock operation with the deployer")
+  .addParam("file", "Safe JSON containing one Timelock.execute transaction")
+  .setAction(async (args, _hre) => {
+    const batch = JSON.parse(fs.readFileSync(path.resolve(args.file), 'utf8'));
+    const { chainId } = await _hre.ethers.provider.getNetwork();
+    if (String(batch.chainId) !== String(chainId)) {
+      throw new Error(`JSON chainId ${batch.chainId} does not match network ${chainId}`);
+    }
+    if (batch.transactions?.length !== 1) {
+      throw new Error('Expected one Timelock.execute transaction');
+    }
+    const { to, data, value } = batch.transactions[0];
+    const timelock = await _hre.ethers.getContractAt('Timelock', getNetworkContracts(_hre).timelock);
+    if (to.toLowerCase() !== timelock.address.toLowerCase()) {
+      throw new Error('Transaction target is not the configured timelock');
+    }
+    const params = timelock.interface.decodeFunctionData('execute', data);
+    const executor = timelock.connect(await _hre.run('get-signer-or-fake'));
+    // Simulate as the deployer to check executor permission and timelock readiness.
+    await executor.callStatic.execute(...params, { value });
+    const tx = await executor.execute(...params, { value });
+    await tx.wait();
+    console.log(`Timelock operation executed: ${tx.hash}`);
+    return tx.hash;
+  });
+
+/**
 * @name execute-cv-upgrades-timelock
 */
 task("execute-cv-upgrades-timelock", "Execute a previously scheduled credit vault upgrade timelock batch")
