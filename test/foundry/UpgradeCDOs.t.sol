@@ -3,6 +3,7 @@ pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
 import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
+import {GuardedLaunchUpgradable} from "../../contracts/GuardedLaunchUpgradable.sol";
 import {IdleCDO} from "../../contracts/IdleCDO.sol";
 import {IProxyAdmin} from "../../contracts/interfaces/IProxyAdmin.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
@@ -10,6 +11,8 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 contract TestQuickCDO is Test {
   using SafeERC20Upgradeable for IERC20Detailed;
+
+  address internal constant MORPHO_RECOVERY_FUND = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
 
   function testAllCDOPrices() external {
     address[] memory cdos = new address[](10);
@@ -31,6 +34,58 @@ contract TestQuickCDO is Test {
       if (cdos[i] == address(0)) continue;
       _testPrices(cdos[i]);
     }
+  }
+
+  /// @notice An owner cannot recover the strategy position from the upgraded Morpho CDO.
+  function testTransferTokenRejectsStrategyTokenAfterUpgrade() external {
+    IdleCDO cdo = _upgradeMorphoCDOForRecovery();
+    IERC20Detailed positionToken = IERC20Detailed(cdo.strategyToken());
+    uint256 cdoBalance = positionToken.balanceOf(address(cdo));
+    uint256 recoveryBalance = positionToken.balanceOf(MORPHO_RECOVERY_FUND);
+    assertGt(cdoBalance, 0, 'fork must hold a strategy position');
+
+    address vaultOwner = cdo.owner();
+    vm.expectRevert(GuardedLaunchUpgradable.StrategyTokenProtected.selector);
+    vm.prank(vaultOwner);
+    cdo.transferToken(address(positionToken), cdoBalance);
+
+    assertEq(positionToken.balanceOf(address(cdo)), cdoBalance, 'strategy position changed');
+    assertEq(positionToken.balanceOf(MORPHO_RECOVERY_FUND), recoveryBalance, 'recovery fund received strategy tokens');
+  }
+
+  /// @notice The owner can still recover eligible tokens to the configured fund.
+  function testTransferTokenRescuesEligibleTokenOnlyForOwner() external {
+    IdleCDO cdo = _upgradeMorphoCDOForRecovery();
+    IERC20Detailed asset = IERC20Detailed(cdo.token());
+    uint256 amount = cdo.oneToken();
+    uint256 cdoBalance = asset.balanceOf(address(cdo)) + amount;
+    uint256 recoveryBalance = asset.balanceOf(MORPHO_RECOVERY_FUND);
+    deal(address(asset), address(cdo), cdoBalance, true);
+
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
+    cdo.transferToken(address(asset), amount);
+    assertEq(asset.balanceOf(address(cdo)), cdoBalance, 'non-owner changed the CDO balance');
+    assertEq(asset.balanceOf(MORPHO_RECOVERY_FUND), recoveryBalance, 'non-owner changed the recovery balance');
+
+    vm.prank(cdo.owner());
+    cdo.transferToken(address(asset), amount);
+    assertEq(asset.balanceOf(address(cdo)), cdoBalance - amount, 'wrong amount removed');
+    assertEq(asset.balanceOf(MORPHO_RECOVERY_FUND), recoveryBalance + amount, 'wrong amount recovered');
+  }
+
+  /// @notice Upgrade the deployed Morpho USDC proxy while retaining its existing configuration.
+  function _upgradeMorphoCDOForRecovery() internal returns (IdleCDO cdo) {
+    vm.createSelectFork("mainnet", 18_412_406);
+    cdo = IdleCDO(0x9C13Ff045C0a994AF765585970A5818E1dB580F8);
+    address vaultOwner = cdo.owner();
+    address positionToken = cdo.strategyToken();
+    uint256 tvlLimit = cdo.limit();
+
+    _upgradeContract(address(cdo), address(new IdleCDO()));
+
+    assertEq(cdo.owner(), vaultOwner, 'owner changed on upgrade');
+    assertEq(cdo.strategyToken(), positionToken, 'strategy token changed on upgrade');
+    assertEq(cdo.limit(), tvlLimit, 'limit changed on upgrade');
   }
 
   function _testPrices(address addr) internal {

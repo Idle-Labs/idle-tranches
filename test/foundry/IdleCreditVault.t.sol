@@ -129,6 +129,21 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     return _apr * (_duration + cdoEpoch.bufferPeriod()) / _duration;
   }
 
+  /// @notice The credit vault owner cannot recover tokens backing active deposits.
+  function testTransferTokenRejectsCreditVaultStrategyToken() external {
+    idleCDO.depositAA(10_000 * ONE_SCALE);
+    uint256 cdoBalance = strategyToken.balanceOf(address(cdoEpoch));
+    uint256 recoveryBalance = strategyToken.balanceOf(address(this));
+    assertGt(cdoBalance, 0, 'deposit must create a strategy position');
+
+    vm.expectRevert(GuardedLaunchUpgradable.StrategyTokenProtected.selector);
+    vm.prank(owner);
+    cdoEpoch.transferToken(address(strategyToken), cdoBalance);
+
+    assertEq(strategyToken.balanceOf(address(cdoEpoch)), cdoBalance, 'strategy position changed');
+    assertEq(strategyToken.balanceOf(address(this)), recoveryBalance, 'recovery fund received strategy tokens');
+  }
+
   /// @notice Credit vaults do not use the legacy IdleCDO harvest path.
   /// @dev Deposits are already invested directly, so inherited harvest-based tests only need a no-op hook.
   function _cdoHarvest(bool _skipRewards) internal pure override {
@@ -140,14 +155,12 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
   }
 
   function _createLoss(uint256 _loss) internal override {
-    // NOTE: this will decrease tranche prices but not the strategy price so no 
-    // automatic default can be triggered
+    // Burning backing reduces tranche prices without changing the strategy price.
     uint256 loss = cdoEpoch.getContractValue() * _loss / FULL_ALLOC;
-    // To create loss we move strategyTokens away from IdleCDO
     uint256 bal = strategyToken.balanceOf(address(cdoEpoch));
     require(bal >= loss, "test: loss is too large");
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), loss);
+    vm.prank(address(cdoEpoch));
+    IdleCreditVault(address(strategy)).burnStrategyTokens(loss);
   }
 
   /// @notice Calculate tranche prices after assigning a loss to BB before AA.
@@ -6546,8 +6559,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(10_000 * ONE_SCALE);
     idleCDO.depositBB(ONE_SCALE);
 
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    vm.prank(address(cdoEpoch));
+    IdleCreditVault(address(strategy)).burnStrategyTokens(ONE_SCALE);
     vm.prank(owner);
     cdoEpoch.updateAccounting();
 
@@ -6571,8 +6584,8 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(10_000 * ONE_SCALE);
     idleCDO.depositBB(ONE_SCALE);
 
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    vm.prank(address(cdoEpoch));
+    IdleCreditVault(address(strategy)).burnStrategyTokens(ONE_SCALE);
     vm.prank(owner);
     cdoEpoch.updateAccounting();
     assertEq(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE, 'test setup should protect AA');

@@ -991,6 +991,11 @@ contract IdleCDO is PausableUpgradeable, GuardedLaunchUpgradable, IdleCDOStorage
     _checkNotAuthorized(msg.sender != rebalancer && msg.sender != owner());
   }
 
+  /// @inheritdoc GuardedLaunchUpgradable
+  function _isStrategyToken(address _token) internal view override returns (bool) {
+    return _token == strategyToken;
+  }
+
   /// @notice returns the current balance of this contract for a specific token
   /// @param _token token address
   /// @return balance of `_token` for this contract
