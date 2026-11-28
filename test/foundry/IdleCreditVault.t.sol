@@ -143,11 +143,16 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     // NOTE: this will decrease tranche prices but not the strategy price so no 
     // automatic default can be triggered
     uint256 loss = cdoEpoch.getContractValue() * _loss / FULL_ALLOC;
-    // To create loss we move strategyTokens away from IdleCDO
+    _simulateStrategyTokenLoss(loss);
+  }
+
+  /// @notice Simulate a loss of strategy tokens held by the CDO while preserving total supply.
+  function _simulateStrategyTokenLoss(uint256 loss) internal {
+    address position = address(strategyToken);
     uint256 bal = strategyToken.balanceOf(address(cdoEpoch));
     require(bal >= loss, "test: loss is too large");
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), loss);
+    deal(position, address(cdoEpoch), bal - loss);
+    deal(position, address(this), strategyToken.balanceOf(address(this)) + loss);
   }
 
   /// @notice Calculate tranche prices after assigning a loss to BB before AA.
@@ -6546,8 +6551,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(10_000 * ONE_SCALE);
     idleCDO.depositBB(ONE_SCALE);
 
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    _simulateStrategyTokenLoss(ONE_SCALE);
     vm.prank(owner);
     cdoEpoch.updateAccounting();
 
@@ -6571,8 +6575,7 @@ contract TestIdleCreditVault is TestIdleCDOLossMgmt {
     idleCDO.depositAA(10_000 * ONE_SCALE);
     idleCDO.depositBB(ONE_SCALE);
 
-    vm.prank(owner);
-    cdoEpoch.transferToken(address(strategy), ONE_SCALE);
+    _simulateStrategyTokenLoss(ONE_SCALE);
     vm.prank(owner);
     cdoEpoch.updateAccounting();
     assertEq(cdoEpoch.lastNAVAA(), 10_000 * ONE_SCALE, 'test setup should protect AA');

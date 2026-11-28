@@ -18,6 +18,7 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
   error Is0();
   error ContractLimitReached();
   error NotAuthorized();
+  error StrategyTokenProtected();
 
   // TVL limit in underlying value
   uint256 public limit;
@@ -64,13 +65,17 @@ abstract contract GuardedLaunchUpgradable is Initializable, OwnableUpgradeable, 
     limit = _limit;
   }
 
-  /// @notice Emergency method, tokens gets transferred to the governanceRecoveryFund address
+  /// @notice Recover tokens other than the configured strategy token to the governance recovery fund.
   /// @param _token address of the token to transfer
   /// @param _value amount to transfer
   function transferToken(address _token, uint256 _value) external {
     _checkOnlyOwner();
+    if (_token == _protectedStrategyToken()) revert StrategyTokenProtected();
     IERC20Upgradeable(_token).safeTransfer(governanceRecoveryFund, _value);
   }
+
+  /// @notice Returns the strategy token held by this vault.
+  function _protectedStrategyToken() internal view virtual returns (address);
 
   /// @notice check revert condition and revert with Is0 error
   /// @param _revertCondition condition to check
