@@ -108,7 +108,9 @@ Each `IdleCreditVault` strategy serves exactly one credit vault, stored in `idle
 | `setWhitelistedCDO(address cdo)` | While `idleCDO()` is zero, binds the strategy to a nonzero `cdo` and reverts with `"IS_0"` if `cdo` is the zero address. Once `idleCDO()` is set, every call reverts with `NotAllowed()`, whatever `cdo` is: the zero address, the bound address or another address. |
 | `transferToken(address token, uint256 value, address to)` | Rescues an ERC-20 sent to the strategy. Reverts with `NotAllowed()` when `token` is the strategy's underlying, `token()`. |
 
-The strategy's underlying backs funded withdrawal claims and the default recovery reserve, so it leaves the strategy only through the vault's claim, epoch and recovery flows. The restriction applies to the strategy only. The credit vault's own `transferToken`, which sends tokens to its governance recovery fund, is unchanged.
+The strategy's underlying backs funded withdrawal claims and the default recovery reserve, so it leaves the strategy only through the vault's claim, epoch and recovery flows.
+
+The credit vault owner can call the vault's two-argument `transferToken` to send eligible ERC-20s, including underlying held by the vault, to its configured governance recovery fund. Attempts to recover the vault's configured `strategyToken()` revert with `StrategyTokenProtected()`.
 
 Both `deployCreditVault` and `deployRevolvingCreditVault` deploy a fresh strategy proxy owned by the factory. During setup they set the strategy APR and then bind the strategy to the new vault, before transferring ownership of both to `treasury()`. The revolving flow sets the APR to zero. After deployment, treasury cannot rebind the strategy.
 

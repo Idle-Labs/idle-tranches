@@ -3,13 +3,71 @@ pragma solidity 0.8.10;
 
 import "forge-std/Test.sol";
 import {IIdleCDOStrategy} from "../../contracts/interfaces/IIdleCDOStrategy.sol";
+import {GuardedLaunchUpgradable} from "../../contracts/GuardedLaunchUpgradable.sol";
 import {IdleCDO} from "../../contracts/IdleCDO.sol";
+import {IdleCDOEpochVariant} from "../../contracts/IdleCDOEpochVariant.sol";
 import {IProxyAdmin} from "../../contracts/interfaces/IProxyAdmin.sol";
 import {IERC20Detailed} from "../../contracts/interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 contract TestQuickCDO is Test {
   using SafeERC20Upgradeable for IERC20Detailed;
+
+  // Governance recovery fund configured on both forked proxies.
+  address internal constant RECOVERY_FUND = 0xFb3bD022D5DAcF95eE28a6B07825D4Ff9C5b3814;
+
+  /// @notice Check recovery after upgrading the deployed Morpho USDC CDO.
+  function testLegacyCDOTokenRecoveryAfterUpgrade() external {
+    vm.createSelectFork("mainnet", 18412406);
+    _testTokenRecoveryAfterUpgrade(IdleCDO(0x9C13Ff045C0a994AF765585970A5818E1dB580F8), address(new IdleCDO()));
+  }
+
+  /// @notice Check recovery after upgrading a deployed USDC Credit Vault.
+  function testCreditVaultTokenRecoveryAfterUpgrade() external {
+    vm.createSelectFork("mainnet", 26272200);
+    _testTokenRecoveryAfterUpgrade(
+      IdleCDO(0x433D5B175148dA32Ffe1e1A37a939E1b7e79be4d), address(new IdleCDOEpochVariant())
+    );
+  }
+
+  /// @notice Verify the proxy retains its recovery configuration and protects the funded strategy position.
+  function _testTokenRecoveryAfterUpgrade(IdleCDO cdo, address implementation) internal {
+    address cdoAddress = address(cdo);
+    address vaultOwner = cdo.owner();
+    IERC20Detailed position = IERC20Detailed(cdo.strategyToken());
+    IERC20Detailed cash = IERC20Detailed(cdo.token());
+    uint256 positionBalance = position.balanceOf(cdoAddress);
+    uint256 fundPositionBalance = position.balanceOf(RECOVERY_FUND);
+    assertGt(positionBalance, 0, "fork vault must hold strategy tokens");
+
+    assertLe(implementation.code.length, 24_576, "implementation exceeds EIP-170");
+    _upgradeContract(cdoAddress, implementation);
+    assertEq(cdo.owner(), vaultOwner, "owner changed on upgrade");
+    assertEq(cdo.strategyToken(), address(position), "strategy token changed on upgrade");
+    assertEq(cdo.token(), address(cash), "underlying changed on upgrade");
+
+    vm.expectRevert(GuardedLaunchUpgradable.StrategyTokenProtected.selector);
+    vm.prank(vaultOwner);
+    cdo.transferToken(address(position), 1);
+    assertEq(position.balanceOf(cdoAddress), positionBalance, "vault strategy balance changed");
+    assertEq(position.balanceOf(RECOVERY_FUND), fundPositionBalance, "fund strategy balance changed");
+
+    uint256 cashBalance = cash.balanceOf(cdoAddress);
+    uint256 fundCashBalance = cash.balanceOf(RECOVERY_FUND);
+    uint256 recoveryAmount = 1e6;
+    deal(address(cash), cdoAddress, cashBalance + recoveryAmount, true);
+
+    vm.expectRevert(GuardedLaunchUpgradable.NotAuthorized.selector);
+    vm.prank(makeAddr("nonOwner"));
+    cdo.transferToken(address(cash), recoveryAmount);
+    assertEq(cash.balanceOf(cdoAddress), cashBalance + recoveryAmount, "non-owner moved vault cash");
+    assertEq(cash.balanceOf(RECOVERY_FUND), fundCashBalance, "non-owner moved fund cash");
+
+    vm.prank(vaultOwner);
+    cdo.transferToken(address(cash), recoveryAmount);
+    assertEq(cash.balanceOf(cdoAddress), cashBalance, "vault kept recovered cash");
+    assertEq(cash.balanceOf(RECOVERY_FUND), fundCashBalance + recoveryAmount, "fund did not receive recovered cash");
+  }
 
   function testAllCDOPrices() external {
     address[] memory cdos = new address[](10);

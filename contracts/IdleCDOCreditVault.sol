@@ -86,6 +86,11 @@ contract IdleCDOCreditVault is PausableUpgradeable, GuardedLaunchUpgradable, Idl
     _additionalInit();
   }
 
+  /// @inheritdoc GuardedLaunchUpgradable
+  function _protectedStrategyToken() internal view override returns (address) {
+    return strategyToken;
+  }
+
   /// @notice used by child contracts (cdo variants) if anything needs to be done on/after init
   function _additionalInit() internal virtual {}
 
